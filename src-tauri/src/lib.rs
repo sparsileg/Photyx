@@ -84,6 +84,7 @@ pub fn run() {
 
     // Phase 1: built-in native plugins
     registry.register(Arc::new(plugins::select_directory::SelectDirectory));
+    registry.register(Arc::new(plugins::read_fits::ReadFITS));
 
     let state = PhotoxState {
         registry,

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 // ── Image buffer (placeholder for Phase 2 buffer pool) ───────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ColorSpace {
     Mono,
     RGB,
