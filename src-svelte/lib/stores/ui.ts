@@ -18,6 +18,9 @@ export interface UIState {
     frameRefreshToken: number;
     viewerClearToken: number;
     consoleExpanded: boolean;
+    blinkImageUrl: string | null;
+    blinkCached: boolean;
+    blinkCaching: boolean;
 }
 
 function createUIStore() {
@@ -35,6 +38,9 @@ function createUIStore() {
         frameRefreshToken: 0,
         viewerClearToken: 0,
         consoleExpanded: false,
+        blinkImageUrl: null,
+        blinkCached: false,
+        blinkCaching: false,
     };
 
     const { subscribe, set, update } = writable<UIState>(initial);
@@ -61,6 +67,9 @@ function createUIStore() {
         requestFrameRefresh: () => update(s => ({ ...s, frameRefreshToken: s.frameRefreshToken + 1 })),
         clearViewer: () => update(s => ({ ...s, viewerClearToken: s.viewerClearToken + 1 })),
         toggleConsole: () => update(s => ({ ...s, consoleExpanded: !s.consoleExpanded })),
+        setBlinkFrame: (url: string | null) => update(s => ({ ...s, blinkImageUrl: url })),
+        setBlinkCached: (v: boolean) => update(s => ({ ...s, blinkCached: v })),
+        setBlinkCaching: (v: boolean) => update(s => ({ ...s, blinkCaching: v })),
     };
 }
 

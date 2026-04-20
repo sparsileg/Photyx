@@ -10,6 +10,7 @@
     let animFrame: number | null = null;
     let running = false;
     let imageDataUrl = $state<string | null>(null);
+    let blinkActive = $derived($ui.blinkImageUrl !== null);
 
     // ── Starfield config ──────────────────────────────────────────────────────
     const STAR_COUNT = 420;
@@ -165,6 +166,7 @@
         if (token > 0 && token !== lastClearToken) {
             lastClearToken = token;
             imageDataUrl = null;
+            ui.setBlinkFrame(null);
             running = true;
             loop();
         }
@@ -222,17 +224,17 @@
 
 <div id="viewer-wrap">
     <canvas id="viewer-canvas" bind:this={canvas} style:display={imageDataUrl !== null ? 'none' : 'block'}></canvas>
-    {#if imageDataUrl}
+    {#if imageDataUrl || blinkActive}
         <div
             id="viewer-scroll"
-            class:zoom-fit={$ui.zoomLevel === 'fit'}
+            class:zoom-fit={true}
         >
             <img
                 id="viewer-image"
-                src={imageDataUrl}
+                src={blinkActive ? $ui.blinkImageUrl : imageDataUrl}
                 alt="Current frame"
-                style:width={$ui.zoomLevel !== 'fit' ? `${Math.round(1200 * zoomScale)}px` : undefined}
-                style:height={$ui.zoomLevel !== 'fit' ? `${Math.round(1200 * zoomScale)}px` : undefined}
+                style:width={!blinkActive && $ui.zoomLevel !== 'fit' ? `${Math.round(1200 * zoomScale)}px` : undefined}
+                style:height={!blinkActive && $ui.zoomLevel !== 'fit' ? `${Math.round(1200 * zoomScale)}px` : undefined}
             />
         </div>
     {/if}

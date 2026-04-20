@@ -160,6 +160,7 @@ export async function displayFrame(index: number) {
             }
         }
 
+        console.log('requestFrameRefresh called from displayFrame');
         ui.requestFrameRefresh();
 
     } catch (e) {

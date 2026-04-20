@@ -190,3 +190,59 @@
     color: var(--primary-color);
     min-width: 30px;
 }
+
+/* ── Blink settings ─────────────────────────────────────────────────────── */
+
+.blink-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.blink-setting-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+}
+
+.blink-setting-label {
+    color: var(--text-secondary);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    min-width: 70px;
+}
+
+.blink-select {
+    font-family: inherit;
+    font-size: 10px;
+    padding: 2px 4px;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    outline: none;
+}
+
+.blink-select:focus {
+    border-color: var(--primary-color);
+}
+
+.blink-select:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.blink-play {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.blink-status {
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    font-style: italic;
+}

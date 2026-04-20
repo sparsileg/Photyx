@@ -17,6 +17,7 @@ impl PhotonPlugin for ClearSession {
         ctx.file_list.clear();
         ctx.image_buffers.clear();
         ctx.display_cache.clear();
+        ctx.blink_cache.clear();
         ctx.current_frame = 0;
         Ok(PluginOutput::Message("Session cleared.".to_string()))
     }

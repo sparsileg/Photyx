@@ -97,6 +97,9 @@ pub struct AppContext {
     /// Display cache (keyed by file path) — pre-rendered display-resolution JPEG bytes
     pub display_cache: HashMap<String, Vec<u8>>,
 
+    /// Blink cache (keyed by file path) — pre-rendered blink-resolution JPEG bytes
+    pub blink_cache: HashMap<String, Vec<u8>>,
+
     /// Index of the currently displayed frame
     pub current_frame: usize,
 

@@ -121,6 +121,21 @@ fn get_current_frame(state: State<PhotoxState>) -> Result<String, String> {
     Ok(format!("data:image/jpeg;base64,{}", b64))
 }
 
+#[tauri::command]
+fn get_blink_frame(index: usize, state: State<PhotoxState>) -> Result<String, String> {
+    let ctx = state.context.lock().expect("context lock poisoned");
+
+    let path = ctx.file_list.get(index)
+        .ok_or_else(|| format!("Frame index {} out of range", index))?;
+
+    let jpeg_bytes = ctx.blink_cache.get(path)
+        .ok_or_else(|| format!("Frame {} not in blink cache", index))?;
+
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(jpeg_bytes);
+    Ok(format!("data:image/jpeg;base64,{}", b64))
+}
+
 // ── Logging init ──────────────────────────────────────────────────────────────
 
 fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
@@ -143,6 +158,7 @@ pub fn run() {
     registry.register(Arc::new(plugins::auto_stretch::AutoStretch));
     registry.register(Arc::new(plugins::set_frame::SetFrame));
     registry.register(Arc::new(plugins::clear_session::ClearSession));
+    registry.register(Arc::new(plugins::cache_frames::CacheFrames));
 
     let state = PhotoxState {
         registry,
@@ -158,8 +174,12 @@ pub fn run() {
             list_plugins,
             get_session,
             get_current_frame,
+            get_blink_frame,
             debug_buffer_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+
+// ----------------------------------------------------------------------
