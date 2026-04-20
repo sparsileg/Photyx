@@ -91,8 +91,11 @@ pub struct AppContext {
     /// Flat list of file paths in the active directory
     pub file_list: Vec<String>,
 
-    /// Loaded image buffers (keyed by filename)
+    /// Loaded image buffers (keyed by file path) — raw pixel data, never modified
     pub image_buffers: HashMap<String, ImageBuffer>,
+
+    /// Display cache (keyed by file path) — pre-rendered display-resolution JPEG bytes
+    pub display_cache: HashMap<String, Vec<u8>>,
 
     /// Index of the currently displayed frame
     pub current_frame: usize,

@@ -56,6 +56,7 @@ impl PhotonPlugin for ReadFITS {
 
         ctx.file_list.clear();
         ctx.image_buffers.clear();
+        ctx.display_cache.clear();
 
         let mut loaded = 0;
         let mut errors = 0;

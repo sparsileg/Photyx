@@ -113,103 +113,11 @@ fn get_current_frame(state: State<PhotoxState>) -> Result<String, String> {
     let path = ctx.file_list.get(ctx.current_frame)
         .ok_or_else(|| "No image loaded".to_string())?;
 
-    let buffer = ctx.image_buffers.get(path)
-        .ok_or_else(|| "Image buffer not found".to_string())?;
+    let jpeg_bytes = ctx.display_cache.get(path)
+        .ok_or_else(|| "No display cache entry for current frame. Run AutoStretch first.".to_string())?;
 
-    let pixels = buffer.pixels.as_ref()
-        .ok_or_else(|| "No pixel data".to_string())?;
-
-    use crate::context::PixelData;
-    let width  = buffer.width as u32;
-    let height = buffer.height as u32;
-
-    // Downsample during pixel extraction — avoid full-res image allocation
-    let (out_w, out_h, step) = if width > 1200 {
-        let scale = width as f32 / 1200.0;
-        let new_w = 1200u32;
-        let new_h = (height as f32 / scale) as u32;
-        (new_w, new_h, scale as usize)
-    } else {
-        (width, height, 1usize)
-    };
-
-    let rgb: Vec<u8> = match pixels {
-        PixelData::F32(v) => {
-            (0..out_h as usize).flat_map(|y| {
-                (0..out_w as usize).flat_map(move |x| {
-                    // Box filter — average step×step block
-                    let mut sum = 0.0f32;
-                    let mut count = 0usize;
-                    for dy in 0..step {
-                        for dx in 0..step {
-                            let sy = y * step + dy;
-                            let sx = x * step + dx;
-                            if sy < height as usize && sx < width as usize {
-                                sum += v[sy * width as usize + sx];
-                                count += 1;
-                            }
-                        }
-                    }
-                    let p = (sum / count as f32).clamp(0.0, 1.0);
-                    let val = (p * 255.0) as u8;
-                    [val, val, val]
-                }).collect::<Vec<u8>>()
-            }).collect()
-        }
-        PixelData::U16(v) => {
-            (0..out_h as usize).flat_map(|y| {
-                (0..out_w as usize).flat_map(move |x| {
-                    let mut sum = 0u32;
-                    let mut count = 0usize;
-                    for dy in 0..step {
-                        for dx in 0..step {
-                            let sy = y * step + dy;
-                            let sx = x * step + dx;
-                            if sy < height as usize && sx < width as usize {
-                                sum += v[sy * width as usize + sx] as u32;
-                                count += 1;
-                            }
-                        }
-                    }
-                    let val = ((sum / count as u32) >> 8) as u8;
-                    [val, val, val]
-                }).collect::<Vec<u8>>()
-            }).collect()
-        }
-        PixelData::U8(v) => {
-            (0..out_h as usize).flat_map(|y| {
-                (0..out_w as usize).flat_map(move |x| {
-                    let mut sum = 0u32;
-                    let mut count = 0usize;
-                    for dy in 0..step {
-                        for dx in 0..step {
-                            let sy = y * step + dy;
-                            let sx = x * step + dx;
-                            if sy < height as usize && sx < width as usize {
-                                sum += v[sy * width as usize + sx] as u32;
-                                count += 1;
-                            }
-                        }
-                    }
-                    let val = (sum / count as u32) as u8;
-                    [val, val, val]
-                }).collect::<Vec<u8>>()
-            }).collect()
-        }
-    };
-
-    use image::{RgbImage, ImageFormat};
     use base64::Engine as _;
-    use std::io::Cursor;
-
-    let display_img = RgbImage::from_raw(out_w, out_h, rgb)
-        .ok_or_else(|| "Failed to create image".to_string())?;
-
-    let mut buf = Cursor::new(Vec::new());
-    display_img.write_to(&mut buf, ImageFormat::Jpeg)
-        .map_err(|e| e.to_string())?;
-
-    let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+    let b64 = base64::engine::general_purpose::STANDARD.encode(jpeg_bytes);
     Ok(format!("data:image/jpeg;base64,{}", b64))
 }
 
