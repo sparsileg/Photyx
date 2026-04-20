@@ -1,0 +1,82 @@
+:root {
+    /* Background Colors */
+    --bg-color: #ffffff;
+    --sidebar-bg: #f8f9fa;
+    --card-bg: #f8f9fa;
+    --card-hover: #e9ecef;
+    --input-bg: #ffffff;
+
+    /* Text Colors */
+    --text-color: #212529;
+    --text-secondary: #6c757d;
+    --primary-text: #ffffff;
+
+    /* Primary Colors */
+    --primary-color: #0d6efd;
+    --primary-hover: #0b5ed7;
+
+    /* Secondary Colors */
+    --secondary-color: #f8f9fa;
+    --secondary-hover: #e9ecef;
+
+    /* Border Colors */
+    --border-color: #dee2e6;
+    --border-color-light: #f1f3f5;
+
+    /* Status Colors */
+    --success-color: #198754;
+    --warning-color: #fd7e14;
+    --error-color: #dc3545;
+    --error-hover: #bb2d3b;
+
+    /* Focus Ring */
+    --focus-ring: rgba(13, 110, 253, 0.25);
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+}
+
+/* Light theme specific adjustments */
+.modal {
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.result-card,
+.card,
+.info-card {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.result-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+#target-info-display .form-group,
+.info-box-wrapper {
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--border-color);
+}
+
+.logo-ring {
+    filter: drop-shadow(0 0 15px rgba(13, 110, 253, 0.5));
+}
+
+.app-logo {
+    filter:
+        blur(0.3px)
+        saturate(1.2)
+        brightness(1.2);
+}
+
+
+:root {
+    --tutorial-accent: #e67c00;
+    --tutorial-accent-text: #ffffff;
+}
+
+.tutorial-modal,
+.tutorial-callout {
+    box-shadow: 0 0 24px rgba(230, 124, 0, 0.4), 0 0 0 1px var(--tutorial-accent);
+}

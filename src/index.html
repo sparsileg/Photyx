@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photyx</title>
+
+    <!-- Module CSS (theme-neutral) -->
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/toolbar.css">
+    <link rel="stylesheet" href="css/sidebar.css">
+    <link rel="stylesheet" href="css/viewer.css">
+    <link rel="stylesheet" href="css/infopanel.css">
+    <link rel="stylesheet" href="css/console.css">
+    <link rel="stylesheet" href="css/statusbar.css">
+
+    <!-- Theme loaded dynamically by app.js -->
+</head>
+<body>
+
+<div id="app">
+
+    <!-- ── Menu Bar ──────────────────────────────────────────────────────── -->
+    <div id="menu-bar">
+
+        <div class="menu-item" tabindex="0">
+            File
+            <div class="menu-dropdown">
+                <div class="menu-dropdown-item" data-action="open-file">Open…<span class="shortcut">Ctrl+O</span></div>
+                <div class="menu-dropdown-item" data-action="open-recent">Open Recent ▶</div>
+                <div class="menu-separator"></div>
+                <div class="menu-dropdown-item" data-action="close-file">Close</div>
+                <div class="menu-separator"></div>
+                <div class="menu-dropdown-item" data-action="exit">Exit</div>
+            </div>
+        </div>
+
+        <div class="menu-item" tabindex="0">
+            Edit
+            <div class="menu-dropdown">
+                <div class="menu-dropdown-item" data-action="keywords">Keywords</div>
+                <div class="menu-separator"></div>
+                <div class="menu-dropdown-item" data-action="preferences">Preferences</div>
+            </div>
+        </div>
+
+        <div class="menu-item" tabindex="0">
+            View
+            <div class="menu-dropdown">
+                <div class="menu-dropdown-item" data-action="zoom-fit">Zoom: Fit<span class="shortcut">0</span></div>
+                <div class="menu-dropdown-item" data-action="zoom-100">Zoom: 100%<span class="shortcut">3</span></div>
+                <div class="menu-separator"></div>
+                <div class="menu-dropdown-item" data-action="theme-dark">Theme: Dark</div>
+                <div class="menu-dropdown-item" data-action="theme-light">Theme: Light</div>
+                <div class="menu-dropdown-item" data-action="theme-matrix">Theme: Matrix</div>
+            </div>
+        </div>
+
+        <div class="menu-item" tabindex="0">
+            Process
+            <div class="menu-dropdown">
+                <div class="menu-dropdown-item" data-action="run-macro">Run Macro…</div>
+                <div class="menu-dropdown-item" data-action="macro-library">Macro Library</div>
+            </div>
+        </div>
+
+        <div class="menu-item" tabindex="0">
+            Analyze
+            <div class="menu-dropdown">
+                <div class="menu-dropdown-item" data-action="fwhm">FWHM</div>
+                <div class="menu-dropdown-item" data-action="star-count">Star Count</div>
+                <div class="menu-dropdown-item" data-action="eccentricity">Eccentricity</div>
+                <div class="menu-dropdown-item" data-action="median-value">Median Value</div>
+                <div class="menu-dropdown-item" data-action="contour">Contour Plot</div>
+            </div>
+        </div>
+
+        <div class="menu-item" tabindex="0">
+            Tools
+            <div class="menu-dropdown">
+                <div class="menu-dropdown-item" data-action="settings">Settings</div>
+                <div class="menu-dropdown-item" data-action="plugin-manager">Plugin Manager</div>
+                <div class="menu-separator"></div>
+                <div class="menu-dropdown-item" data-action="log-viewer">Log Viewer</div>
+            </div>
+        </div>
+
+        <div class="menu-item" tabindex="0">
+            Help
+            <div class="menu-dropdown">
+                <div class="menu-dropdown-item" data-action="about">About Photyx</div>
+                <div class="menu-dropdown-item" data-action="documentation">Documentation</div>
+                <div class="menu-separator"></div>
+                <div class="menu-dropdown-item" data-action="check-updates">Check for Updates</div>
+            </div>
+        </div>
+
+    </div><!-- /menu-bar -->
+
+    <!-- ── Toolbar ───────────────────────────────────────────────────────── -->
+    <div id="toolbar">
+        <div class="toolbar-group">
+            <span class="toolbar-label">Zoom</span>
+            <button class="toolbar-btn active" id="zoom-fit" title="Fit screen (0)">Fit</button>
+            <button class="toolbar-btn" id="zoom-25"  title="25% (1)">25%</button>
+            <button class="toolbar-btn" id="zoom-50"  title="50% (2)">50%</button>
+            <button class="toolbar-btn" id="zoom-100" title="100% (3)">100%</button>
+            <button class="toolbar-btn" id="zoom-200" title="200% (4)">200%</button>
+        </div>
+        <div class="toolbar-sep"></div>
+        <div class="toolbar-group">
+            <span class="toolbar-label">Stretch</span>
+            <select class="toolbar-select" id="stretch-select" title="Display stretch mode">
+                <option value="auto">Auto-STF</option>
+                <option value="linear">Linear</option>
+                <option value="histeq">Hist. EQ</option>
+            </select>
+        </div>
+        <div class="toolbar-sep"></div>
+        <div class="toolbar-group">
+          <span class="toolbar-label">Channel</span>
+          <button class="toolbar-btn active" id="ch-rgb" title="RGB composite">RGB</button>
+          <button class="toolbar-btn" id="ch-r" title="Red channel">R</button>
+          <button class="toolbar-btn" id="ch-g" title="Green channel">G</button>
+          <button class="toolbar-btn" id="ch-b" title="Blue channel">B</button>
+        </div>
+        <div class="toolbar-sep"></div>
+    </div>
+
+    <!-- ── Quick Launch Panel ────────────────────────────────────────────── -->
+    <div id="quick-launch">
+        <div id="ql-buttons" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+    </div>
+
+    <!-- ── Content Area ──────────────────────────────────────────────────── -->
+    <div id="content-area">
+
+        <!-- Icon Sidebar -->
+        <div id="icon-sidebar">
+            <div class="sidebar-icon" data-panel="panel-files" data-tooltip="File Browser" title="File Browser">📁</div>
+            <div class="sidebar-icon" data-panel="panel-keywords" data-tooltip="Keyword Editor" title="Keyword Editor">🏷</div>
+            <div class="sidebar-icon" data-panel="panel-macro-editor" data-tooltip="Macro Editor" title="Macro Editor">{ }</div>
+            <div class="sidebar-icon" data-panel="panel-macro-lib" data-tooltip="Macro Library" title="Macro Library">☰</div>
+            <div class="sidebar-icon" data-panel="panel-plugins" data-tooltip="Plugin Manager" title="Plugin Manager">⬡</div>
+        </div>
+
+        <!-- Sliding Panel Container -->
+        <div id="panel-container">
+
+            <!-- File Browser -->
+            <div class="sliding-panel" id="panel-files">
+                <div class="panel-header">
+                    <span>File Browser</span>
+                    <span class="panel-close">✕</span>
+                </div>
+                <div class="dir-bar">
+                    <span class="dir-path" id="dir-path-display">(no directory selected)</span>
+                    <button class="dir-browse-btn" title="Browse…">…</button>
+                </div>
+                <div class="panel-body">
+                    <ul class="file-list" id="file-list">
+                        <li class="file-item" style="color:var(--text-secondary);font-size:10px;cursor:default;">
+                            Use SelectDirectory in the console to load a directory.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Keyword Editor -->
+            <div class="sliding-panel" id="panel-keywords">
+                <div class="panel-header">
+                    <span>Keyword Editor</span>
+                    <span class="panel-close">✕</span>
+                </div>
+                <div class="panel-body">
+                    <div class="kw-actions">
+                        <button class="kw-btn">+ Add</button>
+                        <button class="kw-btn">− Delete</button>
+                        <button class="kw-btn">⟳ Reload</button>
+                    </div>
+                    <table class="keyword-table">
+                        <thead>
+                            <tr><th>Keyword</th><th>Value</th><th>Comment</th></tr>
+                        </thead>
+                        <tbody id="keyword-tbody">
+                            <!-- Placeholder rows -->
+                            <tr><td class="kw-name">OBJECT</td><td class="kw-value">—</td><td class="kw-comment">no image loaded</td></tr>
+                            <tr><td class="kw-name">FILTER</td><td class="kw-value">—</td><td class="kw-comment"></td></tr>
+                            <tr><td class="kw-name">EXPTIME</td><td class="kw-value">—</td><td class="kw-comment">seconds</td></tr>
+                            <tr><td class="kw-name">GAIN</td><td class="kw-value">—</td><td class="kw-comment"></td></tr>
+                            <tr><td class="kw-name">TEMP</td><td class="kw-value">—</td><td class="kw-comment">°C</td></tr>
+                            <tr><td class="kw-name">DATE-OBS</td><td class="kw-value">—</td><td class="kw-comment">UTC</td></tr>
+                            <tr><td class="kw-name">TELESCOP</td><td class="kw-value">—</td><td class="kw-comment"></td></tr>
+                            <tr><td class="kw-name">INSTRUME</td><td class="kw-value">—</td><td class="kw-comment"></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Macro Editor -->
+            <div class="sliding-panel" id="panel-macro-editor">
+                <div class="panel-header">
+                    <span>Macro Editor</span>
+                    <span class="panel-close">✕</span>
+                </div>
+                <div class="macro-editor-wrap">
+                    <div class="macro-editor-toolbar">
+                        <button class="macro-btn run-btn" id="macro-run-btn">▶ Run</button>
+                        <button class="macro-btn" id="macro-save-btn">Save…</button>
+                        <button class="macro-btn" id="macro-load-btn">Load…</button>
+                        <button class="macro-btn" id="macro-copy-from-console">← Console</button>
+                    </div>
+                    <textarea id="macro-textarea" spellcheck="false" placeholder="# pcode macro
+# Example:
+SelectDirectory path=&quot;/home/user/Astrophotos/M31&quot;
+ReadAllFITFiles
+AutoStretch method=asinh
+AddKeyword name=OBJECT value=&quot;M31&quot;
+WriteAllFITFiles destination=&quot;/home/user/Output&quot;"></textarea>
+                </div>
+            </div>
+
+            <!-- Macro Library -->
+            <div class="sliding-panel" id="panel-macro-lib">
+                <div class="panel-header">
+                    <span>Macro Library</span>
+                    <span class="panel-close">✕</span>
+                </div>
+                <div class="panel-body">
+                    <div class="macro-lib-item">
+                        <div class="macro-lib-name">ProcessLightFrames</div>
+                        <div class="macro-lib-desc">Debayer, stretch, and write FITS light frames</div>
+                    </div>
+                    <div class="macro-lib-item">
+                        <div class="macro-lib-name">BatchKeywordTag</div>
+                        <div class="macro-lib-desc">Add OBJECT keyword to all files in directory</div>
+                    </div>
+                    <div class="macro-lib-item">
+                        <div class="macro-lib-name">ConvertFITStoXISF</div>
+                        <div class="macro-lib-desc">Convert all FITS files to XISF format</div>
+                    </div>
+                    <p style="font-size:10px;color:var(--text-secondary);padding:8px;margin-top:8px;border-top:1px solid var(--border-color);">
+                        Macro library directory scanning — Phase 5.<br>
+                        Place .phs files in the Photyx macros directory.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Plugin Manager -->
+            <div class="sliding-panel" id="panel-plugins">
+                <div class="panel-header">
+                    <span>Plugin Manager</span>
+                    <span class="panel-close">✕</span>
+                </div>
+                <div class="panel-body">
+                    <div id="plugin-list">
+                        <!-- Built-in native plugins -->
+                        <div class="plugin-item">
+                            <div class="plugin-name">ReadFITS <span class="plugin-type native">Native</span></div>
+                            <div class="plugin-version">v1.0 — I/O Reader</div>
+                        </div>
+                        <div class="plugin-item">
+                            <div class="plugin-name">ReadXISF <span class="plugin-type native">Native</span></div>
+                            <div class="plugin-version">v1.0 — I/O Reader</div>
+                        </div>
+                        <div class="plugin-item">
+                            <div class="plugin-name">ReadTIFF <span class="plugin-type native">Native</span></div>
+                            <div class="plugin-version">v1.0 — I/O Reader</div>
+                        </div>
+                        <div class="plugin-item">
+                            <div class="plugin-name">AutoStretch <span class="plugin-type native">Native</span></div>
+                            <div class="plugin-version">v1.0 — Processing</div>
+                        </div>
+                        <div class="plugin-item">
+                            <div class="plugin-name">DebayerImage <span class="plugin-type native">Native</span></div>
+                            <div class="plugin-version">v1.0 — Processing</div>
+                        </div>
+                        <div class="plugin-item">
+                            <div class="plugin-name">AddKeyword <span class="plugin-type native">Native</span></div>
+                            <div class="plugin-version">v1.0 — Keyword</div>
+                        </div>
+                        <!-- WASM analysis plugins -->
+                        <div class="plugin-item">
+                            <div class="plugin-name">ComputeFWHM <span class="plugin-type wasm">WASM</span></div>
+                            <div class="plugin-version">v1.0 — Analysis (Phase 7)</div>
+                        </div>
+                        <div class="plugin-item">
+                            <div class="plugin-name">CountStars <span class="plugin-type wasm">WASM</span></div>
+                            <div class="plugin-version">v1.0 — Analysis (Phase 7)</div>
+                        </div>
+                        <div class="plugin-item">
+                            <div class="plugin-name">ComputeEccentricity <span class="plugin-type wasm">WASM</span></div>
+                            <div class="plugin-version">v1.0 — Analysis (Phase 7)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /panel-container -->
+
+        <!-- Viewer + bottom region -->
+        <div id="viewer-region">
+
+            <!-- Image Viewer -->
+            <div id="viewer-wrap">
+                <canvas id="viewer-canvas"></canvas>
+
+                <!-- Zoom indicator (fades out) -->
+                <div id="zoom-indicator">Fit</div>
+
+                <!-- Placeholder overlay -->
+                <div id="viewer-placeholder">
+                    <div class="ph-title">PHOTYX</div>
+                    <div class="ph-sub">Open an image or use SelectDirectory in the console</div>
+                </div>
+            </div>
+
+            <!-- Bottom Panel: Console + Info Panel -->
+            <div id="bottom-panel">
+
+                <!-- Console -->
+                <div id="console-panel">
+                    <div class="console-header">
+                        <span class="console-title">pcode console</span>
+                        <div class="console-actions">
+                            <button class="console-action-btn" id="console-copy-btn" title="Copy history to Macro Editor">Copy→Editor</button>
+                            <button class="console-action-btn" id="console-clear-btn" title="Clear console">Clear</button>
+                        </div>
+                    </div>
+                    <div id="console-output"></div>
+                    <div class="console-input-row">
+                        <span class="console-prompt">&gt;</span>
+                        <input type="text" id="console-input" autocomplete="off" autocorrect="off"
+                               autocapitalize="off" spellcheck="false"
+                               placeholder="Type a pcode command… (Tab to complete)">
+                    </div>
+                    <div id="tab-hint"></div>
+                </div>
+
+                <!-- Info Panel -->
+                <div id="info-panel">
+                    <div class="info-panel-tabs">
+                        <div class="info-tab active" data-target="ip-pixels">Pixels</div>
+                        <div class="info-tab" data-target="ip-metadata">Metadata</div>
+                        <div class="info-tab" data-target="ip-histogram">Histogram</div>
+                        <div class="info-tab" data-target="ip-blink">Blink</div>
+                    </div>
+
+                    <!-- Pixel Tracking -->
+                    <div class="info-panel-body active" id="ip-pixels">
+                        <div id="pixel-tracking">
+                            <div class="pt-row">
+                                <div class="pt-field">
+                                    <span class="pt-label">X</span>
+                                    <span class="pt-value" id="pt-x">—</span>
+                                </div>
+                                <div class="pt-field">
+                                    <span class="pt-label">Y</span>
+                                    <span class="pt-value" id="pt-y">—</span>
+                                </div>
+                                <div class="pt-field">
+                                    <span class="pt-label">Raw</span>
+                                    <span class="pt-value" id="pt-raw">—</span>
+                                </div>
+                                <div class="pt-field">
+                                    <span class="pt-label">Val</span>
+                                    <span class="pt-value" id="pt-val">—</span>
+                                </div>
+                                <div class="pt-field">
+                                    <span class="pt-label">RA</span>
+                                    <span class="pt-value" id="pt-ra" style="color:var(--text-secondary)">no WCS</span>
+                                </div>
+                                <div class="pt-field">
+                                    <span class="pt-label">Dec</span>
+                                    <span class="pt-value" id="pt-dec" style="color:var(--text-secondary)">—</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Metadata -->
+                    <div class="info-panel-body" id="ip-metadata">
+                        <div class="meta-grid">
+                            <div class="meta-field"><span class="meta-key">File</span><span class="meta-val" id="meta-file">—</span></div>
+                            <div class="meta-field"><span class="meta-key">Size</span><span class="meta-val" id="meta-size">—</span></div>
+                            <div class="meta-field"><span class="meta-key">BitDepth</span><span class="meta-val" id="meta-bitdepth">—</span></div>
+                            <div class="meta-field"><span class="meta-key">ColorSpace</span><span class="meta-val" id="meta-colorspace">—</span></div>
+                            <div class="meta-field"><span class="meta-key">Object</span><span class="meta-val" id="meta-object">—</span></div>
+                            <div class="meta-field"><span class="meta-key">Filter</span><span class="meta-val" id="meta-filter">—</span></div>
+                            <div class="meta-field"><span class="meta-key">ExpTime</span><span class="meta-val" id="meta-exptime">—</span></div>
+                            <div class="meta-field"><span class="meta-key">Gain</span><span class="meta-val" id="meta-gain">—</span></div>
+                            <div class="meta-field"><span class="meta-key">Temp</span><span class="meta-val" id="meta-temp">—</span></div>
+                            <div class="meta-field"><span class="meta-key">Date-Obs</span><span class="meta-val" id="meta-dateobs">—</span></div>
+                            <div class="meta-field"><span class="meta-key">Instrument</span><span class="meta-val" id="meta-instrume">—</span></div>
+                            <div class="meta-field"><span class="meta-key">Telescope</span><span class="meta-val" id="meta-telescop">—</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Histogram -->
+                    <div class="info-panel-body" id="ip-histogram">
+                        <canvas id="mini-histogram"></canvas>
+                        <div class="histogram-label">Click to expand — no image loaded</div>
+                    </div>
+
+                    <!-- Blink Controls -->
+                    <div class="info-panel-body" id="ip-blink">
+                        <div id="blink-controls">
+                            <button class="blink-btn" title="Previous frame (J)">◀</button>
+                            <button class="blink-btn" title="Play / Pause (Space)">▶</button>
+                            <button class="blink-btn" title="Next frame (K)">▶▶</button>
+                            <span class="blink-counter" id="blink-counter">0 / 0</span>
+                            <div class="fps-control">
+                                <span>FPS</span>
+                                <input type="range" id="fps-slider" min="0.5" max="10" step="0.5" value="2">
+                                <span id="fps-display">2</span>
+                            </div>
+                        </div>
+                        <p style="font-size:10px;color:var(--text-secondary);margin-top:12px;">
+                            Load images with ReadAllFITFiles then use BlinkSequence to start blinking. (Phase 2)
+                        </p>
+                    </div>
+
+                </div><!-- /info-panel -->
+
+            </div><!-- /bottom-panel -->
+
+        </div><!-- /viewer-region -->
+
+    </div><!-- /content-area -->
+
+    <!-- ── Notification / Status Bar ─────────────────────────────────────── -->
+    <div id="status-bar">
+        <span id="status-icon">◈</span>
+        <span id="status-text">Initializing…</span>
+        <div id="status-right">
+            <div class="status-item">
+                <span class="status-item-label">Files</span>
+                <span class="status-item-val" id="sr-files">0</span>
+            </div>
+            <div class="status-item">
+                <span class="status-item-label">Loaded</span>
+                <span class="status-item-val" id="sr-loaded">0</span>
+            </div>
+            <div class="status-item">
+                <span class="status-item-label">Frame</span>
+                <span class="status-item-val" id="sr-frame">—</span>
+            </div>
+            <div class="status-item">
+                <span class="status-item-label">Zoom</span>
+                <span class="status-item-val" id="sr-zoom">Fit</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Notification History Overlay ──────────────────────────────────── -->
+    <div id="notif-history">
+        <div class="notif-history-header">
+            Notification History
+            <span class="notif-close" id="notif-close">✕</span>
+        </div>
+        <div class="notif-list"></div>
+    </div>
+
+</div><!-- /app -->
+
+<!-- Scripts -->
+<script src="js/starfield.js"></script>
+<script src="js/pcode.js"></script>
+<script src="js/console.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
