@@ -9,6 +9,17 @@
     background: var(--bg-color);
     border-right: 1px solid var(--border-color);
     overflow: hidden;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 120px;
+    transition: height 0.2s ease;
+    z-index: 50;
+}
+
+#console-panel.expanded {
+    height: 50vh;
+    border-top: 1px solid var(--border-color);
 }
 
 .console-header {
@@ -19,6 +30,12 @@
     padding: 4px 10px;
     border-bottom: 1px solid var(--border-color);
     background: var(--card-bg);
+    cursor: pointer;
+    user-select: none;
+}
+
+.console-header:hover {
+    background: var(--card-hover);
 }
 
 .console-title {
@@ -58,6 +75,11 @@
     padding: 6px 8px;
     font-size: 11px;
     line-height: 1.6;
+    max-height: 48px; /* ~3 lines at 16px line height */
+}
+
+#console-panel.expanded #console-output {
+    max-height: none;
 }
 
 .console-line {

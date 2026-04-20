@@ -120,6 +120,46 @@ export async function displayFrame(index: number) {
             return;
         }
 
+        // Fetch buffer metadata for the current frame
+        const info = await invoke<{
+            current_frame: number;
+            file_count: number;
+            buffer: {
+                filename: string;
+                width: number;
+                height: number;
+                bit_depth: string;
+                channels: number;
+                has_pixels: boolean;
+            } | null;
+        }>('debug_buffer_info');
+
+        if (info.buffer) {
+            const path = await invoke<{
+                activeDirectory: string | null;
+                fileList: string[];
+                currentFrame: number;
+            }>('get_session');
+            const filePath = path.fileList[index];
+            if (filePath) {
+                session.update(s => ({
+                    ...s,
+                    loadedImages: {
+                        ...s.loadedImages,
+                        [filePath]: {
+                            filename: info.buffer!.filename,
+                            width: info.buffer!.width,
+                            height: info.buffer!.height,
+                            bitDepth: info.buffer!.bit_depth,
+                            colorSpace: 'Mono',
+                            channels: info.buffer!.channels,
+                            keywords: {},
+                        }
+                    }
+                }));
+            }
+        }
+
         ui.requestFrameRefresh();
 
     } catch (e) {

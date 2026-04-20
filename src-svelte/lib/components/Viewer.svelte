@@ -192,11 +192,21 @@
     }
 
     // ── Zoom ──────────────────────────────────────────────────────────────────
-    const ZOOM_SCALES: Record<string, number> = {
+    // ── Zoom ──────────────────────────────────────────────────────────────────
+    const ZOOM_FACTORS: Record<string, number> = {
         'fit': 1, '25': 0.25, '50': 0.5, '100': 1.0, '200': 2.0
     };
 
-    let zoomScale = $derived(ZOOM_SCALES[$ui.zoomLevel] ?? 1);
+    const DISPLAY_WIDTH = 1200;
+
+    let zoomScale = $derived(
+        $ui.zoomLevel === 'fit'
+            ? 1
+            : (ZOOM_FACTORS[$ui.zoomLevel] ?? 1) * (
+                ($session.loadedImages[$session.fileList[$session.currentFrame]]?.width ?? DISPLAY_WIDTH)
+                / DISPLAY_WIDTH
+              )
+    );
     let zoomLabel = $derived($ui.zoomLevel === 'fit' ? 'Fit' : `${$ui.zoomLevel}%`);
 
     let zoomIndicatorVisible = $state(false);
@@ -221,7 +231,8 @@
                 id="viewer-image"
                 src={imageDataUrl}
                 alt="Current frame"
-                style:transform={$ui.zoomLevel !== 'fit' ? `scale(${zoomScale})` : 'none'}
+                style:width={$ui.zoomLevel !== 'fit' ? `${Math.round(1200 * zoomScale)}px` : undefined}
+                style:height={$ui.zoomLevel !== 'fit' ? `${Math.round(1200 * zoomScale)}px` : undefined}
             />
         </div>
     {/if}

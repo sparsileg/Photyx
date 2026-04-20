@@ -162,11 +162,11 @@ html, body {
 
 #bottom-panel {
     flex: 0 0 auto;
-    height: 180px;
+    height: 120px;
     display: flex;
     flex-direction: row;
-    overflow: hidden;
-    resize: vertical;
+    overflow: visible;
+    position: relative;
 }
 
 /* ── Status / notification bar ──────────────────────────────────────────── */

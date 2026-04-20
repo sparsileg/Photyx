@@ -31,7 +31,7 @@
         </div>
 
     <!-- Metadata -->
-    {:else if activeTab === 'metadata'}
+        {:else if activeTab === 'metadata'}
         <div class="info-panel-body active" id="ip-metadata">
             {#if $currentImage}
                 <div class="meta-grid">

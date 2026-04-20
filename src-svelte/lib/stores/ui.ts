@@ -17,6 +17,7 @@ export interface UIState {
     activeChannel: 'rgb' | 'r' | 'g' | 'b';
     frameRefreshToken: number;
     viewerClearToken: number;
+    consoleExpanded: boolean;
 }
 
 function createUIStore() {
@@ -33,6 +34,7 @@ function createUIStore() {
         activeChannel: 'rgb',
         frameRefreshToken: 0,
         viewerClearToken: 0,
+        consoleExpanded: false,
     };
 
     const { subscribe, set, update } = writable<UIState>(initial);
@@ -58,6 +60,7 @@ function createUIStore() {
         setChannel: (ch: 'rgb' | 'r' | 'g' | 'b') => update(s => ({ ...s, activeChannel: ch })),
         requestFrameRefresh: () => update(s => ({ ...s, frameRefreshToken: s.frameRefreshToken + 1 })),
         clearViewer: () => update(s => ({ ...s, viewerClearToken: s.viewerClearToken + 1 })),
+        toggleConsole: () => update(s => ({ ...s, consoleExpanded: !s.consoleExpanded })),
     };
 }
 

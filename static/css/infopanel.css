@@ -1,13 +1,16 @@
 /* infopanel.css — Bottom info panel (pixel tracking, metadata, histogram, blink). Theme-neutral. */
 
 #info-panel {
-    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     border-left: 1px solid var(--border-color);
     background: var(--sidebar-bg);
-    min-width: 0;
+    position: absolute;
+    bottom: 0;
+    left: 33.333%;
+    right: 0;
+    height: 120px;
 }
 
 .info-panel-tabs {

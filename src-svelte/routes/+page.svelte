@@ -50,7 +50,7 @@
         <div id="viewer-region">
             <Viewer />
 
-            <div id="bottom-panel">
+            <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded}>
                 <Console />
                 <InfoPanel />
             </div>

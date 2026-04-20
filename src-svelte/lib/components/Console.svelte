@@ -240,11 +240,11 @@
     }
 </script>
 
-<div id="console-panel">
-    <div class="console-header">
-        <span class="console-title">pcode console</span>
+<div id="console-panel" class:expanded={$ui.consoleExpanded}>
+    <div class="console-header" onclick={() => ui.toggleConsole()}>
+        <span class="console-title">pcode console {$ui.consoleExpanded ? '▾' : '▴'}</span>
         <div class="console-actions">
-            <button class="console-action-btn" onclick={() => { lines = []; }}>Clear</button>
+            <button class="console-action-btn" onclick={(e) => { e.stopPropagation(); lines = []; }}>Clear</button>
         </div>
     </div>
     <div id="console-output" bind:this={outputEl}>
