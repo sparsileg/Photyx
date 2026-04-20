@@ -67,6 +67,16 @@ fn list_plugins(state: State<PhotoxState>) -> Vec<String> {
     state.registry.list()
 }
 
+#[tauri::command]
+fn get_session(state: State<PhotoxState>) -> serde_json::Value {
+    let ctx = state.context.lock().expect("context lock poisoned");
+    serde_json::json!({
+        "activeDirectory": ctx.active_directory,
+        "fileList": ctx.file_list,
+        "currentFrame": ctx.current_frame,
+    })
+}
+
 // ── Logging init ──────────────────────────────────────────────────────────────
 
 fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
@@ -84,7 +94,7 @@ pub fn run() {
 
     // Phase 1: built-in native plugins
     registry.register(Arc::new(plugins::select_directory::SelectDirectory));
-    registry.register(Arc::new(plugins::read_fits::ReadFITS));
+    registry.register(Arc::new(plugins::read_fits::ReadAllFITFiles));
 
     let state = PhotoxState {
         registry,
@@ -97,6 +107,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             dispatch_command,
             list_plugins,
+            get_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

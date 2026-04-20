@@ -1,0 +1,355 @@
+/* sidebar.css — Icon sidebar and sliding panels. Theme-neutral. */
+
+/* ── Icon sidebar ───────────────────────────────────────────────────────── */
+
+#icon-sidebar {
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border-color);
+}
+
+.sidebar-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 1px solid transparent;
+    font-size: 15px;
+    color: var(--text-secondary);
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+    position: relative;
+}
+
+.sidebar-icon:hover {
+    color: var(--primary-color);
+    background: var(--card-bg);
+    border-color: var(--border-color);
+}
+
+.sidebar-icon.active {
+    color: var(--primary-color);
+    background: var(--card-bg);
+    border-color: var(--primary-color);
+}
+
+.sidebar-icon[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: calc(100% + 10px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-size: 11px;
+    padding: 3px 8px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 500;
+}
+
+.sidebar-icon:hover[data-tooltip]::after {
+    opacity: 1;
+}
+
+/* ── Sliding panels ─────────────────────────────────────────────────────── */
+
+#panel-container {
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border-color);
+}
+
+.panel-header {
+    border-bottom: 1px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--primary-color);
+}
+
+.panel-close {
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-secondary);
+    padding: 2px 4px;
+    line-height: 1;
+}
+
+.panel-close:hover {
+    color: var(--error-color);
+}
+
+/* ── File browser panel ─────────────────────────────────────────────────── */
+
+.dir-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dir-path {
+    flex: 1;
+    font-size: 10px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dir-browse-btn {
+    flex: 0 0 auto;
+    font-size: 10px;
+    padding: 2px 6px;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    font-family: inherit;
+}
+
+.dir-browse-btn:hover {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.file-list {
+    list-style: none;
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--text-color);
+    border-bottom: 1px solid var(--border-color-light);
+}
+
+.file-item:hover {
+    background: var(--card-hover);
+    color: var(--primary-color);
+}
+
+.file-item.selected {
+    background: var(--card-bg);
+    color: var(--primary-color);
+    border-left: 2px solid var(--primary-color);
+}
+
+.file-icon {
+    font-size: 10px;
+    color: var(--text-secondary);
+    flex: 0 0 auto;
+}
+
+.file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-ext {
+    font-size: 9px;
+    color: var(--text-secondary);
+    padding: 1px 4px;
+    border: 1px solid var(--border-color);
+}
+
+/* ── Keyword editor panel ───────────────────────────────────────────────── */
+
+.keyword-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+
+.keyword-table th {
+    text-align: left;
+    padding: 4px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.keyword-table td {
+    padding: 3px 6px;
+    border-bottom: 1px solid var(--border-color-light);
+    color: var(--text-color);
+    vertical-align: middle;
+}
+
+.keyword-table tr:hover td {
+    background: var(--card-hover);
+}
+
+.kw-name {
+    color: var(--primary-color);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.kw-value {
+    color: var(--text-color);
+}
+
+.kw-comment {
+    color: var(--text-secondary);
+    font-size: 10px;
+}
+
+.kw-actions {
+    display: flex;
+    gap: 4px;
+    padding: 6px 0;
+}
+
+.kw-btn {
+    flex: 1;
+    padding: 4px 0;
+    font-size: 10px;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-secondary);
+}
+
+.kw-btn:hover {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+/* ── Macro editor panel ─────────────────────────────────────────────────── */
+
+.macro-editor-wrap {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 6px;
+    padding: 6px;
+}
+
+.macro-editor-toolbar {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.macro-btn {
+    padding: 3px 8px;
+    font-size: 10px;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.macro-btn:hover {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.macro-btn.run-btn {
+    color: var(--success-color);
+    border-color: var(--success-color);
+}
+
+.macro-btn.run-btn:hover {
+    background: var(--success-color);
+    color: var(--primary-text);
+}
+
+#macro-textarea {
+    flex: 1;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.6;
+    resize: none;
+    outline: none;
+    border: 1px solid var(--border-color);
+    background: var(--input-bg);
+    color: var(--text-color);
+    padding: 8px;
+    tab-size: 4;
+}
+
+#macro-textarea:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+/* ── Macro library panel ────────────────────────────────────────────────── */
+
+.macro-lib-item {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-color-light);
+    cursor: pointer;
+}
+
+.macro-lib-item:hover {
+    background: var(--card-hover);
+}
+
+.macro-lib-name {
+    font-size: 11px;
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.macro-lib-desc {
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+/* ── Plugin manager panel ───────────────────────────────────────────────── */
+
+.plugin-item {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-color-light);
+}
+
+.plugin-name {
+    font-size: 11px;
+    color: var(--text-color);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.plugin-type {
+    font-size: 9px;
+    padding: 1px 5px;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.plugin-type.native {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.plugin-type.wasm {
+    border-color: var(--warning-color);
+    color: var(--warning-color);
+}
+
+.plugin-version {
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}

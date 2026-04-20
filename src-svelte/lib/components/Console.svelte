@@ -1,0 +1,291 @@
+<!-- Console.svelte — pcode interactive console. Spec §8.9, §7.9 -->
+<script lang="ts">
+    import { invoke } from '@tauri-apps/api/core';
+    import { session } from '../stores/session';
+    import { notifications } from '../stores/notifications';
+
+    interface ConsoleLine {
+        id: number;
+        text: string;
+        type: 'input-echo' | 'output' | 'error' | 'warning' | 'success' | 'info';
+    }
+
+    let lines = $state<ConsoleLine[]>([
+        { id: 0, text: 'Photyx pcode console  v1.0', type: 'info' },
+        { id: 1, text: 'Type Help for a command list.', type: 'info' },
+    ]);
+    let inputValue = $state('');
+    let tabHint = $state('');
+    let outputEl = $state<HTMLDivElement>();
+    let inputEl = $state<HTMLInputElement>();
+
+    let history: string[] = [];
+    let historyIdx = -1;
+    let pendingInput = '';
+    let nextId = 2;
+
+    // All known pcode commands for tab completion
+    const ALL_COMMANDS = [
+        'SelectDirectory','ListFiles','FilterByKeyword',
+        'ReadAllFITFiles','ReadAllXISFFiles','ReadAllTIFFFiles',
+        'WriteAllFITFiles','WriteAllXISFFiles','WriteAllTIFFFiles','WritePNG','WriteJPEG',
+        'AddKeyword','DeleteKeyword','ModifyKeyword','CopyKeyword','ListKeywords','GetKeyword',
+        'GetImageProperty','GetSessionProperty','Test',
+        'AutoStretch','LinearStretch','HistogramEqualization','CropImage','BinImage','DebayerImage',
+        'BlinkSequence','CacheFrames','SetZoom',
+        'ComputeFWHM','CountStars','ComputeEccentricity','MedianValue','ContourPlot',
+        'Set','Print','Echo','CountFiles','RunMacro',
+        'Help','Clear','Version',
+    ];
+
+    const ARG_HINTS: Record<string, string> = {
+        selectdirectory:    'path=',
+        addkeyword:         'name=  value=  comment=',
+        deletekeyword:      'name=',
+        modifykeyword:      'name=  value=',
+        copykeyword:        'from=  to=',
+        filterbykeyword:    'name=  value=',
+        autostretch:        'method=  shadowClip=  targetBackground=',
+        linearstretch:      'black=  white=',
+        cropimage:          'x=  y=  width=  height=',
+        binimage:           'factor=',
+        debayerimage:       'method=  pattern=',
+        blinksequence:      'fps=',
+        setzoom:            'level=',
+        writeallfitfiles:   'destination=  overwrite=',
+        writeallxisffiles:  'destination=  overwrite=',
+        writealltifffiles:  'destination=  overwrite=',
+        writepng:           'filename=  destination=',
+        writejpeg:          'filename=  destination=  quality=',
+        set:                '<varname> = <value>',
+        getimageproperty:   'property=',
+        getsessionproperty: 'property=',
+        runmacro:           'filename=',
+    };
+
+    function append(text: string, type: ConsoleLine['type']) {
+        lines = [...lines, { id: nextId++, text, type }];
+        // Scroll to bottom after DOM update
+        setTimeout(() => {
+            if (outputEl) outputEl.scrollTop = outputEl.scrollHeight;
+        }, 0);
+    }
+
+    // ── Tokenizer ─────────────────────────────────────────────────────────────
+    function tokenize(line: string): { command: string; args: Record<string, string> } | null {
+        line = line.trim();
+        if (!line || line.startsWith('#')) return null;
+
+        const firstSpace = line.search(/\s/);
+        const command = firstSpace === -1 ? line : line.slice(0, firstSpace);
+        const rest = firstSpace === -1 ? '' : line.slice(firstSpace + 1).trim();
+
+        const args: Record<string, string> = {};
+        const argRe = /([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|(\S+))/g;
+        let match;
+        while ((match = argRe.exec(rest)) !== null) {
+            args[match[1].toLowerCase()] = match[2] !== undefined ? match[2] : match[3];
+        }
+
+        return { command, args };
+    }
+
+    // ── Client-side commands (no Rust needed) ─────────────────────────────────
+    const CLIENT_COMMANDS: Record<string, (args: Record<string, string>, raw: string) => boolean> = {
+        help: (args, raw) => {
+            append('Photyx pcode v1.0  —  commands:', 'output');
+            append('  File:     SelectDirectory ListFiles FilterByKeyword', 'output');
+            append('  I/O:      ReadAllFITFiles ReadAllXISFFiles ReadAllTIFFFiles', 'output');
+            append('            WriteAllFITFiles WriteAllXISFFiles WriteAllTIFFFiles WritePNG WriteJPEG', 'output');
+            append('  Keyword:  AddKeyword DeleteKeyword ModifyKeyword CopyKeyword ListKeywords GetKeyword', 'output');
+            append('  Query:    GetImageProperty GetSessionProperty Test', 'output');
+            append('  Process:  AutoStretch LinearStretch HistogramEqualization CropImage BinImage DebayerImage', 'output');
+            append('  View:     BlinkSequence CacheFrames SetZoom', 'output');
+            append('  Analysis: ComputeFWHM CountStars ComputeEccentricity MedianValue ContourPlot', 'output');
+            append('  Script:   Set Print Echo CountFiles RunMacro', 'output');
+            return true;
+        },
+        clear: () => {
+            lines = [];
+            return true;
+        },
+        version: () => {
+            append('Photyx 1.0.0-dev  |  pcode v1.0  |  Tauri + Svelte + Rust', 'output');
+            return true;
+        },
+    };
+
+    // ── Dispatch: client-side first, then Rust backend ────────────────────────
+    async function dispatch(raw: string) {
+        const parsed = tokenize(raw);
+        if (!parsed) return;
+
+        const cmdLower = parsed.command.toLowerCase();
+
+        // Handle client-side commands
+        if (CLIENT_COMMANDS[cmdLower]) {
+            CLIENT_COMMANDS[cmdLower](parsed.args, raw);
+            return;
+        }
+
+        // Send to Rust backend via Tauri invoke
+        try {
+            const response = await invoke<{
+                success: boolean;
+                output: string | null;
+                error: string | null;
+            }>('dispatch_command', {
+                request: {
+                    command: parsed.command,
+                    args: parsed.args,
+                }
+            });
+
+            if (response.success) {
+                if (response.output) {
+                    append(response.output, 'success');
+                }
+                // Sync session state for key commands
+                await syncSessionState(cmdLower, parsed.args, response.output);
+            } else {
+                append(response.error ?? 'Unknown error', 'error');
+                notifications.error(response.error ?? 'Unknown error');
+            }
+        } catch (err) {
+            const msg = `Invoke error: ${err}`;
+            append(msg, 'error');
+            notifications.error(msg);
+        }
+    }
+
+    // Update Svelte session store after successful backend commands
+    async function syncSessionState(cmd: string, args: Record<string, string>, output: string | null) {
+        if (cmd === 'selectdirectory' && args.path) {
+            session.setDirectory(args.path);
+            notifications.info(`Directory: ${args.path}`);
+        }
+        if (cmd === 'readallfitfiles' || cmd === 'readallxisffiles' || cmd === 'readalltifffiles') {
+            if (output) notifications.success(output);
+            // Sync file list from Rust backend
+            try {
+                const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
+                session.setDirectory(s.activeDirectory);
+                session.setFileList(s.fileList);
+            } catch (e) {
+                notifications.error(`Session sync failed: ${e}`);
+            }
+        }
+    }
+
+    // ── Submit ────────────────────────────────────────────────────────────────
+    async function submit() {
+        const raw = inputValue.trim();
+        if (!raw) return;
+
+        append(raw, 'input-echo');
+
+        if (history[0] !== raw) history.unshift(raw);
+        if (history.length > 500) history.length = 500;
+        historyIdx = -1;
+        pendingInput = '';
+        inputValue = '';
+        tabHint = '';
+
+        await dispatch(raw);
+    }
+
+    // ── Key handling ──────────────────────────────────────────────────────────
+    function onKeyDown(e: KeyboardEvent) {
+        switch (e.key) {
+            case 'Enter':
+                e.preventDefault();
+                submit();
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                navigateHistory(1);
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                navigateHistory(-1);
+                break;
+            case 'Tab':
+                e.preventDefault();
+                doTabComplete();
+                break;
+            case 'Escape':
+                inputValue = '';
+                historyIdx = -1;
+                tabHint = '';
+                break;
+        }
+    }
+
+    function navigateHistory(dir: number) {
+        if (history.length === 0) return;
+        if (historyIdx === -1 && dir === 1) pendingInput = inputValue;
+        historyIdx = Math.max(-1, Math.min(history.length - 1, historyIdx + dir));
+        inputValue = historyIdx === -1 ? pendingInput : history[historyIdx];
+    }
+
+    function doTabComplete() {
+        const val = inputValue;
+        const spacePos = val.indexOf(' ');
+        if (spacePos === -1) {
+            const matches = ALL_COMMANDS.filter(c => c.toLowerCase().startsWith(val.toLowerCase()));
+            if (matches.length === 1) {
+                inputValue = matches[0] + ' ';
+                tabHint = '';
+            } else if (matches.length > 1) {
+                tabHint = matches.join('  ');
+            }
+        } else {
+            const cmd = val.slice(0, spacePos).toLowerCase();
+            tabHint = ARG_HINTS[cmd] ? 'args: ' + ARG_HINTS[cmd] : '';
+        }
+    }
+
+    export function focus() {
+        inputEl?.focus();
+    }
+</script>
+
+<div id="console-panel">
+    <div class="console-header">
+        <span class="console-title">pcode console</span>
+        <div class="console-actions">
+            <button class="console-action-btn" onclick={() => { lines = []; }}>Clear</button>
+        </div>
+    </div>
+    <div id="console-output" bind:this={outputEl}>
+        {#each lines as line (line.id)}
+            <div class="console-line {line.type}">
+                {#if line.type === 'input-echo'}
+                    <span class="line-prompt">&gt;</span>
+                    <span> {line.text}</span>
+                {:else}
+                    {line.text}
+                {/if}
+            </div>
+        {/each}
+    </div>
+    <div class="console-input-row">
+        <span class="console-prompt">&gt;</span>
+        <input
+            type="text"
+            id="console-input"
+            bind:this={inputEl}
+            bind:value={inputValue}
+            onkeydown={onKeyDown}
+            oninput={() => tabHint = ''}
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck={false}
+            placeholder="Type a pcode command… (Tab to complete)"
+        />
+    </div>
+    {#if tabHint}
+        <div id="tab-hint">{tabHint}</div>
+    {/if}
+</div>

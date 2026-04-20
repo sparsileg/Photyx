@@ -161,3 +161,16 @@ fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
         keywords,
     })
 }
+
+// Command alias — ReadAllFITFiles is the pcode command name per spec §7.8
+pub struct ReadAllFITFiles;
+
+impl PhotonPlugin for ReadAllFITFiles {
+    fn name(&self) -> &str { "ReadAllFITFiles" }
+    fn version(&self) -> &str { "1.0" }
+    fn description(&self) -> &str { "Reads all FITS files in the active directory into the image buffer pool" }
+    fn parameters(&self) -> Vec<ParamSpec> { vec![] }
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+        ReadFITS.execute(ctx, args)
+    }
+}
