@@ -16,12 +16,13 @@
     <div class="toolbar-group">
         <span class="toolbar-label">Zoom</span>
         {#each zoomLevels as z}
-            <button
-                class="toolbar-btn"
-                class:active={$ui.zoomLevel === z.id}
-                onclick={() => ui.setZoom(z.id)}
-            >{z.label}</button>
-        {/each}
+        <button
+            class="toolbar-btn"
+            class:active={$ui.zoomLevel === z.id}
+            disabled={$ui.blinkTabActive}
+            onclick={() => ui.setZoom(z.id)}
+        >{z.label}</button>
+    {/each}
     </div>
     <div class="toolbar-sep"></div>
     <div class="toolbar-group">

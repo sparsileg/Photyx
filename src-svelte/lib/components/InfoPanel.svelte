@@ -7,6 +7,13 @@
 
     let activeTab = $state<'pixels' | 'metadata' | 'histogram' | 'blink'>('pixels');
 
+    $effect(() => {
+        if (activeTab !== 'blink') {
+            if (blinkPlaying) pause();
+            ui.setBlinkFrame(null);
+        }
+    });
+
     // ── Blink state ───────────────────────────────────────────────────────────
     let blinkPlaying    = $state(false);
     let blinkFrame      = $state(0);
@@ -76,6 +83,7 @@
             const ok = await ensureCached();
             if (!ok) return;
             blinkPlaying = true;
+            ui.setBlinkPlaying(true);
             blinkLoop();
         } finally {
             playInProgress = false;
@@ -84,6 +92,7 @@
 
     function pause() {
         blinkPlaying = false;
+        ui.setBlinkPlaying(false);
         if (blinkTimer) { clearTimeout(blinkTimer); blinkTimer = null; }
     }
 

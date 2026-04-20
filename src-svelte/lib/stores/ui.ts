@@ -21,6 +21,8 @@ export interface UIState {
     blinkImageUrl: string | null;
     blinkCached: boolean;
     blinkCaching: boolean;
+    blinkTabActive: boolean;
+    blinkPlaying: boolean;
 }
 
 function createUIStore() {
@@ -41,6 +43,8 @@ function createUIStore() {
         blinkImageUrl: null,
         blinkCached: false,
         blinkCaching: false,
+        blinkTabActive: false,
+        blinkPlaying: false,
     };
 
     const { subscribe, set, update } = writable<UIState>(initial);
@@ -70,6 +74,8 @@ function createUIStore() {
         setBlinkFrame: (url: string | null) => update(s => ({ ...s, blinkImageUrl: url })),
         setBlinkCached: (v: boolean) => update(s => ({ ...s, blinkCached: v })),
         setBlinkCaching: (v: boolean) => update(s => ({ ...s, blinkCaching: v })),
+        setBlinkTabActive: (v: boolean) => update(s => ({ ...s, blinkTabActive: v })),
+        setBlinkPlaying: (v: boolean) => update(s => ({ ...s, blinkPlaying: v })),
     };
 }
 
