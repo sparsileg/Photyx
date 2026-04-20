@@ -4,12 +4,13 @@
 mod plugin;
 mod context;
 mod plugins;
+mod logging;
 
 use std::sync::{Arc, Mutex};
 use tauri::State;
 use serde::{Deserialize, Serialize};
 use tracing::info;
-use tracing_subscriber::EnvFilter;
+// tracing_subscriber configured in logging.rs
 
 use plugin::registry::PluginRegistry;
 use plugin::{ArgMap, PluginOutput};
@@ -68,20 +69,15 @@ fn list_plugins(state: State<PhotoxState>) -> Vec<String> {
 
 // ── Logging init ──────────────────────────────────────────────────────────────
 
-fn init_logging() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info"))
-        )
-        .init();
+fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
+    logging::init_logging()
 }
 
 // ── Application entry point ───────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    init_logging();
+    let _log_guard = init_logging();
     info!("Photyx starting up");
 
     let registry = Arc::new(PluginRegistry::new());
