@@ -83,6 +83,14 @@ impl KeywordEntry {
 
 // ── Session state ─────────────────────────────────────────────────────────────
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub enum BlinkCacheStatus {
+    #[default]
+    Idle,
+    Building,
+    Ready,
+}
+
 #[derive(Debug, Default)]
 pub struct AppContext {
     /// Currently active working directory (set by SelectDirectory)
@@ -97,8 +105,14 @@ pub struct AppContext {
     /// Display cache (keyed by file path) — pre-rendered display-resolution JPEG bytes
     pub display_cache: HashMap<String, Vec<u8>>,
 
-    /// Blink cache (keyed by file path) — pre-rendered blink-resolution JPEG bytes
-    pub blink_cache: HashMap<String, Vec<u8>>,
+    /// Blink cache at 12.5% resolution (keyed by file path)
+    pub blink_cache_12: HashMap<String, Vec<u8>>,
+
+    /// Blink cache at 25% resolution (keyed by file path)
+    pub blink_cache_25: HashMap<String, Vec<u8>>,
+
+    /// Background cache build status
+    pub blink_cache_status: BlinkCacheStatus,
 
     /// Index of the currently displayed frame
     pub current_frame: usize,

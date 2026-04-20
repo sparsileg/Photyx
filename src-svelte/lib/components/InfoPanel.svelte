@@ -10,8 +10,8 @@
     // ── Blink state ───────────────────────────────────────────────────────────
     let blinkPlaying    = $state(false);
     let blinkFrame      = $state(0);
-    let blinkResolution = $state<'12' | '25'>('25');
-    let blinkDelay      = $state(0.25);
+    let blinkResolution = $state<'12' | '25'>('12');
+    let blinkDelay      = $state(0.1);
     let blinkTimer: ReturnType<typeof setTimeout> | null = null;
     let playInProgress  = false;
 
@@ -44,7 +44,7 @@
 
     async function showBlinkFrame(index: number) {
         try {
-            const dataUrl = await invoke<string>('get_blink_frame', { index });
+            const dataUrl = await invoke<string>('get_blink_frame', { index, resolution: blinkResolution });
             ui.setBlinkFrame(dataUrl);
         } catch (e) {
             console.error('get_blink_frame error:', e);
@@ -54,6 +54,16 @@
     async function ensureCached(): Promise<boolean> {
         if ($ui.blinkCached) return true;
         if ($ui.blinkCaching) return false;
+        // Check if background cache already built it
+        const status = await invoke<string>('get_blink_cache_status');
+        if (status === 'ready') {
+            ui.setBlinkCached(true);
+            return true;
+        }
+        if (status === 'building') {
+            notifications.info('Cache is being built in the background, please wait…');
+            return false;
+        }
         return await buildCache();
     }
 
@@ -183,7 +193,7 @@
                 <button
                     class="blink-btn"
                     disabled={blinkPlaying || frameCount === 0}
-                    onclick={stepBack}
+                    onclick={(e) => { e.stopPropagation(); stepBack(); }}
                     title="Previous frame"
                 >←</button>
 
@@ -191,19 +201,26 @@
                 <button
                     class="blink-btn blink-play"
                     disabled={frameCount === 0 || $ui.blinkCaching}
-                    onclick={() => blinkPlaying ? pause() : play()}
+                    onclick={(e) => { e.stopPropagation(); blinkPlaying ? pause() : play(); }}
                     title={blinkPlaying ? 'Pause' : 'Play'}
                 >{blinkPlaying ? '⏸' : '▶'}</button>
 
                 <button
                     class="blink-btn"
                     disabled={blinkPlaying || frameCount === 0}
-                    onclick={stepForward}
+                    onclick={(e) => { e.stopPropagation(); stepForward(); }}
                     title="Next frame"
                 >→</button>
 
                 <!-- Frame counter -->
                 <span class="blink-counter">{frameCount > 0 ? `${blinkFrame + 1} / ${frameCount}` : '0 / 0'}</span>
+
+                <!-- Cache status inline -->
+                {#if $ui.blinkCaching}
+                    <span class="blink-status-inline">Caching…</span>
+                {:else if !$ui.blinkCached && frameCount > 0}
+                    <span class="blink-status-inline">Press Play to start</span>
+                {/if}
             </div>
 
             <div class="blink-settings">

@@ -81,6 +81,11 @@ export async function loadFiles(filter: FormatFilter) {
     }
 
     await syncSession();
+
+    // Start background blink cache build
+    invoke('start_background_cache').catch(e => {
+        console.warn('Background cache failed to start:', e);
+    });
 }
 
 /** Clear all loaded images and reset session. Active directory is preserved. */

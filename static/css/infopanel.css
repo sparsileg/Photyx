@@ -246,3 +246,10 @@
     margin-top: 8px;
     font-style: italic;
 }
+
+.blink-status-inline {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-style: italic;
+    margin-left: 6px;
+}
