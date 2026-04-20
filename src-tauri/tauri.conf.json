@@ -9,12 +9,13 @@
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../build"
   },
-  "app": {
+    "app": {
     "windows": [
       {
-        "title": "photyx",
-        "width": 800,
-        "height": 600
+        "title": "Photyx",
+        "width": 1400,
+        "height": 900,
+        "devtools": true
       }
     ],
     "security": {

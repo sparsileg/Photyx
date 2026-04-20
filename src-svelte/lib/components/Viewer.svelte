@@ -1,6 +1,7 @@
 <!-- Viewer.svelte — Image viewer canvas. Spec §8.7 -->
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
+    import { invoke } from '@tauri-apps/api/core';
     import { ui } from '../stores/ui';
     import { session } from '../stores/session';
 
@@ -8,6 +9,7 @@
     let ctx: CanvasRenderingContext2D | null = null;
     let animFrame: number | null = null;
     let running = false;
+    let imageDataUrl = $state<string | null>(null);
 
     // ── Starfield config ──────────────────────────────────────────────────────
     const STAR_COUNT = 420;
@@ -130,11 +132,31 @@
         }
     }
 
-    function loop() {
-        if (!running) return;
-        drawFrame();
-        animFrame = requestAnimationFrame(loop);
+    async function loadCurrentFrame() {
+        console.log('loadCurrentFrame called');
+        try {
+            const result = await invoke<string>('get_current_frame');
+            console.log('got frame, length:', result.length);
+            imageDataUrl = result;
+            // Stop starfield when image is displayed
+            running = false;
+            if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+        } catch (e) {
+            console.error('get_current_frame error:', e);
+            imageDataUrl = null;
+        }
     }
+
+    // React to frame refresh requests — only fire when token actually increases
+    let lastToken = 0;
+    $effect(() => {
+        const token = $ui.frameRefreshToken;
+        console.log('frameRefreshToken changed:', token);
+        if (token > 0 && token !== lastToken) {
+            lastToken = token;
+            loadCurrentFrame();
+        }
+    });
 
     onMount(() => {
         if (!canvas) return;
@@ -150,10 +172,19 @@
         if (animFrame) cancelAnimationFrame(animFrame);
         window.removeEventListener('resize', resize);
     });
+
+    function loop() {
+        if (!running) return;
+        drawFrame();
+        animFrame = requestAnimationFrame(loop);
+    }
 </script>
 
 <div id="viewer-wrap">
-    <canvas id="viewer-canvas" bind:this={canvas}></canvas>
+    <canvas id="viewer-canvas" bind:this={canvas} style:display={imageDataUrl !== null ? 'none' : 'block'}></canvas>
+    {#if imageDataUrl}
+        <img id="viewer-image" src={imageDataUrl} alt="Current frame" />
+    {/if}
     <div id="zoom-indicator">{$ui.zoomLevel}</div>
     {#if $session.fileList.length === 0}
         <div id="viewer-placeholder">

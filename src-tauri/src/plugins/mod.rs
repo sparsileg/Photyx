@@ -3,3 +3,4 @@
 
 pub mod select_directory;
 pub mod read_fits;
+pub mod auto_stretch;

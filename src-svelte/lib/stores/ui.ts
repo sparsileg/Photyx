@@ -15,6 +15,7 @@ export interface UIState {
     stretchMode: StretchMode;
     quickLaunchVisible: boolean;
     activeChannel: 'rgb' | 'r' | 'g' | 'b';
+    frameRefreshToken: number;
 }
 
 function createUIStore() {
@@ -29,6 +30,7 @@ function createUIStore() {
         stretchMode: 'auto',
         quickLaunchVisible: true,
         activeChannel: 'rgb',
+        frameRefreshToken: 0,
     };
 
     const { subscribe, set, update } = writable<UIState>(initial);
@@ -52,6 +54,7 @@ function createUIStore() {
         setStretch: (stretchMode: StretchMode) => update(s => ({ ...s, stretchMode })),
         toggleQuickLaunch: () => update(s => ({ ...s, quickLaunchVisible: !s.quickLaunchVisible })),
         setChannel: (ch: 'rgb' | 'r' | 'g' | 'b') => update(s => ({ ...s, activeChannel: ch })),
+        requestFrameRefresh: () => update(s => ({ ...s, frameRefreshToken: s.frameRefreshToken + 1 })),
     };
 }
 

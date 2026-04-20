@@ -7,7 +7,7 @@ use fitsio::FitsFile;
 use fitsio::hdu::HduInfo;
 use fitsio::images::ImageType;
 use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
-use crate::context::{AppContext, ImageBuffer, BitDepth, ColorSpace, KeywordEntry};
+use crate::context::{AppContext, ImageBuffer, BitDepth, ColorSpace, KeywordEntry, PixelData};
 
 pub struct ReadFITS;
 
@@ -53,11 +53,12 @@ impl PhotonPlugin for ReadFITS {
         }
 
         let total = files.len();
-        let mut loaded = 0;
-        let mut errors = 0;
 
         ctx.file_list.clear();
         ctx.image_buffers.clear();
+
+        let mut loaded = 0;
+        let mut errors = 0;
 
         for path in &files {
             match read_fits_file(path) {
@@ -151,6 +152,25 @@ fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
         .unwrap_or(path)
         .to_string();
 
+    // Read pixel data
+    let pixels = match &bit_depth {
+        BitDepth::U8 => {
+            let data: Vec<u8> = hdu.read_image(&mut fitsfile)
+                .unwrap_or_default();
+            Some(PixelData::U8(data))
+        }
+        BitDepth::U16 => {
+            let data: Vec<u16> = hdu.read_image(&mut fitsfile)
+                .unwrap_or_default();
+            Some(PixelData::U16(data))
+        }
+        BitDepth::F32 => {
+            let data: Vec<f32> = hdu.read_image(&mut fitsfile)
+                .unwrap_or_default();
+            Some(PixelData::F32(data))
+        }
+    };
+
     Ok(ImageBuffer {
         filename,
         width,
@@ -159,6 +179,7 @@ fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
         color_space,
         channels,
         keywords,
+        pixels,
     })
 }
 

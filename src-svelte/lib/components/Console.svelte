@@ -3,6 +3,7 @@
     import { invoke } from '@tauri-apps/api/core';
     import { session } from '../stores/session';
     import { notifications } from '../stores/notifications';
+    import { ui } from '../stores/ui';
 
     interface ConsoleLine {
         id: number;
@@ -24,7 +25,6 @@
     let pendingInput = '';
     let nextId = 2;
 
-    // All known pcode commands for tab completion
     const ALL_COMMANDS = [
         'SelectDirectory','ListFiles','FilterByKeyword',
         'ReadAllFITFiles','ReadAllXISFFiles','ReadAllTIFFFiles',
@@ -65,13 +65,11 @@
 
     function append(text: string, type: ConsoleLine['type']) {
         lines = [...lines, { id: nextId++, text, type }];
-        // Scroll to bottom after DOM update
         setTimeout(() => {
             if (outputEl) outputEl.scrollTop = outputEl.scrollHeight;
         }, 0);
     }
 
-    // ── Tokenizer ─────────────────────────────────────────────────────────────
     function tokenize(line: string): { command: string; args: Record<string, string> } | null {
         line = line.trim();
         if (!line || line.startsWith('#')) return null;
@@ -90,9 +88,8 @@
         return { command, args };
     }
 
-    // ── Client-side commands (no Rust needed) ─────────────────────────────────
-    const CLIENT_COMMANDS: Record<string, (args: Record<string, string>, raw: string) => boolean> = {
-        help: (args, raw) => {
+    const CLIENT_COMMANDS: Record<string, (args: Record<string, string>) => boolean> = {
+        help: () => {
             append('Photyx pcode v1.0  —  commands:', 'output');
             append('  File:     SelectDirectory ListFiles FilterByKeyword', 'output');
             append('  I/O:      ReadAllFITFiles ReadAllXISFFiles ReadAllTIFFFiles', 'output');
@@ -115,20 +112,17 @@
         },
     };
 
-    // ── Dispatch: client-side first, then Rust backend ────────────────────────
     async function dispatch(raw: string) {
         const parsed = tokenize(raw);
         if (!parsed) return;
 
         const cmdLower = parsed.command.toLowerCase();
 
-        // Handle client-side commands
         if (CLIENT_COMMANDS[cmdLower]) {
-            CLIENT_COMMANDS[cmdLower](parsed.args, raw);
+            CLIENT_COMMANDS[cmdLower](parsed.args);
             return;
         }
 
-        // Send to Rust backend via Tauri invoke
         try {
             const response = await invoke<{
                 success: boolean;
@@ -142,10 +136,7 @@
             });
 
             if (response.success) {
-                if (response.output) {
-                    append(response.output, 'success');
-                }
-                // Sync session state for key commands
+                if (response.output) append(response.output, 'success');
                 await syncSessionState(cmdLower, parsed.args, response.output);
             } else {
                 append(response.error ?? 'Unknown error', 'error');
@@ -158,7 +149,6 @@
         }
     }
 
-    // Update Svelte session store after successful backend commands
     async function syncSessionState(cmd: string, args: Record<string, string>, output: string | null) {
         if (cmd === 'selectdirectory' && args.path) {
             session.setDirectory(args.path);
@@ -166,7 +156,6 @@
         }
         if (cmd === 'readallfitfiles' || cmd === 'readallxisffiles' || cmd === 'readalltifffiles') {
             if (output) notifications.success(output);
-            // Sync file list from Rust backend
             try {
                 const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
                 session.setDirectory(s.activeDirectory);
@@ -175,9 +164,11 @@
                 notifications.error(`Session sync failed: ${e}`);
             }
         }
+        if (cmd === 'autostretch' || cmd === 'linearstretch' || cmd === 'histogramequalization') {
+            ui.requestFrameRefresh();
+        }
     }
 
-    // ── Submit ────────────────────────────────────────────────────────────────
     async function submit() {
         const raw = inputValue.trim();
         if (!raw) return;
@@ -194,7 +185,6 @@
         await dispatch(raw);
     }
 
-    // ── Key handling ──────────────────────────────────────────────────────────
     function onKeyDown(e: KeyboardEvent) {
         switch (e.key) {
             case 'Enter':

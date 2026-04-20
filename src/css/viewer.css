@@ -8,7 +8,7 @@
     display: block;
 }
 
-/* ── Viewer overlays ────────────────────────────────────────────────────── */
+/* ── Viewer overlays ────────────────────────────────────────────────────────── */
 
 .viewer-overlay {
     position: absolute;
@@ -17,6 +17,22 @@
     right: 0;
     bottom: 0;
     pointer-events: none;
+}
+
+/* Displayed image */
+#viewer-image {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+/* Hide starfield canvas when image is loaded */
+.hidden {
+    display: none;
 }
 
 /* Zoom indicator — fades out */

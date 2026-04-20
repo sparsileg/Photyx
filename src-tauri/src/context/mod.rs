@@ -21,6 +21,36 @@ pub enum BitDepth {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PixelData {
+    U8(Vec<u8>),
+    U16(Vec<u16>),
+    F32(Vec<f32>),
+}
+
+impl PixelData {
+    /// Normalize a pixel value to 0.0–1.0 range
+    pub fn normalize_value(val: f64, bit_depth: &BitDepth) -> f64 {
+        match bit_depth {
+            BitDepth::U8  => val / 255.0,
+            BitDepth::U16 => val / 65535.0,
+            BitDepth::F32 => val,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            PixelData::U8(v)  => v.len(),
+            PixelData::U16(v) => v.len(),
+            PixelData::F32(v) => v.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageBuffer {
     pub filename:    String,
     pub width:       u32,
@@ -29,7 +59,7 @@ pub struct ImageBuffer {
     pub color_space: ColorSpace,
     pub channels:    u8,
     pub keywords:    HashMap<String, KeywordEntry>,
-    // Phase 2: actual pixel data buffer goes here
+    pub pixels:      Option<PixelData>,
 }
 
 // ── Keyword entry ─────────────────────────────────────────────────────────────
