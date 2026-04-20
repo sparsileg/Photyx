@@ -1,14 +1,106 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+// lib.rs — Tauri application entry point and command handlers
+// Spec §4.2
+
+mod plugin;
+mod context;
+mod plugins;
+
+use std::sync::{Arc, Mutex};
+use tauri::State;
+use serde::{Deserialize, Serialize};
+use tracing::info;
+use tracing_subscriber::EnvFilter;
+
+use plugin::registry::PluginRegistry;
+use plugin::{ArgMap, PluginOutput};
+use context::AppContext;
+
+// ── Application state ─────────────────────────────────────────────────────────
+
+pub struct PhotoxState {
+    pub registry: Arc<PluginRegistry>,
+    pub context:  Mutex<AppContext>,
 }
+
+// ── Tauri command: dispatch a pcode command ───────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct DispatchRequest {
+    pub command: String,
+    pub args:    ArgMap,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DispatchResponse {
+    pub success: bool,
+    pub output:  Option<String>,
+    pub error:   Option<String>,
+}
+
+#[tauri::command]
+fn dispatch_command(
+    request: DispatchRequest,
+    state:   State<PhotoxState>,
+) -> DispatchResponse {
+    let mut ctx = state.context.lock().expect("context lock poisoned");
+    match state.registry.dispatch(&mut ctx, &request.command, &request.args) {
+        Ok(output) => {
+            let msg = match output {
+                PluginOutput::Success        => None,
+                PluginOutput::Message(m)     => Some(m),
+                PluginOutput::Value(v)       => Some(v),
+                PluginOutput::Values(vs)     => Some(vs.join("\n")),
+            };
+            DispatchResponse { success: true, output: msg, error: None }
+        }
+        Err(e) => {
+            DispatchResponse { success: false, output: None, error: Some(e.message) }
+        }
+    }
+}
+
+// ── Tauri command: list registered plugins ────────────────────────────────────
+
+#[tauri::command]
+fn list_plugins(state: State<PhotoxState>) -> Vec<String> {
+    state.registry.list()
+}
+
+// ── Logging init ──────────────────────────────────────────────────────────────
+
+fn init_logging() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info"))
+        )
+        .init();
+}
+
+// ── Application entry point ───────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    init_logging();
+    info!("Photyx starting up");
+
+    let registry = Arc::new(PluginRegistry::new());
+
+    // Phase 1: built-in native plugins
+    registry.register(Arc::new(plugins::select_directory::SelectDirectory));
+
+    let state = PhotoxState {
+        registry,
+        context: Mutex::new(AppContext::new()),
+    };
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .manage(state)
+        .invoke_handler(tauri::generate_handler![
+            dispatch_command,
+            list_plugins,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
