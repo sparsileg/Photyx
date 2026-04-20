@@ -2,6 +2,8 @@
 <script lang="ts">
     import { ui } from '../stores/ui';
     import { notifications } from '../stores/notifications';
+    import { selectDirectory, closeSession } from '../commands';
+    import { getCurrentWindow } from '@tauri-apps/api/window';
 
     let openMenu = $state<string | null>(null);
 
@@ -16,6 +18,9 @@
     function action(a: string) {
         close();
         switch (a) {
+            case 'open-file':    selectDirectory(); break;
+            case 'close-file':   closeSession(); break;
+            case 'exit':         getCurrentWindow().close(); break;
             case 'theme-dark':   ui.setTheme('dark'); break;
             case 'theme-light':  ui.setTheme('light'); break;
             case 'theme-matrix': ui.setTheme('matrix'); break;
@@ -33,9 +38,7 @@
 <div id="menu-bar">
     {#each [
         { name: 'File', items: [
-            { label: 'Open…',        action: 'open-file',     shortcut: 'Ctrl+O' },
-            { label: 'Open Recent ▶',action: 'open-recent' },
-            { sep: true },
+            { label: 'Select Directory…',        action: 'open-file',     shortcut: 'Ctrl+O' },
             { label: 'Close',        action: 'close-file' },
             { sep: true },
             { label: 'Exit',         action: 'exit' },
@@ -46,9 +49,6 @@
             { label: 'Preferences',  action: 'preferences' },
         ]},
         { name: 'View', items: [
-            { label: 'Zoom: Fit',    action: 'zoom-fit',      shortcut: '0' },
-            { label: 'Zoom: 100%',   action: 'zoom-100',      shortcut: '3' },
-            { sep: true },
             { label: 'Theme: Dark',  action: 'theme-dark' },
             { label: 'Theme: Light', action: 'theme-light' },
             { label: 'Theme: Matrix',action: 'theme-matrix' },

@@ -16,6 +16,7 @@ export interface UIState {
     quickLaunchVisible: boolean;
     activeChannel: 'rgb' | 'r' | 'g' | 'b';
     frameRefreshToken: number;
+    viewerClearToken: number;
 }
 
 function createUIStore() {
@@ -31,6 +32,7 @@ function createUIStore() {
         quickLaunchVisible: true,
         activeChannel: 'rgb',
         frameRefreshToken: 0,
+        viewerClearToken: 0,
     };
 
     const { subscribe, set, update } = writable<UIState>(initial);
@@ -55,6 +57,7 @@ function createUIStore() {
         toggleQuickLaunch: () => update(s => ({ ...s, quickLaunchVisible: !s.quickLaunchVisible })),
         setChannel: (ch: 'rgb' | 'r' | 'g' | 'b') => update(s => ({ ...s, activeChannel: ch })),
         requestFrameRefresh: () => update(s => ({ ...s, frameRefreshToken: s.frameRefreshToken + 1 })),
+        clearViewer: () => update(s => ({ ...s, viewerClearToken: s.viewerClearToken + 1 })),
     };
 }
 

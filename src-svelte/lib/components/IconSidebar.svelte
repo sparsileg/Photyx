@@ -15,7 +15,16 @@
         { id: 'macro-lib',    icon: '☰',   tooltip: 'Macro Library' },
         { id: 'plugins',      icon: '⬡',   tooltip: 'Plugin Manager' },
     ];
+
+    function onWindowClick(e: MouseEvent) {
+        if ($ui.activePanel === null) return;
+        const target = e.target as HTMLElement;
+        if (target.closest('#panel-container') || target.closest('#icon-sidebar')) return;
+        ui.closePanel();
+    }
 </script>
+
+<svelte:window onclick={onWindowClick} />
 
 <div id="icon-sidebar">
     {#each icons as item}

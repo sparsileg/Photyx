@@ -158,6 +158,18 @@
         }
     });
 
+    // React to viewer clear requests
+    let lastClearToken = 0;
+    $effect(() => {
+        const token = $ui.viewerClearToken;
+        if (token > 0 && token !== lastClearToken) {
+            lastClearToken = token;
+            imageDataUrl = null;
+            running = true;
+            loop();
+        }
+    });
+
     onMount(() => {
         if (!canvas) return;
         ctx = canvas.getContext('2d');
@@ -178,18 +190,46 @@
         drawFrame();
         animFrame = requestAnimationFrame(loop);
     }
+
+    // ── Zoom ──────────────────────────────────────────────────────────────────
+    const ZOOM_SCALES: Record<string, number> = {
+        'fit': 1, '25': 0.25, '50': 0.5, '100': 1.0, '200': 2.0
+    };
+
+    let zoomScale = $derived(ZOOM_SCALES[$ui.zoomLevel] ?? 1);
+    let zoomLabel = $derived($ui.zoomLevel === 'fit' ? 'Fit' : `${$ui.zoomLevel}%`);
+
+    let zoomIndicatorVisible = $state(false);
+    let zoomTimer: ReturnType<typeof setTimeout> | null = null;
+
+    $effect(() => {
+        const _ = $ui.zoomLevel; // track changes
+        zoomIndicatorVisible = true;
+        if (zoomTimer) clearTimeout(zoomTimer);
+        zoomTimer = setTimeout(() => { zoomIndicatorVisible = false; }, 1500);
+    });
 </script>
 
 <div id="viewer-wrap">
     <canvas id="viewer-canvas" bind:this={canvas} style:display={imageDataUrl !== null ? 'none' : 'block'}></canvas>
     {#if imageDataUrl}
-        <img id="viewer-image" src={imageDataUrl} alt="Current frame" />
+        <div
+            id="viewer-scroll"
+            class:zoom-fit={$ui.zoomLevel === 'fit'}
+        >
+            <img
+                id="viewer-image"
+                src={imageDataUrl}
+                alt="Current frame"
+                style:transform={$ui.zoomLevel !== 'fit' ? `scale(${zoomScale})` : 'none'}
+            />
+        </div>
     {/if}
-    <div id="zoom-indicator">{$ui.zoomLevel}</div>
+    <div id="zoom-indicator" class:visible={zoomIndicatorVisible}>{zoomLabel}</div>
     {#if $session.fileList.length === 0}
         <div id="viewer-placeholder">
             <div class="ph-title">PHOTYX</div>
-            <div class="ph-sub">Open an image or use SelectDirectory in the console</div>
+            <div class="ph-sub">Select a directory and load files to begin</div>
         </div>
     {/if}
 </div>

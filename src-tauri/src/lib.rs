@@ -141,6 +141,8 @@ pub fn run() {
     registry.register(Arc::new(plugins::read_fits::ReadAllFITFiles));
     // Phase 2: processing plugins
     registry.register(Arc::new(plugins::auto_stretch::AutoStretch));
+    registry.register(Arc::new(plugins::set_frame::SetFrame));
+    registry.register(Arc::new(plugins::clear_session::ClearSession));
 
     let state = PhotoxState {
         registry,
@@ -149,6 +151,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             dispatch_command,
