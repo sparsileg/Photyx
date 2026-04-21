@@ -145,6 +145,8 @@ pub fn run() {
     registry.register(Arc::new(plugins::set_frame::SetFrame));
     registry.register(Arc::new(plugins::clear_session::ClearSession));
     registry.register(Arc::new(plugins::cache_frames::CacheFrames));
+    registry.register(Arc::new(plugins::list_keywords::ListKeywords));
+    registry.register(Arc::new(plugins::get_histogram::GetHistogram));
 
     let state = PhotoxState {
         registry,
@@ -163,6 +165,8 @@ pub fn run() {
             get_blink_frame,
             get_blink_cache_status,
             start_background_cache,
+            get_keywords,
+            get_histogram,
             debug_buffer_info,
         ])
         .run(tauri::generate_context!())
@@ -342,5 +346,54 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
 
     Ok(())
 }
+
+#[tauri::command]
+fn get_keywords(state: State<PhotoxState>) -> serde_json::Value {
+    let ctx = state.context.lock().expect("context lock poisoned");
+    let path = match ctx.file_list.get(ctx.current_frame) {
+        Some(p) => p,
+        None => return serde_json::json!({}),
+    };
+    let buffer = match ctx.image_buffers.get(path) {
+        Some(b) => b,
+        None => return serde_json::json!({}),
+    };
+
+    let mut map = serde_json::Map::new();
+    for kw in buffer.keywords.values() {
+        map.insert(kw.name.clone(), serde_json::json!({
+            "name": kw.name,
+            "value": kw.value,
+            "comment": kw.comment,
+        }));
+    }
+    serde_json::Value::Object(map)
+}
+
+
+#[tauri::command]
+fn get_histogram(state: State<PhotoxState>) -> Result<serde_json::Value, String> {
+    let ctx = state.context.lock().expect("context lock poisoned");
+
+    let path = ctx.file_list.get(ctx.current_frame)
+        .ok_or_else(|| "No image loaded".to_string())?;
+
+    let buffer = ctx.image_buffers.get(path)
+        .ok_or_else(|| "Image buffer not found".to_string())?;
+
+    let pixels = buffer.pixels.as_ref()
+        .ok_or_else(|| "No pixel data".to_string())?;
+
+    let stats = crate::plugins::get_histogram::compute_stats(pixels);
+
+    Ok(serde_json::json!({
+        "bins":        stats.bins,
+        "median":      stats.median,
+        "mean":        stats.mean,
+        "std_dev":     stats.std_dev,
+        "clipping_pct": stats.clipping_pct,
+    }))
+}
+
 
 // ----------------------------------------------------------------------

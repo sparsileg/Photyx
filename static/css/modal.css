@@ -1,0 +1,140 @@
+/* ── Modal ──────────────────────────────────────────────────────── */
+
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-box {
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border-color);
+    width: 700px;
+    max-width: 90vw;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--card-bg);
+    flex: 0 0 auto;
+}
+
+.modal-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--primary-color);
+    flex: 0 0 auto;
+}
+
+.modal-search {
+    flex: 1;
+    font-family: inherit;
+    font-size: 11px;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 2px 8px;
+    outline: none;
+}
+
+.modal-search:focus {
+    border-color: var(--primary-color);
+}
+
+.modal-close {
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-secondary);
+    padding: 2px 4px;
+    flex: 0 0 auto;
+}
+
+.modal-close:hover {
+    color: var(--error-color);
+}
+
+.modal-body {
+    flex: 1 1 auto;
+    overflow-y: scroll;
+    min-height: 0;
+}
+
+.modal-loading {
+    padding: 20px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.modal-footer {
+    flex: 0 0 auto;
+    padding: 4px 12px;
+    font-size: 10px;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border-color);
+    background: var(--card-bg);
+}
+
+.kw-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+
+.kw-table th {
+    text-align: left;
+    padding: 4px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    background: var(--card-bg);
+    position: sticky;
+    top: 0;
+}
+
+.kw-table td {
+    padding: 3px 10px;
+    border-bottom: 1px solid var(--border-color-light);
+    vertical-align: top;
+}
+
+.kw-table tr:hover td {
+    background: var(--card-hover);
+}
+
+.kw-name {
+    color: var(--primary-color);
+    font-weight: 600;
+    white-space: nowrap;
+    width: 100px;
+}
+
+.kw-value {
+    color: var(--text-color);
+    white-space: nowrap;
+    width: 160px;
+}
+
+.kw-comment {
+    color: var(--text-secondary);
+    font-size: 10px;
+}

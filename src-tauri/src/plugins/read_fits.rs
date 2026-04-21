@@ -119,24 +119,56 @@ fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
 
     let color_space = if channels == 3 { ColorSpace::RGB } else { ColorSpace::Mono };
 
-    // Read header keywords using fitsio's iter
+    // Read ALL header keywords dynamically using raw cfitsio calls
     let mut keywords = std::collections::HashMap::new();
 
-    // Common astrophotography keywords to attempt reading
-    let known_keys = [
-        "OBJECT", "TELESCOP", "INSTRUME", "EXPTIME", "GAIN", "OFFSET",
-        "TEMP", "FILTER", "BAYERPAT", "XBINNING", "YBINNING", "FOCALLEN",
-        "APERTURE", "RA", "DEC", "DATE-OBS", "SITELONG", "SITELAT",
-        "SITEELEV", "IMAGETYP", "SWCREATE", "NAXIS", "NAXIS1", "NAXIS2",
-        "BITPIX", "BZERO", "BSCALE",
-    ];
+    unsafe {
+        let fptr = fitsfile.as_raw();
+        let mut status: std::os::raw::c_int = 0;
+        let mut nkeys: std::os::raw::c_int = 0;
+        let mut morekeys: std::os::raw::c_int = 0;
 
-    for key in &known_keys {
-        if let Ok(value) = hdu.read_key::<String>(&mut fitsfile, key) {
-            keywords.insert(
-                key.to_uppercase(),
-                KeywordEntry::new(key, &value, None),
-            );
+        // Get total number of keywords in header
+        fitsio_sys::ffghsp(fptr, &mut nkeys, &mut morekeys, &mut status);
+
+        for i in 1..=nkeys {
+            let mut record = [0i8; 81];
+            status = 0;
+            fitsio_sys::ffgrec(fptr, i, record.as_mut_ptr(), &mut status);
+            if status != 0 { continue; }
+
+            // Convert to string — each record is 80 chars
+            let record_str: String = record[..80].iter()
+                .map(|&c| if c == 0 { ' ' } else { c as u8 as char })
+                .collect();
+
+            // Skip blank, COMMENT, HISTORY, END records
+            let key = record_str[..8].trim().to_uppercase();
+            if key.is_empty() || key == "COMMENT" || key == "HISTORY" || key == "END" {
+                continue;
+            }
+
+            // Parse value and comment — format is: KEY     = VALUE / comment
+            if record_str.len() > 10 && &record_str[8..9] == "=" {
+                let rest = &record_str[9..].trim_start().to_string();
+                let (value, comment) = if let Some(slash) = rest.find(" /") {
+                    (rest[..slash].trim().to_string(), Some(rest[slash+2..].trim().to_string()))
+                } else {
+                    (rest.trim().to_string(), None)
+                };
+
+                // Strip surrounding quotes from string values
+                let value = if value.starts_with('\'') && value.ends_with('\'') {
+                    value[1..value.len()-1].trim_end().to_string()
+                } else {
+                    value
+                };
+
+                keywords.insert(
+                    key.clone(),
+                    KeywordEntry::new(&key, &value, comment.as_deref()),
+                );
+            }
         }
     }
 

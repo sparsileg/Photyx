@@ -3091,6 +3091,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "fitsio",
+ "fitsio-sys",
  "image",
  "num_cpus",
  "rayon",

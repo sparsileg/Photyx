@@ -2,14 +2,12 @@
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
     import { notifications } from '../stores/notifications';
+    import { ui } from '../stores/ui';
 
     const macros = [
-        { label: 'Auto-STF',    cmd: 'AutoStretch', args: { method: 'asinh' } },
-        { label: 'Blink Start', cmd: 'BlinkSequence', args: { fps: '2' } },
-        { label: 'List Files',  cmd: 'ListFiles', args: {} },
-        { label: 'List KW',     cmd: 'ListKeywords', args: {} },
-        { label: 'FWHM',        cmd: 'ComputeFWHM', args: {} },
-        { label: 'Star Count',  cmd: 'CountStars', args: {} },
+        { label: 'List Files', cmd: 'ListFiles', args: {} },
+        { label: 'FWHM',       cmd: 'ComputeFWHM', args: {} },
+        { label: 'Star Count', cmd: 'CountStars', args: {} },
     ];
 
     async function run(cmd: string, args: Record<string, string>) {
@@ -30,5 +28,9 @@
         {#each macros as macro}
             <button class="ql-btn" onclick={() => run(macro.cmd, macro.args)}>{macro.label}</button>
         {/each}
+        <button class="ql-btn" onclick={() => ui.openKeywordModal()}>List KW</button>
     </div>
 </div>
+
+
+<!-- ---------------------------------------------------------------------- -->

@@ -30,8 +30,9 @@
         'ReadAllFITFiles','ReadAllXISFFiles','ReadAllTIFFFiles',
         'WriteAllFITFiles','WriteAllXISFFiles','WriteAllTIFFFiles','WritePNG','WriteJPEG',
         'AddKeyword','DeleteKeyword','ModifyKeyword','CopyKeyword','ListKeywords','GetKeyword',
+        'GetHistogram',
         'GetImageProperty','GetSessionProperty','Test',
-        'AutoStretch','LinearStretch','HistogramEqualization','CropImage','BinImage','DebayerImage',
+        'AutoStretch','CropImage','BinImage','DebayerImage',
         'BlinkSequence','CacheFrames','SetZoom',
         'ComputeFWHM','CountStars','ComputeEccentricity','MedianValue','ContourPlot',
         'Set','Print','Echo','CountFiles','RunMacro',
@@ -39,28 +40,28 @@
     ];
 
     const ARG_HINTS: Record<string, string> = {
-        selectdirectory:    'path=',
         addkeyword:         'name=  value=  comment=',
-        deletekeyword:      'name=',
-        modifykeyword:      'name=  value=',
-        copykeyword:        'from=  to=',
-        filterbykeyword:    'name=  value=',
-        autostretch:        'method=  shadowClip=  targetBackground=',
-        linearstretch:      'black=  white=',
-        cropimage:          'x=  y=  width=  height=',
+        autostretch:        'shadowClip=  targetBackground=',
         binimage:           'factor=',
-        debayerimage:       'method=  pattern=',
         blinksequence:      'fps=',
-        setzoom:            'level=',
-        writeallfitfiles:   'destination=  overwrite=',
-        writeallxisffiles:  'destination=  overwrite=',
-        writealltifffiles:  'destination=  overwrite=',
-        writepng:           'filename=  destination=',
-        writejpeg:          'filename=  destination=  quality=',
-        set:                '<varname> = <value>',
+        copykeyword:        'from=  to=',
+        cropimage:          'x=  y=  width=  height=',
+        debayerimage:       'method=  pattern=',
+        deletekeyword:      'name=',
+        filterbykeyword:    'name=  value=',
+        gethistogram:       '',
         getimageproperty:   'property=',
         getsessionproperty: 'property=',
+        modifykeyword:      'name=  value=',
         runmacro:           'filename=',
+        selectdirectory:    'path=',
+        set:                '<varname> = <value>',
+        setzoom:            'level=',
+        writeallfitfiles:   'destination=  overwrite=',
+        writealltifffiles:  'destination=  overwrite=',
+        writeallxisffiles:  'destination=  overwrite=',
+        writejpeg:          'filename=  destination=  quality=',
+        writepng:           'filename=  destination=',
     };
 
     function append(text: string, type: ConsoleLine['type']) {
@@ -96,7 +97,7 @@
             append('            WriteAllFITFiles WriteAllXISFFiles WriteAllTIFFFiles WritePNG WriteJPEG', 'output');
             append('  Keyword:  AddKeyword DeleteKeyword ModifyKeyword CopyKeyword ListKeywords GetKeyword', 'output');
             append('  Query:    GetImageProperty GetSessionProperty Test', 'output');
-            append('  Process:  AutoStretch LinearStretch HistogramEqualization CropImage BinImage DebayerImage', 'output');
+            append('  Process:  AutoStretch CropImage BinImage DebayerImage', 'output');
             append('  View:     BlinkSequence CacheFrames SetZoom', 'output');
             append('  Analysis: ComputeFWHM CountStars ComputeEccentricity MedianValue ContourPlot', 'output');
             append('  Script:   Set Print Echo CountFiles RunMacro', 'output');
@@ -136,7 +137,11 @@
             });
 
             if (response.success) {
-                if (response.output) append(response.output, 'success');
+                if (response.output) {
+                    response.output.split('\n').forEach(line => {
+                        if (line) append(line, 'success');
+                    });
+                }
                 await syncSessionState(cmdLower, parsed.args, response.output);
             } else {
                 append(response.error ?? 'Unknown error', 'error');

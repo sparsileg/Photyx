@@ -11,6 +11,7 @@
     import Console from '../lib/components/Console.svelte';
     import InfoPanel from '../lib/components/InfoPanel.svelte';
     import StatusBar from '../lib/components/StatusBar.svelte';
+    import KeywordModal from '../lib/components/KeywordModal.svelte';
 
     // Load theme stylesheet dynamically
     let themeLink: HTMLLinkElement | null = null;
@@ -38,6 +39,10 @@
 </script>
 
 <svelte:window onkeydown={onKeyDown} />
+
+{#if $ui.keywordModalOpen}
+    <KeywordModal onclose={() => ui.closeKeywordModal()} />
+{/if}
 
 <div id="app">
     <MenuBar />

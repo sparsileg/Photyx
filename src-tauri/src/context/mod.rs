@@ -119,6 +119,9 @@ pub struct AppContext {
 
     /// pcode variable store
     pub variables: HashMap<String, String>,
+
+    /// Last computed histogram stats (for frontend retrieval)
+    pub last_histogram: Option<crate::plugins::get_histogram::HistogramStats>,
 }
 
 impl AppContext {

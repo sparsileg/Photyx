@@ -1,7 +1,7 @@
 <!-- Toolbar.svelte — Zoom, stretch, channel controls. Spec §8.3 -->
 <script lang="ts">
     import { ui } from '../stores/ui';
-    import type { ZoomLevel, StretchMode } from '../stores/ui';
+    import type { ZoomLevel } from '../stores/ui';
 
     const zoomLevels: { id: ZoomLevel; label: string }[] = [
         { id: 'fit',  label: 'Fit' },
@@ -24,19 +24,7 @@
         >{z.label}</button>
     {/each}
     </div>
-    <div class="toolbar-sep"></div>
-    <div class="toolbar-group">
-        <span class="toolbar-label">Stretch</span>
-        <select
-            class="toolbar-select"
-            value={$ui.stretchMode}
-            onchange={(e) => ui.setStretch((e.target as HTMLSelectElement).value as StretchMode)}
-        >
-            <option value="auto">Auto-STF</option>
-            <option value="linear">Linear</option>
-            <option value="histeq">Hist. EQ</option>
-        </select>
-    </div>
+
     <div class="toolbar-sep"></div>
     <div class="toolbar-group">
         <span class="toolbar-label">Channel</span>

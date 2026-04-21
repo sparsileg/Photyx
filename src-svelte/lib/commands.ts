@@ -147,6 +147,7 @@ export async function displayFrame(index: number) {
             }>('get_session');
             const filePath = path.fileList[index];
             if (filePath) {
+                const keywords = await invoke<Record<string, { name: string; value: string; comment: string | null }>>('get_keywords');
                 session.update(s => ({
                     ...s,
                     loadedImages: {
@@ -158,7 +159,7 @@ export async function displayFrame(index: number) {
                             bitDepth: info.buffer!.bit_depth,
                             colorSpace: 'Mono',
                             channels: info.buffer!.channels,
-                            keywords: {},
+                            keywords,
                         }
                     }
                 }));

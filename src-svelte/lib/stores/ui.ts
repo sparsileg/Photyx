@@ -5,14 +5,12 @@ import { writable } from 'svelte/store';
 
 export type Theme = 'dark' | 'light' | 'matrix';
 export type ZoomLevel = 'fit' | '25' | '50' | '100' | '200';
-export type StretchMode = 'auto' | 'linear' | 'histeq';
 export type PanelId = 'files' | 'keywords' | 'macro-editor' | 'macro-lib' | 'plugins' | null;
 
 export interface UIState {
     theme: Theme;
     activePanel: PanelId;
     zoomLevel: ZoomLevel;
-    stretchMode: StretchMode;
     quickLaunchVisible: boolean;
     activeChannel: 'rgb' | 'r' | 'g' | 'b';
     frameRefreshToken: number;
@@ -22,6 +20,7 @@ export interface UIState {
     blinkCached: boolean;
     blinkCaching: boolean;
     blinkTabActive: boolean;
+    keywordModalOpen: boolean;
     blinkPlaying: boolean;
 }
 
@@ -34,7 +33,6 @@ function createUIStore() {
         theme: saved ?? 'matrix',
         activePanel: null,
         zoomLevel: 'fit',
-        stretchMode: 'auto',
         quickLaunchVisible: true,
         activeChannel: 'rgb',
         frameRefreshToken: 0,
@@ -44,6 +42,7 @@ function createUIStore() {
         blinkCached: false,
         blinkCaching: false,
         blinkTabActive: false,
+        keywordModalOpen: false,
         blinkPlaying: false,
     };
 
@@ -65,7 +64,6 @@ function createUIStore() {
         })),
         closePanel: () => update(s => ({ ...s, activePanel: null })),
         setZoom: (zoomLevel: ZoomLevel) => update(s => ({ ...s, zoomLevel })),
-        setStretch: (stretchMode: StretchMode) => update(s => ({ ...s, stretchMode })),
         toggleQuickLaunch: () => update(s => ({ ...s, quickLaunchVisible: !s.quickLaunchVisible })),
         setChannel: (ch: 'rgb' | 'r' | 'g' | 'b') => update(s => ({ ...s, activeChannel: ch })),
         requestFrameRefresh: () => update(s => ({ ...s, frameRefreshToken: s.frameRefreshToken + 1 })),
@@ -75,6 +73,8 @@ function createUIStore() {
         setBlinkCached: (v: boolean) => update(s => ({ ...s, blinkCached: v })),
         setBlinkCaching: (v: boolean) => update(s => ({ ...s, blinkCaching: v })),
         setBlinkTabActive: (v: boolean) => update(s => ({ ...s, blinkTabActive: v })),
+        openKeywordModal: () => update(s => ({ ...s, keywordModalOpen: true })),
+        closeKeywordModal: () => update(s => ({ ...s, keywordModalOpen: false })),
         setBlinkPlaying: (v: boolean) => update(s => ({ ...s, blinkPlaying: v })),
     };
 }
