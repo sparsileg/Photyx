@@ -7,6 +7,7 @@ use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
 use super::read_fits::read_fits_file;
 use super::read_xisf::read_xisf_file;
+use super::read_tiff::read_tiff_file;
 
 pub struct ReadAllFiles;
 
@@ -23,6 +24,7 @@ impl PhotonPlugin for ReadAllFiles {
         })?;
 
         let fits_extensions = ["fit", "fits", "fts"];
+        let tiff_extensions = ["tif", "tiff"];
 
         let entries = std::fs::read_dir(&dir).map_err(|e| {
             PluginError::new("IO_ERROR", &format!("Cannot read directory '{}': {}", dir, e))
@@ -30,6 +32,7 @@ impl PhotonPlugin for ReadAllFiles {
 
         let mut fits_files: Vec<String> = Vec::new();
         let mut xisf_files: Vec<String> = Vec::new();
+        let mut tiff_files: Vec<String> = Vec::new();
 
         for entry in entries.filter_map(|e| e.ok()) {
             let path = entry.path();
@@ -45,14 +48,16 @@ impl PhotonPlugin for ReadAllFiles {
                 fits_files.push(path_str);
             } else if ext == "xisf" {
                 xisf_files.push(path_str);
+            } else if tiff_extensions.contains(&ext.as_str()) {
+                tiff_files.push(path_str);
             }
         }
 
         fits_files.sort();
         xisf_files.sort();
+        tiff_files.sort();
 
-        let total = fits_files.len() + xisf_files.len();
-
+        let total = fits_files.len() + xisf_files.len() + tiff_files.len();
         if total == 0 {
             return Ok(PluginOutput::Message(
                 format!("No supported image files found in '{}'", dir)
@@ -97,14 +102,29 @@ impl PhotonPlugin for ReadAllFiles {
             }
         }
 
+        for path in &tiff_files {
+            match read_tiff_file(path) {
+                Ok(buffer) => {
+                    info!("Loaded TIFF: {} ({}x{} {:?})", path, buffer.width, buffer.height, buffer.bit_depth);
+                    ctx.file_list.push(path.clone());
+                    ctx.image_buffers.insert(path.clone(), buffer);
+                    loaded += 1;
+                }
+                Err(e) => {
+                    warn!("Failed to load TIFF '{}': {}", path, e);
+                    errors += 1;
+                }
+            }
+        }
+
         ctx.current_frame = 0;
 
         let msg = if errors > 0 {
-            format!("Loaded {}/{} files ({} FITS, {} XISF, {} errors)",
-                loaded, total, fits_files.len(), xisf_files.len(), errors)
+            format!("Loaded {}/{} files ({} FITS, {} XISF, {} TIFF, {} errors)",
+                loaded, total, fits_files.len(), xisf_files.len(), tiff_files.len(), errors)
         } else {
-            format!("Loaded {} file(s) ({} FITS, {} XISF)",
-                loaded, fits_files.len(), xisf_files.len())
+            format!("Loaded {} file(s) ({} FITS, {} XISF, {} TIFF)",
+                loaded, fits_files.len(), xisf_files.len(), tiff_files.len())
         };
 
         Ok(PluginOutput::Message(msg))

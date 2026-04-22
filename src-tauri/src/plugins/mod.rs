@@ -3,6 +3,7 @@
 
 pub mod select_directory;
 pub mod read_fits;
+pub mod read_tiff;
 pub mod read_xisf;
 pub mod write_xisf;
 pub mod read_all_files;

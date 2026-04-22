@@ -22,6 +22,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
 fitsio = "0.21"
+tiff = "0.9"
 image = "0.25"
 base64 = "0.22"
 tauri-plugin-dialog = "2.7.0"

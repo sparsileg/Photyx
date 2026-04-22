@@ -141,6 +141,7 @@ pub fn run() {
 
     registry.register(Arc::new(plugins::select_directory::SelectDirectory));
     registry.register(Arc::new(plugins::read_fits::ReadAllFITFiles));
+    registry.register(Arc::new(plugins::read_tiff::ReadAllTIFFFiles));
     registry.register(Arc::new(plugins::read_xisf::ReadAllXISFFiles));
     registry.register(Arc::new(plugins::read_all_files::ReadAllFiles));
     registry.register(Arc::new(plugins::write_xisf::WriteAllXISFFiles));
