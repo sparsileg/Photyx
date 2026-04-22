@@ -138,10 +138,10 @@ pub fn run() {
 
     let registry = Arc::new(PluginRegistry::new());
 
-    // Phase 1: built-in native plugins
     registry.register(Arc::new(plugins::select_directory::SelectDirectory));
     registry.register(Arc::new(plugins::read_fits::ReadAllFITFiles));
-    // Phase 2: processing plugins
+    registry.register(Arc::new(plugins::read_xisf::ReadAllXISFFiles));
+
     registry.register(Arc::new(plugins::auto_stretch::AutoStretch));
     registry.register(Arc::new(plugins::set_frame::SetFrame));
     registry.register(Arc::new(plugins::clear_session::ClearSession));
