@@ -91,6 +91,7 @@ fn debug_buffer_info(state: State<PhotoxState>) -> serde_json::Value {
             "height": b.height,
             "display_width": b.display_width,
             "bit_depth": format!("{:?}", b.bit_depth),
+            "color_space": format!("{:?}", b.color_space),
             "channels": b.channels,
             "has_pixels": b.pixels.is_some(),
             "pixel_type": b.pixels.as_ref().map(|p| match p {
@@ -141,6 +142,7 @@ pub fn run() {
     registry.register(Arc::new(plugins::select_directory::SelectDirectory));
     registry.register(Arc::new(plugins::read_fits::ReadAllFITFiles));
     registry.register(Arc::new(plugins::read_xisf::ReadAllXISFFiles));
+    registry.register(Arc::new(plugins::read_all_files::ReadAllFiles));
     registry.register(Arc::new(plugins::write_xisf::WriteAllXISFFiles));
 
     registry.register(Arc::new(plugins::auto_stretch::AutoStretch));
@@ -223,7 +225,7 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
             .build()
             .expect("Failed to build thread pool");
 
-        for &(res_name, max_w) in &[("12", 376usize), ("25", 752usize)] {
+        for &(res_name, max_w) in &[("display", 1200usize), ("12", 376usize), ("25", 752usize)] {
             // Collect snapshot
             let (_file_list, snapshots) = {
                 let ctx = state_arc.context.lock().expect("context lock poisoned");
@@ -335,11 +337,20 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
             {
                 let mut ctx = state_arc.context.lock().expect("context lock poisoned");
                 match res_name {
+                    "display" => {
+                        for (p, j) in &results {
+                            // Only insert if not already in display cache (don't overwrite user-triggered AutoStretch)
+                            ctx.display_cache.entry(p.clone()).or_insert_with(|| j.clone());
+                        }
+                        // Note: display_width is intentionally NOT set here.
+                        // It is set exclusively by AutoStretch so commands.ts
+                        // can use display_width == 0 to detect uncached frames.
+                    }
                     "12" => { ctx.blink_cache_12.clear(); for (p, j) in results { ctx.blink_cache_12.insert(p, j); } }
                     _    => { ctx.blink_cache_25.clear(); for (p, j) in results { ctx.blink_cache_25.insert(p, j); } }
                 }
             }
-            info!("Background cache: {}% complete", res_name);
+            info!("Background cache: {} complete", res_name);
         }
 
         // Mark complete
@@ -480,23 +491,50 @@ fn get_full_frame(state: State<PhotoxState>) -> Result<String, String> {
             (mtf(m, clipped) * 255.0) as u8
         }
 
+        let channels = buffer.channels as usize;
+        let is_rgb = channels == 3 && buffer.color_space == crate::context::ColorSpace::RGB;
+
         match pixels {
             PixelData::U16(v) => {
-                for &p in v {
-                    let val = stretch(p as f32 / 65535.0, c0, c0_range, m);
-                    rgb.push(val); rgb.push(val); rgb.push(val);
+                if is_rgb {
+                    for chunk in v.chunks_exact(3) {
+                        rgb.push(stretch(chunk[0] as f32 / 65535.0, c0, c0_range, m));
+                        rgb.push(stretch(chunk[1] as f32 / 65535.0, c0, c0_range, m));
+                        rgb.push(stretch(chunk[2] as f32 / 65535.0, c0, c0_range, m));
+                    }
+                } else {
+                    for &p in v {
+                        let val = stretch(p as f32 / 65535.0, c0, c0_range, m);
+                        rgb.push(val); rgb.push(val); rgb.push(val);
+                    }
                 }
             }
             PixelData::F32(v) => {
-                for &p in v {
-                    let val = stretch(p.clamp(0.0, 1.0), c0, c0_range, m);
-                    rgb.push(val); rgb.push(val); rgb.push(val);
+                if is_rgb {
+                    for chunk in v.chunks_exact(3) {
+                        rgb.push(stretch(chunk[0].clamp(0.0, 1.0), c0, c0_range, m));
+                        rgb.push(stretch(chunk[1].clamp(0.0, 1.0), c0, c0_range, m));
+                        rgb.push(stretch(chunk[2].clamp(0.0, 1.0), c0, c0_range, m));
+                    }
+                } else {
+                    for &p in v {
+                        let val = stretch(p.clamp(0.0, 1.0), c0, c0_range, m);
+                        rgb.push(val); rgb.push(val); rgb.push(val);
+                    }
                 }
             }
             PixelData::U8(v) => {
-                for &p in v {
-                    let val = stretch(p as f32 / 255.0, c0, c0_range, m);
-                    rgb.push(val); rgb.push(val); rgb.push(val);
+                if is_rgb {
+                    for chunk in v.chunks_exact(3) {
+                        rgb.push(stretch(chunk[0] as f32 / 255.0, c0, c0_range, m));
+                        rgb.push(stretch(chunk[1] as f32 / 255.0, c0, c0_range, m));
+                        rgb.push(stretch(chunk[2] as f32 / 255.0, c0, c0_range, m));
+                    }
+                } else {
+                    for &p in v {
+                        let val = stretch(p as f32 / 255.0, c0, c0_range, m);
+                        rgb.push(val); rgb.push(val); rgb.push(val);
+                    }
                 }
             }
         }
@@ -560,13 +598,20 @@ fn get_histogram(state: State<PhotoxState>) -> Result<serde_json::Value, String>
     let pixels = buffer.pixels.as_ref()
         .ok_or_else(|| "No pixel data".to_string())?;
 
-    let stats = crate::plugins::get_histogram::compute_stats(pixels);
+    let is_rgb = buffer.channels == 3 && buffer.color_space == crate::context::ColorSpace::RGB;
+    let stats = crate::plugins::get_histogram::compute_stats(pixels, is_rgb);
 
     Ok(serde_json::json!({
         "bins":        stats.bins,
+        "bins_g":      stats.bins_g,
+        "bins_b":      stats.bins_b,
         "median":      stats.median,
+        "median_g":    stats.median_g,
+        "median_b":    stats.median_b,
         "mean":        stats.mean,
         "std_dev":     stats.std_dev,
+        "std_dev_g":   stats.std_dev_g,
+        "std_dev_b":   stats.std_dev_b,
         "clipping_pct": stats.clipping_pct,
     }))
 }

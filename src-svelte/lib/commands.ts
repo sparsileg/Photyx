@@ -10,7 +10,7 @@ import { notifications } from './stores/notifications';
 export type FormatFilter = 'all' | 'fits' | 'xisf' | 'tiff' | 'png' | 'jpeg';
 
 export const FORMAT_FILTERS: { id: FormatFilter; label: string; commands: string[] }[] = [
-    { id: 'all',  label: 'All Supported', commands: ['ReadAllFITFiles'] },
+    { id: 'all',  label: 'All Supported', commands: ['ReadAllFiles'] },
     { id: 'fits', label: 'FITS only',     commands: ['ReadAllFITFiles'] },
     { id: 'xisf', label: 'XISF only',     commands: ['ReadAllXISFFiles'] },
     { id: 'tiff', label: 'TIFF only',     commands: ['ReadAllTIFFFiles'] },
@@ -108,6 +108,7 @@ export async function closeSession() {
 
 /** Set current frame, run AutoStretch, refresh viewer */
 export async function displayFrame(index: number) {
+    console.trace('displayFrame called with index:', index);
     try {
         await invoke('dispatch_command', {
             request: { command: 'SetFrame', args: { index: String(index) } }
@@ -115,14 +116,25 @@ export async function displayFrame(index: number) {
 
         session.setCurrentFrame(index);
 
-        const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(
-            'dispatch_command',
-            { request: { command: 'AutoStretch', args: {} } }
-        );
+        // Check if display cache already populated for this frame
+        const cacheCheck = await invoke<{
+            current_frame: number;
+            file_count: number;
+            buffer: { display_width: number } | null;
+        }>('debug_buffer_info');
 
-        if (!result.success) {
-            notifications.error(result.error ?? 'AutoStretch failed');
-            return;
+        const needsStretch = !cacheCheck.buffer || cacheCheck.buffer.display_width === 0;
+
+        if (needsStretch) {
+            const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(
+                'dispatch_command',
+                { request: { command: 'AutoStretch', args: {} } }
+            );
+
+            if (!result.success) {
+                notifications.error(result.error ?? 'AutoStretch failed');
+                return;
+            }
         }
 
         // Fetch buffer metadata for the current frame
@@ -159,7 +171,7 @@ export async function displayFrame(index: number) {
                             height: info.buffer!.height,
                             displayWidth: info.buffer!.display_width,
                             bitDepth: info.buffer!.bit_depth,
-                            colorSpace: 'Mono',
+                            colorSpace: info.buffer!.channels === 3 ? 'RGB' : 'Mono',
                             channels: info.buffer!.channels,
                             keywords,
                         }

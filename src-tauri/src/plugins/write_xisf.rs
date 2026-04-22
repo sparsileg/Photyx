@@ -1,7 +1,6 @@
 // plugins/write_xisf.rs — WriteXISF built-in native plugin
 // Spec §5.3, §6.3
 
-use std::path::Path;
 use tracing::info;
 use photyx_xisf::{XisfWriter, WriteOptions, Codec};
 use photyx_xisf::{XisfImage, PixelData as XisfPixelData, SampleFormat, ColorSpace as XisfColorSpace};

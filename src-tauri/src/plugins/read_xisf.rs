@@ -83,7 +83,7 @@ impl PhotonPlugin for ReadXISF {
     }
 }
 
-fn read_xisf_file(path: &str) -> Result<ImageBuffer, String> {
+pub fn read_xisf_file(path: &str) -> Result<ImageBuffer, String> {
     let reader = XisfReader::open(path)
         .map_err(|e| format!("Cannot open: {}", e))?;
 

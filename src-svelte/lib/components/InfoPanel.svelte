@@ -1,5 +1,6 @@
 <!-- InfoPanel.svelte — Pixel tracking, metadata, histogram, blink. Spec §8.8 -->
 <script lang="ts">
+    import { tick } from 'svelte';
     import { invoke } from '@tauri-apps/api/core';
     import { currentImage, session } from '../stores/session';
     import { ui } from '../stores/ui';
@@ -247,84 +248,127 @@
 
     // ── Histogram ─────────────────────────────────────────────────────────────
     let histogramCanvas = $state<HTMLCanvasElement>();
-    let histStats = $state<{ median: number; mean: number; std_dev: number; clipping_pct: number } | null>(null);
+    interface HistStats {
+        bins: number[];
+        bins_g: number[] | null;
+        bins_b: number[] | null;
+        median: number;
+        median_g: number | null;
+        median_b: number | null;
+        mean: number;
+        std_dev: number;
+        std_dev_g: number | null;
+        std_dev_b: number | null;
+        clipping_pct: number;
+    }
+
+    let histStats = $state<HistStats | null>(null);
+    let histogramLoading = $state(false);
 
     async function updateHistogram() {
         if (activeTab !== 'histogram' || !$currentImage) return;
+        histogramLoading = true;
         try {
-            const data = await invoke<{
-                bins: number[];
-                median: number;
-                mean: number;
-                std_dev: number;
-                clipping_pct: number;
-            }>('get_histogram');
-
+            const data = await invoke<HistStats>('get_histogram');
             histStats = data;
-            drawHistogram(data.bins, data);
+            histogramLoading = false;
+            await tick();
+            drawHistogram(data);
         } catch (e) {
             console.error('get_histogram error:', e);
+            histogramLoading = false;
         }
     }
 
-    function drawHistogram(bins: number[], stats?: typeof histStats) {
-        if (stats) histStats = stats;
+    function drawHistogram(data: HistStats) {
+        histStats = data;
         const canvas = histogramCanvas;
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        // Match canvas pixel size to display size
         canvas.width = canvas.offsetWidth || 400;
         canvas.height = 80;
 
         const w = canvas.width;
         const h = canvas.height;
-
-        const max = Math.max(...bins);
-        if (max === 0) return;
+        const isRGB = data.bins_g !== null && data.bins_b !== null;
 
         // Background
         ctx.fillStyle = '#001100';
         ctx.fillRect(0, 0, w, h);
 
-        // Bars — log scale for better visibility of dim sky background
         const barW = w / 256;
-        ctx.fillStyle = '#00ff00';
-        for (let i = 0; i < 256; i++) {
-            if (bins[i] === 0) continue;
-            const logVal = Math.log1p(bins[i]) / Math.log1p(max);
-            const barH = logVal * h;
-            ctx.fillRect(i * barW, h - barH, Math.ceil(barW), barH);
-        }
 
-        // Stats overlay — top of histogram, starting at 30% from left
-        if (histStats) {
-            const stats = [
-                `Med: ${(histStats.median * 65535).toFixed(0)}`,
-                `σ: ${(histStats.std_dev * 65535).toFixed(0)}`,
-                `Clip: ${histStats.clipping_pct.toFixed(3)}%`,
+        if (isRGB) {
+            // Draw R, G, B channels with additive blending
+            const allBins = [data.bins, data.bins_g!, data.bins_b!];
+            const allMax = Math.max(
+                ...allBins.flatMap(b => b)
+            );
+            if (allMax === 0) return;
+
+            const colors = ['rgba(255,60,60,0.7)', 'rgba(60,255,60,0.7)', 'rgba(60,120,255,0.7)'];
+            ctx.globalCompositeOperation = 'lighter';
+            for (let ch = 0; ch < 3; ch++) {
+                ctx.fillStyle = colors[ch];
+                const bins = allBins[ch];
+                for (let i = 0; i < 256; i++) {
+                    if (bins[i] === 0) continue;
+                    const logVal = Math.log1p(bins[i]) / Math.log1p(allMax);
+                    const barH = logVal * h;
+                    ctx.fillRect(i * barW, h - barH, Math.ceil(barW), barH);
+                }
+            }
+            ctx.globalCompositeOperation = 'source-over';
+
+            // Stats overlay
+            const statsLines = [
+                `Med R/G/B: ${(data.median * 65535).toFixed(0)}/${(data.median_g! * 65535).toFixed(0)}/${(data.median_b! * 65535).toFixed(0)}`,
+                `σ R/G/B: ${(data.std_dev * 65535).toFixed(0)}/${(data.std_dev_g! * 65535).toFixed(0)}/${(data.std_dev_b! * 65535).toFixed(0)}`,
+                `Clip: ${data.clipping_pct.toFixed(3)}%`,
             ];
-            const fontSize = 12.5;
-            ctx.font = `${fontSize}px monospace`;
-            const padding = 4;
-            const lineH = fontSize + 3;
-            const textW = Math.max(...stats.map(s => ctx.measureText(s).width));
-            const boxX = w * 0.30;
-            const boxY = 4;
-            const boxW = textW + padding * 2;
-            const boxH = stats.length * lineH + padding;
+            drawStatsOverlay(ctx, statsLines, w);
+        } else {
+            // Mono
+            const max = Math.max(...data.bins);
+            if (max === 0) return;
 
-            // Semi-transparent background
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-            ctx.fillRect(boxX, boxY, boxW, boxH);
+            ctx.fillStyle = '#00ff00';
+            for (let i = 0; i < 256; i++) {
+                if (data.bins[i] === 0) continue;
+                const logVal = Math.log1p(data.bins[i]) / Math.log1p(max);
+                const barH = logVal * h;
+                ctx.fillRect(i * barW, h - barH, Math.ceil(barW), barH);
+            }
 
-            // Text
-            ctx.fillStyle = '#ffffff';
-            stats.forEach((s, i) => {
-                ctx.fillText(s, boxX + padding, boxY + padding + fontSize + i * lineH);
-            });
+            const statsLines = [
+                `Med: ${(data.median * 65535).toFixed(0)}`,
+                `σ: ${(data.std_dev * 65535).toFixed(0)}`,
+                `Clip: ${data.clipping_pct.toFixed(3)}%`,
+            ];
+            drawStatsOverlay(ctx, statsLines, w);
         }
+    }
+
+    function drawStatsOverlay(ctx: CanvasRenderingContext2D, lines: string[], w: number) {
+        const fontSize = 12.5;
+        ctx.font = `${fontSize}px monospace`;
+        const padding = 4;
+        const lineH = fontSize + 3;
+        const textW = Math.max(...lines.map(s => ctx.measureText(s).width));
+        const boxX = w * 0.30;
+        const boxY = 4;
+        const boxW = textW + padding * 2;
+        const boxH = lines.length * lineH + padding;
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        ctx.fillRect(boxX, boxY, boxW, boxH);
+
+        ctx.fillStyle = '#ffffff';
+        lines.forEach((s, i) => {
+            ctx.fillText(s, boxX + padding, boxY + padding + fontSize + i * lineH);
+        });
     }
 
     // Update histogram when tab changes or frame changes
@@ -438,12 +482,16 @@
     {:else if activeTab === 'histogram'}
         <div class="info-panel-body active" id="ip-histogram">
             {#if $currentImage}
-                <canvas
-                    id="mini-histogram"
-                    bind:this={histogramCanvas}
-                    width="400"
-                    height="80"
-                ></canvas>
+                {#if histogramLoading}
+                    <div class="histogram-label">Computing histogram…</div>
+                {:else}
+                    <canvas
+                        id="mini-histogram"
+                        bind:this={histogramCanvas}
+                        width="400"
+                        height="80"
+                    ></canvas>
+                {/if}
             {:else}
                 <div class="histogram-label">No image loaded</div>
             {/if}

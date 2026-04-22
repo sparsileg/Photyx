@@ -89,7 +89,7 @@ impl PhotonPlugin for ReadFITS {
     }
 }
 
-fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
+pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
     let mut fitsfile = FitsFile::open(path)
         .map_err(|e| format!("Cannot open: {}", e))?;
 

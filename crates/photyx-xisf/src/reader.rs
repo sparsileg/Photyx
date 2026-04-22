@@ -27,7 +27,8 @@ use crate::types::{
 const SIGNATURE: &[u8] = b"XISF0100";
 const HEADER_LENGTH_LEN: usize = 4;
 const RESERVED_LEN: usize = 4;
-const XISF_NS: &str = "http://www.pixinsight.com/xisf";
+// XISF_NS kept for reference — namespace used in XML header
+// const XISF_NS: &str = "http://www.pixinsight.com/xisf";
 
 // ── Public struct ─────────────────────────────────────────────────────────────
 
@@ -515,7 +516,7 @@ fn read_data_block(path: &Path, location: &DataBlockLocation) -> Result<Vec<u8>,
 
 /// Convert raw bytes to typed pixel data.
 /// XISF stores pixels in planar format: all channel 0, then all channel 1, etc.
-/// We reorder to interleaved (channel-last) to match Photyx's ImageBuffer convention.
+/// We reorder to interleaved (channel-last) format (channels-last, standard for most imaging libraries).
 fn deserialize_pixels(
     raw: &[u8],
     format: &SampleFormat,
@@ -558,7 +559,7 @@ fn deserialize_pixels(
 
 /// Convert planar (channel-first) layout to interleaved (channel-last).
 /// XISF: [ch0px0, ch0px1, ..., ch1px0, ch1px1, ...]
-/// Photyx: [px0ch0, px0ch1, ..., px1ch0, px1ch1, ...]
+/// Interleaved: [px0ch0, px0ch1, ..., px1ch0, px1ch1, ...]
 fn planar_to_interleaved<T: Copy + Default>(
     planar: &[T],
     pixel_count: usize,
@@ -574,8 +575,4 @@ fn planar_to_interleaved<T: Copy + Default>(
         }
     }
     out
-}
-
-fn planar_to_interleaved_u8(planar: &[u8], pixel_count: usize, channels: usize) -> Vec<u8> {
-    planar_to_interleaved(planar, pixel_count, channels)
 }

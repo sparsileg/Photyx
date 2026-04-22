@@ -152,6 +152,7 @@ impl Default for WriteOptions {
 #[derive(Debug, Clone)]
 pub(crate) enum DataBlockLocation {
     Attachment { offset: u64, size: u64 },
+    #[allow(dead_code)]
     Inline     { encoding: String, data: Vec<u8> },
     Embedded   { data: Vec<u8> },
 }

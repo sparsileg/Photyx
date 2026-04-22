@@ -15,10 +15,11 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
+use bytemuck;
 use crate::compress;
 use crate::error::XisfError;
 use crate::types::{
-    Codec, ColorSpace, FitsKeyword, PixelData, SampleFormat,
+    Codec, ColorSpace, PixelData, SampleFormat,
     WriteOptions, XisfImage, XisfProperty, PropertyValue,
 };
 
@@ -121,13 +122,13 @@ fn write_xisf(path: &Path, image: &XisfImage, options: &WriteOptions) -> Result<
 
     // Padding to data block position
     let current_pos = (SIGNATURE.len() + HEADER_LENGTH_LEN + RESERVED_LEN + final_xml.len()) as u64;
-    let padding = data_pos - current_pos;
-    for _ in 0..padding {
-        f.write_all(&[0u8])?;
+    let padding = (data_pos - current_pos) as usize;
+    if padding > 0 {
+        f.write_all(&vec![0u8; padding])?;
     }
 
     // Data block
-    assert_eq!(data_pos, current_pos + padding);
+    assert_eq!(data_pos, current_pos + padding as u64);
     f.write_all(&data_block)?;
 
     Ok(())
@@ -138,7 +139,7 @@ fn write_xisf(path: &Path, image: &XisfImage, options: &WriteOptions) -> Result<
 /// which changes length as the number grows.
 fn compute_stable_position(
     provisional_header_size: u64,
-    data_size: u64,
+    _data_size: u64,
     alignment: u64,
     xml_len_for_pos: impl Fn(u64) -> Result<usize, XisfError>,
 ) -> Result<u64, XisfError> {
@@ -202,6 +203,7 @@ fn build_xml_header(
     xml.push_str(&format!(r#" geometry="{}""#, geometry));
     xml.push_str(&format!(r#" sampleFormat="{}""#, sample_format));
     xml.push_str(&format!(r#" colorSpace="{}""#, color_space));
+    xml.push_str(r#" pixelStorage="Planar""#);
     if matches!(image.sample_format, SampleFormat::Float32 | SampleFormat::Float64) {
         xml.push_str(r#" bounds="0:1""#);
     }
@@ -308,46 +310,31 @@ fn serialize_pixels(image: &XisfImage) -> Vec<u8> {
 
     match &image.pixels {
         PixelData::U8(v) => {
-            let planar = interleaved_to_planar(v, pixel_count, channels);
-            planar
+            // U8: planar conversion only, bytes are already bytes
+            interleaved_to_planar(v, pixel_count, channels)
         }
         PixelData::U16(v) => {
+            // Zero-copy: planar convert then reinterpret as bytes
             let planar = interleaved_to_planar(v, pixel_count, channels);
-            let mut bytes = Vec::with_capacity(planar.len() * 2);
-            for &p in &planar {
-                bytes.extend_from_slice(&p.to_le_bytes());
-            }
-            bytes
+            bytemuck::cast_slice::<u16, u8>(&planar).to_vec()
         }
         PixelData::U32(v) => {
             let planar = interleaved_to_planar(v, pixel_count, channels);
-            let mut bytes = Vec::with_capacity(planar.len() * 4);
-            for &p in &planar {
-                bytes.extend_from_slice(&p.to_le_bytes());
-            }
-            bytes
+            bytemuck::cast_slice::<u32, u8>(&planar).to_vec()
         }
         PixelData::F32(v) => {
             let planar = interleaved_to_planar(v, pixel_count, channels);
-            let mut bytes = Vec::with_capacity(planar.len() * 4);
-            for &p in &planar {
-                bytes.extend_from_slice(&p.to_le_bytes());
-            }
-            bytes
+            bytemuck::cast_slice::<f32, u8>(&planar).to_vec()
         }
         PixelData::F64(v) => {
             let planar = interleaved_to_planar(v, pixel_count, channels);
-            let mut bytes = Vec::with_capacity(planar.len() * 8);
-            for &p in &planar {
-                bytes.extend_from_slice(&p.to_le_bytes());
-            }
-            bytes
+            bytemuck::cast_slice::<f64, u8>(&planar).to_vec()
         }
     }
 }
 
 /// Convert interleaved (channel-last) layout to planar (channel-first).
-/// Photyx: [px0ch0, px0ch1, ..., px1ch0, px1ch1, ...]
+/// Interleaved: [px0ch0, px0ch1, ..., px1ch0, px1ch1, ...]
 /// XISF:   [ch0px0, ch0px1, ..., ch1px0, ch1px1, ...]
 fn interleaved_to_planar<T: Copy + Default>(
     interleaved: &[T],

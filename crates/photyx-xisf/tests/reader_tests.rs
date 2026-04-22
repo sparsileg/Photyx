@@ -1,6 +1,6 @@
 // Integration tests for the XISF reader
 
-use photyx_xisf::{XisfReader, XisfWriter, WriteOptions, Codec, PixelData};
+use photyx_xisf::{XisfReader, PixelData};
 
 const TEST_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data");
 
@@ -73,7 +73,6 @@ fn test_read_pixels() {
 }
 
 #[test]
-#[test]
 fn test_round_trip() {
     use photyx_xisf::{XisfWriter, WriteOptions, Codec};
     use std::path::PathBuf;
@@ -94,7 +93,8 @@ fn test_round_trip() {
         let original_meta = reader.image_meta(0).unwrap();
 
         // Write to temp file — uncompressed first
-        let out_path = PathBuf::from(TEST_DIR).join("_roundtrip_test.xisf");
+        let stem = path.file_stem().unwrap().to_string_lossy();
+        let out_path = PathBuf::from(TEST_DIR).join(format!("_roundtrip_{}.xisf", stem));
         XisfWriter::write(&out_path, &original, &WriteOptions {
             codec: Codec::None,
             shuffle: false,
@@ -147,7 +147,7 @@ fn test_round_trip() {
 
 #[test]
 fn test_round_trip_compressed() {
-    use photyx_xisf::{XisfWriter, WriteOptions, Codec};
+    use photyx_xisf::{XisfWriter, WriteOptions};
     use std::path::PathBuf;
 
     let files: Vec<_> = std::fs::read_dir(TEST_DIR)
@@ -163,7 +163,8 @@ fn test_round_trip_compressed() {
         let reader = XisfReader::open(&path).unwrap();
         let original = reader.read_image(0).unwrap();
 
-        let out_path = PathBuf::from(TEST_DIR).join("_roundtrip_compressed_test.xisf");
+        let stem = path.file_stem().unwrap().to_string_lossy();
+        let out_path = PathBuf::from(TEST_DIR).join(format!("_roundtrip_compressed_{}.xisf", stem));
         XisfWriter::write(&out_path, &original, &WriteOptions::default())
             .unwrap_or_else(|e| panic!("Compressed write failed: {}", e));
 
