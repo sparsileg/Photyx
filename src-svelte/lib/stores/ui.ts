@@ -20,6 +20,8 @@ export interface UIState {
     blinkCached: boolean;
     blinkCaching: boolean;
     blinkTabActive: boolean;
+    blinkResolution: '12' | '25';
+    blinkModeActive: boolean;
     keywordModalOpen: boolean;
     blinkPlaying: boolean;
 }
@@ -42,6 +44,8 @@ function createUIStore() {
         blinkCached: false,
         blinkCaching: false,
         blinkTabActive: false,
+        blinkResolution: '12',
+        blinkModeActive: false,
         keywordModalOpen: false,
         blinkPlaying: false,
     };
@@ -73,6 +77,8 @@ function createUIStore() {
         setBlinkCached: (v: boolean) => update(s => ({ ...s, blinkCached: v })),
         setBlinkCaching: (v: boolean) => update(s => ({ ...s, blinkCaching: v })),
         setBlinkTabActive: (v: boolean) => update(s => ({ ...s, blinkTabActive: v })),
+        setBlinkResolution: (v: '12' | '25') => update(s => ({ ...s, blinkResolution: v })),
+        setBlinkModeActive: (v: boolean) => update(s => ({ ...s, blinkModeActive: v })),
         openKeywordModal: () => update(s => ({ ...s, keywordModalOpen: true })),
         closeKeywordModal: () => update(s => ({ ...s, keywordModalOpen: false })),
         setBlinkPlaying: (v: boolean) => update(s => ({ ...s, blinkPlaying: v })),

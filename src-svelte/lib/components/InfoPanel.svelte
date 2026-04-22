@@ -104,9 +104,11 @@
         if (tab === 'blink') {
             wasOnBlinkTab = true;
             ui.setBlinkTabActive(true);
+            ui.setBlinkModeActive(true);
         } else if (wasOnBlinkTab) {
             wasOnBlinkTab = false;
             ui.setBlinkTabActive(false);
+            ui.setBlinkModeActive(false);
             onBlinkFrame('');
             if (blinkPlaying) pause();
             ui.setBlinkFrame(null);
@@ -198,6 +200,7 @@
         blinkPlaying = false;
         ui.setBlinkPlaying(false);
         if (blinkTimer) { clearTimeout(blinkTimer); blinkTimer = null; }
+        // Do NOT clear blinkImageUrl — keep last blink frame visible
     }
 
     async function stepBack() {
@@ -489,7 +492,10 @@
                         class="blink-select"
                         value={blinkResolution}
                         disabled={blinkPlaying}
-                        onchange={(e) => blinkResolution = (e.target as HTMLSelectElement).value as '12' | '25'}
+                        onchange={(e) => {
+                            blinkResolution = (e.target as HTMLSelectElement).value as '12' | '25';
+                            ui.setBlinkResolution(blinkResolution);
+                        }}
                     >
                         <option value="25">25%</option>
                         <option value="12">12.5%</option>
