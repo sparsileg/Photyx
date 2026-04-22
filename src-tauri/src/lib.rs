@@ -167,6 +167,7 @@ pub fn run() {
             start_background_cache,
             get_keywords,
             get_histogram,
+            get_pixel,
             debug_buffer_info,
         ])
         .run(tauri::generate_context!())
@@ -345,6 +346,85 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
     });
 
     Ok(())
+}
+
+#[tauri::command]
+fn get_pixel(x: u32, y: u32, state: State<PhotoxState>) -> Result<serde_json::Value, String> {
+    let ctx = state.context.lock().expect("context lock poisoned");
+
+    let path = ctx.file_list.get(ctx.current_frame)
+        .ok_or_else(|| "No image loaded".to_string())?;
+
+    let buffer = ctx.image_buffers.get(path)
+        .ok_or_else(|| "Buffer not found".to_string())?;
+
+    let pixels = buffer.pixels.as_ref()
+        .ok_or_else(|| "No pixel data".to_string())?;
+
+    let w = buffer.width as u32;
+    let h = buffer.height as u32;
+    let ch = buffer.channels as u32;
+
+    if x >= w || y >= h {
+        return Err(format!("Pixel ({},{}) out of bounds ({}x{})", x, y, w, h));
+    }
+
+    use crate::context::PixelData;
+    let base = (y * w + x) as usize;
+
+    let (raw, val) = match pixels {
+        PixelData::U8(v) => {
+            if ch == 3 {
+                let r = v[base * 3]     as f32 / 255.0;
+                let g = v[base * 3 + 1] as f32 / 255.0;
+                let b = v[base * 3 + 2] as f32 / 255.0;
+                (format!("{:.4}/{:.4}/{:.4}", r, g, b),
+                 format!("{}/{}/{}",
+                    (r * 65535.0) as u32,
+                    (g * 65535.0) as u32,
+                    (b * 65535.0) as u32))
+            } else {
+                let p = v[base] as f32 / 255.0;
+                (format!("{:.4}", p), format!("{}", (p * 65535.0) as u32))
+            }
+        }
+        PixelData::U16(v) => {
+            if ch == 3 {
+                let r = v[base * 3]     as f32 / 65535.0;
+                let g = v[base * 3 + 1] as f32 / 65535.0;
+                let b = v[base * 3 + 2] as f32 / 65535.0;
+                (format!("{:.4}/{:.4}/{:.4}", r, g, b),
+                 format!("{}/{}/{}",
+                    v[base * 3] as u32,
+                    v[base * 3 + 1] as u32,
+                    v[base * 3 + 2] as u32))
+            } else {
+                let p = v[base];
+                (format!("{:.4}", p as f32 / 65535.0), format!("{}", p))
+            }
+        }
+        PixelData::F32(v) => {
+            if ch == 3 {
+                let r = v[base * 3];
+                let g = v[base * 3 + 1];
+                let b = v[base * 3 + 2];
+                (format!("{:.4}/{:.4}/{:.4}", r, g, b),
+                 format!("{}/{}/{}",
+                    (r.clamp(0.0,1.0) * 65535.0) as u32,
+                    (g.clamp(0.0,1.0) * 65535.0) as u32,
+                    (b.clamp(0.0,1.0) * 65535.0) as u32))
+            } else {
+                let p = v[base];
+                (format!("{:.4}", p), format!("{}", (p.clamp(0.0,1.0) * 65535.0) as u32))
+            }
+        }
+    };
+
+    Ok(serde_json::json!({
+        "raw": raw,
+        "val": val,
+        "channels": ch,
+    }))
 }
 
 #[tauri::command]

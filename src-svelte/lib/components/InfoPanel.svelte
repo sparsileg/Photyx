@@ -8,8 +8,9 @@
 
     let activeTab = $state<'pixels' | 'metadata' | 'histogram' | 'blink'>('pixels');
 
-    const { onBlinkFrame }: {
+    const { onBlinkFrame, mousePixel }: {
         onBlinkFrame: (filename: string) => void;
+        mousePixel: { x: number; y: number } | null;
     } = $props();
 
     function decToHMS(deg: number): string {
@@ -28,6 +29,73 @@
         const ss = ((abs - dd) * 60 - mm) * 60;
         return `${sign}${String(dd).padStart(2,'0')}° ${String(mm).padStart(2,'0')}' ${ss.toFixed(1).padStart(4,'0')}"`;
     }
+
+    // ── Pixel tracking state ──────────────────────────────────────────────────
+    let pixelX   = $state<number | null>(null);
+    let pixelY   = $state<number | null>(null);
+    let pixelRaw = $state<string>('—');
+    let pixelVal = $state<string>('—');
+    let pixelRA  = $state<string | null>(null);
+    let pixelDec = $state<string | null>(null);
+
+    function clearPixelTracking() {
+        pixelX = null; pixelY = null;
+        pixelRaw = '—'; pixelVal = '—';
+        pixelRA = null; pixelDec = null;
+    }
+
+    function computeWCS(sx: number, sy: number): { ra: string; dec: string } | null {
+        const kw = $currentImage?.keywords;
+        if (!kw) return null;
+        const crpix1 = parseFloat(kw['CRPIX1']?.value ?? '');
+        const crpix2 = parseFloat(kw['CRPIX2']?.value ?? '');
+        const crval1 = parseFloat(kw['CRVAL1']?.value ?? '');
+        const crval2 = parseFloat(kw['CRVAL2']?.value ?? '');
+        if (isNaN(crpix1) || isNaN(crpix2) || isNaN(crval1) || isNaN(crval2)) return null;
+        const dx = (sx + 1) - crpix1;
+        const dy = (sy + 1) - crpix2;
+        let dra: number, ddec: number;
+        const cd11 = parseFloat(kw['CD1_1']?.value ?? '');
+        const cd12 = parseFloat(kw['CD1_2']?.value ?? '');
+        const cd21 = parseFloat(kw['CD2_1']?.value ?? '');
+        const cd22 = parseFloat(kw['CD2_2']?.value ?? '');
+        if (!isNaN(cd11) && !isNaN(cd12) && !isNaN(cd21) && !isNaN(cd22)) {
+            dra  = cd11 * dx + cd12 * dy;
+            ddec = cd21 * dx + cd22 * dy;
+        } else {
+            const cdelt1 = parseFloat(kw['CDELT1']?.value ?? '');
+            const cdelt2 = parseFloat(kw['CDELT2']?.value ?? '');
+            if (isNaN(cdelt1) || isNaN(cdelt2)) return null;
+            dra  = cdelt1 * dx;
+            ddec = cdelt2 * dy;
+        }
+        const decRad = crval2 * Math.PI / 180;
+        const ra  = crval1 + dra / Math.cos(decRad);
+        const dec = crval2 + ddec;
+        return { ra: decToHMS(((ra % 360) + 360) % 360), dec: decToDMS(dec) };
+    }
+
+    async function updatePixelTracking(px: { x: number; y: number } | null) {
+        if (!px || !$currentImage) { clearPixelTracking(); return; }
+        pixelX = px.x;
+        pixelY = px.y;
+        const wcs = computeWCS(px.x, px.y);
+        pixelRA  = wcs?.ra  ?? null;
+        pixelDec = wcs?.dec ?? null;
+        try {
+            const result = await invoke<{ raw: string; val: string; channels: number }>(
+                'get_pixel', { x: px.x, y: px.y }
+            );
+            pixelRaw = result.raw;
+            pixelVal = result.val;
+        } catch {
+            pixelRaw = '—'; pixelVal = '—';
+        }
+    }
+
+    $effect(() => {
+        updatePixelTracking(mousePixel);
+    });
 
     let wasOnBlinkTab = false;
 
@@ -283,12 +351,42 @@
         <div class="info-panel-body active" id="ip-pixels">
             <div id="pixel-tracking">
                 <div class="pt-row">
-                    <div class="pt-field"><span class="pt-label">X</span><span class="pt-value" id="pt-x">—</span></div>
-                    <div class="pt-field"><span class="pt-label">Y</span><span class="pt-value" id="pt-y">—</span></div>
-                    <div class="pt-field"><span class="pt-label">Raw</span><span class="pt-value" id="pt-raw">—</span></div>
-                    <div class="pt-field"><span class="pt-label">Val</span><span class="pt-value" id="pt-val">—</span></div>
-                    <div class="pt-field"><span class="pt-label">RA</span><span class="pt-value" style="color:var(--text-secondary)">no WCS</span></div>
+                    <div class="pt-field">
+                        <span class="pt-label">X</span>
+                        <span class="pt-value">{pixelX !== null ? pixelX : '—'}</span>
+                    </div>
+                    <div class="pt-field">
+                        <span class="pt-label">Y</span>
+                        <span class="pt-value">{pixelY !== null ? pixelY : '—'}</span>
+                    </div>
+                    <div class="pt-field">
+                        <span class="pt-label">Raw</span>
+                        <span class="pt-value">{pixelRaw}</span>
+                    </div>
+                    <div class="pt-field">
+                        <span class="pt-label">Val</span>
+                        <span class="pt-value">{pixelVal}</span>
+                    </div>
                 </div>
+                {#if pixelRA !== null}
+                <div class="pt-row" style="margin-top:4px;">
+                    <div class="pt-field">
+                        <span class="pt-label">RA</span>
+                        <span class="pt-value">{pixelRA}</span>
+                    </div>
+                    <div class="pt-field">
+                        <span class="pt-label">Dec</span>
+                        <span class="pt-value">{pixelDec}</span>
+                    </div>
+                </div>
+                {:else if $currentImage}
+                <div class="pt-row" style="margin-top:4px;">
+                    <div class="pt-field">
+                        <span class="pt-label">RA / Dec</span>
+                        <span class="pt-value" style="color:var(--text-secondary)">no WCS</span>
+                    </div>
+                </div>
+                {/if}
             </div>
         </div>
 

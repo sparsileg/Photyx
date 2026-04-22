@@ -3,7 +3,11 @@
     import { onMount, onDestroy } from 'svelte';
     import { invoke } from '@tauri-apps/api/core';
     import { ui } from '../stores/ui';
-    import { session } from '../stores/session';
+    import { session, currentImage } from '../stores/session';
+
+    const { onMousePixel }: {
+        onMousePixel: (px: { x: number; y: number } | null) => void;
+    } = $props();
 
     let canvas = $state<HTMLCanvasElement>();
     let ctx: CanvasRenderingContext2D | null = null;
@@ -208,27 +212,55 @@
                 / DISPLAY_WIDTH
               )
     );
-    let zoomLabel = $derived($ui.zoomLevel === 'fit' ? 'Fit' : `${$ui.zoomLevel}%`);
 
-    let zoomIndicatorVisible = $state(false);
-    let zoomTimer: ReturnType<typeof setTimeout> | null = null;
+    // ── Mouse pixel tracking — always on ─────────────────────────────────────
+    let lastSrcX = -1;
+    let lastSrcY = -1;
 
-    $effect(() => {
-        const _ = $ui.zoomLevel; // track changes
-        zoomIndicatorVisible = true;
-        if (zoomTimer) clearTimeout(zoomTimer);
-        zoomTimer = setTimeout(() => { zoomIndicatorVisible = false; }, 1500);
-    });
+    function getSourceCoords(e: MouseEvent): { x: number; y: number } | null {
+        if (!$currentImage) return null;
+        const img = (e.currentTarget as HTMLElement).querySelector('#viewer-image') as HTMLImageElement;
+        if (!img) return null;
+        const rect = img.getBoundingClientRect();
+        const displayX = e.clientX - rect.left;
+        const displayY = e.clientY - rect.top;
+        if (displayX < 0 || displayY < 0 || displayX >= rect.width || displayY >= rect.height) return null;
+        return {
+            x: Math.floor((displayX / rect.width)  * $currentImage.width),
+            y: Math.floor((displayY / rect.height) * $currentImage.height),
+        };
+    }
 
+    function onScrollMouseMove(e: MouseEvent) {
+        if ($ui.blinkPlaying) return;
+        const coords = getSourceCoords(e);
+        if (!coords) {
+            onMousePixel(null);
+            return;
+        }
+        if (coords.x === lastSrcX && coords.y === lastSrcY) return;
+        lastSrcX = coords.x;
+        lastSrcY = coords.y;
+        onMousePixel(coords);
+    }
+
+    function onScrollMouseLeave() {
+        lastSrcX = -1;
+        lastSrcY = -1;
+        onMousePixel(null);
+    }
 </script>
 
 <div id="viewer-wrap">
     <canvas id="viewer-canvas" bind:this={canvas} style:display={imageDataUrl !== null || $ui.blinkImageUrl !== null ? 'none' : 'block'}></canvas>
     {#if imageDataUrl !== null || $ui.blinkImageUrl !== null}
         <div
+            <div
             id="viewer-scroll"
             class:zoom-fit={$ui.blinkPlaying || $ui.zoomLevel === 'fit'}
-        >
+            onclick={onScrollMove}
+            onmousemove={onScrollMouseMove}
+            >
             <img
                 id="viewer-image"
                 src={$ui.blinkImageUrl ?? imageDataUrl}
@@ -238,7 +270,7 @@
             />
         </div>
     {/if}
-    <div id="zoom-indicator" class:visible={zoomIndicatorVisible}>{zoomLabel}</div>
+
     {#if $session.fileList.length === 0}
         <div id="viewer-placeholder">
             <div class="ph-title">PHOTYX</div>

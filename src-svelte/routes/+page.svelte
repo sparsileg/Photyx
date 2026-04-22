@@ -31,6 +31,12 @@
         blinkFilename = filename;
     }
 
+    // Mouse pixel tracking — prop callback, never touches the store
+    let mousePixel = $state<{ x: number; y: number } | null>(null);
+    function onMousePixel(px: { x: number; y: number } | null) {
+        mousePixel = px;
+    }
+
     // Keyboard shortcuts per spec §8.13
     function onKeyDown(e: KeyboardEvent) {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -59,13 +65,13 @@
         <IconSidebar />
 
         <div id="viewer-region">
-            <Viewer />
+            <Viewer onMousePixel={onMousePixel} />
             {#if $ui.blinkTabActive && blinkFilename}
                 <div id="blink-filename-overlay">{blinkFilename}</div>
             {/if}
             <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded}>
                 <Console />
-                <InfoPanel onBlinkFrame={onBlinkFrame} />
+                <InfoPanel onBlinkFrame={onBlinkFrame} mousePixel={mousePixel} />
             </div>
         </div>
     </div>
