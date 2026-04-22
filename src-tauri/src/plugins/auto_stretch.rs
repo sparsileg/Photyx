@@ -144,6 +144,7 @@ impl PhotonPlugin for AutoStretch {
         // ── Step 2: Compute Auto-STF parameters on the display buffer ─────────
         // At ~180k pixels, sorting is trivial. No sampling needed.
         let (c0, m) = compute_stf_params(&display, shadow_clip, target_bg);
+        ctx.last_stf_params = Some((c0, m));
 
         // ── Step 3: Apply MTF stretch in-place ────────────────────────────────
         let c0_range = 1.0 - c0;
@@ -171,6 +172,12 @@ impl PhotonPlugin for AutoStretch {
         let jpeg_bytes = buf.into_inner();
         let byte_count = jpeg_bytes.len();
         ctx.display_cache.insert(path.clone(), jpeg_bytes);
+        ctx.full_res_cache.remove(&path); // invalidate so get_full_frame re-encodes with new params
+
+        // Record the actual display width so Viewer knows when to request full-res
+        if let Some(buf) = ctx.image_buffers.get_mut(&path) {
+            buf.display_width = disp_w as u32;
+        }
 
         info!("AutoStretch: {} → {}×{} display, {} JPEG bytes", path, disp_w, disp_h, byte_count);
         Ok(PluginOutput::Message(format!("AutoStretch applied ({}×{} display)", disp_w, disp_h)))

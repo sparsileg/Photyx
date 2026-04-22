@@ -89,6 +89,7 @@ fn debug_buffer_info(state: State<PhotoxState>) -> serde_json::Value {
             "filename": b.filename,
             "width": b.width,
             "height": b.height,
+            "display_width": b.display_width,
             "bit_depth": format!("{:?}", b.bit_depth),
             "channels": b.channels,
             "has_pixels": b.pixels.is_some(),
@@ -162,6 +163,7 @@ pub fn run() {
             list_plugins,
             get_session,
             get_current_frame,
+            get_full_frame,
             get_blink_frame,
             get_blink_cache_status,
             start_background_cache,
@@ -425,6 +427,99 @@ fn get_pixel(x: u32, y: u32, state: State<PhotoxState>) -> Result<serde_json::Va
         "val": val,
         "channels": ch,
     }))
+}
+
+#[tauri::command]
+fn get_full_frame(state: State<PhotoxState>) -> Result<String, String> {
+    let path = {
+        let ctx = state.context.lock().expect("context lock poisoned");
+        ctx.file_list.get(ctx.current_frame)
+            .cloned()
+            .ok_or_else(|| "No image loaded".to_string())?
+    };
+
+    // Return from cache if already built
+    {
+        let ctx = state.context.lock().expect("context lock poisoned");
+        if let Some(jpeg_bytes) = ctx.full_res_cache.get(&path) {
+            use base64::Engine as _;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(jpeg_bytes);
+            return Ok(format!("data:image/jpeg;base64,{}", b64));
+        }
+    }
+
+    // Build full-res JPEG from raw buffer
+    let jpeg_bytes = {
+        let ctx = state.context.lock().expect("context lock poisoned");
+        let buffer = ctx.image_buffers.get(&path)
+            .ok_or_else(|| "Buffer not found".to_string())?;
+        let pixels = buffer.pixels.as_ref()
+            .ok_or_else(|| "No pixel data".to_string())?;
+
+        let w = buffer.width as usize;
+        let h = buffer.height as usize;
+
+        use crate::context::PixelData;
+        let mut rgb = Vec::with_capacity(w * h * 3);
+
+        let (c0, m) = ctx.last_stf_params.unwrap_or((0.0, 0.5));
+        let c0_range = (1.0 - c0).max(f32::EPSILON);
+
+        #[inline(always)]
+        fn mtf(m: f32, x: f32) -> f32 {
+            if x <= 0.0 { return 0.0; }
+            if x >= 1.0 { return 1.0; }
+            if (m - 0.5).abs() < f32::EPSILON { return x; }
+            (m - 1.0) * x / ((2.0 * m - 1.0) * x - m)
+        }
+
+        #[inline(always)]
+        fn stretch(p: f32, c0: f32, c0_range: f32, m: f32) -> u8 {
+            let clipped = ((p - c0) / c0_range).clamp(0.0, 1.0);
+            (mtf(m, clipped) * 255.0) as u8
+        }
+
+        match pixels {
+            PixelData::U16(v) => {
+                for &p in v {
+                    let val = stretch(p as f32 / 65535.0, c0, c0_range, m);
+                    rgb.push(val); rgb.push(val); rgb.push(val);
+                }
+            }
+            PixelData::F32(v) => {
+                for &p in v {
+                    let val = stretch(p.clamp(0.0, 1.0), c0, c0_range, m);
+                    rgb.push(val); rgb.push(val); rgb.push(val);
+                }
+            }
+            PixelData::U8(v) => {
+                for &p in v {
+                    let val = stretch(p as f32 / 255.0, c0, c0_range, m);
+                    rgb.push(val); rgb.push(val); rgb.push(val);
+                }
+            }
+        }
+
+        let img = image::RgbImage::from_raw(w as u32, h as u32, rgb)
+            .ok_or_else(|| "Failed to create full-res image".to_string())?;
+
+        let mut buf = std::io::Cursor::new(Vec::new());
+        use image::codecs::jpeg::JpegEncoder;
+        JpegEncoder::new_with_quality(&mut buf, 90)
+            .encode_image(&img)
+            .map_err(|e| e.to_string())?;
+        buf.into_inner()
+    };
+
+    // Store in cache
+    {
+        let mut ctx = state.context.lock().expect("context lock poisoned");
+        ctx.full_res_cache.insert(path, jpeg_bytes.clone());
+    }
+
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes);
+    Ok(format!("data:image/jpeg;base64,{}", b64))
 }
 
 #[tauri::command]

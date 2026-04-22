@@ -57,6 +57,7 @@ impl PhotonPlugin for ReadFITS {
         ctx.file_list.clear();
         ctx.image_buffers.clear();
         ctx.display_cache.clear();
+        ctx.full_res_cache.clear();
 
         let mut loaded = 0;
         let mut errors = 0;
@@ -208,6 +209,7 @@ fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
         filename,
         width,
         height,
+        display_width: 0,  // set by AutoStretch after display cache is built
         bit_depth,
         color_space,
         channels,

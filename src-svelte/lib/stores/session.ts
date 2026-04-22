@@ -13,6 +13,7 @@ export interface ImageMeta {
     filename: string;
     width: number;
     height: number;
+    displayWidth: number;
     bitDepth: string;
     colorSpace: string;
     channels: number;

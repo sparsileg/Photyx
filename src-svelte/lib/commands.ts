@@ -133,6 +133,7 @@ export async function displayFrame(index: number) {
                 filename: string;
                 width: number;
                 height: number;
+                display_width: number;
                 bit_depth: string;
                 channels: number;
                 has_pixels: boolean;
@@ -156,6 +157,7 @@ export async function displayFrame(index: number) {
                             filename: info.buffer!.filename,
                             width: info.buffer!.width,
                             height: info.buffer!.height,
+                            displayWidth: info.buffer!.display_width,
                             bitDepth: info.buffer!.bit_depth,
                             colorSpace: 'Mono',
                             channels: info.buffer!.channels,

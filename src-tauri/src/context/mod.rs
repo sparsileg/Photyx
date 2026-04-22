@@ -52,14 +52,15 @@ impl PixelData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageBuffer {
-    pub filename:    String,
-    pub width:       u32,
-    pub height:      u32,
-    pub bit_depth:   BitDepth,
-    pub color_space: ColorSpace,
-    pub channels:    u8,
-    pub keywords:    HashMap<String, KeywordEntry>,
-    pub pixels:      Option<PixelData>,
+    pub filename:      String,
+    pub width:         u32,
+    pub height:        u32,
+    pub display_width: u32,
+    pub bit_depth:     BitDepth,
+    pub color_space:   ColorSpace,
+    pub channels:      u8,
+    pub keywords:      HashMap<String, KeywordEntry>,
+    pub pixels:        Option<PixelData>,
 }
 
 // ── Keyword entry ─────────────────────────────────────────────────────────────
@@ -105,6 +106,9 @@ pub struct AppContext {
     /// Display cache (keyed by file path) — pre-rendered display-resolution JPEG bytes
     pub display_cache: HashMap<String, Vec<u8>>,
 
+    /// Full-resolution cache (keyed by file path) — built on demand for 100%/200% zoom
+    pub full_res_cache: HashMap<String, Vec<u8>>,
+
     /// Blink cache at 12.5% resolution (keyed by file path)
     pub blink_cache_12: HashMap<String, Vec<u8>>,
 
@@ -122,6 +126,9 @@ pub struct AppContext {
 
     /// Last computed histogram stats (for frontend retrieval)
     pub last_histogram: Option<crate::plugins::get_histogram::HistogramStats>,
+
+    /// Last computed Auto-STF parameters (c0, m) — reused by get_full_frame
+    pub last_stf_params: Option<(f32, f32)>,
 }
 
 impl AppContext {

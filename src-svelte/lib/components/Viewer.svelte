@@ -61,10 +61,13 @@
         return `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
     }
 
+    let viewerWidth = $state(0);
+
     function resize() {
         if (!canvas) return;
         canvas.width  = canvas.offsetWidth;
         canvas.height = canvas.offsetHeight;
+        viewerWidth = canvas.offsetWidth;
         stars = Array.from({ length: STAR_COUNT }, () => makeStar(canvas!.width, canvas!.height));
     }
 
@@ -151,13 +154,40 @@
         }
     }
 
+    async function loadFullFrame() {
+        try {
+            const result = await invoke<string>('get_full_frame');
+            imageDataUrl = result;
+        } catch (e) {
+            console.error('get_full_frame error:', e);
+            // Fall back to display cache
+            await loadCurrentFrame();
+        }
+    }
+
     // React to frame refresh requests — only fire when token actually increases
     let lastToken = 0;
+    let lastNeedsFullRes = false;
+
     $effect(() => {
         const token = $ui.frameRefreshToken;
         console.log('frameRefreshToken changed:', token);
         if (token > 0 && token !== lastToken) {
             lastToken = token;
+            lastNeedsFullRes = false; // reset so zoom effect re-evaluates for new frame
+            loadCurrentFrame();
+        }
+    });
+
+    // Switch between display cache and full-res cache when zoom crosses threshold
+    $effect(() => {
+        const full = needsFullRes;
+        if (full === lastNeedsFullRes) return;
+        lastNeedsFullRes = full;
+        if (imageDataUrl === null) return; // no image loaded yet
+        if (full) {
+            loadFullFrame();
+        } else {
             loadCurrentFrame();
         }
     });
@@ -197,21 +227,31 @@
     }
 
     // ── Zoom ──────────────────────────────────────────────────────────────────
-    // ── Zoom ──────────────────────────────────────────────────────────────────
     const ZOOM_FACTORS: Record<string, number> = {
         'fit': 1, '25': 0.25, '50': 0.5, '100': 1.0, '200': 2.0
     };
 
-    const DISPLAY_WIDTH = 1200;
+    let zoomScale = $derived((() => {
+        if ($ui.zoomLevel === 'fit') return 1;
+        const img = $session.loadedImages[$session.fileList[$session.currentFrame]];
+        const srcWidth = img?.width ?? 1;
+        const dispWidth = img?.displayWidth || srcWidth;
+        return (ZOOM_FACTORS[$ui.zoomLevel] ?? 1) * (srcWidth / dispWidth);
+    })());
 
-    let zoomScale = $derived(
-        $ui.zoomLevel === 'fit'
-            ? 1
-            : (ZOOM_FACTORS[$ui.zoomLevel] ?? 1) * (
-                ($session.loadedImages[$session.fileList[$session.currentFrame]]?.width ?? DISPLAY_WIDTH)
-                / DISPLAY_WIDTH
-              )
-    );
+    // True when the current zoom level needs more resolution than the display cache provides
+    let needsFullRes = $derived((() => {
+        const img = $session.loadedImages[$session.fileList[$session.currentFrame]];
+        if (!img) return false;
+        const displayCacheWidth = img.displayWidth || img.width;
+        if ($ui.zoomLevel === 'fit') {
+            // At fit zoom, full-res needed if viewer is wider than display cache
+            return viewerWidth > displayCacheWidth;
+        }
+        // At other zoom levels, full-res needed if scaled source exceeds display cache
+        const factor = ZOOM_FACTORS[$ui.zoomLevel] ?? 1;
+        return factor * img.width > displayCacheWidth;
+    })());
 
     // ── Mouse pixel tracking — always on ─────────────────────────────────────
     let lastSrcX = -1;
@@ -255,22 +295,24 @@
     <canvas id="viewer-canvas" bind:this={canvas} style:display={imageDataUrl !== null || $ui.blinkImageUrl !== null ? 'none' : 'block'}></canvas>
     {#if imageDataUrl !== null || $ui.blinkImageUrl !== null}
         <div
-            <div
             id="viewer-scroll"
             class:zoom-fit={$ui.blinkPlaying || $ui.zoomLevel === 'fit'}
-            onclick={onScrollMove}
             onmousemove={onScrollMouseMove}
-            >
+            onmouseleave={onScrollMouseLeave}
+        >
             <img
                 id="viewer-image"
                 src={$ui.blinkImageUrl ?? imageDataUrl}
                 alt="Current frame"
-                style:width={!$ui.blinkPlaying && $ui.zoomLevel !== 'fit' ? `${Math.round(1200 * zoomScale)}px` : undefined}
-                style:height={!$ui.blinkPlaying && $ui.zoomLevel !== 'fit' ? `${Math.round(1200 * zoomScale)}px` : undefined}
+                style:width={!$ui.blinkPlaying && $ui.zoomLevel !== 'fit' ? `${Math.round(($currentImage?.displayWidth || $currentImage?.width || 1200) * zoomScale)}px` : undefined}
+                style:height={!$ui.blinkPlaying && $ui.zoomLevel !== 'fit' ? `${Math.round(($currentImage?.displayWidth || $currentImage?.width || 1200) * zoomScale)}px` : undefined}
             />
         </div>
     {/if}
 
+    {#if imageDataUrl !== null || $ui.blinkImageUrl !== null}
+        <div id="viewer-disclaimer">Display: JPEG compressed — pixel readout uses raw data</div>
+    {/if}
     {#if $session.fileList.length === 0}
         <div id="viewer-placeholder">
             <div class="ph-title">PHOTYX</div>
