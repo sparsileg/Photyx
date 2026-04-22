@@ -1,8 +1,8 @@
 # Photyx — Specification & Requirements Document
 
-**Version:** 13
+**Version:** 14
 **Date:** April 2026
-**Status:** Pre-Development
+**Status:** Active Development — Phase 3 substantially complete
 
 ---
 
@@ -78,13 +78,16 @@ The frontend is responsible for all user-facing panels: file browser, image view
 
 ### 4.5 XISF Support
 
-XISF (Extensible Image Serialization Format) is a priority format. Because no mature Rust crate exists, a dedicated internal crate (`photyx-xisf`) will be developed to the published XISF specification. This crate will be:
+XISF (Extensible Image Serialization Format) is a priority format. The dedicated `photyx-xisf` crate has been implemented and is substantially complete. It is:
 
-- Self-contained and independently versioned
-- Fully tested with a suite of reference XISF files including compressed variants
-- Capable of handling compressed payloads (LZ4 as default, zstd for archival, zlib for read compatibility with PixInsight and other tools)
+- Self-contained and independently versioned, licensed MIT OR Apache-2.0
+- Fully tested with a suite of reference XISF files including uncompressed and LZ4HC compressed variants
+- Capable of handling compressed payloads (LZ4, LZ4HC, zstd, zlib) with byte-shuffling
 - Capable of reading and writing both the XISF Properties block and the FITSKeyword block
-- On read, both the Properties block and the FITSKeyword block are checked so no metadata is missed regardless of which block a keyword appears in
+- Optimized using zero-copy byte casting (`bytemuck`) for pixel deserialization — reduces 38-second read time to under 1 second for 9-megapixel files
+- Supports UInt8, UInt16, UInt32, Float32, Float64 pixel formats and Grayscale, RGB, CFA color spaces
+
+**Known limitations of current implementation:** Vector and Matrix XISF Properties (used for astrometric solution matrices) are read as placeholder strings and not written. All other property types round-trip correctly. This limitation is deferred pending test files containing these property types.
 
 ### 4.6 File Type Filter
 
@@ -429,6 +432,8 @@ The pcode interpreter is implemented in Rust as a built-in native component of t
 2. **Dispatcher** — looks up the command name in the plugin registry
 3. **Executor** — calls `plugin.execute(ctx, args)` and handles the result
 4. **Reporter** — collects results for display in the UI or API response
+
+> **Note on async execution (Phase 5).** Long-running plugin executions should use Tauri's event emission model rather than blocking invoke/response. The dispatcher should return immediately with a command ID, and the plugin emits a completion event when done. This keeps the frontend fully responsive during execution. Currently, long-running commands block the JavaScript event loop. Implementation deferred to Phase 5.
 
 ### 7.7 Saved Macros
 
@@ -1252,7 +1257,7 @@ curl -X POST http://localhost:7171/api/macro/run \
 |---|---|
 | **Phase 1** | Tauri + Svelte + Rust project scaffold, plugin host, FITS reader plugin, basic single-image viewer, notification bar, logging |
 | **Phase 2** | Blink engine, stretch pipeline (Linear + Auto-STF), pyramid cache, zoom, keyboard shortcuts, Info Panel, pixel tracking |
-| **Phase 3** | `photyx-xisf` crate (reader + writer), TIFF reader, initial keyword plugins |
+| **Phase 3** | `photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, RGB display/histogram, background display cache, true median histogram, TIFF reader (deferred) |
 | **Phase 4** | Full keyword management UI, keyword plugins, PNG/JPEG readers and writers, debayering |
 | **Phase 5** | pcode interpreter + macro editor UI, save/load macros, conditional logic, console, Quick Launch Panel |
 | **Phase 6** | REST API (Axum), CLI access, external program integration, authentication middleware stub |
@@ -1309,5 +1314,5 @@ Automated tests are required for each significant module, crate, and plugin. Tes
 ---
 
 *Document prepared by: Development Team*
-*Previous version: 12*
-*Next review: Upon completion of Phase 2*
+*Previous version: 13*
+*Next review: Upon completion of Phase 3*
