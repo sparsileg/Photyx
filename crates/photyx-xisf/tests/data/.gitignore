@@ -1,0 +1,4 @@
+# Test XISF files — not committed, add your own locally
+*.xisf
+*.fit
+*.fits
