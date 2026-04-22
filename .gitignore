@@ -9,3 +9,22 @@ node_modules
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 *.pdf
+
+# Rust build output
+target/
+
+# Node / Vite build output
+node_modules/
+dist/
+.svelte-kit/
+
+# Tauri build output
+src-tauri/target/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,1 @@
+// photyx-xisf writer — stub

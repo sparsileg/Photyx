@@ -1,0 +1,18 @@
+[package]
+name = "photyx-xisf"
+version = "0.1.0"
+edition = "2021"
+description = "XISF image format reader and writer for Photyx"
+
+[dependencies]
+# XML parsing
+quick-xml = { version = "0.36", features = ["serialize"] }
+# Compression
+lz4_flex = "0.11"
+zstd = "0.13"
+flate2 = "1.0"
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# Error handling
+thiserror = "1.0"
