@@ -22,6 +22,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # Error handling
 thiserror = "1.0"
+# Zero-copy byte casting for fast pixel deserialization
+bytemuck = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 # For test helpers

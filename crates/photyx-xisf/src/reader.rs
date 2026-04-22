@@ -170,9 +170,9 @@ fn parse_header(xml: &str) -> Result<(Vec<XisfImageMeta>, Vec<XisfProperty>), Xi
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                let local = local_name(e.name().as_ref());
-
-                match (&mut state, local.as_str()) {
+            let name = e.name();
+            let local = local_name(name.as_ref());
+                match (&mut state, local) {
                     (State::Root, "Image") => {
                         let builder = parse_image_attrs(e)?;
                         state = State::InImage(builder);
@@ -199,8 +199,9 @@ fn parse_header(xml: &str) -> Result<(Vec<XisfImageMeta>, Vec<XisfProperty>), Xi
                 }
             }
             Ok(Event::End(ref e)) => {
-                let local = local_name(e.name().as_ref());
-                match (&state, local.as_str()) {
+            let name = e.name();
+            let local = local_name(name.as_ref());
+                match (&mut state, local) {
                     (State::InImage(_), "Image") => {
                         if let State::InImage(builder) = std::mem::replace(&mut state, State::Root) {
                             image_metas.push(builder.build()?);
@@ -223,12 +224,12 @@ fn parse_header(xml: &str) -> Result<(Vec<XisfImageMeta>, Vec<XisfProperty>), Xi
 }
 
 /// Strip XML namespace prefix from element name.
-fn local_name(name: &[u8]) -> String {
+fn local_name(name: &[u8]) -> &str {
     let s = std::str::from_utf8(name).unwrap_or("");
     if let Some(pos) = s.find(':') {
-        s[pos + 1..].to_string()
+        &s[pos + 1..]
     } else {
-        s.to_string()
+        s
     }
 }
 
@@ -523,44 +524,33 @@ fn deserialize_pixels(
     channels: u32,
 ) -> Result<PixelData, XisfError> {
     let pixel_count = (width * height) as usize;
-    let total = pixel_count * channels as usize;
+    let ch = channels as usize;
 
     match format {
         SampleFormat::UInt8 => {
-            let planar = raw.to_vec();
-            let interleaved = planar_to_interleaved_u8(&planar, pixel_count, channels as usize);
+            // U8: zero-copy, just reinterpret and interleave
+            let interleaved = planar_to_interleaved(raw, pixel_count, ch);
             Ok(PixelData::U8(interleaved))
         }
         SampleFormat::UInt16 => {
-            let mut v = vec![0u16; total];
-            for (i, chunk) in raw.chunks_exact(2).enumerate().take(total) {
-                v[i] = u16::from_le_bytes([chunk[0], chunk[1]]);
-            }
-            let interleaved = planar_to_interleaved(&v, pixel_count, channels as usize);
+            // Zero-copy cast from &[u8] to &[u16] on little-endian systems
+            let v: &[u16] = bytemuck::cast_slice(raw);
+            let interleaved = planar_to_interleaved(v, pixel_count, ch);
             Ok(PixelData::U16(interleaved))
         }
         SampleFormat::UInt32 => {
-            let mut v = vec![0u32; total];
-            for (i, chunk) in raw.chunks_exact(4).enumerate().take(total) {
-                v[i] = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-            }
-            let interleaved = planar_to_interleaved(&v, pixel_count, channels as usize);
+            let v: &[u32] = bytemuck::cast_slice(raw);
+            let interleaved = planar_to_interleaved(v, pixel_count, ch);
             Ok(PixelData::U32(interleaved))
         }
         SampleFormat::Float32 => {
-            let mut v = vec![0f32; total];
-            for (i, chunk) in raw.chunks_exact(4).enumerate().take(total) {
-                v[i] = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-            }
-            let interleaved = planar_to_interleaved(&v, pixel_count, channels as usize);
+            let v: &[f32] = bytemuck::cast_slice(raw);
+            let interleaved = planar_to_interleaved(v, pixel_count, ch);
             Ok(PixelData::F32(interleaved))
         }
         SampleFormat::Float64 => {
-            let mut v = vec![0f64; total];
-            for (i, chunk) in raw.chunks_exact(8).enumerate().take(total) {
-                v[i] = f64::from_le_bytes(chunk.try_into().unwrap());
-            }
-            let interleaved = planar_to_interleaved(&v, pixel_count, channels as usize);
+            let v: &[f64] = bytemuck::cast_slice(raw);
+            let interleaved = planar_to_interleaved(v, pixel_count, ch);
             Ok(PixelData::F64(interleaved))
         }
     }
