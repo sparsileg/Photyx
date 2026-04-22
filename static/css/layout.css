@@ -178,12 +178,15 @@ html, body {
 }
 
 #bottom-panel {
-    flex: 0 0 auto;
+    flex: 0 0 120px;
     height: 120px;
+    min-height: 120px;
+    max-height: 120px;
     display: flex;
     flex-direction: row;
-    overflow: hidden;
+    overflow: visible;
     position: relative;
+    will-change: transform;
 }
 
 /* ── Status / notification bar ──────────────────────────────────────────── */

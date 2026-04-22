@@ -174,7 +174,7 @@
         }
     }
 
-    async function submit() {
+    function submit() {
         const raw = inputValue.trim();
         if (!raw) return;
 
@@ -187,7 +187,8 @@
         inputValue = '';
         tabHint = '';
 
-        await dispatch(raw);
+        // Fire and forget — don't await so UI stays responsive during execution
+        dispatch(raw).catch(err => append(`Error: ${err}`, 'error'));
     }
 
     function onKeyDown(e: KeyboardEvent) {

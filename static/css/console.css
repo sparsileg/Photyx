@@ -1,25 +1,26 @@
 /* console.css — pcode interactive console. Theme-neutral. */
 
 #console-panel {
-    flex: 0 0 auto;
-    width: 33.333%;
+    flex: 0 0 33.333%;
     min-width: 220px;
     display: flex;
     flex-direction: column;
     background: var(--bg-color);
     border-right: 1px solid var(--border-color);
     overflow: hidden;
-    position: absolute;
-    bottom: 0;
-    left: 0;
     height: 120px;
-    transition: height 0.2s ease;
     z-index: 50;
+    position: relative;
 }
 
 #console-panel.expanded {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 33.333%;
     height: 50vh;
     border-top: 1px solid var(--border-color);
+    z-index: 200;
 }
 
 .console-header {

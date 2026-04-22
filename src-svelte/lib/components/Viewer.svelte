@@ -26,7 +26,7 @@
     // ── Pan state ─────────────────────────────────────────────────────────────
     let panX = 0;
     let panY = 0;
-    let isPanning = false;
+    let isPanning = $state(false);
     let panStartX = 0;
     let panStartY = 0;
 
