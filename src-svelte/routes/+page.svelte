@@ -25,6 +25,12 @@
         document.head.appendChild(themeLink);
     });
 
+    // Blink filename overlay
+    let blinkFilename = $state('');
+    function onBlinkFrame(filename: string) {
+        blinkFilename = filename;
+    }
+
     // Keyboard shortcuts per spec §8.13
     function onKeyDown(e: KeyboardEvent) {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -54,10 +60,12 @@
 
         <div id="viewer-region">
             <Viewer />
-
+            {#if $ui.blinkTabActive && blinkFilename}
+                <div id="blink-filename-overlay">{blinkFilename}</div>
+            {/if}
             <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded}>
                 <Console />
-                <InfoPanel />
+                <InfoPanel onBlinkFrame={onBlinkFrame} />
             </div>
         </div>
     </div>

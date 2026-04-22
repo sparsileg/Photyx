@@ -144,9 +144,14 @@
 
 #blink-controls {
     display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.blink-row {
+    display: flex;
     align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
+    gap: 8px;
 }
 
 .blink-btn {
@@ -252,6 +257,14 @@
     color: var(--text-secondary);
     font-style: italic;
     margin-left: 6px;
+}
+
+.blink-inline-label {
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
 }
 
 .blink-filename-row {

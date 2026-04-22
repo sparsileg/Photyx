@@ -8,6 +8,10 @@
 
     let activeTab = $state<'pixels' | 'metadata' | 'histogram' | 'blink'>('pixels');
 
+    const { onBlinkFrame }: {
+        onBlinkFrame: (filename: string) => void;
+    } = $props();
+
     function decToHMS(deg: number): string {
         const h = deg / 15;
         const hh = Math.floor(h);
@@ -31,8 +35,11 @@
         const tab = activeTab;
         if (tab === 'blink') {
             wasOnBlinkTab = true;
+            ui.setBlinkTabActive(true);
         } else if (wasOnBlinkTab) {
             wasOnBlinkTab = false;
+            ui.setBlinkTabActive(false);
+            onBlinkFrame('');
             if (blinkPlaying) pause();
             ui.setBlinkFrame(null);
             if ($ui.blinkCached) {
@@ -80,6 +87,8 @@
         try {
             const dataUrl = await invoke<string>('get_blink_frame', { index, resolution: blinkResolution });
             ui.setBlinkFrame(dataUrl);
+            const filename = $session.fileList[index]?.split(/[\\/]/).pop() ?? '';
+            onBlinkFrame(filename);
         } catch (e) {
             console.error('get_blink_frame error:', e);
         }
@@ -339,58 +348,45 @@
             {/if}
         </div>
 
-    <!-- Blink -->
+        <!-- Blink -->
     {:else if activeTab === 'blink'}
         <div class="info-panel-body active" id="ip-blink">
             <div id="blink-controls">
-                <!-- Navigation -->
-                <button
-                    class="blink-btn"
-                    disabled={blinkPlaying || frameCount === 0}
-                    onclick={(e) => { e.stopPropagation(); stepBack(); }}
-                    title="Previous frame"
-                >←</button>
+                <!-- Row 1: navigation + counter + status -->
+                <div class="blink-row">
+                    <button
+                        class="blink-btn"
+                        disabled={blinkPlaying || frameCount === 0}
+                        onclick={(e) => { e.stopPropagation(); stepBack(); }}
+                        title="Previous frame"
+                    >←</button>
 
-                <!-- Play/Pause -->
-                <button
-                    class="blink-btn blink-play"
-                    disabled={frameCount === 0 || $ui.blinkCaching}
-                    onclick={(e) => { e.stopPropagation(); blinkPlaying ? pause() : play(); }}
-                    title={blinkPlaying ? 'Pause' : 'Play'}
-                >{blinkPlaying ? '⏸' : '▶'}</button>
+                    <button
+                        class="blink-btn blink-play"
+                        disabled={frameCount === 0 || $ui.blinkCaching}
+                        onclick={(e) => { e.stopPropagation(); blinkPlaying ? pause() : play(); }}
+                        title={blinkPlaying ? 'Pause' : 'Play'}
+                    >{blinkPlaying ? '⏸' : '▶'}</button>
 
-                <button
-                    class="blink-btn"
-                    disabled={blinkPlaying || frameCount === 0}
-                    onclick={(e) => { e.stopPropagation(); stepForward(); }}
-                    title="Next frame"
-                >→</button>
+                    <button
+                        class="blink-btn"
+                        disabled={blinkPlaying || frameCount === 0}
+                        onclick={(e) => { e.stopPropagation(); stepForward(); }}
+                        title="Next frame"
+                    >→</button>
 
-                <!-- Frame counter -->
-                <span class="blink-counter">{frameCount > 0 ? `${blinkFrame + 1} / ${frameCount}` : '0 / 0'}</span>
-            </div>
+                    <span class="blink-counter">{frameCount > 0 ? `${blinkFrame + 1} / ${frameCount}` : '0 / 0'}</span>
 
-            <!-- Filename row -->
-            {#if frameCount > 0}
-                <div class="blink-filename-row">
-                    {$session.fileList[blinkFrame]?.split('/').pop() ?? ''}
+                    {#if $ui.blinkCaching}
+                        <span class="blink-status-inline">Caching…</span>
+                    {:else if !$ui.blinkCached && frameCount > 0}
+                        <span class="blink-status-inline">Press Play to start</span>
+                    {/if}
                 </div>
-            {/if}
 
-            <div class="blink-settings">
-
-                <!-- Cache status inline -->
-                {#if $ui.blinkCaching}
-                    <span class="blink-status-inline">Caching…</span>
-                {:else if !$ui.blinkCached && frameCount > 0}
-                    <span class="blink-status-inline">Press Play to start</span>
-                {/if}
-            </div>
-
-            <div class="blink-settings">
-                <!-- Resolution -->
-                <div class="blink-setting-row">
-                    <span class="blink-setting-label">Resolution</span>
+                <!-- Row 2: Res + Min Delay -->
+                <div class="blink-row">
+                    <span class="blink-inline-label">Res</span>
                     <select
                         class="blink-select"
                         value={blinkResolution}
@@ -400,11 +396,8 @@
                         <option value="25">25%</option>
                         <option value="12">12.5%</option>
                     </select>
-                </div>
 
-                <!-- Min Delay -->
-                <div class="blink-setting-row">
-                    <span class="blink-setting-label">Min Delay</span>
+                    <span class="blink-inline-label" style="margin-left:12px;">Min Delay</span>
                     <select
                         class="blink-select"
                         value={blinkDelay}
@@ -412,17 +405,11 @@
                         onchange={(e) => blinkDelay = parseFloat((e.target as HTMLSelectElement).value)}
                     >
                         {#each DELAY_OPTIONS as d}
-                            <option value={d}>{d === 0 ? 'Max speed' : `${d}s`}</option>
+                            <option value={d}>{d === 0 ? 'Max' : `${d}s`}</option>
                         {/each}
                     </select>
                 </div>
             </div>
-
-            {#if $ui.blinkCaching}
-                <div class="blink-status">Caching frames…</div>
-            {:else if !$ui.blinkCached && frameCount > 0}
-                <div class="blink-status">Press Play to cache and start blink</div>
-            {/if}
         </div>
     {/if}
 </div>

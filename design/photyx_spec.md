@@ -1,6 +1,6 @@
 # Photyx — Specification & Requirements Document
 
-**Version:** 1.1
+**Version:** 13
 **Date:** April 2026
 **Status:** Pre-Development
 
@@ -85,6 +85,23 @@ XISF (Extensible Image Serialization Format) is a priority format. Because no ma
 - Capable of handling compressed payloads (LZ4 as default, zstd for archival, zlib for read compatibility with PixInsight and other tools)
 - Capable of reading and writing both the XISF Properties block and the FITSKeyword block
 - On read, both the Properties block and the FITSKeyword block are checked so no metadata is missed regardless of which block a keyword appears in
+
+### 4.6 File Type Filter
+
+The File Browser panel includes a format filter dropdown that controls which file types are loaded when the user clicks the Load button. The filter options are:
+
+| Filter Label | Extensions |
+|---|---|
+| All Supported (default) | *.fit, *.fits, *.fts, *.xisf, *.tif, *.tiff, *.png, *.jpg, *.jpeg |
+| FITS only | *.fit, *.fits, *.fts |
+| XISF only | *.xisf |
+| TIFF only | *.tif, *.tiff |
+| PNG only | *.png |
+| JPEG only | *.jpg, *.jpeg |
+
+The selected filter determines which read plugin(s) are invoked when the Load button is clicked. The filter selection is persisted across sessions via the settings store.
+
+When invoked from pcode rather than the UI, format selection is controlled by which read command is used (`ReadAllFITFiles`, `ReadAllXISFFiles`, etc.).
 
 ---
 
@@ -194,14 +211,29 @@ The following table defines the initial FITS-to-XISF property mapping. This list
 | GAIN | Instrument:Camera:Gain |
 | TEMP | Instrument:Camera:Temperature |
 | DATE-OBS | Observation:Time:Start |
-| RA | Observation:Center:RA |
-| DEC | Observation:Center:Dec |
+| RA | Observation:Object:RA |
+| DEC | Observation:Object:Dec |
+| CRVAL1 | Observation:Center:RA |
+| CRVAL2 | Observation:Center:Dec |
+| RADESYS | Observation:CelestialReferenceSystem |
+| EQUINOX | Observation:Equinox |
 | SITELAT | Observation:Location:Latitude |
 | SITELONG | Observation:Location:Longitude |
 | SITEELEV | Observation:Location:Elevation |
 | XBINNING | Instrument:Camera:XBinning |
 | YBINNING | Instrument:Camera:YBinning |
+| FOCALLEN | Instrument:Telescope:FocalLength |
 | IMAGETYP | Observation:Image:Type |
+
+> **Note on WCS transformation keywords.** `CRPIX1`, `CRPIX2`, `CD1_1`, `CD1_2`, `CD2_1`, `CD2_2`,
+> `PC1_1`, `PC1_2`, `PC2_1`, `PC2_2`, `CROTA1`, `CROTA2`, `CDELT1`, `CDELT2`, `LONPOLE`,
+> `LATPOLE`, and `PV1_*` have no direct XISF Property equivalents. These are preserved
+> verbatim in the FITSKeyword block and are not mapped to the Properties block.
+
+> **Note on RA/DEC vs. CRVAL1/CRVAL2.** `RA` and `DEC` are the telescope's nominal pointing
+> target coordinates — where the mount was commanded to point. `CRVAL1` and `CRVAL2` are the
+> plate-solved sky coordinates of the WCS reference pixel, representing the actual image center
+> as determined by astrometric solution. Both pairs are preserved as distinct XISF Properties.
 
 ---
 
@@ -250,11 +282,11 @@ The following table explicitly designates the loading mechanism for each plugin 
 | CacheFrames | Blink & View | Built-in Native |
 | SetZoom | Blink & View | Built-in Native |
 | AutoStretch | Processing | Built-in Native |
-| LinearStretch | Processing | Built-in Native |
-| HistogramEqualization | Processing | Built-in Native |
+| GetHistogram | Processing | Built-in Native |
 | CropImage | Processing | Built-in Native |
 | BinImage | Processing | Built-in Native |
 | DebayerImage | Processing | Built-in Native |
+| AnalyzeFrames | Frame Analysis | Built-in Native |
 | GetImageProperty | Interrogation | Built-in Native |
 | GetKeyword | Interrogation | Built-in Native |
 | GetSessionProperty | Interrogation | Built-in Native |
@@ -329,6 +361,9 @@ WriteAllFITFiles destination="D:/Output" overwrite=false
 - Named macros: reusable blocks saved as `.phs` files
 - Arguments: typed (string, integer, float, boolean, path)
 - Variables: declared and assigned with `Set`
+- Arithmetic operators: `+`, `-`, `*`, `/`, `^` (exponentiation)
+- Grouping: parentheses `( )` for expression precedence
+- Math functions: `sqrt()`, `abs()`, `round()`, `floor()`, `ceil()`, `min()`, `max()`
 - Conditional logic: If / ElseIf / Else / EndIf
 - Loops: For / EndFor and ForEach / EndForEach
 - Error handling: commands return success/failure; macros can halt on error or continue
@@ -339,6 +374,12 @@ WriteAllFITFiles destination="D:/Output" overwrite=false
 # Variables
 Set myVar = 42
 Set name = "M31"
+
+# Arithmetic
+Set mean = $sum / $count
+Set variance = ($sumSq / $count) - ($mean ^ 2)
+Set sd = sqrt($variance)
+Set bounded = max($value, 0.01)
 
 # Conditional
 If $frameCount > 10
@@ -367,11 +408,17 @@ Continue
 ### 7.5 Expressions
 
 ```
+# Comparison
 If $frameCount > 10
 If $filename Contains "light"
 If $keyword.EXPTIME == 300
 If $keyword.OBJECT != "M31"
 If $Width >= 4000 And $Height >= 3000
+
+# Arithmetic in expressions
+If ($fwhm - $meanFwhm) / $sdFwhm > 2.5
+Set ratio = $signal / max($noise, 0.001)
+Set result = sqrt(($x - $cx) ^ 2 + ($y - $cy) ^ 2)
 ```
 
 ### 7.6 Interpreter Design
@@ -429,15 +476,15 @@ The following table defines all pcode commands in the initial release. Arguments
 | GetImageProperty | Interrogation | Retrieves an image property into a variable; see Section 7.12 for full property list | property |
 | GetSessionProperty | Interrogation | Retrieves a session state value into a variable; see Section 7.12 for full property list | property |
 | Test | Interrogation | Performs a boolean test and stores result in $Result; see Section 7.12 for full test list | expression |
-| AutoStretch | Processing | Applies automatic screen transfer function stretch | [method], [shadowClip], [targetBackground] |
-| LinearStretch | Processing | Applies a linear stretch with manual black/white points | black, white |
-| HistogramEqualization | Processing | Applies histogram equalization stretch | — |
+| AutoStretch | Processing | Applies automatic screen transfer function stretch (display only — raw buffer unchanged) | [shadowClip], [targetBackground] |
+| GetHistogram | Processing | Computes histogram statistics for the current frame (median, std dev, clipping %) | — |
 | CropImage | Processing | Crops the image to a specified region | x, y, width, height |
 | BinImage | Processing | Bins the image by an integer factor | factor |
 | DebayerImage | Processing | Debayers a Bayer CFA image; runs automatically on load when pattern detected | [pattern], [method] |
+| AnalyzeFrames | Frame Analysis | Computes per-frame quality metrics for all loaded frames, classifies each as PASS / SUSPECT / REJECT, and writes PXFLAG keyword to each file; uses active rig profile thresholds | [profile] |
 | BlinkSequence | Blink & View | Starts blinking the loaded image set | [fps] |
 | CacheFrames | Blink & View | Pre-decodes and caches all frames for blinking | — |
-| SetZoom | Blink & View | Sets the viewer zoom level | level (fit, 25, 50, 100, 200, custom) |
+| SetZoom | Blink & View | Sets the viewer zoom level | level (fit, 25, 50, 100, 200) |
 | ComputeFWHM | Analysis | Calculates Full Width at Half Maximum for detected stars | — |
 | CountStars | Analysis | Counts detected stars in the image | — |
 | ComputeEccentricity | Analysis | Calculates eccentricity for detected stars | — |
@@ -479,7 +526,7 @@ Registered macros:
 This creates a three-tier command model:
 
 ```
-Tier 1: Built-in Native plugins   — ReadFITS, AutoStretch, etc.
+Tier 1: Built-in Native plugins   — ReadFITS, AutoStretch, AnalyzeFrames, etc.
 Tier 2: WASM plugins              — ComputeFWHM, CountStars, etc.
 Tier 3: User Macros (.phs files)  — ProcessLightFrames, etc.
 ```
@@ -559,14 +606,15 @@ Any keyword present in the file header can be retrieved by name using `GetKeywor
 | YBINNING | Integer | Vertical binning factor | 1 |
 | FOCALLEN | Float | Focal length in mm | 2032.0 |
 | APERTURE | Float | Aperture in mm | 203.2 |
-| RA | Float | Right ascension in degrees | 10.6848 |
-| DEC | Float | Declination in degrees | 41.2692 |
+| RA | Float | Right ascension of target in degrees | 10.6848 |
+| DEC | Float | Declination of target in degrees | 41.2692 |
 | DATE-OBS | String | Date and time of observation (UTC) | 2024-11-15T22:30:00 |
 | SITELONG | Float | Observatory longitude | -105.1786 |
 | SITELAT | Float | Observatory latitude | 40.5853 |
 | SITEELEV | Float | Observatory elevation in meters | 1524.0 |
 | IMAGETYP | String | Frame type | Light, Dark, Flat, Bias |
 | SWCREATE | String | Software that created the file | Photyx 1.0 |
+| PXFLAG | String | Photyx frame analysis recommendation | PASS, SUSPECT, REJECT |
 
 #### Session Properties (GetSessionProperty)
 
@@ -602,36 +650,24 @@ Any keyword present in the file header can be retrieved by name using `GetKeywor
 
 The Photyx UI is organized as a single main window with a fixed chrome (menu bar, toolbar, notification bar) surrounding a flexible content area. The image viewer is the dominant element and receives the maximum available screen real estate.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Menu Bar                                                    │
-├─────────────────────────────────────────────────────────────┤
-│  Toolbar (minimal — zoom, stretch controls)                  │
-├─────────────────────────────────────────────────────────────┤
-│  Quick Launch Panel (user-defined macro buttons)             │
-├───┬─────────────────────────────────────────────────────────┤
-│   │                                                          │
-│ I │                                                          │
-│ c │                                                          │
-│ o │                Image Viewer (dominant)                   │
-│ n │                                                          │
-│ s │                                                          │
-│   │                                                          │
-│   ├───────────────────┬─────────────────────────────────────┤
-│   │  Console          │  Info Panel                         │
-│   │  (~1/3 width)     │  (~2/3 width)                       │
-├───┴───────────────────┴─────────────────────────────────────┤
-│  Notification / Status Bar (full width, 1 line)             │
-└─────────────────────────────────────────────────────────────┘
-```
+![Photyx UI Layout](photyx_layout.svg)
+
+The layout from top to bottom:
+- **Title bar** — window controls
+- **Menu bar** — File, Edit, View, Process, Analyze, Tools, Help
+- **Toolbar** — zoom controls, channel selector
+- **Quick Launch panel** — one-click macro buttons, collapsible
+- **Content area** — icon sidebar (left edge) + image viewer (dominant)
+- **Bottom strip** — pcode console (~1/3 width) | Info Panel (~2/3 width)
+- **Notification / Status bar** — full width, single line, flush to bottom
 
 ### 8.2 Menu Bar
 
 | Menu | Items |
 |---|---|
-| File | Open, Open Recent, Close, Exit |
+| File | Select Directory, Close, Exit |
 | Edit | Keywords, Preferences |
-| View | Zoom, Stretch, Theme, Panel Toggles |
+| View | Stretch, Theme, Panel Toggles |
 | Process | Run Macro, Macro Library |
 | Analyze | FWHM, Star Count, Eccentricity, Median Value, Contour Plot |
 | Tools | Settings, Plugin Manager, Log Viewer |
@@ -639,18 +675,21 @@ The Photyx UI is organized as a single main window with a fixed chrome (menu bar
 
 ### 8.3 Toolbar
 
-The toolbar is minimal in the initial release, containing zoom and stretch controls. Additional controls will be added in future releases. The toolbar is not user-configurable in v1.0.
+The toolbar is minimal in the initial release, containing zoom and channel controls. Auto-STF is the only supported stretch and is applied automatically when a frame is displayed. Additional controls will be added in future releases. The toolbar is not user-configurable in v1.0.
 
 ### 8.4 Quick Launch Panel
 
-A configurable panel of buttons, each mapped to a saved macro. Provides one-click execution of frequently used macros without opening the macro editor or console.
+A panel of buttons providing one-click access to frequently used commands. The default buttons are:
 
-- Defaults to displaying the entire Macro Library as buttons
-- User configurable — macros can be dragged from the Macro Library panel onto the Quick Launch Panel
-- Button label is the macro name or a user-defined short label
-- Layout is a grid of buttons; number of columns is user-configurable
-- Clicking a button executes the macro immediately against the current session state
-- Configuration is persisted across sessions
+| Button | Command |
+|---|---|
+| List Files | ListFiles |
+| FWHM | ComputeFWHM |
+| Star Count | CountStars |
+| List KW | Opens keyword modal dialog |
+
+- List KW opens a modal dialog showing all FITS/XISF keywords for the current frame with search filtering
+- User configurable — additional macros can be added
 - Can be collapsed to save vertical space
 
 ### 8.5 Icon Sidebar
@@ -668,9 +707,11 @@ A narrow vertical bar on the left edge of the content area. Each icon toggles a 
 ### 8.6 Sliding Panels
 
 #### File Browser
-- Flat file list displaying files in the active directory
-- Directory path bar at the top showing the current active directory with a browse button
-- Clicking a file loads it into the viewer
+- Flat file list displaying files loaded into the current session
+- Directory path bar at the top showing the current active directory with a browse button (triggers SelectDirectory — sets the directory and populates the file list with all files of supported formats, but does not load pixel data)
+- Format filter dropdown: All Supported / FITS only / XISF only / TIFF only / PNG only / JPEG only (default: All Supported; persisted across sessions)
+- Load button: reads pixel data for all files matching the current format filter via the appropriate read plugin(s)
+- Clicking a file in the list displays it in the viewer (triggers AutoStretch if no display cache entry exists)
 - Supports multi-select for batch operations
 - File list updates automatically when the active directory changes via pcode or UI
 
@@ -704,12 +745,24 @@ A narrow vertical bar on the left edge of the content area. Each icon toggles a 
 
 The image viewer is the central and dominant UI element. It displays the current image with the active stretch applied.
 
-- Supports all zoom levels: fill screen (default), 25%, 50%, 100%, 200%, custom
+- Supports all zoom levels: Fit (fill screen) (default), 25%, 50%, 100%, 200%
 - Pan via click-drag at any zoom level
 - Multi-resolution pyramid cache enables smooth zoom transitions
 - Displays mono images in grayscale and RGB images in full color
 - Channel selection controls for RGB: view composite or individual R, G, B planes
 - Mouse position tracked in real time and reported to the Info Panel
+
+#### Frame Analysis Overlay
+
+When `AnalyzeFrames` has been run, each frame displays a visual indicator of its `PXFLAG` status during both normal viewing and blink playback:
+
+| PXFLAG | Visual Indicator |
+|---|---|
+| PASS | No overlay |
+| SUSPECT | Thin yellow border around the viewer |
+| REJECT | White X drawn corner-to-corner with a 2-pixel black border on each line, ensuring visibility against any image content |
+
+During blink playback the overlay updates in real time as frames change. The user can override any frame's flag during blink review using keyboard shortcuts (see §8.13). Each keypress immediately updates the `PXFLAG` keyword in the file header.
 
 ### 8.8 Info Panel
 
@@ -745,25 +798,33 @@ When WCS data is not present in the file header, a "no WCS" indicator is shown i
 
 #### Image Metadata
 
-Key header keywords displayed at a glance for the current image:
-- Filename, dimensions (W x H pixels), bit depth, color space
-- OBJECT, FILTER, EXPTIME, GAIN, TEMP, DATE-OBS, INSTRUME, TELESCOP
+Displayed for the current image in three rows:
+- Row 1: Full filename
+- Row 2: Dimensions (W × H), bit depth, color space
+- Row 3: Image center in RA/Dec (sexagesimal format, derived from WCS keywords CRVAL1/CRVAL2 if present)
+
+All FITS/XISF keywords are accessible via the List KW button in the Quick Launch panel, which opens a searchable modal dialog.
 
 #### Mini Histogram
 
-- Live histogram of the current image, updated when the stretch changes
-- RGB images: R, G, B channels displayed as overlaid colored lines
-- Mono images: single white line
-- Click the histogram to expand it into a full-size histogram panel
+Live histogram of the current image, displayed on the Histogram tab. Updates automatically when a new frame is displayed while the Histogram tab is active.
+
+- Log scale for better visibility of the full dynamic range
+- Statistics overlaid on the histogram: Median, Std Dev, Clipping %
+- All values displayed in 16-bit ADU scale (0–65535)
+- Clipping defined as pixels at or above 99.5% of maximum value
 
 #### Blink Controls
 
-Visible only when blink mode is active. Replaces the histogram area during blink sessions:
-- Play/Pause button (also toggled by Space key)
-- Previous frame button (also J key)
-- Next frame button (also K key)
-- Frame counter: current frame / total frames
-- FPS slider with numeric display
+Visible on the Blink tab:
+- ← Previous frame button (disabled during playback)
+- ▶/⏸ Play/Pause toggle button
+- → Next frame button (disabled during playback)
+- Frame counter: current frame / total frames, followed by current filename
+- Resolution selector: 12.5% (default) or 25%
+- Min Delay selector: 0 (max speed), 0.05s, 0.1s, 0.25s, 0.5s, 1.0s, 2.0s (default 0.1s)
+
+Blink cache is built automatically at both resolutions in the background immediately after files are loaded, using all available CPU cores minus one. When switching away from the Blink tab, the last displayed blink frame is loaded into the main viewer.
 
 ### 8.9 Console
 
@@ -777,7 +838,7 @@ The console occupies approximately one-third of the bottom area width and is alw
 
 ### 8.10 Notification / Status Bar
 
-A single-line persistent bar spanning the full width of the window at the very bottom, above the OS taskbar.
+A single-line persistent bar spanning the full width of the window at the very bottom, flush with the window border.
 
 - Always visible; displays the most recent status message or notification
 - Background color reflects message type:
@@ -804,9 +865,9 @@ Three visual themes are provided:
 
 | Theme | Description |
 |---|---|
-| Dark | Default theme; optimized for low-light observing environments |
+| Matrix | Default theme; high-contrast green-on-black |
+| Dark | Optimized for low-light observing environments |
 | Light | Standard light UI for daytime use |
-| Matrix | High-contrast green-on-black theme |
 
 Theme CSS files are maintained externally and loaded at runtime. The active theme is persisted across sessions. Theme switching takes effect immediately without restart.
 
@@ -817,7 +878,10 @@ Theme CSS files are maintained externally and loaded at runtime. The active them
 | Space | Blink play / pause |
 | J | Previous frame (blink) |
 | K | Next frame (blink) |
-| 0 | Zoom: fill screen |
+| P | Mark current frame PASS (overrides AnalyzeFrames recommendation; writes PXFLAG immediately) |
+| S | Mark current frame SUSPECT (writes PXFLAG immediately) |
+| R | Mark current frame REJECT (writes PXFLAG immediately) |
+| 0 | Zoom: Fit (fill screen) |
 | 1 | Zoom: 25% |
 | 2 | Zoom: 50% |
 | 3 | Zoom: 100% |
@@ -858,9 +922,9 @@ Settings are written immediately on change and read on startup.
 
 | Setting | Default | Notes |
 |---|---|---|
-| Default zoom level | Fill screen | Hardcoded; not user-configurable |
-| Default blink rate | 2 fps | Hardcoded; not user-configurable |
-| Color theme | Dark | Persisted across sessions |
+| Default zoom level | Fit (fill screen) | Hardcoded; not user-configurable |
+| Default blink rate | 0.1s per frame | Hardcoded; not user-configurable |
+| Color theme | Matrix | Persisted across sessions |
 | Default channel view | RGB | Hardcoded; not user-configurable |
 
 ### 9.3 File & Path Settings
@@ -909,7 +973,33 @@ Each plugin defines its own settings namespace. Plugin settings are stored in th
 | Grid column count | 4 | Persisted across sessions |
 | Panel visible | true | Persisted across sessions |
 
-### 9.9 Crash Recovery
+### 9.9 Rig Profiles (AnalyzeFrames)
+
+Rig profiles define the threshold settings used by `AnalyzeFrames` to classify frames. Each profile represents a telescope/camera combination. Profiles are stored in the settings store and persist across sessions. The active profile is displayed in the status bar and selectable from the toolbar or Settings panel.
+
+Multiple profiles can be defined. The initial set of default threshold values is shown below; all thresholds are user-configurable per profile.
+
+| Setting | Type | Default |
+|---|---|---|
+| Profile name | String | — |
+| Background median Suspect | Sigma | +1.5σ |
+| Background median Reject | Sigma | +2.5σ |
+| Background std dev Suspect | Sigma | +1.5σ |
+| Background std dev Reject | Sigma | +2.5σ |
+| Background gradient Suspect | Absolute % | 10% |
+| Background gradient Reject | Absolute % | 20% |
+| Highlight clipping Suspect | Absolute % | 0.1% |
+| Highlight clipping Reject | Absolute % | 0.5% |
+| SNR estimate Suspect | Sigma | -1.5σ |
+| SNR estimate Reject | Sigma | -2.5σ |
+| FWHM Suspect | Sigma | +1.5σ |
+| FWHM Reject | Sigma | +2.5σ |
+| Eccentricity Suspect | Absolute | 0.65 |
+| Eccentricity Reject | Absolute | 0.80 |
+| Star count Suspect | Sigma | -1.0σ |
+| Star count Reject | Sigma | -1.5σ |
+
+### 9.10 Crash Recovery
 
 Photyx writes a session recovery file periodically (every 60 seconds) to the app data directory. This file records the active directory, loaded file list, current settings state, and active macro if any. On next launch following a crash, Photyx detects the recovery file and offers to restore the previous session.
 
@@ -944,30 +1034,26 @@ Application updates are managed via `tauri-plugin-updater`.
 
 ### 12.1 Blink Mode
 
-The blink feature allows rapid sequential display of a loaded image set, enabling comparison for quality assessment (focus, tracking, satellite trails, etc.).
+The blink feature allows rapid sequential display of a loaded image set, enabling comparison for quality assessment (focus, tracking, satellite trails, cloud cover, etc.).
 
 - Images are pre-decoded and cached in memory before blinking begins
-- Default blink rate: 2 fps (hardcoded)
+- Default blink rate: 0.1 seconds per frame
 - Keyboard and UI controls: Space (play/pause), J (previous), K (next)
 - Current frame index and filename displayed in Info Panel at all times
 - Stretch settings persist across the blink session
+- Frame analysis overlay (PXFLAG indicator) displayed during playback when AnalyzeFrames has been run
+- User can mark frames P / S / R during playback; PXFLAG is written to the file header immediately on each keypress
 
 ### 12.2 Stretch / Display Transfer
 
-Because astrophotos are linear 16/32-bit data, they require a display stretch to be visually useful. The following stretch modes are supported as built-in native plugins:
+Photyx applies Auto-STF (PixInsight-compatible algorithm) automatically when a frame is displayed. This is a display-only transformation — the raw pixel buffer is never modified. No other stretch modes are supported in v1.0.
 
-| Mode | Description |
-|---|---|
-| Linear | Manual black/white point clip |
-| Auto-STF | Automatic screen transfer function (PixInsight-compatible algorithm) |
-| Histogram Equalization | Optional toggle |
-
-Stretch parameters are exposed as UI controls and as pcode arguments.
+The stretch operates on a display-resolution copy of the image (max 1200px wide), not the full-resolution buffer, ensuring fast display performance.
 
 ### 12.3 Zoom
 
-- Configurable zoom levels: fill screen (default), 25%, 50%, 100%, 200%, custom
-- Keyboard shortcuts: 0 (fill), 1 (25%), 2 (50%), 3 (100%), 4 (200%)
+- Configurable zoom levels: Fit (fill screen) (default), 25%, 50%, 100%, 200%
+- Keyboard shortcuts: 0 (fit), 1 (25%), 2 (50%), 3 (100%), 4 (200%)
 - A multi-resolution pyramid cache enables smooth zoom transitions without full re-decode
 - Pan via click-drag at any zoom level
 
@@ -1002,6 +1088,8 @@ Photyx treats image header keywords as first-class data. Keyword operations are 
 | FITS | Full FITS header keyword read/write |
 | XISF | Both the XISF Properties block and FITSKeyword block are read and written; GetKeyword checks both blocks transparently so keyword retrieval works identically regardless of source format |
 | TIFF | AstroTIFF convention (FITS-style NAME = VALUE / comment in custom tag) |
+| PNG | No native keyword support; keywords not applicable |
+| JPEG | No native keyword support; keywords not applicable |
 
 ---
 
@@ -1020,6 +1108,10 @@ Analysis functions are WASM plugins in the standard plugin system. Each analysis
 | Eccentricity | ComputeEccentricity | Median eccentricity, per-star values, histogram |
 | Median Value | MedianValue | Per-channel median of pixel values |
 | Contour Plot (FWHM) | ContourPlot | 2D contour map for FWHM star analysis output |
+| Background Std Dev | ComputeBackgroundNoise | Per-frame noise floor estimate |
+| Background Gradient | ComputeBackgroundGradient | Gradient strength as percentage of dynamic range |
+| Highlight Clipping | ComputeClipping | Percentage of pixels at or near saturation |
+| SNR Estimate | ComputeSNR | Mean signal / background std dev ratio |
 
 ### 14.3 Benchmarking Plan
 
@@ -1031,17 +1123,103 @@ Additional analysis plugins can be authored by users as WASM modules. The plugin
 
 ---
 
-## 15. External API
+## 15. Frame Analysis & Rejection Workflow
 
-### 15.1 Overview
+### 15.1 Philosophy
+
+Photyx provides a fast, automated first-pass triage of loaded frames to identify obviously poor-quality subs — those ruined by cloud cover, wind shake, tracking loss, or sensor anomalies. This triage is complementary to, not a replacement for, tools such as PixInsight SubframeSelector. Photyx handles gross rejection; fine-grained weight-based ranking across multiple sessions is left to dedicated tools.
+
+Key principles:
+
+- **Automated analysis flags, humans decide.** `AnalyzeFrames` writes recommendations; the user makes all final deletion decisions.
+- **Confident rejection of disasters only.** Frames that are catastrophically bad by any measure are flagged REJECT. Borderline frames are flagged SUSPECT and left for human review.
+- **No cross-session absolute decisions.** A frame that looks poor relative to its own session may rank acceptably against frames from other sessions. SUSPECT frames are never auto-rejected.
+- **Results travel with the file.** The `PXFLAG` keyword is written directly to each file's header immediately when `AnalyzeFrames` completes, so the recommendation survives session close and is available on reopen.
+
+### 15.2 PXFLAG Keyword
+
+`AnalyzeFrames` writes a single FITS keyword to each file:
+
+```
+PXFLAG  = 'PASS'    / Photyx frame analysis recommendation
+PXFLAG  = 'SUSPECT' / Photyx frame analysis recommendation
+PXFLAG  = 'REJECT'  / Photyx frame analysis recommendation
+```
+
+The keyword is written immediately on completion of `AnalyzeFrames` — there is no deferred write. If the user subsequently overrides a flag via keyboard shortcut during blink review, the new value is written immediately.
+
+### 15.3 Metrics Computed by AnalyzeFrames
+
+`AnalyzeFrames` is a built-in native plugin implemented in Rust using Rayon for parallel processing across all loaded frames. It computes the following metrics per frame:
+
+**Early-phase metrics (pixel data only — no star detection required):**
+
+| Metric | Description | Threshold Type |
+|---|---|---|
+| Background median | Mean background sky level | Sigma (session-relative) |
+| Background std dev | Noise floor estimate | Sigma (session-relative) |
+| Background gradient | Difference between mean background sampled in opposite corners, expressed as % of dynamic range | Absolute % |
+| Highlight clipping % | Fraction of pixels at or within 1% of sensor saturation value | Absolute % |
+| SNR estimate | Mean signal / background std dev | Sigma (session-relative) |
+
+**Phase 7 metrics (star detection required — unlocked when Phase 7 analysis plugins are available):**
+
+| Metric | Description | Threshold Type |
+|---|---|---|
+| FWHM | Median full width at half maximum across detected stars | Sigma (session-relative) |
+| Eccentricity | Median eccentricity across detected stars | Absolute |
+| Star count | Number of detected stars | Sigma (session-relative) |
+
+Session-wide mean and standard deviation are computed for each sigma-based metric. Per-frame sigma scores are then derived as `(frameValue - sessionMean) / sessionStdDev`.
+
+Background gradient is computed by sampling the mean pixel value in each of the four image corners and measuring the maximum difference as a percentage of the full dynamic range. This avoids being skewed by nebulosity or bright stars in the image center.
+
+### 15.4 Classification Logic
+
+Each frame is classified using the active rig profile thresholds (see §9.9). A frame is classified REJECT if any single metric exceeds its Reject threshold. A frame is classified SUSPECT if no metric exceeds its Reject threshold but any metric exceeds its Suspect threshold. Otherwise the frame is classified PASS.
+
+The default thresholds are designed to catch obvious disasters confidently while leaving borderline decisions to the user:
+
+| Metric | Suspect Default | Reject Default |
+|---|---|---|
+| Background median | > +1.5σ | > +2.5σ |
+| Background std dev | > +1.5σ | > +2.5σ |
+| Background gradient | > 10% | > 20% |
+| Highlight clipping | > 0.1% | > 0.5% |
+| SNR estimate | < -1.5σ | < -2.5σ |
+| FWHM | > +1.5σ | > +2.5σ |
+| Eccentricity | > 0.65 | > 0.80 |
+| Star count | < -1.0σ | < -1.5σ |
+
+### 15.5 Blink Review Workflow
+
+The recommended workflow after running `AnalyzeFrames`:
+
+1. **Fast blink pass** — play the full sequence at speed (0.1s default). The PXFLAG overlay provides peripheral awareness of problem frames without demanding attention. REJECT frames show the white X overlay; SUSPECT frames show a yellow border; PASS frames show nothing.
+
+2. **Deliberate review pass** — slow the blink rate or step manually through the sequence. For each flagged frame, make a final decision using the keyboard shortcuts (P / S / R). Each keypress writes `PXFLAG` to the file immediately.
+
+3. **Delete confirmed rejects** — use the `DeleteRejected` command or the equivalent UI action to permanently remove files where `PXFLAG = REJECT` from disk. A confirmation dialog shows the count of files to be deleted before proceeding. SUSPECT frames are left untouched and passed to downstream tools.
+
+### 15.6 Multi-Session Considerations
+
+`AnalyzeFrames` operates on a single loaded session at a time. Its sigma-based metrics are session-relative and should not be used to make absolute quality comparisons across sessions captured under different conditions.
+
+When integrating frames from multiple sessions, borderline SUSPECT frames from one session may rank acceptably against frames from another session. The recommended approach is to pass all PASS and SUSPECT frames to PixInsight SubframeSelector for cross-session weight-based ranking, reserving Photyx rejection for only the clear disasters (REJECT frames) that no ranking tool would salvage.
+
+---
+
+## 16. External API
+
+### 16.1 Overview
 
 Photyx runs a local HTTP REST server (via Axum) when the application is open. This server exposes an API that allows external programs, scripts, or command-line tools to execute pcode commands and retrieve results.
 
-### 15.2 Authentication Middleware
+### 16.2 Authentication Middleware
 
 The Axum routing layer is architected with a middleware insertion point from day one. An authentication middleware stub is pre-wired into the route chain — present but passthrough in the default configuration. Enabling real authentication requires only implementing the stub's internals; no structural changes to the API routes or data flow are needed. A configuration option `api_key_required` (default: false) controls whether the middleware enforces authentication. The API is bound to localhost only by default, which provides a strong baseline security boundary without requiring a key.
 
-### 15.3 Endpoints (Planned)
+### 16.3 Endpoints (Planned)
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -1052,7 +1230,7 @@ The Axum routing layer is architected with a middleware insertion point from day
 | POST | `/api/keywords/{filename}` | Add/modify keywords on a file |
 | GET | `/api/status` | Application health and session info |
 
-### 15.4 CLI Usage Example
+### 16.4 CLI Usage Example
 
 ```bash
 curl -X POST http://localhost:7171/api/macro/run \
@@ -1060,7 +1238,7 @@ curl -X POST http://localhost:7171/api/macro/run \
   -d '{"macro": "SelectDirectory path=\"D:/M31\"\nReadAllFITFiles\nAddKeyword name=OBJECT value=\"M31\""}'
 ```
 
-### 15.5 Port & Security
+### 16.5 Port & Security
 
 - Default port: 7171 (user-configurable)
 - Bound to localhost only by default
@@ -1068,7 +1246,7 @@ curl -X POST http://localhost:7171/api/macro/run \
 
 ---
 
-## 16. Development Phases
+## 17. Development Phases
 
 | Phase | Focus Areas |
 |---|---|
@@ -1078,14 +1256,14 @@ curl -X POST http://localhost:7171/api/macro/run \
 | **Phase 4** | Full keyword management UI, keyword plugins, PNG/JPEG readers and writers, debayering |
 | **Phase 5** | pcode interpreter + macro editor UI, save/load macros, conditional logic, console, Quick Launch Panel |
 | **Phase 6** | REST API (Axum), CLI access, external program integration, authentication middleware stub |
-| **Phase 7** | Analysis plugins as WASM (FWHM, star count, eccentricity, contour), analysis results windows |
+| **Phase 7** | Analysis plugins as WASM (FWHM, star count, eccentricity, contour), analysis results windows; AnalyzeFrames Phase 7 metrics unlocked |
 | **Phase 8** | Native built-in analysis plugins, benchmarking vs. WASM versions |
-| **Phase 9** | Settings persistence, themes, crash recovery, update mechanism, file associations |
+| **Phase 9** | Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations |
 | **Phase 10** | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI |
 
 ---
 
-## 17. Out of Scope (Initial Release)
+## 18. Out of Scope (Initial Release)
 
 Additional processing and analysis capabilities beyond those listed in this document may be added at any time using the plugin framework. The following items are explicitly deferred:
 
@@ -1094,31 +1272,33 @@ Additional processing and analysis capabilities beyond those listed in this docu
 
 ---
 
-## 18. Testing Strategy
+## 19. Testing Strategy
 
 Automated tests are required for each significant module, crate, and plugin. Tests are developed alongside the module during implementation, not deferred to after completion.
 
-### 18.1 Scope
+### 19.1 Scope
 
 | Module / Component | Testing Requirement |
 |---|---|
 | `photyx-xisf` crate | Full unit test suite; validated against a library of reference XISF files including compressed variants |
 | Plugin host | Tests for plugin registration, dispatch, error handling, and WASM sandbox isolation |
-| pcode interpreter | Tests for tokenization, dispatch, variable handling, conditional logic, loop execution, and error conditions |
+| pcode interpreter | Tests for tokenization, dispatch, variable handling, arithmetic expressions, math functions, conditional logic, loop execution, and error conditions |
 | REST API (Axum) | Integration tests for all endpoints; authentication middleware stub tested in both passthrough and enforcing modes |
 | Image buffer pool | Tests for concurrent access, memory mapping, cache eviction, and multi-channel handling |
 | Built-in I/O plugins | Round-trip tests (read → write → read) for each supported format and bit depth |
 | Built-in keyword plugins | Tests for add, delete, modify, copy operations across all supported formats |
 | Built-in processing plugins | Per-plugin tests for correctness of stretch output, crop geometry, bin factor, debayer output |
+| AnalyzeFrames | Tests for metric computation correctness, classification logic against known inputs, PXFLAG keyword write, rig profile threshold application |
 | Interrogation plugins | Tests for all GetImageProperty, GetSessionProperty, GetKeyword, and Test expressions |
 | Analysis plugins (WASM) | Correctness tests against known reference data; performance benchmarks for WASM vs. native comparison |
 | Format conversion | Round-trip keyword fidelity tests across all supported format pairs |
 | Path conventions | Tests for relative, absolute, UNC, home directory, and space-containing paths on all platforms |
 | Settings persistence | Tests for read/write of all settings categories across simulated sessions |
+| Rig profiles | Tests for profile create, select, edit, delete, and threshold application |
 | Crash recovery | Tests for session file write, detection on launch, and restore behavior |
-| UI components | Svelte component tests for pixel tracking display, Info Panel, notification bar, and blink controls |
+| UI components | Svelte component tests for pixel tracking display, Info Panel, notification bar, blink controls, and frame analysis overlay |
 
-### 18.2 Tooling
+### 19.2 Tooling
 
 - **Rust unit and integration tests:** `cargo test` (built into the Rust toolchain)
 - **WASM plugin tests:** Wasmtime test harness
@@ -1129,5 +1309,5 @@ Automated tests are required for each significant module, crate, and plugin. Tes
 ---
 
 *Document prepared by: Development Team*
-*Previous version: 1.0*
-*Next review: Upon completion of Phase 1 scaffold*
+*Previous version: 12*
+*Next review: Upon completion of Phase 2*

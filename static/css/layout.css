@@ -161,12 +161,28 @@ html, body {
 
 /* ── Bottom panel (console + info panel) ────────────────────────────────── */
 
+#blink-filename-overlay {
+    position: absolute;
+    bottom: 124px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 11px;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.55);
+    padding: 3px 10px;
+    pointer-events: none;
+    z-index: 50;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
 #bottom-panel {
     flex: 0 0 auto;
     height: 120px;
     display: flex;
     flex-direction: row;
-    overflow: visible;
+    overflow: hidden;
     position: relative;
 }
 
