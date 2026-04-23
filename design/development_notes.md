@@ -1,8 +1,8 @@
 # Photyx — Developer Notes
 
-**Version:** 14
-**Last updated:** April 2026
-**Status:** Active development — Phase 2 complete, Phase 3 substantially complete
+**Version:** 15
+**Last updated:** 22 April 2026, 7:24pm
+**Status:** Active development — Phase 3 complete, Phase 4 starting
 
 ---
 
@@ -49,6 +49,7 @@ Photyx/
 │           ├── list_keywords.rs
 │           ├── read_all_files.rs
 │           ├── read_fits.rs
+│           ├── read_tiff.rs
 │           ├── read_xisf.rs
 │           ├── select_directory.rs
 │           ├── set_frame.rs
@@ -152,7 +153,7 @@ This is a design rule: **display plugins read from `image_buffers` and write to 
 
 ### 3.3 AutoStretch Performance
 
-AutoStretch operates on a display-resolution downsampled copy of the image, not the full buffer:
+AutoStretch operates on a dynamic display-resolution downsampled copy of the image, not the full buffer:
 
 1. Downsample to max 1200px wide using box-filter averaging (handles NaN/Inf bad pixels)
 2. Compute Auto-STF parameters per channel — RGB images get independent STF per channel
@@ -164,6 +165,8 @@ AutoStretch operates on a display-resolution downsampled copy of the image, not 
 This is a **~50x reduction** in pixel count versus operating on the full buffer. AutoStretch takes well under 500ms for a 3008x3008 U16 image.
 
 The shadow clip default is -2.8 (PixInsight convention). For RGB images, STF parameters are computed independently per channel, matching PixInsight's Auto-STF behavior.
+
+**Note:** AutoStretch assumes linear (unstretched) input. Applying it to already-stretched images (e.g., exported 8-bit TIFFs) will produce extreme results. This is expected behavior — AutoStretch is designed for linear astrophotography data.
 
 ### 3.4 Full-Resolution Cache
 
@@ -339,6 +342,14 @@ XISF files with RGB color space (3-channel interleaved) were initially displayin
 2. **Background cache builder** similarly used single-channel indexing for RGB data, producing garbled images. The background builder now correctly handles the multi-channel case.
 3. **`commands.ts`** was hardcoding `colorSpace: 'Mono'` — fixed to use `channels === 3 ? 'RGB' : 'Mono'`.
 
+### 3.20 TIFF Reader
+
+The TIFF reader uses the `tiff` crate (pure Rust, no native dependencies — no vcpkg required). It supports U8, U16, U32, and F32 pixel formats and Grayscale and RGB color spaces.
+
+U32 TIFFs are downconverted to U16 by taking the high 16 bits (`v >> 16`). This matches the behavior of the XISF reader for U32 data. U32 is not a supported internal pixel type (§5.5).
+
+Already-stretched images (e.g., 8-bit exported TIFFs from PixInsight or similar tools) will appear blown out when AutoStretch is applied, because AutoStretch assumes linear input. This is expected behavior, not a bug.
+
 ---
 
 ## 4. Tauri Commands (Implemented)
@@ -366,8 +377,9 @@ XISF files with RGB color space (3-channel interleaved) were initially displayin
 |---|---|---|
 | SelectDirectory | File Management | ✅ Complete |
 | ReadAllFITFiles | I/O Reader | ✅ Complete (sequential only) |
-| ReadAllXISFFiles | I/O Reader | ✅ Complete (FITS + XISF via photyx-xisf crate) |
-| ReadAllFiles | I/O Reader | ✅ Complete (loads both FITS and XISF from same directory) |
+| ReadAllXISFFiles | I/O Reader | ✅ Complete |
+| ReadAllTIFFFiles | I/O Reader | ✅ Complete (U8, U16, U32→U16, F32) |
+| ReadAllFiles | I/O Reader | ✅ Complete (FITS + XISF + TIFF from same directory) |
 | WriteAllXISFFiles | I/O Writer | ✅ Complete (uncompressed default; compress=true for LZ4HC) |
 | AutoStretch | Processing | ✅ Complete (mono and RGB, display-res only, raw buffer preserved) |
 | SetFrame | Navigation | ✅ Complete |
@@ -421,5 +433,5 @@ XISF files with RGB color space (3-channel interleaved) were initially displayin
 |---|---|---|
 | Phase 1 | ✅ Complete | Scaffold, plugin host, FITS reader, notification bar, logging |
 | Phase 2 | ✅ Complete | Display cache, AutoStretch, blink engine, histogram, keywords, UI file browser, pixel tracking, WCS, zoom, pan, full-res cache, canvas viewer |
-| Phase 3 | ✅ Substantially complete | photyx-xisf crate (reader + writer), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, RGB display/histogram, background display cache, XISF optimizations |
+| Phase 3 | ✅ Complete | photyx-xisf crate (reader + writer), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllTIFFFiles, ReadAllFiles, RGB display/histogram, background display cache |
 | Phase 4-10 | ⬜ Not started | |

@@ -1,8 +1,8 @@
 # Photyx — Specification & Requirements Document
 
-**Version:** 14
-**Date:** April 2026
-**Status:** Active Development — Phase 3 substantially complete
+**Version:** 15
+**Date:** 22 April 2026, 7:24pm
+**Status:** Active Development — Phase 3 complete, Phase 4 starting
 
 ---
 
@@ -120,7 +120,7 @@ Every file format reader and writer is a discrete plugin module. Adding support 
 |---|---|
 | FITS (.fit, .fits, .fts) | Via `fitsio` / cfitsio |
 | XISF (.xisf) | Via custom `photyx-xisf` crate |
-| TIFF (.tif, .tiff) | Including 16-bit and 32-bit float variants |
+| TIFF (.tif, .tiff) | Including 8-bit, 16-bit, and 32-bit float variants |
 | PNG (.png) | Supported for viewing and format conversion purposes only; keyword import not applicable |
 | JPEG (.jpg, .jpeg) | Supported for viewing and format conversion purposes only; keyword import not applicable; lossy 8-bit format |
 
@@ -132,7 +132,7 @@ Every file format reader and writer is a discrete plugin module. Adding support 
 | XISF (.xisf) | Full keyword support; dual-write to FITSKeyword block and Properties block |
 | TIFF (.tif, .tiff) | AstroTIFF keyword conventions supported |
 | PNG (.png) | 16-bit support |
-| JPEG (.jpg) | 8-bit, quality-configurable; default quality 100% |
+| JPEG (.jpg) | 8-bit, quality-configurable; default quality 75% |
 
 ### 5.4 AstroTIFF Keyword Convention
 
@@ -142,7 +142,6 @@ TIFF files written by Photyx embed keywords using FITS-style NAME = VALUE / comm
 
 - Supported bit depths: 8-bit integer, 16-bit integer, 32-bit float
 - Supported color modes: Monochrome (single channel), RGB (three channel)
-- Narrowband palette mapping (e.g., SHO → RGB) planned as a processing plugin
 - The internal image buffer always stores channel count, bit depth, and color space metadata
 
 ### 5.6 Format Conversion
@@ -164,14 +163,14 @@ WriteAllFITFiles destination="D:/Output"
 
 ### 5.7 Debayering (OSC Camera Support)
 
-Many astrophotos are captured with one-shot color (OSC) cameras that use a Bayer color filter array (CFA). Raw files from these cameras contain a single-channel image with a Bayer mosaic pattern that must be debayered (demosaiced) to reconstruct a proper RGB image for display and processing.
+Many astrophotos are captured with one-shot color (OSC) cameras that use a Bayer color filter array (CFA). Raw files from these cameras contain a single-channel image with a Bayer mosaic pattern.
 
-Photyx automatically detects the presence of a Bayer pattern by checking for the BAYERPAT keyword (or equivalent) in the file header on load. The following file types are handled:
+Photyx detects the presence of a Bayer pattern by checking for the BAYERPAT keyword (or equivalent) in the file header on load. CFA files are loaded and displayed as mono by default — no automatic debayering is performed. Debayering is available on demand via the `DebayerImage` plugin command.
 
 | File Type | Channels | Action |
 |---|---|---|
 | Mono camera raw | 1 (grayscale) | None — display as mono |
-| OSC camera raw (Bayer) | 1 (CFA pattern) | Debayer → display as RGB |
+| OSC camera raw (Bayer) | 1 (CFA pattern) | Display as mono by default; debayer on demand via DebayerImage |
 | Pre-debayered color | 3 (RGB) | None — display as RGB |
 | Narrowband (Ha, OIII, etc.) | 1 per filter | None — display as mono per channel |
 
@@ -180,11 +179,11 @@ Debayering is handled by the `DebayerImage` built-in native plugin. The followin
 | Algorithm | Speed | Quality | Notes |
 |---|---|---|---|
 | Nearest Neighbor | Fastest | Lowest | Quick preview only |
-| Bilinear | Fast | Moderate | Default for blink and preview |
+| Bilinear | Fast | Moderate | Default |
 | VNG (Variable Number of Gradients) | Moderate | Good | Better for detailed review |
 | AHD (Adaptive Homogeneity-Directed) | Slower | Highest | Best quality; recommended for production |
 
-Bilinear interpolation is the default for interactive use. The algorithm is user-configurable and exposed as a pcode argument.
+Bilinear interpolation is the default. The algorithm is user-configurable and exposed as a pcode argument.
 
 ### 5.8 FITS to XISF Keyword Mapping
 
@@ -348,13 +347,15 @@ pcode is a purpose-built, line-oriented macro language. Each line is a command c
 
 ```
 # This is a comment
-SelectDirectory path="D:/Astrophotos/M31"
+Set input="D:/Astrophotos/M31"
+Set output="D:/Output"
+SelectDirectory path=$input
 ReadAllFITFiles
-AutoStretch method=asinh shadowClip=0.0 targetBackground=0.25
+AutoStretch method=autostf shadowclip=-2.8 targetbackground=0.25
 AddKeyword name=TELESCOP value="Celestron EdgeHD 8"
 DeleteKeyword name=EXPTIME
 ModifyKeyword name=OBJECT value="M31 Andromeda"
-WriteAllFITFiles destination="D:/Output" overwrite=false
+WriteAllFITFiles destination=$output overwrite=false
 ```
 
 ### 7.3 Language Features
@@ -386,9 +387,9 @@ Set bounded = max($value, 0.01)
 
 # Conditional
 If $frameCount > 10
-    AutoStretch method=asinh
+    AutoStretch method=autostf
 ElseIf $frameCount > 5
-    LinearStretch black=0 white=65535
+    Print "Few frames — proceeding anyway"
 Else
     Print "Too few frames"
 EndIf
@@ -444,7 +445,7 @@ DefineMacro ProcessLightFrames
     SelectDirectory path=$1
     ReadAllFITFiles
     DebayerImage method=bilinear
-    AutoStretch method=asinh
+    AutoStretch method=autostf
     WriteAllFITFiles destination=$2
 EndMacro
 ```
@@ -481,11 +482,11 @@ The following table defines all pcode commands in the initial release. Arguments
 | GetImageProperty | Interrogation | Retrieves an image property into a variable; see Section 7.12 for full property list | property |
 | GetSessionProperty | Interrogation | Retrieves a session state value into a variable; see Section 7.12 for full property list | property |
 | Test | Interrogation | Performs a boolean test and stores result in $Result; see Section 7.12 for full test list | expression |
-| AutoStretch | Processing | Applies automatic screen transfer function stretch (display only — raw buffer unchanged) | [shadowClip], [targetBackground] |
+| AutoStretch | Processing | Applies automatic screen transfer function stretch (display only — raw buffer unchanged) | [method], [shadowClip], [targetBackground] |
 | GetHistogram | Processing | Computes histogram statistics for the current frame (median, std dev, clipping %) | — |
 | CropImage | Processing | Crops the image to a specified region | x, y, width, height |
 | BinImage | Processing | Bins the image by an integer factor | factor |
-| DebayerImage | Processing | Debayers a Bayer CFA image; runs automatically on load when pattern detected | [pattern], [method] |
+| DebayerImage | Processing | Debayers a Bayer CFA image on demand | [pattern], [method] |
 | AnalyzeFrames | Frame Analysis | Computes per-frame quality metrics for all loaded frames, classifies each as PASS / SUSPECT / REJECT, and writes PXFLAG keyword to each file; uses active rig profile thresholds | [profile] |
 | BlinkSequence | Blink & View | Starts blinking the loaded image set | [fps] |
 | CacheFrames | Blink & View | Pre-decodes and caches all frames for blinking | — |
@@ -660,7 +661,7 @@ The Photyx UI is organized as a single main window with a fixed chrome (menu bar
 The layout from top to bottom:
 - **Title bar** — window controls
 - **Menu bar** — File, Edit, View, Process, Analyze, Tools, Help
-- **Toolbar** — zoom controls, channel selector
+- **Toolbar** — Auto-STF toggle, zoom controls, channel selector
 - **Quick Launch panel** — one-click macro buttons, collapsible
 - **Content area** — icon sidebar (left edge) + image viewer (dominant)
 - **Bottom strip** — pcode console (~1/3 width) | Info Panel (~2/3 width)
@@ -680,7 +681,7 @@ The layout from top to bottom:
 
 ### 8.3 Toolbar
 
-The toolbar is minimal in the initial release, containing zoom and channel controls. Auto-STF is the only supported stretch and is applied automatically when a frame is displayed. Additional controls will be added in future releases. The toolbar is not user-configurable in v1.0.
+The toolbar contains an Auto-STF toggle button (first button on the left), zoom controls, and channel controls. The Auto-STF toggle button enables or disables automatic stretch when a frame is displayed — when enabled, Auto-STF is applied automatically; when disabled, images are displayed without stretch. Additional controls will be added in future releases. The toolbar is not user-configurable in v1.0.
 
 ### 8.4 Quick Launch Panel
 
@@ -699,7 +700,7 @@ A panel of buttons providing one-click access to frequently used commands. The d
 
 ### 8.5 Icon Sidebar
 
-A narrow vertical bar on the left edge of the content area. Each icon toggles a sliding panel open or closed. Panels slide in over the image viewer from the left or right. All sliding panels are detachable — they can be dragged off to float independently or placed on a second monitor.
+A narrow vertical bar on the left edge of the content area. Each icon toggles a sliding panel open or closed. Panels slide in over the image viewer from the left or right.
 
 | Icon | Panel |
 |---|---|
@@ -896,7 +897,7 @@ All shortcuts are user-configurable via the Settings panel.
 
 ### 8.14 File Associations
 
-On installation, Photyx registers itself as the default handler for the following file extensions:
+On installation, Photyx optionally registers itself as the default handler for the following file extensions:
 
 - `.fit`
 - `.fits`
@@ -937,7 +938,7 @@ Settings are written immediately on change and read on startup.
 | Setting | Default | Notes |
 |---|---|---|
 | Default working directory | Last used directory | Persisted across sessions |
-| Default JPEG quality | 100% | Persisted across sessions |
+| Default JPEG quality | 75% | Persisted across sessions |
 | Overwrite behavior | Prompt | Persisted across sessions |
 | Recent directories list | Last 10 | Persisted across sessions |
 
@@ -966,7 +967,7 @@ Each plugin defines its own settings namespace. Plugin settings are stored in th
 
 | Setting | Default | Notes |
 |---|---|---|
-| Buffer pool memory limit | 4 GB | Persisted across sessions |
+| Buffer pool memory limit | 4 GB | Future requirement — current implementation uses in-memory HashMap; persistent buffer pool planned for Phase 9 |
 | Blink pre-cache frame count | All loaded frames | Persisted across sessions |
 | Rayon thread count | All available cores | Persisted across sessions |
 
@@ -991,8 +992,8 @@ Multiple profiles can be defined. The initial set of default threshold values is
 | Background median Reject | Sigma | +2.5σ |
 | Background std dev Suspect | Sigma | +1.5σ |
 | Background std dev Reject | Sigma | +2.5σ |
-| Background gradient Suspect | Absolute % | 10% |
-| Background gradient Reject | Absolute % | 20% |
+| Background gradient Suspect | Sigma | +1.5σ |
+| Background gradient Reject | Sigma | +2.5σ |
 | Highlight clipping Suspect | Absolute % | 0.1% |
 | Highlight clipping Reject | Absolute % | 0.5% |
 | SNR estimate Suspect | Sigma | -1.5σ |
@@ -1024,14 +1025,14 @@ Application logging is implemented using the Rust `tracing` crate. Structured lo
 
 ## 11. Updates
 
-Application updates are managed via `tauri-plugin-updater`.
+Application updates are managed via `tauri-plugin-updater`. Updates are hosted on GitHub Releases.
 
 - Photyx checks for updates on launch
 - If a newer version is found, the user is notified via the notification bar
 - The user chooses when to download and install — updates are never applied automatically
 - Updates are distributed as signed packages (.msi on Windows, .dmg on macOS, .AppImage on Linux)
 - Update packages are signed with a private key; tampered packages are rejected
-- Update manifest is hosted at a stable URL (GitHub Releases or equivalent)
+- Update manifest (`latest.json`) is hosted on GitHub Releases and generated automatically by Tauri's build toolchain
 
 ---
 
@@ -1051,9 +1052,9 @@ The blink feature allows rapid sequential display of a loaded image set, enablin
 
 ### 12.2 Stretch / Display Transfer
 
-Photyx applies Auto-STF (PixInsight-compatible algorithm) automatically when a frame is displayed. This is a display-only transformation — the raw pixel buffer is never modified. No other stretch modes are supported in v1.0.
+Photyx applies Auto-STF (PixInsight-compatible algorithm) automatically when a frame is displayed, if the Auto-STF toggle is enabled. This is a display-only transformation — the raw pixel buffer is never modified. No other stretch modes are supported in v1.0.
 
-The stretch operates on a display-resolution copy of the image (max 1200px wide), not the full-resolution buffer, ensuring fast display performance.
+The stretch operates on a dynamic display-resolution copy of the image (max 1200px wide), not the full-resolution buffer, ensuring fast display performance.
 
 ### 12.3 Zoom
 
@@ -1163,7 +1164,7 @@ The keyword is written immediately on completion of `AnalyzeFrames` — there is
 |---|---|---|
 | Background median | Mean background sky level | Sigma (session-relative) |
 | Background std dev | Noise floor estimate | Sigma (session-relative) |
-| Background gradient | Difference between mean background sampled in opposite corners, expressed as % of dynamic range | Absolute % |
+| Background gradient | Difference between mean background sampled in opposite corners, expressed as sigma deviation from session mean | Sigma (session-relative) |
 | Highlight clipping % | Fraction of pixels at or within 1% of sensor saturation value | Absolute % |
 | SNR estimate | Mean signal / background std dev | Sigma (session-relative) |
 
@@ -1177,7 +1178,7 @@ The keyword is written immediately on completion of `AnalyzeFrames` — there is
 
 Session-wide mean and standard deviation are computed for each sigma-based metric. Per-frame sigma scores are then derived as `(frameValue - sessionMean) / sessionStdDev`.
 
-Background gradient is computed by sampling the mean pixel value in each of the four image corners and measuring the maximum difference as a percentage of the full dynamic range. This avoids being skewed by nebulosity or bright stars in the image center.
+Background gradient is computed by sampling the mean pixel value in each of the four image corners and measuring the maximum difference expressed as a sigma deviation from the session mean. This avoids being skewed by nebulosity or bright stars in the image center.
 
 ### 15.4 Classification Logic
 
@@ -1189,7 +1190,7 @@ The default thresholds are designed to catch obvious disasters confidently while
 |---|---|---|
 | Background median | > +1.5σ | > +2.5σ |
 | Background std dev | > +1.5σ | > +2.5σ |
-| Background gradient | > 10% | > 20% |
+| Background gradient | > +1.5σ | > +2.5σ |
 | Highlight clipping | > 0.1% | > 0.5% |
 | SNR estimate | < -1.5σ | < -2.5σ |
 | FWHM | > +1.5σ | > +2.5σ |
@@ -1256,9 +1257,9 @@ curl -X POST http://localhost:7171/api/macro/run \
 | Phase | Focus Areas |
 |---|---|
 | **Phase 1** | Tauri + Svelte + Rust project scaffold, plugin host, FITS reader plugin, basic single-image viewer, notification bar, logging |
-| **Phase 2** | Blink engine, stretch pipeline (Linear + Auto-STF), pyramid cache, zoom, keyboard shortcuts, Info Panel, pixel tracking |
-| **Phase 3** | `photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, RGB display/histogram, background display cache, true median histogram, TIFF reader (deferred) |
-| **Phase 4** | Full keyword management UI, keyword plugins, PNG/JPEG readers and writers, debayering |
+| **Phase 2** | Blink engine, stretch pipeline (Auto-STF), pyramid cache, zoom, keyboard shortcuts, Info Panel, pixel tracking |
+| **Phase 3** | `photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, ReadAllTIFFFiles, RGB display/histogram, background display cache, true median histogram |
+| **Phase 4** | Full keyword management UI, keyword plugins, PNG/JPEG readers and writers, TIFF writer, debayering, Auto-STF toolbar toggle |
 | **Phase 5** | pcode interpreter + macro editor UI, save/load macros, conditional logic, console, Quick Launch Panel |
 | **Phase 6** | REST API (Axum), CLI access, external program integration, authentication middleware stub |
 | **Phase 7** | Analysis plugins as WASM (FWHM, star count, eccentricity, contour), analysis results windows; AnalyzeFrames Phase 7 metrics unlocked |
@@ -1314,5 +1315,5 @@ Automated tests are required for each significant module, crate, and plugin. Tes
 ---
 
 *Document prepared by: Development Team*
-*Previous version: 13*
-*Next review: Upon completion of Phase 3*
+*Previous version: 14*
+*Next review: Upon completion of Phase 4*
