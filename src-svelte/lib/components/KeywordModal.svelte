@@ -17,6 +17,11 @@
 
     onMount(async () => {
         try {
+            const session = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
+            if (session.fileList.length === 0) {
+                loading = false;
+                return;
+            }
             const map = await invoke<Record<string, Keyword>>('get_keywords');
             keywords = Object.values(map).sort((a, b) => a.name.localeCompare(b.name));
         } catch (e) {

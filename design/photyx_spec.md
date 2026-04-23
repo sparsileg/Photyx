@@ -1,8 +1,8 @@
 # Photyx — Specification & Requirements Document
 
-**Version:** 16
-**Date:** 23 April 2026 6:42am
-**Status:** Active Development — Phase 4 complete, Phase 5 starting
+**Version:** 17
+**Date:** 23 April 2026 9:33am
+**Status:** Active Development — Phase 5 underway
 
 ---
 
@@ -1264,7 +1264,7 @@ curl -X POST http://localhost:7171/api/macro/run \
 | **Phase 2** | Blink engine, stretch pipeline (Auto-STF), pyramid cache, zoom, keyboard shortcuts, Info Panel, pixel tracking |
 | **Phase 3** | `photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, ReadAllTIFFFiles, RGB display/histogram, background display cache, true median histogram |
 | **Phase 4** | keyword plugins (Add/Delete/Modify/Copy), WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit handling, blink cache quality improvement, relative path resolution, window resize fix, pwd console command |
-| **Phase 5** | pcode interpreter + macro editor UI, save/load macros, Async dispatch, conditional logic, console, Quick Launch Panel |
+| **Phase 5** | pcode interpreter, RunMacro, variable substitution, Log command, async dispatch, macro editor UI, save/load macros, conditional logic, Quick Launch Panel |
 | **Phase 6** | REST API (Axum), CLI access, external program integration, authentication middleware stub |
 | **Phase 7** | Analysis plugins as WASM (FWHM, star count, eccentricity, contour), analysis results windows; AnalyzeFrames Phase 7 metrics unlocked |
 | **Phase 8** | Native built-in analysis plugins, benchmarking vs. WASM versions |

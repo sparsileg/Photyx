@@ -1,7 +1,7 @@
 # Photyx — Developer Notes
 
-**Version:** 16
-**Last updated:** 23 April 2026 6:46am
+**Version:** 17
+**Last updated:** 23 April 2026 9:34am
 **Status:** Active development — Phase 4 complete, Phase 5 starting
 
 ---
@@ -378,6 +378,31 @@ When `SelectDirectory` is called via the pcode console or UI, the frontend now i
 
 `pwd` is implemented as a client-side console command in `Console.svelte`. It reads `$session.activeDirectory` from the store and prints it directly — no backend IPC call required.
 
+### 3.28 pcode Interpreter
+
+The pcode interpreter lives in `src-tauri/src/pcode/` as a standalone module with no Tauri dependencies. It takes a script string, `&mut AppContext`, and `&PluginRegistry` and returns a `Vec<PcodeResult>`.
+
+**Architecture:**
+- `tokenizer.rs` — parses each line into `PcodeLine::Command`, `PcodeLine::Assignment`, or `PcodeLine::Skip`. Handles quoted values, named arguments (key=value), and comment lines (#).
+- `mod.rs` — sequential executor: variable store, `$var` and `${var}` substitution in all argument values, plugin registry dispatch per line, halt-on-error behavior, `Log` command handled internally.
+
+**Key behaviors:**
+- Variables are local to the script execution and also written to `AppContext.variables`
+- `Log` writes results since the previous `Log` call (segmented), not all results from the start
+- Nested macros share the same `AppContext` — a called macro executes in the parent's session context
+- `GLOBAL_REGISTRY` (once_cell) provides registry access to `RunMacro` without Tauri state threading
+- `chrono` crate used for Log file timestamps
+
+**`run_script` Tauri command** — executes a script string directly from the frontend (macro editor Run button), returns results as JSON array.
+
+### 3.29 Console Expansion
+
+The pcode console expands to a full-width overlay (60vh, 85% opacity) when the header is clicked. Key implementation details:
+- Expanded console uses `position: absolute` within `#bottom-panel`, requiring `position: relative` on `#viewer-region` for correct stacking context
+- The `#viewer-placeholder` fades to opacity 0 (not hidden) when console is expanded, using CSS transition matched to the console slide timing
+- Font size increases from 11px to 14px for output lines in expanded state
+- All three themes supported via CSS custom properties
+
 ---
 
 ## 4. Tauri Commands (Implemented)
@@ -385,17 +410,17 @@ When `SelectDirectory` is called via the pcode console or UI, the frontend now i
 | Command | Description |
 |---|---|
 | `dispatch_command` | Dispatches a pcode command to the plugin registry |
-| `list_plugins` | Returns list of registered plugin names |
-| `get_session` | Returns current session state (directory, file list, current frame) |
+| `debug_buffer_info` | Returns buffer metadata including display_width and color_space |
+| `get_blink_cache_status` | Returns blink cache build status: idle / building / ready |
+| `get_blink_frame` | Returns a blink frame as JPEG data URL from blink cache (by index + resolution) |
 | `get_current_frame` | Returns current image as JPEG data URL from display cache |
 | `get_full_frame` | Returns current image as full-resolution JPEG data URL, with STF stretch applied; cached after first call |
-| `get_blink_frame` | Returns a blink frame as JPEG data URL from blink cache (by index + resolution) |
-| `get_blink_cache_status` | Returns blink cache build status: idle / building / ready |
-| `start_background_cache` | Spawns background task to build display cache and both blink caches |
-| `get_keywords` | Returns all keywords for current frame as a keyed map |
 | `get_histogram` | Computes and returns histogram bins + stats for current frame (per-channel for RGB) |
+| `get_keywords` | Returns all keywords for current frame as a keyed map |
 | `get_pixel` | Returns raw pixel value(s) at source coordinates (x, y) from the raw image buffer |
-| `debug_buffer_info` | Returns buffer metadata including display_width and color_space |
+| `get_session` | Returns current session state (directory, file list, current frame) |
+| `list_plugins` | Returns list of registered plugin names |
+| `start_background_cache` | Spawns background task to build display cache and both blink caches |
 
 ---
 
@@ -403,25 +428,26 @@ When `SelectDirectory` is called via the pcode console or UI, the frontend now i
 
 | Plugin | Category | Status |
 |---|---|---|
-| SelectDirectory | File Management | ✅ Complete |
+| AddKeyword | Keyword | ✅ Complete |
+| AutoStretch | Processing | ✅ Complete (mono and RGB, display-res only, raw buffer preserved) |
+| CacheFrames | Blink | ✅ Complete (Rayon parallel, both resolutions) |
+| ClearSession | Session | ✅ Complete |
+| CopyKeyword | Keyword | ✅ Complete |
+| DeleteKeyword | Keyword | ✅ Complete |
+| GetHistogram | Analysis | ✅ Complete (mono and RGB per-channel, true median) |
+| ListKeywords | Keyword | ✅ Complete |
+| ModifyKeyword | Keyword | ✅ Complete (optional comment argument) |
 | ReadAllFITFiles | I/O Reader | ✅ Complete (sequential only) |
-| ReadAllXISFFiles | I/O Reader | ✅ Complete |
-| ReadAllTIFFFiles | I/O Reader | ✅ Complete (U8, U16, U32→U16, F32) |
 | ReadAllFiles | I/O Reader | ✅ Complete (FITS + XISF + TIFF from same directory) |
-| WriteAllXISFFiles | I/O Writer | ✅ Complete (uncompressed default; compress=true for LZ4HC) |
+| ReadAllTIFFFiles | I/O Reader | ✅ Complete (U8, U16, U32→U16, F32) |
+| ReadAllXISFFiles | I/O Reader | ✅ Complete |
+| RunMacro | Scripting | ✅ Complete |
+| SelectDirectory | File Management | ✅ Complete |
+| SetFrame | Navigation | ✅ Complete |
 | WriteAllFITFiles | I/O Writer | ✅ Complete (creates proper FITS files from any source format) |
 | WriteAllTIFFFiles | I/O Writer | ✅ Complete (AstroTIFF keyword embedding) |
+| WriteAllXISFFiles | I/O Writer | ✅ Complete (uncompressed default; compress=true for LZ4HC) |
 | WriteCurrentFiles | I/O Writer | ✅ Complete (writes back to source path in source format) |
-| AddKeyword | Keyword | ✅ Complete |
-| DeleteKeyword | Keyword | ✅ Complete |
-| ModifyKeyword | Keyword | ✅ Complete (optional comment argument) |
-| CopyKeyword | Keyword | ✅ Complete |
-| AutoStretch | Processing | ✅ Complete (mono and RGB, display-res only, raw buffer preserved) |
-| SetFrame | Navigation | ✅ Complete |
-| ClearSession | Session | ✅ Complete |
-| CacheFrames | Blink | ✅ Complete (Rayon parallel, both resolutions) |
-| ListKeywords | Keyword | ✅ Complete |
-| GetHistogram | Analysis | ✅ Complete (mono and RGB per-channel, true median) |
 
 ---
 
@@ -429,20 +455,20 @@ When `SelectDirectory` is called via the pcode console or UI, the frontend now i
 
 | Field | Purpose |
 |---|---|
-| `theme` | Active theme (dark / light / matrix), persisted to localStorage |
 | `activePanel` | Currently open sidebar panel |
-| `zoomLevel` | Current zoom level |
-| `frameRefreshToken` | Incremented to trigger viewer frame reload |
-| `viewerClearToken` | Incremented to clear viewer and restore starfield |
-| `consoleExpanded` | Whether console history is expanded |
-| `blinkImageUrl` | Current blink frame data URL (null when not in blink mode) |
 | `blinkCached` | Whether blink cache has been built |
 | `blinkCaching` | Whether blink cache build is in progress |
-| `blinkPlaying` | Whether blink is actively playing |
-| `blinkTabActive` | Whether the Blink tab is currently selected |
+| `blinkImageUrl` | Current blink frame data URL (null when not in blink mode) |
 | `blinkModeActive` | Whether viewer is in blink display mode (true while on Blink tab including paused) |
+| `blinkPlaying` | Whether blink is actively playing |
 | `blinkResolution` | Currently selected blink resolution ('12' = 12.5%, '25' = 25%) |
+| `blinkTabActive` | Whether the Blink tab is currently selected |
+| `consoleExpanded` | Whether console history is expanded |
+| `frameRefreshToken` | Incremented to trigger viewer frame reload |
 | `keywordModalOpen` | Whether the keyword modal dialog is open |
+| `theme` | Active theme (dark / light / matrix), persisted to localStorage |
+| `viewerClearToken` | Incremented to clear viewer and restore starfield |
+| `zoomLevel` | Current zoom level |
 
 ---
 
@@ -470,5 +496,6 @@ When `SelectDirectory` is called via the pcode console or UI, the frontend now i
 | Phase 2 | ✅ Complete | Display cache, AutoStretch, blink engine, histogram, keywords, UI file browser, pixel tracking, WCS, zoom, pan, full-res cache, canvas viewer |
 | Phase 3 | ✅ Complete | photyx-xisf crate (reader + writer), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllTIFFFiles, ReadAllFiles, RGB display/histogram, background display cache |
 | Phase 4 | ✅ Complete | Keyword plugins, WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit, blink cache quality, relative path resolution, window resize fix, pwd command |
-| Phase 5-10 | ⬜ Not started | |
+| Phase 5 | 🔄 Underway | pcode interpreter, RunMacro, variable substitution, Log command, console expansion; macro editor UI, conditionals, async dispatch remaining |
+| Phase 6-10 | ⬜ Not started | |
 | Deferred | ⬜ Parked | Full keyword UI, PNG/JPEG readers/writers, debayering, Auto-STF toolbar toggle |
