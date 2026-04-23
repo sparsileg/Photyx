@@ -176,6 +176,15 @@
         }
         if (status === 'building') {
             notifications.info('Cache is being built in the background, please wait…');
+            // Poll until complete then notify
+            const poll = setInterval(async () => {
+                const s = await invoke<string>('get_blink_cache_status');
+                if (s === 'ready') {
+                    clearInterval(poll);
+                    ui.setBlinkCached(true);
+                    notifications.success('Caching complete. Ready for operation.');
+                }
+            }, 500);
             return false;
         }
         return await buildCache();

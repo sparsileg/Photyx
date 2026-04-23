@@ -233,11 +233,11 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
             .build()
             .expect("Failed to build thread pool");
 
-        for &(res_name, max_w) in &[("display", 1200usize), ("12", 376usize), ("25", 752usize)] {
-            // Collect snapshot
-            let (_file_list, snapshots) = {
+        // ── Pass 1: Display cache (raw pixels → STF → 1200px JPEG) ──────────
+        {
+            let snapshots = {
                 let ctx = state_arc.context.lock().expect("context lock poisoned");
-                let snapshots: Vec<_> = ctx.file_list.iter().filter_map(|path| {
+                let snaps: Vec<_> = ctx.file_list.iter().filter_map(|path| {
                     let buf = ctx.image_buffers.get(path)?;
                     let pixels = buf.pixels.as_ref()?;
                     use crate::context::PixelData;
@@ -248,14 +248,14 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
                     };
                     Some((path.clone(), buf.width as usize, buf.height as usize, snap))
                 }).collect();
-                (ctx.file_list.clone(), snapshots)
+                snaps
             };
 
-            // Process in parallel using dedicated pool
+            const MAX_DISPLAY_W: usize = 1200;
             let results: Vec<(String, Vec<u8>)> = pool.install(|| {
                 use rayon::prelude::*;
                 snapshots.par_iter().filter_map(|(path, src_w, src_h, pixels)| {
-                    let step = if *src_w > max_w { (src_w + max_w - 1) / max_w } else { 1 };
+                    let step = if *src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
                     let disp_w = src_w / step;
                     let disp_h = src_h / step;
                     let pixel_count = disp_w * disp_h;
@@ -341,19 +341,51 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
                 }).collect()
             });
 
-            // Store results
+            {
+                let mut ctx = state_arc.context.lock().expect("context lock poisoned");
+                for (p, j) in &results {
+                    // Only insert if not already in display cache (don't overwrite user-triggered AutoStretch)
+                    ctx.display_cache.entry(p.clone()).or_insert_with(|| j.clone());
+                }
+                // Note: display_width is intentionally NOT set here.
+                // It is set exclusively by AutoStretch so commands.ts
+                // can use display_width == 0 to detect uncached frames.
+            }
+            info!("Background cache: display complete");
+        }
+
+        // ── Passes 2 & 3: Blink caches — downsample from display cache JPEG ──
+        for &(res_name, target_w) in &[("12", 376u32), ("25", 752u32)] {
+            let display_snapshots: Vec<(String, Vec<u8>)> = {
+                let ctx = state_arc.context.lock().expect("context lock poisoned");
+                ctx.file_list.iter().filter_map(|path| {
+                    let jpeg = ctx.display_cache.get(path)?.clone();
+                    Some((path.clone(), jpeg))
+                }).collect()
+            };
+
+            let results: Vec<(String, Vec<u8>)> = pool.install(|| {
+                use rayon::prelude::*;
+                display_snapshots.par_iter().filter_map(|(path, jpeg_bytes)| {
+                    // Decode the display cache JPEG
+                    let img = image::load_from_memory(jpeg_bytes).ok()?;
+                    // Resize to target width maintaining aspect ratio
+                    let src_w = img.width();
+                    let src_h = img.height();
+                    let target_h = (src_h as f32 * target_w as f32 / src_w as f32).round() as u32;
+                    let resized = img.resize(target_w, target_h, image::imageops::FilterType::Triangle);
+                    // Encode to JPEG
+                    let mut buf = std::io::Cursor::new(Vec::new());
+                    use image::codecs::jpeg::JpegEncoder;
+                    JpegEncoder::new_with_quality(&mut buf, 75)
+                        .encode_image(&resized).ok()?;
+                    Some((path.clone(), buf.into_inner()))
+                }).collect()
+            });
+
             {
                 let mut ctx = state_arc.context.lock().expect("context lock poisoned");
                 match res_name {
-                    "display" => {
-                        for (p, j) in &results {
-                            // Only insert if not already in display cache (don't overwrite user-triggered AutoStretch)
-                            ctx.display_cache.entry(p.clone()).or_insert_with(|| j.clone());
-                        }
-                        // Note: display_width is intentionally NOT set here.
-                        // It is set exclusively by AutoStretch so commands.ts
-                        // can use display_width == 0 to detect uncached frames.
-                    }
                     "12" => { ctx.blink_cache_12.clear(); for (p, j) in results { ctx.blink_cache_12.insert(p, j); } }
                     _    => { ctx.blink_cache_25.clear(); for (p, j) in results { ctx.blink_cache_25.insert(p, j); } }
                 }

@@ -195,8 +195,8 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
             Some(PixelData::U8(data))
         }
         BitDepth::U16 => {
-            // Read as i32 to handle both signed and unsigned 16-bit FITS conventions
-            // (BITPIX=16 with or without BZERO=32768)
+            // Read as i32 — cfitsio applies BZERO=32768 automatically, producing
+            // values 0-65535 which fit in i32 but not i16. Clamp and convert to u16.
             let data: Vec<i32> = hdu.read_image(&mut fitsfile)
                 .map_err(|e| format!("Cannot read pixel data: {}", e))?;
             if data.is_empty() { return Err("Pixel data is empty".to_string()); }

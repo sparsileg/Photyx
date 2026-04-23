@@ -1259,13 +1259,14 @@ curl -X POST http://localhost:7171/api/macro/run \
 | **Phase 1** | Tauri + Svelte + Rust project scaffold, plugin host, FITS reader plugin, basic single-image viewer, notification bar, logging |
 | **Phase 2** | Blink engine, stretch pipeline (Auto-STF), pyramid cache, zoom, keyboard shortcuts, Info Panel, pixel tracking |
 | **Phase 3** | `photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, ReadAllTIFFFiles, RGB display/histogram, background display cache, true median histogram |
-| **Phase 4** | Full keyword management UI, keyword plugins, PNG/JPEG readers and writers, TIFF writer, debayering, Auto-STF toolbar toggle |
+| **Phase 4** | keyword plugins, TIFF writer, WriteCurrentFiles |
 | **Phase 5** | pcode interpreter + macro editor UI, save/load macros, conditional logic, console, Quick Launch Panel |
 | **Phase 6** | REST API (Axum), CLI access, external program integration, authentication middleware stub |
 | **Phase 7** | Analysis plugins as WASM (FWHM, star count, eccentricity, contour), analysis results windows; AnalyzeFrames Phase 7 metrics unlocked |
 | **Phase 8** | Native built-in analysis plugins, benchmarking vs. WASM versions |
 | **Phase 9** | Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations |
 | **Phase 10** | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI |
+| **Deferred** | Full keyword management UI, PNG/JPEG readers and writers, debayering, Auto-STF toolbar toggle |
 
 ---
 

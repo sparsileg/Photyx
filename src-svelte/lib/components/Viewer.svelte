@@ -189,17 +189,29 @@
     let viewerWidth = $state(0);
     let viewerHeight = $state(0);
 
+    let viewerWrap = $state<HTMLDivElement>();
+
     function resize() {
-        if (!starCanvas) return;
-        starCanvas.width  = starCanvas.offsetWidth;
-        starCanvas.height = starCanvas.offsetHeight;
-        viewerWidth  = starCanvas.offsetWidth;
-        viewerHeight = starCanvas.offsetHeight;
-        stars = Array.from({ length: STAR_COUNT }, () => makeStar(starCanvas!.width, starCanvas!.height));
+        const container = viewerWrap;
+        if (!container) return;
+        const w = container.offsetWidth;
+        const h = container.offsetHeight;
+        if (w === 0 || h === 0) return;
+
+        viewerWidth  = w;
+        viewerHeight = h;
+
+        if (starCanvas) {
+            starCanvas.width  = w;
+            starCanvas.height = h;
+            starCtx = starCanvas.getContext('2d');
+            stars = Array.from({ length: STAR_COUNT }, () => makeStar(w, h));
+        }
 
         if (imageCanvas) {
-            imageCanvas.width  = starCanvas.offsetWidth;
-            imageCanvas.height = starCanvas.offsetHeight;
+            imageCanvas.width  = w;
+            imageCanvas.height = h;
+            imageCtx = imageCanvas.getContext('2d');
             if (currentBitmap) renderBitmap(currentBitmap);
         }
     }
@@ -578,6 +590,7 @@
 
 <div
     id="viewer-wrap"
+    bind:this={viewerWrap}
     onmousedown={onViewerMouseDown}
     onmousemove={onViewerMouseMove}
     onmouseup={onViewerMouseUp}

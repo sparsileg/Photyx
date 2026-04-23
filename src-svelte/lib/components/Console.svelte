@@ -27,8 +27,9 @@
 
     const ALL_COMMANDS = [
         'SelectDirectory','ListFiles','FilterByKeyword',
-        'ReadAllFITFiles','ReadAllXISFFiles','ReadAllTIFFFiles',
-        'WriteAllFITFiles','WriteAllXISFFiles','WriteAllTIFFFiles','WritePNG','WriteJPEG',
+        'ReadAllFITFiles','ReadAllXISFFiles','ReadAllTIFFFiles','ReadAllFiles',
+        'WriteAllFITFiles','WriteAllXISFFiles','WriteAllTIFFFiles','WriteCurrentFiles',
+        'WritePNG','WriteJPEG',
         'AddKeyword','DeleteKeyword','ModifyKeyword','CopyKeyword','ListKeywords','GetKeyword',
         'GetHistogram',
         'GetImageProperty','GetSessionProperty','Test',
@@ -58,6 +59,8 @@
         set:                '<varname> = <value>',
         setzoom:            'level=',
         writeallfitfiles:   'destination=  overwrite=',
+        readallfiles:       '',
+        writecurrentfiles:  '',
         writealltifffiles:  'destination=  overwrite=',
         writeallxisffiles:  'destination=  overwrite=',
         writejpeg:          'filename=  destination=  quality=',
@@ -93,8 +96,8 @@
         help: () => {
             append('Photyx pcode v1.0  —  commands:', 'output');
             append('  File:     SelectDirectory ListFiles FilterByKeyword', 'output');
-            append('  I/O:      ReadAllFITFiles ReadAllXISFFiles ReadAllTIFFFiles', 'output');
-            append('            WriteAllFITFiles WriteAllXISFFiles WriteAllTIFFFiles WritePNG WriteJPEG', 'output');
+            append('  I/O:      ReadAllFITFiles ReadAllXISFFiles ReadAllTIFFFiles ReadAllFiles', 'output');
+            append('            WriteAllFITFiles WriteAllXISFFiles WriteAllTIFFFiles WriteCurrentFiles WritePNG WriteJPEG', 'output');
             append('  Keyword:  AddKeyword DeleteKeyword ModifyKeyword CopyKeyword ListKeywords GetKeyword', 'output');
             append('  Query:    GetImageProperty GetSessionProperty Test', 'output');
             append('  Process:  AutoStretch CropImage BinImage DebayerImage', 'output');
