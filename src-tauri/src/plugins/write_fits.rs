@@ -8,7 +8,6 @@ use fitsio::FitsFile;
 use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, BitDepth, ImageBuffer, PixelData};
 use fitsio::images::{ImageDescription, ImageType};
-use fitsio::images::WriteImage;
 pub struct WriteFITS;
 
 impl PhotonPlugin for WriteFITS {
@@ -36,9 +35,11 @@ impl PhotonPlugin for WriteFITS {
     }
 
     fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        let destination = args.get("destination")
-            .ok_or_else(|| PluginError::missing_arg("destination"))?
-            .clone();
+        let destination = crate::utils::resolve_path(
+            args.get("destination")
+                .ok_or_else(|| PluginError::missing_arg("destination"))?,
+            ctx.active_directory.as_deref(),
+        );
 
         let overwrite = args.get("overwrite")
             .map(|v| v == "true")

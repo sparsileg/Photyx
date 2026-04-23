@@ -5,6 +5,7 @@ mod plugin;
 mod context;
 mod plugins;
 mod logging;
+mod utils;
 
 use std::sync::{Arc, Mutex};
 use tauri::{Manager, State};

@@ -41,9 +41,11 @@ impl PhotonPlugin for WriteXISF {
     }
 
     fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        let destination = args.get("destination")
-            .ok_or_else(|| PluginError::new("MISSING_ARG", "destination argument required"))?
-            .clone();
+        let destination = crate::utils::resolve_path(
+            args.get("destination")
+                .ok_or_else(|| PluginError::missing_arg("destination"))?,
+            ctx.active_directory.as_deref(),
+        );
 
         let overwrite = args.get("overwrite")
             .map(|v| v == "true")

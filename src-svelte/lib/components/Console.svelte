@@ -37,7 +37,7 @@
         'BlinkSequence','CacheFrames','SetZoom',
         'ComputeFWHM','CountStars','ComputeEccentricity','MedianValue','ContourPlot',
         'Set','Print','Echo','CountFiles','RunMacro',
-        'Help','Clear','Version',
+        'Help','Clear','Version' 'pwd',
     ];
 
     const ARG_HINTS: Record<string, string> = {
@@ -53,7 +53,7 @@
         gethistogram:       '',
         getimageproperty:   'property=',
         getsessionproperty: 'property=',
-        modifykeyword:      'name=  value=',
+        modifykeyword:      'name=  value= comment=',
         runmacro:           'filename=',
         selectdirectory:    'path=',
         set:                '<varname> = <value>',
@@ -93,6 +93,11 @@
     }
 
     const CLIENT_COMMANDS: Record<string, (args: Record<string, string>) => boolean> = {
+        pwd: () => {
+            const dir = $session.activeDirectory ?? '(no directory selected)';
+            append(dir, 'output');
+            return true;
+        },
         help: () => {
             append('Photyx pcode v1.0  —  commands:', 'output');
             append('  File:     SelectDirectory ListFiles FilterByKeyword', 'output');
@@ -104,6 +109,7 @@
             append('  View:     BlinkSequence CacheFrames SetZoom', 'output');
             append('  Analysis: ComputeFWHM CountStars ComputeEccentricity MedianValue ContourPlot', 'output');
             append('  Script:   Set Print Echo CountFiles RunMacro', 'output');
+            append('  Console:  pwd Help Clear Version', 'output');
             return true;
         },
         clear: () => {
@@ -160,6 +166,9 @@
     async function syncSessionState(cmd: string, args: Record<string, string>, output: string | null) {
         if (cmd === 'selectdirectory' && args.path) {
             session.setDirectory(args.path);
+            session.setFileList([]);
+            session.update(s => ({ ...s, loadedImages: {} }));
+            ui.requestViewerClear();
             notifications.info(`Directory: ${args.path}`);
         }
         if (cmd === 'readallfitfiles' || cmd === 'readallxisffiles' || cmd === 'readalltifffiles') {

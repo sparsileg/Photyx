@@ -149,6 +149,13 @@ impl PhotonPlugin for ModifyKeyword {
                 description: "New keyword value".to_string(),
                 default:     None,
             },
+            ParamSpec {
+                name:        "comment".to_string(),
+                param_type:  ParamType::String,
+                required:    false,
+                description: "Optional keyword comment (max ~65 chars for FITS)".to_string(),
+                default:     None,
+            },
         ]
     }
 
@@ -160,6 +167,7 @@ impl PhotonPlugin for ModifyKeyword {
         let value = args.get("value")
             .ok_or_else(|| PluginError::missing_arg("value"))?
             .clone();
+        let comment = args.get("comment").cloned();
 
         if name.is_empty() {
             return Err(PluginError::invalid_arg("name", "keyword name cannot be empty"));
@@ -174,6 +182,9 @@ impl PhotonPlugin for ModifyKeyword {
         for buffer in ctx.image_buffers.values_mut() {
             if let Some(kw) = buffer.keywords.get_mut(&name) {
                 kw.value = value.clone();
+                if let Some(ref c) = comment {
+                    kw.comment = Some(c.clone());
+                }
                 modified += 1;
             }
         }

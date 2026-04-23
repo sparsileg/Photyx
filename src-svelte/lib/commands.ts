@@ -56,6 +56,9 @@ export async function selectDirectory() {
     }
 
     session.setDirectory(path);
+    session.setFileList([]);
+    session.update(s => ({ ...s, loadedImages: {} }));
+    ui.clearViewer();
     notifications.info(`Directory: ${path}`);
 }
 

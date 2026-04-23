@@ -6,6 +6,7 @@ use crate::plugin::{ArgMap, ParamSpec, PhotonPlugin, PluginError, PluginOutput};
 use std::collections::HashMap;
 use std::path::Path;
 use tiff::decoder::{Decoder, DecodingResult};
+use tiff::tags::Tag;
 use tiff::ColorType;
 use tracing::{info, warn};
 
@@ -146,6 +147,35 @@ pub(crate) fn read_tiff_file(path: &str) -> Result<ImageBuffer, String> {
         "FILENAME".to_string(),
         KeywordEntry::new("FILENAME", &filename, Some("Source filename")),
     );
+
+    // Parse AstroTIFF keywords from ImageDescription tag (§5.4)
+    // Format: NAME    = VALUE / comment  (one per line)
+    if let Ok(desc) = decoder.get_tag_ascii_string(Tag::ImageDescription) {
+        for line in desc.lines() {
+            let line = line.trim();
+            if line.is_empty() { continue; }
+            // Must contain '=' at position 8 (FITS-style fixed format)
+            if line.len() < 10 || &line[8..9] != "=" { continue; }
+            let name = line[..8].trim().to_uppercase();
+            if name.is_empty() { continue; }
+            let rest = line[9..].trim();
+            let (value, comment) = if let Some(slash) = rest.find(" /") {
+                (rest[..slash].trim().to_string(), Some(rest[slash+2..].trim().to_string()))
+            } else {
+                (rest.trim().to_string(), None)
+            };
+            // Strip surrounding quotes from string values
+            let value = if value.starts_with('\'') && value.ends_with('\'') {
+                value[1..value.len()-1].trim_end().to_string()
+            } else {
+                value
+            };
+            keywords.insert(
+                name.clone(),
+                KeywordEntry::new(&name, &value, comment.as_deref()),
+            );
+        }
+    }
 
     Ok(ImageBuffer {
         filename,

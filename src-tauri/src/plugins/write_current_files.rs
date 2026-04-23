@@ -7,7 +7,6 @@ use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
 use super::write_fits::write_fits_inplace;
 use super::write_tiff::write_tiff_file;
-use photyx_xisf::{WriteOptions};
 
 pub struct WriteCurrentFiles;
 
