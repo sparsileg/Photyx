@@ -1,8 +1,8 @@
 # Photyx — Specification & Requirements Document
 
-**Version:** 15
-**Date:** 22 April 2026, 7:24pm
-**Status:** Active Development — Phase 3 complete, Phase 4 starting
+**Version:** 16
+**Date:** 23 April 2026 6:42am
+**Status:** Active Development — Phase 4 complete, Phase 5 starting
 
 ---
 
@@ -466,16 +466,18 @@ The following table defines all pcode commands in the initial release. Arguments
 | ReadAllFITFiles | I/O | Reads all FITS files in the active directory into the buffer pool | — |
 | ReadAllXISFFiles | I/O | Reads all XISF files in the active directory | — |
 | ReadAllTIFFFiles | I/O | Reads all TIFF files in the active directory | — |
+| ReadAllFiles | I/O | Reads all supported image files (FITS + XISF + TIFF) in the active directory | — |
 | WriteAllFITFiles | I/O | Writes all buffered images as FITS files | destination, [overwrite] |
 | WriteAllXISFFiles | I/O | Writes all buffered images as XISF files | destination, [overwrite] |
 | WriteAllTIFFFiles | I/O | Writes all buffered images as TIFF files | destination, [overwrite] |
+| WriteCurrentFiles | I/O | Writes all buffered images back to their source paths in their original format | — |
 | WritePNG | I/O | Writes a single image as PNG | filename, destination |
 | WriteJPEG | I/O | Writes a single image as JPEG | filename, destination, [quality] |
 | ListFiles | File Management | Lists files in the active directory | [filter] |
 | FilterByKeyword | File Management | Filters the active file list by keyword value | name, value |
 | AddKeyword | Keyword | Adds a keyword to all buffered images | name, value, [comment] |
 | DeleteKeyword | Keyword | Removes a keyword from all buffered images | name |
-| ModifyKeyword | Keyword | Changes the value of an existing keyword | name, value |
+| ModifyKeyword | Keyword | Changes the value of an existing keyword | name, value, [comment] |
 | CopyKeyword | Keyword | Copies a keyword value to a new keyword name | from, to |
 | ListKeywords | Keyword | Lists all keywords for the current image | — |
 | GetKeyword | Interrogation | Retrieves a keyword value into a variable; see Section 7.12 for full keyword list | name |
@@ -503,6 +505,7 @@ The following table defines all pcode commands in the initial release. Arguments
 | CountFiles | Scripting | Returns the number of files in the current list | — |
 | RunMacro | Scripting | Executes a saved .phs macro file | filename |
 | DefineMacro | Scripting | Begins the definition of a named reusable macro; supports positional ($1, $2) and named arguments | name |
+| pwd | Console | Prints the current active directory to the console (client-side only) | — |
 
 ### 7.9 Interactive Console
 
@@ -1259,7 +1262,7 @@ curl -X POST http://localhost:7171/api/macro/run \
 | **Phase 1** | Tauri + Svelte + Rust project scaffold, plugin host, FITS reader plugin, basic single-image viewer, notification bar, logging |
 | **Phase 2** | Blink engine, stretch pipeline (Auto-STF), pyramid cache, zoom, keyboard shortcuts, Info Panel, pixel tracking |
 | **Phase 3** | `photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, ReadAllTIFFFiles, RGB display/histogram, background display cache, true median histogram |
-| **Phase 4** | keyword plugins, TIFF writer, WriteCurrentFiles |
+| **Phase 4** | keyword plugins (Add/Delete/Modify/Copy), WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit handling, blink cache quality improvement, relative path resolution, window resize fix, pwd console command |
 | **Phase 5** | pcode interpreter + macro editor UI, save/load macros, conditional logic, console, Quick Launch Panel |
 | **Phase 6** | REST API (Axum), CLI access, external program integration, authentication middleware stub |
 | **Phase 7** | Analysis plugins as WASM (FWHM, star count, eccentricity, contour), analysis results windows; AnalyzeFrames Phase 7 metrics unlocked |
@@ -1316,5 +1319,5 @@ Automated tests are required for each significant module, crate, and plugin. Tes
 ---
 
 *Document prepared by: Development Team*
-*Previous version: 14*
-*Next review: Upon completion of Phase 4*
+*Previous version: 15*
+*Next review: Upon completion of Phase 5*

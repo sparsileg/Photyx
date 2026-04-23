@@ -1,8 +1,8 @@
 # Photyx — Developer Notes
 
-**Version:** 15
-**Last updated:** 22 April 2026, 7:24pm
-**Status:** Active development — Phase 3 complete, Phase 4 starting
+**Version:** 16
+**Last updated:** 23 April 2026 6:46am
+**Status:** Active development — Phase 4 complete, Phase 5 starting
 
 ---
 
@@ -350,6 +350,34 @@ U32 TIFFs are downconverted to U16 by taking the high 16 bits (`v >> 16`). This 
 
 Already-stretched images (e.g., 8-bit exported TIFFs from PixInsight or similar tools) will appear blown out when AutoStretch is applied, because AutoStretch assumes linear input. This is expected behavior, not a bug.
 
+### 3.21 FITS Writer — Signed/Unsigned 16-bit
+
+FITS `BITPIX = 16` is signed 16-bit by convention. To write unsigned 16-bit data (u16), Photyx casts to `i16` before writing and adds `BZERO = 32768` / `BSCALE = 1` keywords so compliant readers reconstruct the correct unsigned values. On read-back, Photyx reads as `i32` (wide enough to hold the BZERO-offset values 0–65535) and clamps to u16. This handles both ASIAir-style unsigned files and other signed BITPIX=16 files correctly.
+
+### 3.22 Blink Cache Quality
+
+The background cache builder now builds blink caches (12.5% and 25%) by decoding the already-stretched display cache JPEG and resizing it using a Triangle filter, rather than processing raw pixel data independently. This ensures blink frames are visually consistent with the display cache — same stretch parameters, same tone curve. Building is faster since JPEG decode + resize is much cheaper than raw pixel STF computation.
+
+### 3.23 AstroTIFF Keyword Round-Trip
+
+`read_tiff_file` now parses the TIFF `ImageDescription` tag (tag 270) on load. Keywords are stored in FITS-style `NAME    = VALUE / comment` format, one per line. On read, lines are parsed by checking for `=` at position 8, then splitting on ` /` for the comment. This completes the AstroTIFF keyword round-trip: keywords written by `write_tiff_file` survive a reload.
+
+### 3.24 Relative Path Resolution
+
+Write plugins (`WriteAllFITFiles`, `WriteAllXISFFiles`, `WriteAllTIFFFiles`) now resolve relative `destination` paths against `ctx.active_directory` via `crate::utils::resolve_path()`. A new `src-tauri/src/utils.rs` module holds this shared utility.
+
+### 3.25 Window Resize Fix
+
+The `resize()` function in `Viewer.svelte` was measuring dimensions from `starCanvas.offsetWidth/offsetHeight`, which returns 0 when the star canvas is hidden (i.e. when an image is loaded). Fixed to measure from the `viewer-wrap` container div instead, which is always visible. The function also re-acquires the 2D rendering context for both canvases after resize, since setting `canvas.width` or `canvas.height` clears the canvas and invalidates the context.
+
+### 3.26 SelectDirectory Frontend Sync
+
+When `SelectDirectory` is called via the pcode console or UI, the frontend now immediately clears the file list, loaded images, and viewer in the Svelte session store. Previously the stale file list from the previous session remained visible in the file browser until a new read command was run.
+
+### 3.27 pwd Console Command
+
+`pwd` is implemented as a client-side console command in `Console.svelte`. It reads `$session.activeDirectory` from the store and prints it directly — no backend IPC call required.
+
 ---
 
 ## 4. Tauri Commands (Implemented)
@@ -381,6 +409,13 @@ Already-stretched images (e.g., 8-bit exported TIFFs from PixInsight or similar 
 | ReadAllTIFFFiles | I/O Reader | ✅ Complete (U8, U16, U32→U16, F32) |
 | ReadAllFiles | I/O Reader | ✅ Complete (FITS + XISF + TIFF from same directory) |
 | WriteAllXISFFiles | I/O Writer | ✅ Complete (uncompressed default; compress=true for LZ4HC) |
+| WriteAllFITFiles | I/O Writer | ✅ Complete (creates proper FITS files from any source format) |
+| WriteAllTIFFFiles | I/O Writer | ✅ Complete (AstroTIFF keyword embedding) |
+| WriteCurrentFiles | I/O Writer | ✅ Complete (writes back to source path in source format) |
+| AddKeyword | Keyword | ✅ Complete |
+| DeleteKeyword | Keyword | ✅ Complete |
+| ModifyKeyword | Keyword | ✅ Complete (optional comment argument) |
+| CopyKeyword | Keyword | ✅ Complete |
 | AutoStretch | Processing | ✅ Complete (mono and RGB, display-res only, raw buffer preserved) |
 | SetFrame | Navigation | ✅ Complete |
 | ClearSession | Session | ✅ Complete |
@@ -434,4 +469,6 @@ Already-stretched images (e.g., 8-bit exported TIFFs from PixInsight or similar 
 | Phase 1 | ✅ Complete | Scaffold, plugin host, FITS reader, notification bar, logging |
 | Phase 2 | ✅ Complete | Display cache, AutoStretch, blink engine, histogram, keywords, UI file browser, pixel tracking, WCS, zoom, pan, full-res cache, canvas viewer |
 | Phase 3 | ✅ Complete | photyx-xisf crate (reader + writer), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllTIFFFiles, ReadAllFiles, RGB display/histogram, background display cache |
-| Phase 4-10 | ⬜ Not started | |
+| Phase 4 | ✅ Complete | Keyword plugins, WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit, blink cache quality, relative path resolution, window resize fix, pwd command |
+| Phase 5-10 | ⬜ Not started | |
+| Deferred | ⬜ Parked | Full keyword UI, PNG/JPEG readers/writers, debayering, Auto-STF toolbar toggle |
