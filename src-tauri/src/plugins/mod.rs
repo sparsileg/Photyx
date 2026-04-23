@@ -15,6 +15,7 @@ pub mod keywords;
 pub mod list_keywords;
 pub mod write_fits;
 pub mod write_tiff;
+pub mod run_macro;
 pub mod write_current_files;
 pub mod get_histogram;
 

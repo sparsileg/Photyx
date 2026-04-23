@@ -37,7 +37,7 @@
         'BlinkSequence','CacheFrames','SetZoom',
         'ComputeFWHM','CountStars','ComputeEccentricity','MedianValue','ContourPlot',
         'Set','Print','Echo','CountFiles','RunMacro',
-        'Help','Clear','Version' 'pwd',
+        'Help','Clear','Version','pwd',
     ];
 
     const ARG_HINTS: Record<string, string> = {
@@ -171,11 +171,12 @@
             ui.requestViewerClear();
             notifications.info(`Directory: ${args.path}`);
         }
-        if (cmd === 'readallfitfiles' || cmd === 'readallxisffiles' || cmd === 'readalltifffiles') {
+        if (cmd === 'readallfitfiles' || cmd === 'readallxisffiles' || cmd === 'readalltifffiles'
+            || cmd === 'readallfiles' || cmd === 'runmacro') {
             if (output) notifications.success(output);
             try {
                 const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
-                session.setDirectory(s.activeDirectory);
+                session.setDirectory(s.activeDirectory ?? '');
                 session.setFileList(s.fileList);
             } catch (e) {
                 notifications.error(`Session sync failed: ${e}`);
@@ -260,7 +261,7 @@
 
 <div id="console-panel" class:expanded={$ui.consoleExpanded}>
     <div class="console-header" onclick={() => ui.toggleConsole()}>
-        <span class="console-title">pcode console {$ui.consoleExpanded ? '▾' : '▴'}</span>
+        <span class="console-title">pcode console {$ui.consoleExpanded ? '▾ expanded' : '▴'}</span>
         <div class="console-actions">
             <button class="console-action-btn" onclick={(e) => { e.stopPropagation(); lines = []; }}>Clear</button>
         </div>

@@ -505,6 +505,7 @@ The following table defines all pcode commands in the initial release. Arguments
 | CountFiles | Scripting | Returns the number of files in the current list | — |
 | RunMacro | Scripting | Executes a saved .phs macro file | filename |
 | DefineMacro | Scripting | Begins the definition of a named reusable macro; supports positional ($1, $2) and named arguments | name |
+| Log | Scripting | Writes collected macro output to a file | path, [append] |
 | pwd | Console | Prints the current active directory to the console (client-side only) | — |
 
 ### 7.9 Interactive Console
@@ -1263,7 +1264,7 @@ curl -X POST http://localhost:7171/api/macro/run \
 | **Phase 2** | Blink engine, stretch pipeline (Auto-STF), pyramid cache, zoom, keyboard shortcuts, Info Panel, pixel tracking |
 | **Phase 3** | `photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, ReadAllTIFFFiles, RGB display/histogram, background display cache, true median histogram |
 | **Phase 4** | keyword plugins (Add/Delete/Modify/Copy), WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit handling, blink cache quality improvement, relative path resolution, window resize fix, pwd console command |
-| **Phase 5** | pcode interpreter + macro editor UI, save/load macros, conditional logic, console, Quick Launch Panel |
+| **Phase 5** | pcode interpreter + macro editor UI, save/load macros, Async dispatch, conditional logic, console, Quick Launch Panel |
 | **Phase 6** | REST API (Axum), CLI access, external program integration, authentication middleware stub |
 | **Phase 7** | Analysis plugins as WASM (FWHM, star count, eccentricity, contour), analysis results windows; AnalyzeFrames Phase 7 metrics unlocked |
 | **Phase 8** | Native built-in analysis plugins, benchmarking vs. WASM versions |

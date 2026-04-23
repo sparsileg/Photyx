@@ -16,6 +16,12 @@ use plugin::registry::PluginRegistry;
 use plugin::{ArgMap, PluginOutput};
 use context::AppContext;
 
+mod pcode;
+
+/// Global registry reference for use by RunMacro and the pcode interpreter
+pub static GLOBAL_REGISTRY: once_cell::sync::OnceCell<Arc<PluginRegistry>> = once_cell::sync::OnceCell::new();
+
+
 // ── Application state ─────────────────────────────────────────────────────────
 
 pub struct PhotoxState {
@@ -58,6 +64,22 @@ fn dispatch_command(
             DispatchResponse { success: false, output: None, error: Some(e.message) }
         }
     }
+}
+
+/// Execute a pcode script string — used by the macro editor Run button
+#[tauri::command]
+fn run_script(
+    script: String,
+    state:  State<PhotoxState>,
+) -> Vec<serde_json::Value> {
+    let mut ctx = state.context.lock().expect("context lock poisoned");
+    let results = pcode::execute_script(&script, &mut ctx, &state.registry, true);
+    results.iter().map(|r| serde_json::json!({
+        "line_number": r.line_number,
+        "command":     r.command,
+        "success":     r.success,
+        "message":     r.message,
+    })).collect()
 }
 
 // ── Tauri command: list registered plugins ────────────────────────────────────
@@ -160,7 +182,9 @@ pub fn run() {
     registry.register(Arc::new(plugins::keywords::CopyKeyword));
     registry.register(Arc::new(plugins::list_keywords::ListKeywords));
     registry.register(Arc::new(plugins::get_histogram::GetHistogram));
+    registry.register(Arc::new(plugins::run_macro::RunMacro));
 
+    let _ = GLOBAL_REGISTRY.set(registry.clone());
     let state = PhotoxState {
         registry,
         context: Mutex::new(AppContext::new()),
@@ -172,6 +196,7 @@ pub fn run() {
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             dispatch_command,
+            run_script,
             list_plugins,
             get_session,
             get_current_frame,

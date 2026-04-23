@@ -50,6 +50,12 @@
     text-align: center;
     pointer-events: none;
     z-index: 5;
+    transition: opacity 0.25s ease;
+}
+
+#viewer-placeholder.faded {
+    opacity: 0;
+    pointer-events: none;
 }
 
 #viewer-placeholder .ph-title {

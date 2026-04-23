@@ -623,7 +623,7 @@
     {/if}
 
     {#if $session.fileList.length === 0}
-        <div id="viewer-placeholder">
+        <div id="viewer-placeholder" class:faded={$ui.consoleExpanded}>
             <div class="ph-title">PHOTYX</div>
             <div class="ph-sub">Select a directory and load files to begin</div>
         </div>

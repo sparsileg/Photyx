@@ -11,16 +11,20 @@
     height: 120px;
     z-index: 50;
     position: relative;
+    transition: width 0.25s ease, height 0.25s ease, font-size 0.25s ease;
 }
 
 #console-panel.expanded {
     position: absolute;
     bottom: 0;
     left: 0;
-    width: 33.333%;
-    height: 50vh;
-    border-top: 1px solid var(--border-color);
-    z-index: 200;
+    width: 100%;
+    height: 60vh;
+    border-top: 2px solid var(--primary-color);
+    z-index: 300;
+    background: color-mix(in srgb, var(--bg-color) 85%, transparent);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
 }
 
 .console-header {
@@ -76,11 +80,15 @@
     padding: 6px 8px;
     font-size: 11px;
     line-height: 1.6;
-    max-height: 48px; /* ~3 lines at 16px line height */
+    max-height: 48px;
+    transition: font-size 0.25s ease;
 }
 
 #console-panel.expanded #console-output {
     max-height: none;
+    font-size: 14px;
+    line-height: 1.7;
+    padding: 10px 14px;
 }
 
 .console-line {
@@ -141,6 +149,11 @@
     font-weight: 700;
     flex: 0 0 auto;
     user-select: none;
+    transition: font-size 0.25s ease;
+}
+
+#console-panel.expanded .console-prompt {
+    font-size: 14px;
 }
 
 #console-input {
@@ -152,6 +165,31 @@
     font-size: 12px;
     color: var(--text-color);
     caret-color: var(--primary-color);
+    transition: font-size 0.25s ease;
+}
+
+#console-panel.expanded #console-input {
+    font-size: 16px;
+}
+
+#console-panel.expanded .console-line {
+    font-size: 16px;
+}
+
+#console-panel.expanded .console-line.info {
+    font-size: 12px;
+}
+
+#console-panel.expanded #tab-hint {
+    font-size: 14px;
+}
+
+#console-panel.expanded .console-title {
+    font-size: 12px;
+}
+
+#console-panel.expanded .console-action-btn {
+    font-size: 12px;
 }
 
 #console-input::placeholder {
