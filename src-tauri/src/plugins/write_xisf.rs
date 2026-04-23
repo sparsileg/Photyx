@@ -126,7 +126,7 @@ impl PhotonPlugin for WriteXISF {
     }
 }
 
-fn buffer_to_xisf_image(
+pub(crate) fn buffer_to_xisf_image(
     buffer: &crate::context::ImageBuffer,
 ) -> Result<XisfImage, String> {
     // Convert Photyx PixelData → photyx_xisf PixelData

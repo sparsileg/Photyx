@@ -190,17 +190,23 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
     let pixels = match &bit_depth {
         BitDepth::U8 => {
             let data: Vec<u8> = hdu.read_image(&mut fitsfile)
-                .unwrap_or_default();
+                .map_err(|e| format!("Cannot read pixel data: {}", e))?;
+            if data.is_empty() { return Err("Pixel data is empty".to_string()); }
             Some(PixelData::U8(data))
         }
         BitDepth::U16 => {
-            let data: Vec<u16> = hdu.read_image(&mut fitsfile)
-                .unwrap_or_default();
-            Some(PixelData::U16(data))
+            // Read as i32 to handle both signed and unsigned 16-bit FITS conventions
+            // (BITPIX=16 with or without BZERO=32768)
+            let data: Vec<i32> = hdu.read_image(&mut fitsfile)
+                .map_err(|e| format!("Cannot read pixel data: {}", e))?;
+            if data.is_empty() { return Err("Pixel data is empty".to_string()); }
+            let data_u16: Vec<u16> = data.iter().map(|&v| v.clamp(0, 65535) as u16).collect();
+            Some(PixelData::U16(data_u16))
         }
         BitDepth::F32 => {
             let data: Vec<f32> = hdu.read_image(&mut fitsfile)
-                .unwrap_or_default();
+                .map_err(|e| format!("Cannot read pixel data: {}", e))?;
+            if data.is_empty() { return Err("Pixel data is empty".to_string()); }
             Some(PixelData::F32(data))
         }
     };

@@ -145,11 +145,18 @@ pub fn run() {
     registry.register(Arc::new(plugins::read_xisf::ReadAllXISFFiles));
     registry.register(Arc::new(plugins::read_all_files::ReadAllFiles));
     registry.register(Arc::new(plugins::write_xisf::WriteAllXISFFiles));
+    registry.register(Arc::new(plugins::write_fits::WriteAllFITFiles));
+    registry.register(Arc::new(plugins::write_tiff::WriteAllTIFFFiles));
+    registry.register(Arc::new(plugins::write_current_files::WriteCurrentFiles));
 
     registry.register(Arc::new(plugins::auto_stretch::AutoStretch));
     registry.register(Arc::new(plugins::set_frame::SetFrame));
     registry.register(Arc::new(plugins::clear_session::ClearSession));
     registry.register(Arc::new(plugins::cache_frames::CacheFrames));
+    registry.register(Arc::new(plugins::keywords::AddKeyword));
+    registry.register(Arc::new(plugins::keywords::DeleteKeyword));
+    registry.register(Arc::new(plugins::keywords::ModifyKeyword));
+    registry.register(Arc::new(plugins::keywords::CopyKeyword));
     registry.register(Arc::new(plugins::list_keywords::ListKeywords));
     registry.register(Arc::new(plugins::get_histogram::GetHistogram));
 

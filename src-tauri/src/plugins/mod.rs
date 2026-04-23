@@ -11,7 +11,11 @@ pub mod auto_stretch;
 pub mod set_frame;
 pub mod clear_session;
 pub mod cache_frames;
+pub mod keywords;
 pub mod list_keywords;
+pub mod write_fits;
+pub mod write_tiff;
+pub mod write_current_files;
 pub mod get_histogram;
 
 
