@@ -1,8 +1,8 @@
 # Photyx — Specification & Requirements Document
 
-**Version:** 17
-**Date:** 23 April 2026 9:33am
-**Status:** Active Development — Phase 5 underway
+**Version:** 18
+**Date:** 24 April 2026 9:43pm
+**Status:** Active Development — Phase 6 underway
 
 ---
 
@@ -104,7 +104,9 @@ The File Browser panel includes a format filter dropdown that controls which fil
 
 The selected filter determines which read plugin(s) are invoked when the Load button is clicked. The filter selection is persisted across sessions via the settings store.
 
-When invoked from pcode rather than the UI, format selection is controlled by which read command is used (`ReadAllFITFiles`, `ReadAllXISFFiles`, etc.).
+When invoked from pcode rather than the UI, format selection is controlled
+by which read command is used (`ReadFIT`, `ReadXISF`, `ReadTIFF`,
+`ReadAll`).
 
 ---
 
@@ -157,8 +159,8 @@ Example pcode macro for format conversion:
 ```
 # Convert all TIFF files in a directory to FITS
 SelectDirectory path="D:/Astrophotos/M31"
-ReadAllTIFFFiles
-WriteAllFITFiles destination="D:/Output"
+ReadTIFF
+WriteFIT destination="D:/Output"
 ```
 
 ### 5.7 Debayering (OSC Camera Support)
@@ -449,10 +451,10 @@ Users can define and save named macros as `.phs` files (Photyx Host Script). Mac
 ```
 DefineMacro ProcessLightFrames
     SelectDirectory path=$1
-    ReadAllFITFiles
+    ReadFIT
     DebayerImage method=bilinear
     AutoStretch method=autostf
-    WriteAllFITFiles destination=$2
+    WriteFIT destination=$2
 EndMacro
 ```
 
@@ -469,21 +471,21 @@ The following table defines all pcode commands in the initial release. Arguments
 | Command | Category | Description | Key Arguments |
 |---|---|---|---|
 | SelectDirectory | File Management | Sets the active working directory | path |
-| ReadAllFITFiles | I/O | Reads all FITS files in the active directory into the buffer pool | — |
-| ReadAllXISFFiles | I/O | Reads all XISF files in the active directory | — |
-| ReadAllTIFFFiles | I/O | Reads all TIFF files in the active directory | — |
-| ReadAllFiles | I/O | Reads all supported image files (FITS + XISF + TIFF) in the active directory | — |
-| WriteAllFITFiles | I/O | Writes all buffered images as FITS files | destination, [overwrite] |
-| WriteAllXISFFiles | I/O | Writes all buffered images as XISF files | destination, [overwrite] |
-| WriteAllTIFFFiles | I/O | Writes all buffered images as TIFF files | destination, [overwrite] |
-| WriteCurrentFiles | I/O | Writes all buffered images back to their source paths in their original format | — |
+| ReadFIT | I/O | Reads all FITS files in the active directory into the buffer pool | — |
+| ReadXISF | I/O | Reads all XISF files in the active directory | — |
+| ReadTIFF | I/O | Reads all TIFF files in the active directory | — |
+| ReadAll | I/O | Reads all supported image files (FITS + XISF + TIFF) in the active directory | — |
+| WriteFIT | I/O | Writes all buffered images as FITS files | destination, [overwrite] |
+| WriteXISF | I/O | Writes all buffered images as XISF files | destination, [overwrite], [compress] |
+| WriteTIFF | I/O | Writes all buffered images as TIFF files | destination, [overwrite] |
+| WriteCurrent | I/O | Writes all buffered images back to their source paths in their original format | — |
 | WritePNG | I/O | Writes a single image as PNG | filename, destination |
 | WriteJPEG | I/O | Writes a single image as JPEG | filename, destination, [quality] |
 | ListFiles | File Management | Lists files in the active directory | [filter] |
 | FilterByKeyword | File Management | Filters the active file list by keyword value | name, value |
-| AddKeyword | Keyword | Adds a keyword to all buffered images | name, value, [comment] |
-| DeleteKeyword | Keyword | Removes a keyword from all buffered images | name |
-| ModifyKeyword | Keyword | Changes the value of an existing keyword | name, value, [comment] |
+| AddKeyword | Keyword | Adds or replaces a keyword on loaded images | name, value, [comment], [scope] |
+| DeleteKeyword | Keyword | Removes a keyword from loaded images | name, [scope] |
+| ModifyKeyword | Keyword | Changes the value of an existing keyword | name, value, [comment], [scope] |
 | CopyKeyword | Keyword | Copies a keyword value to a new keyword name | from, to |
 | ListKeywords | Keyword | Lists all keywords for the current image | — |
 | GetKeyword | Interrogation | Retrieves a keyword value into a variable; see Section 7.12 for full keyword list | name |
@@ -542,7 +544,7 @@ Registered macros:
 This creates a three-tier command model:
 
 ```
-Tier 1: Built-in Native plugins   — ReadFITS, AutoStretch, AnalyzeFrames, etc.
+Tier 1: Built-in Native plugins   — ReadFIT, AutoStretch, AnalyzeFrames, etc.
 Tier 2: WASM plugins              — ComputeFWHM, CountStars, etc.
 Tier 3: User Macros (.phs files)  — ProcessLightFrames, etc.
 ```
@@ -567,7 +569,7 @@ Examples:
 SelectDirectory path="D:/Astrophotos/M31"
 
 # Relative path (resolved against active directory)
-WriteAllFITFiles destination="Output/Processed"
+WriteFIT destination="Output/Processed"
 
 # Home directory shorthand
 SelectDirectory path="~/Astrophotos/M31"
@@ -681,12 +683,12 @@ The layout from top to bottom:
 
 | Menu | Items |
 |---|---|
-| File | Select Directory, Close, Exit |
-| Edit | Keywords, Preferences |
-| View | Stretch, Theme, Panel Toggles |
-| Process | Run Macro, Macro Library |
+| File | Select Directory, Clear Session, Exit |
+| Edit | Preferences |
+| View | Dark, Light, Matrix |
+| Process | Auto Stretch |
 | Analyze | FWHM, Star Count, Eccentricity, Median Value, Contour Plot |
-| Tools | Settings, Plugin Manager, Log Viewer |
+| Tools | Settings, Log Viewer |
 | Help | About, Documentation, Check for Updates |
 
 ### 8.3 Toolbar
@@ -1015,6 +1017,24 @@ Multiple profiles can be defined. The initial set of default threshold values is
 | Star count Suspect | Sigma | -1.0σ |
 | Star count Reject | Sigma | -1.5σ |
 
+A formula similar to the following will be used to classify individual
+frames. All metrics are sigma-based and session-relative. That formula
+defines the default thresholds for PXFLAG classification (PASS / SUSPECT /
+REJECT), stored in the rig profile settings.
+
+```
+FWHMSigma <= 2 &&
+EccentricitySigma <= 2 &&
+MedianSigma <= 2 &&
+StarsSigma >= -1.5
+```
+
+For test and validation purposes, some of the analysis processes will not
+only generate a numeric score for the individual frames, but may also
+display results or interim steps on the displayed frame. Examples of these
+might be FWHM values next to typical stars, stars that are circled as
+counted, etc.
+
 ### 9.10 Crash Recovery
 
 Photyx writes a session recovery file periodically (every 60 seconds) to the app data directory. This file records the active directory, loaded file list, current settings state, and active macro if any. On next launch following a crash, Photyx detects the recovery file and offers to restore the previous session.
@@ -1270,13 +1290,14 @@ curl -X POST http://localhost:7171/api/macro/run \
 | **Phase 2** | Blink engine, stretch pipeline (Auto-STF), pyramid cache, zoom, keyboard shortcuts, Info Panel, pixel tracking |
 | **Phase 3** | `photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, ReadAllTIFFFiles, RGB display/histogram, background display cache, true median histogram |
 | **Phase 4** | keyword plugins (Add/Delete/Modify/Copy), WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit handling, blink cache quality improvement, relative path resolution, window resize fix, pwd console command |
-| **Phase 5** | pcode interpreter, RunMacro, variable substitution, Log command, macro editor UI, save/load macros, conditional logic, Quick Launch Panel |
-| **Phase 6** | REST API (Axum), CLI access, external program integration, authentication middleware stub |
+| **Phase 5** | pcode interpreter with variable substitution, Log, RunMacro, If/Else/EndIf, For/EndFor; Macro Editor UI with syntax highlighting, save/load .phs files, Copy from Console; Quick Launch panel with persistent store, Pin to Quick Launch, right-click remove; GetKeyword, MoveFile, Print, Assert, CountFiles plugins; scope=all\|current on keyword commands; command rename refactor (ReadFIT, WriteTIFF, etc.); WriteCurrent atomic writes; ScriptResponse session_changed/display_changed flags |
+| **Phase 6** | Cleanup UI |
 | **Phase 7** | Analysis plugins as WASM (FWHM, star count, eccentricity, contour), analysis results windows; AnalyzeFrames Phase 7 metrics unlocked |
 | **Phase 8** | Native built-in analysis plugins, benchmarking vs. WASM versions |
-| **Phase 9** | Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations |
+| **Phase 9** | Embedded SQLite, Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations |
 | **Phase 10** | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI |
 | **Deferred** | Full keyword management UI, PNG/JPEG readers and writers, debayering, Auto-STF toolbar toggle, async dispatch,  |
+| **Deferred** | REST API (Axum), CLI access, external program integration, authentication middleware stub |
 
 ---
 
@@ -1326,5 +1347,5 @@ Automated tests are required for each significant module, crate, and plugin. Tes
 ---
 
 *Document prepared by: Development Team*
-*Previous version: 15*
-*Next review: Upon completion of Phase 5*
+*Previous version: 17*
+*Next review: Upon completion of Phase 7*

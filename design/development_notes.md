@@ -1,8 +1,8 @@
 # Photyx — Developer Notes
 
-**Version:** 17
-**Last updated:** 23 April 2026 9:34am
-**Status:** Active development — Phase 4 complete, Phase 5 starting
+**Version:** 18
+**Last updated:** 23 April 2026 9:59pm
+**Status:** Active development — Phase 5 substantially complete
 
 ---
 
@@ -14,6 +14,7 @@ Photyx/
 ├── src-svelte/           ← Svelte frontend (target stack)
 │   ├── lib/
 │   │   ├── commands.ts   ← Shared backend command helpers (selectDirectory, loadFiles, displayFrame, etc.)
+│   │   ├── pcodeCommands.ts   ← Single source of truth for all pcode command names (imported by Console and MacroEditor)
 │   │   ├── components/   ← Svelte UI components
 │   │   │   ├── panels/   ← Sliding panel components
 │   │   │   ├── Console.svelte
@@ -26,7 +27,9 @@ Photyx/
 │   │   │   ├── Toolbar.svelte
 │   │   │   └── Viewer.svelte
 │   │   └── stores/       ← Svelte writable stores
+│   │       ├── consoleHistory.ts
 │   │       ├── notifications.ts
+│   │       ├── quickLaunch.ts
 │   │       ├── session.ts
 │   │       └── ui.ts
 │   └── routes/
@@ -47,12 +50,18 @@ Photyx/
 │           ├── clear_session.rs
 │           ├── get_histogram.rs
 │           ├── list_keywords.rs
+│           ├── keywords.rs
 │           ├── read_all_files.rs
 │           ├── read_fits.rs
 │           ├── read_tiff.rs
 │           ├── read_xisf.rs
+│           ├── run_macro.rs
+│           ├── scripting.rs
 │           ├── select_directory.rs
 │           ├── set_frame.rs
+│           ├── write_current_files.rs
+│           ├── write_fits.rs
+│           ├── write_tiff.rs
 │           └── write_xisf.rs
 ├── crates/               ← Workspace crates
 │   └── photyx-xisf/      ← XISF reader/writer crate (MIT OR Apache-2.0)
@@ -70,6 +79,7 @@ Photyx/
 │   │   ├── console.css
 │   │   ├── infopanel.css
 │   │   ├── layout.css
+│   │   ├── macroeditor.css
 │   │   ├── modal.css
 │   │   ├── sidebar.css
 │   │   ├── statusbar.css
@@ -408,7 +418,17 @@ The pcode interpreter lives in `src-tauri/src/pcode/` as a standalone module wit
 - `GLOBAL_REGISTRY` (once_cell) provides registry access to `RunMacro` without Tauri state threading
 - `chrono` crate used for Log file timestamps
 
-**`run_script` Tauri command** — executes a script string directly from the frontend (macro editor Run button), returns results as JSON array.
+**`run_script` Tauri command** — executes a script string directly from the frontend (macro editor Run button), returns a `ScriptResponse` struct containing:
+- `results` — array of `ScriptResult` (line_number, command, success, message)
+- `session_changed` — true if any read, select, clear, or move command succeeded; frontend syncs session state
+- `display_changed` — true if AutoStretch or similar display command succeeded; frontend triggers frame refresh
+
+This eliminates command-name matching on the frontend — components simply react to the flags.
+
+**Flow control** — the interpreter now pre-parses scripts into a block tree before execution, supporting:
+- `If <expr> / Else / EndIf` — conditional blocks with `==`, `!=`, `<`, `>`, `<=`, `>=` operators (numeric and string, case-insensitive)
+- `For varname = N to M / EndFor` — numeric loop; loop variable available as `$varname` inside the body
+- `GetKeyword` result auto-stored into `$KEYWORDNAME` (uppercase) for use in conditionals
 
 ### 3.29 Console Expansion
 
@@ -420,11 +440,33 @@ The pcode console expands to a full-width overlay (60vh, 85% opacity) when the h
 
 ---
 
+### 3.30 Macro Editor Architecture
+
+The Macro Editor (`MacroEditor.svelte`) is rendered at the `#content-area` level in `+page.svelte` rather than inside `#panel-container`. This is required because `#panel-container` uses `transform: translateX()` for its slide animation, which creates a new stacking context and breaks `position: fixed` on child elements. Rendering outside the container allows the editor to fill the full content area as an overlay.
+
+The editor uses the backdrop technique for syntax highlighting — a `<div>` with `@html` rendered highlighted content sits behind a transparent `<textarea>`. The textarea handles all input; the backdrop provides colour. Scroll sync between the two is maintained via the `onscroll` event.
+
+### 3.31 WriteCurrent Atomic Writes
+
+`WriteCurrent` (and `WriteFIT`, `WriteTIFF`, `WriteXISF`) use a write-to-temp-then-rename pattern for all formats. The file is written to `<originalpath>.tmp` first, then atomically renamed over the original. This:
+- Ensures deleted keywords are not preserved (full rewrite from buffer, not in-place edit)
+- Eliminates duplicate keyword issues caused by cfitsio's in-place `write_key` adding new records rather than updating existing ones
+- Protects against partial writes leaving a corrupt file
+
+`write_fits_inplace` is retained in `write_fits.rs` but should only be used when it is certain no keywords have been deleted from the buffer.
+
+### 3.32 pcodeCommands.ts
+
+`src-svelte/lib/pcodeCommands.ts` exports a single `PCODE_COMMANDS` Set that is the authoritative list of all valid pcode command names. Both `Console.svelte` (tab completion) and `MacroEditor.svelte` (syntax highlighting) import from this file. When adding, renaming, or removing commands, update only this file.
+
+---
+
 ## 4. Tauri Commands (Implemented)
 
 | Command | Description |
 |---|---|
 | `dispatch_command` | Dispatches a pcode command to the plugin registry |
+| `run_script` | Executes a pcode script string; returns ScriptResponse with results, session_changed, display_changed |
 | `debug_buffer_info` | Returns buffer metadata including display_width and color_space |
 | `get_blink_cache_status` | Returns blink cache build status: idle / building / ready |
 | `get_blink_frame` | Returns a blink frame as JPEG data URL from blink cache (by index + resolution) |
@@ -441,28 +483,37 @@ The pcode console expands to a full-width overlay (60vh, 85% opacity) when the h
 
 ## 5. Plugins Implemented
 
-| Plugin | Category | Status |
-|---|---|---|
-| AddKeyword | Keyword | ✅ Complete |
-| AutoStretch | Processing | ✅ Complete (mono and RGB, display-res only, raw buffer preserved) |
-| CacheFrames | Blink | ✅ Complete (Rayon parallel, both resolutions) |
-| ClearSession | Session | ✅ Complete |
-| CopyKeyword | Keyword | ✅ Complete |
-| DeleteKeyword | Keyword | ✅ Complete |
-| GetHistogram | Analysis | ✅ Complete (mono and RGB per-channel, true median) |
-| ListKeywords | Keyword | ✅ Complete |
-| ModifyKeyword | Keyword | ✅ Complete (optional comment argument) |
-| ReadAllFITFiles | I/O Reader | ✅ Complete (sequential only) |
-| ReadAllFiles | I/O Reader | ✅ Complete (FITS + XISF + TIFF from same directory) |
-| ReadAllTIFFFiles | I/O Reader | ✅ Complete (U8, U16, U32→U16, F32) |
-| ReadAllXISFFiles | I/O Reader | ✅ Complete |
-| RunMacro | Scripting | ✅ Complete |
-| SelectDirectory | File Management | ✅ Complete |
-| SetFrame | Navigation | ✅ Complete |
-| WriteAllFITFiles | I/O Writer | ✅ Complete (creates proper FITS files from any source format) |
-| WriteAllTIFFFiles | I/O Writer | ✅ Complete (AstroTIFF keyword embedding) |
-| WriteAllXISFFiles | I/O Writer | ✅ Complete (uncompressed default; compress=true for LZ4HC) |
-| WriteCurrentFiles | I/O Writer | ✅ Complete (writes back to source path in source format) |
+| Plugin | Category | Status | Notes |
+|---|---|---|---|
+| AddKeyword | Keyword | ✅ Complete | scope=all\|current parameter |
+| Assert | Scripting | ✅ Complete | Halts on false expression |
+| AutoStretch | Processing | ✅ Complete | Mono and RGB, display-res only, raw buffer preserved |
+| CacheFrames | Blink | ✅ Complete | Rayon parallel, both resolutions |
+| ClearSession | Session | ✅ Complete | |
+| CopyKeyword | Keyword | ✅ Complete | |
+| CountFiles | Scripting | ✅ Complete | Stores result in $filecount |
+| DeleteKeyword | Keyword | ✅ Complete | scope=all\|current parameter |
+| GetHistogram | Analysis | ✅ Complete | Mono and RGB per-channel, true median |
+| GetKeyword | Scripting | ✅ Complete | Stores result in $KEYWORDNAME |
+| ListKeywords | Keyword | ✅ Complete | |
+| ModifyKeyword | Keyword | ✅ Complete | scope=all\|current parameter |
+| MoveFile | File Management | ✅ Complete | Moves current frame file, removes from session |
+| Print | Scripting | ✅ Complete | Outputs literal message |
+| ReadAll | I/O Reader | ✅ Complete | FITS + XISF + TIFF from same directory (ReadAllFiles alias) |
+| ReadFIT | I/O Reader | ✅ Complete | Sequential only (ReadAllFITFiles alias) |
+| ReadTIFF | I/O Reader | ✅ Complete | U8, U16, U32→U16, F32 (ReadAllTIFFFiles alias) |
+| ReadXISF | I/O Reader | ✅ Complete | (ReadAllXISFFiles alias) |
+| RunMacro | Scripting | ✅ Complete | |
+| SelectDirectory | File Management | ✅ Complete | |
+| SetFrame | Navigation | ✅ Complete | |
+| WriteCurrent | I/O Writer | ✅ Complete | Atomic temp-file writes; handles keyword deletion correctly (WriteCurrentFiles alias) |
+| WriteFIT | I/O Writer | ✅ Complete | Creates proper FITS files from any source format (WriteAllFITFiles alias) |
+| WriteTIFF | I/O Writer | ✅ Complete | AstroTIFF keyword embedding (WriteAllTIFFFiles alias) |
+| WriteXISF | I/O Writer | ✅ Complete | Uncompressed default; compress=true for LZ4HC (WriteAllXISFFiles alias) |
+
+**Command naming convention:** Read/Write commands follow the pattern `ReadFIT`, `ReadTIFF`, `ReadXISF`, `ReadAll`, `WriteFIT`, `WriteTIFF`, `WriteXISF`, `WriteCurrent`. Old names retained as backward-compatible aliases but should not be used in new scripts.
+
+**Keyword scope parameter:** `AddKeyword`, `DeleteKeyword`, and `ModifyKeyword` accept an optional `scope=all` (default) or `scope=current` parameter. `scope=current` operates only on the current frame as set by `SetFrame`.
 
 ---
 
@@ -522,6 +573,6 @@ other persistence work.
 | Phase 2 | ✅ Complete | Display cache, AutoStretch, blink engine, histogram, keywords, UI file browser, pixel tracking, WCS, zoom, pan, full-res cache, canvas viewer |
 | Phase 3 | ✅ Complete | photyx-xisf crate (reader + writer), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllTIFFFiles, ReadAllFiles, RGB display/histogram, background display cache |
 | Phase 4 | ✅ Complete | Keyword plugins, WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit, blink cache quality, relative path resolution, window resize fix, pwd command |
-| Phase 5 | 🔄 Underway | pcode interpreter, RunMacro, variable substitution, Log command, console expansion; macro editor UI, conditionals, async dispatch remaining |
+| Phase 5 | ✅ Complete | pcode interpreter with If/Else/EndIf and For/EndFor; Macro Editor UI with syntax highlighting; Quick Launch panel with store persistence and context menu; command rename refactor; scope parameter on keyword commands; WriteCurrent atomic writes; ScriptResponse flags; pcodeCommands.ts single source of truth |
 | Phase 6-10 | ⬜ Not started | |
 | Deferred | ⬜ Parked | Full keyword UI, PNG/JPEG readers/writers, debayering, Auto-STF toolbar toggle |
