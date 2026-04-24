@@ -129,6 +129,7 @@ pub struct AppContext {
 
     /// Last computed Auto-STF parameters (c0, m) — reused by get_full_frame
     pub last_stf_params: Option<(f32, f32)>,
+    pub analysis_results: HashMap<String, crate::analysis::AnalysisResult>,
 }
 
 impl AppContext {
@@ -151,5 +152,12 @@ impl AppContext {
     /// Total memory used by all image buffers (placeholder — Phase 2)
     pub fn total_memory_used(&self) -> usize {
         0 // Phase 2: sum actual buffer sizes
+    }
+
+    /// Get or create the AnalysisResult entry for a file path.
+    pub fn analysis_result_for(&mut self, path: &str) -> &mut crate::analysis::AnalysisResult {
+        self.analysis_results
+            .entry(path.to_string())
+            .or_insert_with(|| crate::analysis::AnalysisResult::new(path))
     }
 }

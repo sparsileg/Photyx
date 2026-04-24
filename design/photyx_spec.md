@@ -993,9 +993,16 @@ Each plugin defines its own settings namespace. Plugin settings are stored in th
 
 ### 9.9 Rig Profiles (AnalyzeFrames)
 
-Rig profiles define the threshold settings used by `AnalyzeFrames` to classify frames. Each profile represents a telescope/camera combination. Profiles are stored in the settings store and persist across sessions. The active profile is displayed in the status bar and selectable from the toolbar or Settings panel.
+Rig profiles define the threshold settings used by `AnalyzeFrames` to
+classify frames. Each profile represents a telescope/camera
+combination. Profiles are stored in the settings store and persist across
+sessions. The active profile is displayed in the status bar and selectable
+from the toolbar or Settings panel.
 
-Multiple profiles can be defined. The initial set of default threshold values is shown below; all thresholds are user-configurable per profile.
+
+Multiple profiles can be defined. The initial set of default threshold
+values is shown below; all thresholds are user-configurable per profile.
+
 
 | Setting | Type | Default |
 |---|---|---|

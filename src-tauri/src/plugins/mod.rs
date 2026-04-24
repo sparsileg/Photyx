@@ -2,9 +2,13 @@
 // Spec §6.3
 
 pub mod auto_stretch;
+pub mod background_median;
 pub mod cache_frames;
 pub mod clear_session;
+pub mod compute_eccentricity;
+pub mod compute_fwhm;
 pub mod get_histogram;
+pub mod highlight_clipping;
 pub mod keywords;
 pub mod list_keywords;
 pub mod read_all_files;
@@ -15,6 +19,7 @@ pub mod run_macro;
 pub mod scripting;
 pub mod select_directory;
 pub mod set_frame;
+pub mod star_count;
 pub mod write_current_files;
 pub mod write_fits;
 pub mod write_tiff;

@@ -292,7 +292,6 @@ fn execute_line(
 ) {
     match parsed {
         PcodeLine::Skip => {}
-
         PcodeLine::Assignment { name, value } => {
             let resolved = substitute_vars(value, variables);
             variables.insert(name.clone(), resolved.clone());
@@ -305,13 +304,11 @@ fn execute_line(
                 message: Some(format!("{} = {}", name, resolved)),
             });
         }
-
         PcodeLine::Command { command, args } => {
             let mut resolved_args = args.clone();
             for val in resolved_args.values_mut() {
                 *val = substitute_vars(val, variables);
             }
-
             // Handle Log internally
             if command.to_lowercase() == "log" {
                 let result = handle_log(&resolved_args, &results[*last_log_index..]);
@@ -324,7 +321,6 @@ fn execute_line(
                 });
                 return;
             }
-
             match registry.dispatch(ctx, command, &resolved_args) {
                 Ok(output) => {
                     let msg = match output {
@@ -342,6 +338,12 @@ fn execute_line(
                             Some(v)
                         }
                         PluginOutput::Values(vs)   => Some(vs.join("\n")),
+                        PluginOutput::Data(d)       => Some(
+                            d.get("message")
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("Done")
+                                .to_string()
+                        ),
                     };
                     info!("pcode line {}: {} -> OK", line_number, command);
                     results.push(PcodeResult {
@@ -365,7 +367,6 @@ fn execute_line(
                 }
             }
         }
-
         // Flow control variants are never stored as bare Lines — handled by parse_blocks
         _ => {}
     }

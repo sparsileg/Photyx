@@ -1,6 +1,7 @@
 // lib.rs — Tauri application entry point and command handlers
 // Spec §4.2
 
+mod analysis;
 mod context;
 mod logging;
 mod plugin;
@@ -56,7 +57,13 @@ fn dispatch_command(
                 PluginOutput::Message(m)     => Some(m),
                 PluginOutput::Value(v)       => Some(v),
                 PluginOutput::Values(vs)     => Some(vs.join("\n")),
-            };
+                PluginOutput::Data(d)        => Some(
+                    d.get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("Done")
+                        .to_string()
+               ),
+           };
             DispatchResponse { success: true, output: msg, error: None }
         }
         Err(e) => {
@@ -204,9 +211,16 @@ pub fn run() {
 
     plugins::scripting::register_all(&registry);
     registry.register(Arc::new(plugins::auto_stretch::AutoStretch));
+    registry.register(Arc::new(plugins::background_median::BackgroundGradientPlugin));
+    registry.register(Arc::new(plugins::background_median::BackgroundMedianPlugin));
+    registry.register(Arc::new(plugins::background_median::BackgroundStdDevPlugin));
     registry.register(Arc::new(plugins::cache_frames::CacheFrames));
     registry.register(Arc::new(plugins::clear_session::ClearSession));
+    registry.register(Arc::new(plugins::compute_eccentricity::ComputeEccentricity));
+    registry.register(Arc::new(plugins::compute_fwhm::ComputeFWHM));
     registry.register(Arc::new(plugins::get_histogram::GetHistogram));
+    registry.register(Arc::new(plugins::highlight_clipping::HighlightClippingPlugin));
+    registry.register(Arc::new(plugins::highlight_clipping::SnrEstimatePlugin));
     registry.register(Arc::new(plugins::keywords::AddKeyword));
     registry.register(Arc::new(plugins::keywords::CopyKeyword));
     registry.register(Arc::new(plugins::keywords::DeleteKeyword));
@@ -219,6 +233,7 @@ pub fn run() {
     registry.register(Arc::new(plugins::run_macro::RunMacro));
     registry.register(Arc::new(plugins::select_directory::SelectDirectory));
     registry.register(Arc::new(plugins::set_frame::SetFrame));
+    registry.register(Arc::new(plugins::star_count::CountStarsPlugin));
     registry.register(Arc::new(plugins::write_current_files::WriteCurrent));
     registry.register(Arc::new(plugins::write_fits::WriteFIT));
     registry.register(Arc::new(plugins::write_tiff::WriteTIFF));

@@ -35,10 +35,18 @@ pub struct ParamSpec {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PluginOutput {
+    /// Command succeeded with no notable output
     Success,
+    /// Command succeeded with a human-readable status message
     Message(String),
+    /// Command returned a single scalar value (e.g. a count or path)
     Value(String),
+    /// Command returned multiple string values
     Values(Vec<String>),
+    /// Command returned structured data (used by analysis plugins).
+    /// The inner Value is always a JSON object; consumers should
+    /// deserialize into the appropriate result type.
+    Data(serde_json::Value),
 }
 
 // ── Plugin error ──────────────────────────────────────────────────────────────
