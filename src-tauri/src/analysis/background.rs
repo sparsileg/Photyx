@@ -100,7 +100,7 @@ pub fn sigma_clipped_background(sample: &[f32], config: &SigmaClipConfig) -> Bac
 // to get a representative background sample at ~1/16 the pixel count.
 // Stars are bright outliers and will be rejected by sigma-clipping.
 
-const SUBSAMPLE_STEP: usize = 4;
+const SUBSAMPLE_STEP: usize = 8;
 
 fn subsample(pixels: &[f32]) -> Vec<f32> {
     pixels

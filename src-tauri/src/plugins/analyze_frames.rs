@@ -23,6 +23,7 @@ use crate::analysis::{
 };
 use crate::context::{AppContext, ImageBuffer, KeywordEntry};
 use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
+use rayon::prelude::*;
 use serde_json::json;
 use tracing::info;
 
@@ -156,32 +157,85 @@ fn execute_all(
         return Err(PluginError::new("NO_FILES", "No files loaded."));
     }
 
-    let paths: Vec<String> = ctx.file_list.clone();
     let thresholds = AnalysisThresholds::default();
+    ctx.analysis_results.clear();
 
-    // ── Pass 1: compute all eight metrics for every frame ─────────────────────
-    info!("AnalyzeFrames: Pass 1 — computing metrics for {} frames", paths.len());
+    // ── Snapshot pixel data and keywords out of ctx ───────────────────────────
+    // Owned snapshot so Rayon can process frames in parallel without
+    // holding a reference to ctx across threads.
+    struct FrameSnapshot {
+        path:     String,
+        width:    u32,
+        height:   u32,
+        channels: u8,
+        pixels:   crate::context::PixelData,
+        keywords: std::collections::HashMap<String, KeywordEntry>,
+    }
 
-    let mut results: Vec<AnalysisResult> = Vec::with_capacity(paths.len());
+    let snapshots: Vec<FrameSnapshot> = ctx.file_list.iter().filter_map(|path| {
+        let buf = ctx.image_buffers.get(path)?;
+        let pixels = buf.pixels.as_ref()?.clone();
+        Some(FrameSnapshot {
+            path:     path.clone(),
+            width:    buf.width,
+            height:   buf.height,
+            channels: buf.channels,
+            pixels,
+            keywords: buf.keywords.clone(),
+        })
+    }).collect();
+
+    let total = snapshots.len();
+    info!("AnalyzeFrames: Pass 1 — computing metrics for {} frames", total);
+
+    // ── Pass 1: parallel metric computation ───────────────────────────────────
+    let det_config_ref = det_config;
+
+    let par_results: Vec<Result<AnalysisResult, (String, String)>> = snapshots
+        .par_iter()
+        .map(|snap| {
+            let channels = snap.channels as usize;
+            let width    = snap.width as usize;
+            let height   = snap.height as usize;
+
+            let luma = analysis::to_luminance(&snap.pixels, channels);
+            let bg_config = BackgroundConfig::default();
+            let bg = compute_background_metrics(&luma, width, height, &bg_config);
+            let clipping = highlight_clipping(&luma);
+            let stars = detect_stars(&luma, width, height, det_config_ref);
+            let plate_scale = derive_plate_scale(&snap.keywords);
+            let fwhm_result = compute_fwhm(&stars, plate_scale);
+            let ecc_result  = compute_eccentricity(&stars);
+            let snr_result  = snr_estimate(&luma, width, height, &stars, &bg_config.sigma_clip);
+
+            let result = AnalysisResult {
+                filename:            snap.path.clone(),
+                background_median:   Some(bg.median),
+                background_stddev:   Some(bg.stddev),
+                background_gradient: Some(bg.gradient),
+                highlight_clipping:  Some(clipping),
+                snr_estimate:        snr_result.map(|r| r.snr),
+                fwhm:                fwhm_result.as_ref().map(|r| r.fwhm_pixels),
+                eccentricity:        ecc_result.as_ref().map(|r| r.eccentricity),
+                star_count:          fwhm_result.as_ref().map(|r| r.star_count as u32)
+                                         .or_else(|| ecc_result.as_ref().map(|r| r.star_count as u32))
+                                         .or_else(|| Some(stars.len() as u32)),
+                flag: None,
+            };
+
+            info!("AnalyzeFrames: {} — done", short_name(&snap.path));
+            Ok(result)
+        })
+        .collect();
+
+    // Separate successes from errors
+    let mut results: Vec<AnalysisResult> = Vec::with_capacity(total);
     let mut errors:  Vec<String>         = Vec::new();
 
-    for path in &paths {
-        let img = match ctx.image_buffers.get(path) {
-            Some(b) => b,
-            None => {
-                errors.push(format!("{}: not in buffer", short_name(path)));
-                continue;
-            }
-        };
-
-        match compute_metrics_for_image(img, det_config) {
-            Ok(result) => {
-                info!("AnalyzeFrames: {} — metrics computed", short_name(path));
-                results.push(result);
-            }
-            Err(e) => {
-                errors.push(format!("{}: {}", short_name(path), e.message));
-            }
+    for r in par_results {
+        match r {
+            Ok(result) => results.push(result),
+            Err((path, msg)) => errors.push(format!("{}: {}", path, msg)),
         }
     }
 
@@ -204,18 +258,16 @@ fn execute_all(
     let mut frame_summaries: Vec<serde_json::Value> = Vec::new();
 
     for result in &mut results {
-        // Look up FILTER keyword for this frame to select weights
-        let filter = ctx.image_buffers
-            .get(&result.filename)
-            .and_then(|b| b.keywords.get("FILTER"))
+        let filter = snapshots.iter()
+            .find(|s| s.path == result.filename)
+            .and_then(|s| s.keywords.get("FILTER"))
             .map(|kw| kw.value.clone());
 
         let weights = MetricWeights::for_filter(filter.as_deref());
         let (flag, score) = classify_frame(result, &session_stats, &thresholds, &weights);
-
         result.flag = Some(flag.clone());
 
-        // Write PXFLAG and PXSCORE keywords to the image buffer
+        // Write PXFLAG and PXSCORE keywords back to image buffer
         if let Some(buf) = ctx.image_buffers.get_mut(&result.filename) {
             buf.keywords.insert(
                 "PXFLAG".to_string(),
@@ -243,7 +295,6 @@ fn execute_all(
             "stars":    result.star_count,
         }));
 
-        // Store final result in context
         ctx.analysis_results.insert(result.filename.clone(), result.clone());
     }
 
@@ -259,15 +310,15 @@ fn execute_all(
     info!("{}", message);
 
     Ok(PluginOutput::Data(json!({
-        "plugin":         "AnalyzeFrames",
-        "scope":          "all",
-        "frame_count":    results.len(),
-        "pass_count":     pass_count,
-        "suspect_count":  suspect_count,
-        "reject_count":   reject_count,
-        "errors":         errors,
-        "frames":         frame_summaries,
-        "message":        message,
+        "plugin":        "AnalyzeFrames",
+        "scope":         "all",
+        "frame_count":   results.len(),
+        "pass_count":    pass_count,
+        "suspect_count": suspect_count,
+        "reject_count":  reject_count,
+        "errors":        errors,
+        "frames":        frame_summaries,
+        "message":       message,
     })))
 }
 
@@ -281,13 +332,11 @@ fn compute_metrics_for_image(
         PluginError::new("NO_PIXELS", "Image buffer contains no pixel data.")
     })?;
 
-    let normalized = analysis::to_f32_normalized(pixels);
-    let channels   = img.channels as usize;
-    let width      = img.width  as usize;
-    let height     = img.height as usize;
+    let channels  = img.channels as usize;
+    let width     = img.width  as usize;
+    let height    = img.height as usize;
 
-    let luma = analysis::extract_luminance(&normalized, width, height, channels);
-
+    let luma = analysis::to_luminance(pixels, channels);
     let bg_config = BackgroundConfig::default();
 
     // Background metrics (single pass)

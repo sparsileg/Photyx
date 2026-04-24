@@ -181,5 +181,60 @@ pub fn to_f32_normalized(pixels: &PixelData) -> Vec<f32> {
     }
 }
 
+/// Combined normalize + luminance extraction in a single pass.
+/// Eliminates the intermediate normalized f32 buffer allocation.
+/// Use this in preference to calling to_f32_normalized + extract_luminance separately.
+pub fn to_luminance(pixels: &PixelData, channels: usize) -> Vec<f32> {
+    match (pixels, channels) {
+        // Mono U8
+        (PixelData::U8(v), 1) => v.iter().map(|&x| x as f32 / 255.0).collect(),
+        // Mono U16
+        (PixelData::U16(v), 1) => v.iter().map(|&x| x as f32 / 65535.0).collect(),
+        // Mono F32
+        (PixelData::F32(v), 1) => v.clone(),
+        // RGB U8 — normalize and weight in one pass
+        (PixelData::U8(v), 3) => {
+            let n = v.len() / 3;
+            let mut luma = Vec::with_capacity(n);
+            for i in 0..n {
+                let r = v[i * 3]     as f32 / 255.0;
+                let g = v[i * 3 + 1] as f32 / 255.0;
+                let b = v[i * 3 + 2] as f32 / 255.0;
+                luma.push(0.299 * r + 0.587 * g + 0.114 * b);
+            }
+            luma
+        }
+        // RGB U16
+        (PixelData::U16(v), 3) => {
+            let n = v.len() / 3;
+            let mut luma = Vec::with_capacity(n);
+            for i in 0..n {
+                let r = v[i * 3]     as f32 / 65535.0;
+                let g = v[i * 3 + 1] as f32 / 65535.0;
+                let b = v[i * 3 + 2] as f32 / 65535.0;
+                luma.push(0.299 * r + 0.587 * g + 0.114 * b);
+            }
+            luma
+        }
+        // RGB F32
+        (PixelData::F32(v), 3) => {
+            let n = v.len() / 3;
+            let mut luma = Vec::with_capacity(n);
+            for i in 0..n {
+                let r = v[i * 3];
+                let g = v[i * 3 + 1];
+                let b = v[i * 3 + 2];
+                luma.push(0.299 * r + 0.587 * g + 0.114 * b);
+            }
+            luma
+        }
+        // Fallback: first channel only
+        (PixelData::U8(v), _)  => v.iter().step_by(channels).map(|&x| x as f32 / 255.0).collect(),
+        (PixelData::U16(v), _) => v.iter().step_by(channels).map(|&x| x as f32 / 65535.0).collect(),
+        (PixelData::F32(v), _) => v.iter().step_by(channels).cloned().collect(),
+    }
+}
+
+
 
 // ----------------------------------------------------------------------
