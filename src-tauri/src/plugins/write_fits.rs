@@ -159,33 +159,5 @@ pub(crate) fn write_fits_new(out_path: &str, buffer: &ImageBuffer) -> Result<(),
     Ok(())
 }
 
-/// Update keywords in-place on an existing FITS file without touching pixel data.
-/// NOTE: Only use this when you are certain no keywords have been deleted from the buffer.
-/// For WriteCurrent, use write_fits_new with a temp file instead.
-pub(crate) fn write_fits_inplace(path: &str, buffer: &ImageBuffer) -> Result<(), String> {
-    let mut fitsfile = FitsFile::edit(path)
-        .map_err(|e| format!("Cannot open for editing: {}", e))?;
-
-    let hdu = fitsfile.primary_hdu()
-        .map_err(|e| format!("Cannot access primary HDU: {}", e))?;
-
-    for kw in buffer.keywords.values() {
-        match kw.name.as_str() {
-            "SIMPLE" | "BITPIX" | "NAXIS" | "NAXIS1" | "NAXIS2" | "NAXIS3"
-            | "EXTEND" | "END" | "FILENAME" | "BZERO" | "BSCALE" => continue,
-            _ => {}
-        }
-        let result = if let Some(comment) = &kw.comment {
-            hdu.write_key(&mut fitsfile, &kw.name, (kw.value.as_str(), comment.as_str()))
-        } else {
-            hdu.write_key(&mut fitsfile, &kw.name, kw.value.as_str())
-        };
-        if let Err(e) = result {
-            warn!("Could not write keyword {}: {}", kw.name, e);
-        }
-    }
-
-    Ok(())
-}
 
 // ----------------------------------------------------------------------

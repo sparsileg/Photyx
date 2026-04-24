@@ -136,17 +136,5 @@ impl PhotonPlugin for WriteCurrent {
     }
 }
 
-/// Backward-compatible alias
-pub struct WriteCurrentFiles;
-
-impl PhotonPlugin for WriteCurrentFiles {
-    fn name(&self)        -> &str { "WriteCurrentFiles" }
-    fn version(&self)     -> &str { "1.0" }
-    fn description(&self) -> &str { "Alias for WriteCurrent (backward compatibility)" }
-    fn parameters(&self)  -> Vec<ParamSpec> { vec![] }
-    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        WriteCurrent.execute(ctx, args)
-    }
-}
 
 // ----------------------------------------------------------------------

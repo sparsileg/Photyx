@@ -44,8 +44,6 @@
             { label: 'Exit',         action: 'exit' },
         ]},
         { name: 'Edit', items: [
-            { label: 'Keywords',     action: 'keywords' },
-            { sep: true },
             { label: 'Preferences',  action: 'preferences' },
         ]},
         { name: 'View', items: [
@@ -54,8 +52,7 @@
             { label: 'Theme: Matrix',action: 'theme-matrix' },
         ]},
         { name: 'Process', items: [
-            { label: 'Run Macro…',   action: 'run-macro' },
-            { label: 'Macro Library',action: 'macro-library' },
+            { label: 'Auto Stretch',   action: 'auto-stretch' },
         ]},
         { name: 'Analyze', items: [
             { label: 'FWHM',         action: 'fwhm' },
@@ -66,7 +63,6 @@
         ]},
         { name: 'Tools', items: [
             { label: 'Settings',     action: 'settings' },
-            { label: 'Plugin Manager', action: 'plugin-manager' },
             { sep: true },
             { label: 'Log Viewer',   action: 'log-viewer' },
         ]},
