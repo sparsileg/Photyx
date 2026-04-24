@@ -210,6 +210,7 @@ pub fn run() {
     let registry = Arc::new(PluginRegistry::new());
 
     plugins::scripting::register_all(&registry);
+    registry.register(Arc::new(plugins::analyze_frames::AnalyzeFrames));
     registry.register(Arc::new(plugins::auto_stretch::AutoStretch));
     registry.register(Arc::new(plugins::background_median::BackgroundGradientPlugin));
     registry.register(Arc::new(plugins::background_median::BackgroundMedianPlugin));

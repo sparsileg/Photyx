@@ -6,6 +6,7 @@ pub mod eccentricity;
 pub mod fwhm;
 pub mod metrics;
 pub mod profiles;
+pub mod session_stats;
 pub mod stars;
 
 use serde::{Deserialize, Serialize};

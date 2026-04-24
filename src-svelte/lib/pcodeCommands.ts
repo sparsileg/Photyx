@@ -30,6 +30,7 @@ export const PCODE_COMMANDS = new Set([
     'GetKeyword',
 
     // ── Image analysis ───────────────────────────────────────────────────────
+    "AnalyzeFrames",
     "BackgroundGradient",
     "BackgroundMedian",
     "BackgroundStdDev",

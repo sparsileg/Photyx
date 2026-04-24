@@ -1,6 +1,7 @@
 // plugins/mod.rs — Built-in native plugin modules
 // Spec §6.3
 
+pub mod analyze_frames;
 pub mod auto_stretch;
 pub mod background_median;
 pub mod cache_frames;
