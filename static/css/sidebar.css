@@ -60,6 +60,10 @@
 #panel-container {
     background: var(--sidebar-bg);
     border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
 }
 
 .panel-header {

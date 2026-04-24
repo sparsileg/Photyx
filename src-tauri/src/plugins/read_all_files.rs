@@ -1,5 +1,5 @@
-// plugins/read_all_files.rs — ReadAllFiles built-in native plugin
-// Loads all supported image formats (FITS + XISF) from the active directory.
+// plugins/read_all_files.rs — ReadAll built-in native plugin
+// Loads all supported image formats (FITS + XISF + TIFF) from the active directory.
 // Spec §5.2, §6.3
 
 use tracing::{info, warn};
@@ -9,14 +9,13 @@ use super::read_fits::read_fits_file;
 use super::read_xisf::read_xisf_file;
 use super::read_tiff::read_tiff_file;
 
-pub struct ReadAllFiles;
+pub struct ReadAll;
 
-impl PhotonPlugin for ReadAllFiles {
-    fn name(&self) -> &str { "ReadAllFiles" }
-    fn version(&self) -> &str { "1.0" }
-    fn description(&self) -> &str { "Reads all supported image files (FITS + XISF) in the active directory" }
-
-    fn parameters(&self) -> Vec<ParamSpec> { vec![] }
+impl PhotonPlugin for ReadAll {
+    fn name(&self)        -> &str { "ReadAll" }
+    fn version(&self)     -> &str { "1.0" }
+    fn description(&self) -> &str { "Reads all supported image files (FITS + XISF + TIFF) in the active directory" }
+    fn parameters(&self)  -> Vec<ParamSpec> { vec![] }
 
     fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError> {
         let dir = ctx.active_directory.clone().ok_or_else(|| {
@@ -59,9 +58,7 @@ impl PhotonPlugin for ReadAllFiles {
 
         let total = fits_files.len() + xisf_files.len() + tiff_files.len();
         if total == 0 {
-            return Ok(PluginOutput::Message(
-                format!("No supported image files found in '{}'", dir)
-            ));
+            return Ok(PluginOutput::Message(format!("No supported image files found in '{}'", dir)));
         }
 
         ctx.file_list.clear();
@@ -72,46 +69,27 @@ impl PhotonPlugin for ReadAllFiles {
         let mut loaded = 0;
         let mut errors = 0;
 
-        for path in &fits_files {
-            match read_fits_file(path) {
-                Ok(buffer) => {
-                    info!("Loaded FITS: {} ({}x{} {:?})", path, buffer.width, buffer.height, buffer.bit_depth);
-                    ctx.file_list.push(path.clone());
-                    ctx.image_buffers.insert(path.clone(), buffer);
-                    loaded += 1;
-                }
-                Err(e) => {
-                    warn!("Failed to load FITS '{}': {}", path, e);
-                    errors += 1;
-                }
-            }
-        }
+        for path in fits_files.iter().chain(xisf_files.iter()).chain(tiff_files.iter()) {
+            let ext = std::path::Path::new(path)
+                .extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
-        for path in &xisf_files {
-            match read_xisf_file(path) {
-                Ok(buffer) => {
-                    info!("Loaded XISF: {} ({}x{} {:?})", path, buffer.width, buffer.height, buffer.bit_depth);
-                    ctx.file_list.push(path.clone());
-                    ctx.image_buffers.insert(path.clone(), buffer);
-                    loaded += 1;
-                }
-                Err(e) => {
-                    warn!("Failed to load XISF '{}': {}", path, e);
-                    errors += 1;
-                }
-            }
-        }
+            let result = if ["fit","fits","fts"].contains(&ext.as_str()) {
+                read_fits_file(path)
+            } else if ext == "xisf" {
+                read_xisf_file(path)
+            } else {
+                read_tiff_file(path)
+            };
 
-        for path in &tiff_files {
-            match read_tiff_file(path) {
+            match result {
                 Ok(buffer) => {
-                    info!("Loaded TIFF: {} ({}x{} {:?})", path, buffer.width, buffer.height, buffer.bit_depth);
+                    info!("Loaded: {} ({}x{} {:?})", path, buffer.width, buffer.height, buffer.bit_depth);
                     ctx.file_list.push(path.clone());
                     ctx.image_buffers.insert(path.clone(), buffer);
                     loaded += 1;
                 }
                 Err(e) => {
-                    warn!("Failed to load TIFF '{}': {}", path, e);
+                    warn!("Failed to load '{}': {}", path, e);
                     errors += 1;
                 }
             }
@@ -130,3 +108,5 @@ impl PhotonPlugin for ReadAllFiles {
         Ok(PluginOutput::Message(msg))
     }
 }
+
+// ----------------------------------------------------------------------

@@ -1,17 +1,17 @@
-// plugins/write_current_files.rs — WriteCurrentFiles built-in native plugin
+// plugins/write_current_files.rs — WriteCurrent built-in native plugin
 // Writes all buffered images back to their source paths in their source format.
 // Spec §5.3, §6.3
 
 use tracing::{info, warn};
 use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
-use super::write_fits::write_fits_inplace;
+use super::write_fits::write_fits_new;
 use super::write_tiff::write_tiff_file;
 
-pub struct WriteCurrentFiles;
+pub struct WriteCurrent;
 
-impl PhotonPlugin for WriteCurrentFiles {
-    fn name(&self)        -> &str { "WriteCurrentFiles" }
+impl PhotonPlugin for WriteCurrent {
+    fn name(&self)        -> &str { "WriteCurrent" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Writes all buffered images back to their source paths in their original format" }
     fn parameters(&self)  -> Vec<ParamSpec> { vec![] }
@@ -27,10 +27,7 @@ impl PhotonPlugin for WriteCurrentFiles {
 
         for path in ctx.file_list.clone() {
             let ext = std::path::Path::new(&path)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_lowercase();
+                .extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
             match ext.as_str() {
                 "fit" | "fits" | "fts" => {
@@ -38,31 +35,39 @@ impl PhotonPlugin for WriteCurrentFiles {
                         Some(b) => b,
                         None => { errors += 1; continue; }
                     };
-                    match write_fits_inplace(&path, buffer) {
-                        Ok(()) => { info!("WriteCurrentFiles: updated FITS {}", path); written += 1; }
-                        Err(e) => { warn!("WriteCurrentFiles: FITS error {}: {}", path, e); errors += 1; }
+                    // Write to temp file then atomically replace.
+                    // This ensures deleted keywords are not preserved and avoids
+                    // duplicate keyword issues from in-place editing.
+                    let temp_path = format!("{}.tmp", path);
+                    let _ = std::fs::remove_file(&temp_path);
+                    match write_fits_new(&temp_path, buffer) {
+                        Ok(()) => {
+                            if let Err(e) = std::fs::rename(&temp_path, &path) {
+                                warn!("WriteCurrent: cannot replace {}: {}", path, e);
+                                let _ = std::fs::remove_file(&temp_path);
+                                errors += 1;
+                            } else {
+                                info!("WriteCurrent: updated FITS {}", path);
+                                written += 1;
+                            }
+                        }
+                        Err(e) => {
+                            warn!("WriteCurrent: FITS write error {}: {}", path, e);
+                            let _ = std::fs::remove_file(&temp_path);
+                            errors += 1;
+                        }
                     }
                 }
                 "xisf" => {
-                    // For XISF, write to a temp file then replace — XISF requires full rewrite
                     let temp_path = format!("{}.tmp", path);
                     let buffer = match ctx.image_buffers.get(&path) {
                         Some(b) => b,
                         None => { errors += 1; continue; }
                     };
-
-                    // Build args: destination = parent directory, overwrite = true
-                    let parent = std::path::Path::new(&path)
-                        .parent()
-                        .and_then(|p| p.to_str())
-                        .unwrap_or(".")
-                        .to_string();
-
-                    // Use a temp path, then atomically replace
                     let xisf_image = match super::write_xisf::buffer_to_xisf_image(buffer) {
                         Ok(img) => img,
                         Err(e) => {
-                            warn!("WriteCurrentFiles: XISF convert error {}: {}", path, e);
+                            warn!("WriteCurrent: XISF convert error {}: {}", path, e);
                             errors += 1;
                             continue;
                         }
@@ -76,21 +81,20 @@ impl PhotonPlugin for WriteCurrentFiles {
                     match photyx_xisf::XisfWriter::write(&temp_path, &xisf_image, &options) {
                         Ok(()) => {
                             if let Err(e) = std::fs::rename(&temp_path, &path) {
-                                warn!("WriteCurrentFiles: cannot replace {}: {}", path, e);
+                                warn!("WriteCurrent: cannot replace {}: {}", path, e);
                                 let _ = std::fs::remove_file(&temp_path);
                                 errors += 1;
                             } else {
-                                info!("WriteCurrentFiles: updated XISF {}", path);
+                                info!("WriteCurrent: updated XISF {}", path);
                                 written += 1;
                             }
                         }
                         Err(e) => {
-                            warn!("WriteCurrentFiles: XISF write error {}: {}", path, e);
+                            warn!("WriteCurrent: XISF write error {}: {}", path, e);
                             let _ = std::fs::remove_file(&temp_path);
                             errors += 1;
                         }
                     }
-                    let _ = parent; // suppress unused warning
                 }
                 "tif" | "tiff" => {
                     let temp_path = format!("{}.tmp", path);
@@ -101,23 +105,23 @@ impl PhotonPlugin for WriteCurrentFiles {
                     match write_tiff_file(&temp_path, buffer) {
                         Ok(()) => {
                             if let Err(e) = std::fs::rename(&temp_path, &path) {
-                                warn!("WriteCurrentFiles: cannot replace {}: {}", path, e);
+                                warn!("WriteCurrent: cannot replace {}: {}", path, e);
                                 let _ = std::fs::remove_file(&temp_path);
                                 errors += 1;
                             } else {
-                                info!("WriteCurrentFiles: updated TIFF {}", path);
+                                info!("WriteCurrent: updated TIFF {}", path);
                                 written += 1;
                             }
                         }
                         Err(e) => {
-                            warn!("WriteCurrentFiles: TIFF write error {}: {}", path, e);
+                            warn!("WriteCurrent: TIFF write error {}: {}", path, e);
                             let _ = std::fs::remove_file(&temp_path);
                             errors += 1;
                         }
                     }
                 }
                 _ => {
-                    // Silently ignore unsupported formats (PNG, JPEG, etc.)
+                    // Silently ignore unsupported formats
                 }
             }
         }
@@ -129,6 +133,19 @@ impl PhotonPlugin for WriteCurrentFiles {
         };
 
         Ok(PluginOutput::Message(msg))
+    }
+}
+
+/// Backward-compatible alias
+pub struct WriteCurrentFiles;
+
+impl PhotonPlugin for WriteCurrentFiles {
+    fn name(&self)        -> &str { "WriteCurrentFiles" }
+    fn version(&self)     -> &str { "1.0" }
+    fn description(&self) -> &str { "Alias for WriteCurrent (backward compatibility)" }
+    fn parameters(&self)  -> Vec<ParamSpec> { vec![] }
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+        WriteCurrent.execute(ctx, args)
     }
 }
 

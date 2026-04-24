@@ -10,9 +10,9 @@ use crate::context::{AppContext, BitDepth, ColorSpace, PixelData};
 pub struct WriteXISF;
 
 impl PhotonPlugin for WriteXISF {
-    fn name(&self) -> &str { "WriteXISF" }
-    fn version(&self) -> &str { "1.0" }
-    fn description(&self) -> &str { "Writes all loaded images as XISF files" }
+    fn name(&self)        -> &str { "WriteXISF" }
+    fn version(&self)     -> &str { "1.0" }
+    fn description(&self) -> &str { "Writes all loaded images as XISF files to a destination directory" }
 
     fn parameters(&self) -> Vec<ParamSpec> {
         vec![
@@ -47,19 +47,13 @@ impl PhotonPlugin for WriteXISF {
             ctx.active_directory.as_deref(),
         );
 
-        let overwrite = args.get("overwrite")
-            .map(|v| v == "true")
-            .unwrap_or(false);
-
-        let compress = args.get("compress")
-            .map(|v| v == "true")
-            .unwrap_or(false);
+        let overwrite = args.get("overwrite").map(|v| v == "true").unwrap_or(false);
+        let compress  = args.get("compress").map(|v| v == "true").unwrap_or(false);
 
         if ctx.file_list.is_empty() {
             return Ok(PluginOutput::Message("No files loaded.".to_string()));
         }
 
-        // Create destination directory if it doesn't exist
         std::fs::create_dir_all(&destination).map_err(|e| {
             PluginError::new("IO_ERROR", &format!("Cannot create directory '{}': {}", destination, e))
         })?;
@@ -73,7 +67,7 @@ impl PhotonPlugin for WriteXISF {
 
         let mut written = 0;
         let mut skipped = 0;
-        let mut errors = 0;
+        let mut errors  = 0;
         let total = ctx.file_list.len();
 
         for path in ctx.file_list.clone() {
@@ -82,44 +76,29 @@ impl PhotonPlugin for WriteXISF {
                 None => { errors += 1; continue; }
             };
 
-            // Derive output filename — change extension to .xisf
             let stem = std::path::Path::new(&buffer.filename)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("image");
-            let out_filename = format!("{}.xisf", stem);
-            let out_path = format!("{}/{}", destination.trim_end_matches('/'), out_filename);
+                .file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+            let out_path = format!("{}/{}.xisf", destination.trim_end_matches('/'), stem);
 
             if !overwrite && std::path::Path::new(&out_path).exists() {
                 skipped += 1;
                 continue;
             }
 
-            // Convert Photyx ImageBuffer → photyx_xisf XisfImage
             let xisf_image = match buffer_to_xisf_image(buffer) {
                 Ok(img) => img,
-                Err(e) => {
-                    tracing::warn!("Failed to convert {}: {}", path, e);
-                    errors += 1;
-                    continue;
-                }
+                Err(e) => { tracing::warn!("Failed to convert {}: {}", path, e); errors += 1; continue; }
             };
 
             match XisfWriter::write(&out_path, &xisf_image, &options) {
-                Ok(()) => {
-                    info!("Wrote XISF: {}", out_path);
-                    written += 1;
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to write '{}': {}", out_path, e);
-                    errors += 1;
-                }
+                Ok(()) => { info!("Wrote XISF: {}", out_path); written += 1; }
+                Err(e) => { tracing::warn!("Failed to write '{}': {}", out_path, e); errors += 1; }
             }
         }
 
         let msg = match (errors, skipped) {
             (0, 0) => format!("Wrote {} XISF file(s)", written),
-            (0, s) => format!("Wrote {} XISF file(s), {} skipped (already exist)", written, s),
+            (0, s) => format!("Wrote {} XISF file(s), {} skipped", written, s),
             (e, 0) => format!("Wrote {}/{} XISF file(s) ({} errors)", written, total, e),
             (e, s) => format!("Wrote {}/{} XISF file(s), {} skipped, {} errors", written, total, s, e),
         };
@@ -128,31 +107,25 @@ impl PhotonPlugin for WriteXISF {
     }
 }
 
-pub(crate) fn buffer_to_xisf_image(
-    buffer: &crate::context::ImageBuffer,
-) -> Result<XisfImage, String> {
-    // Convert Photyx PixelData → photyx_xisf PixelData
+pub(crate) fn buffer_to_xisf_image(buffer: &crate::context::ImageBuffer) -> Result<XisfImage, String> {
     let pixels = match buffer.pixels.as_ref().ok_or("No pixel data")? {
         PixelData::U8(v)  => XisfPixelData::U8(v.clone()),
         PixelData::U16(v) => XisfPixelData::U16(v.clone()),
         PixelData::F32(v) => XisfPixelData::F32(v.clone()),
     };
 
-    // Convert Photyx BitDepth → photyx_xisf SampleFormat
     let sample_format = match buffer.bit_depth {
         BitDepth::U8  => SampleFormat::UInt8,
         BitDepth::U16 => SampleFormat::UInt16,
         BitDepth::F32 => SampleFormat::Float32,
     };
 
-    // Convert Photyx ColorSpace → photyx_xisf ColorSpace
     let color_space = match buffer.color_space {
         ColorSpace::Mono  => XisfColorSpace::Gray,
         ColorSpace::RGB   => XisfColorSpace::RGB,
         ColorSpace::Bayer => XisfColorSpace::CFA,
     };
 
-    // Convert keywords — Photyx uses HashMap, XISF uses Vec (preserves order)
     let mut fits_keywords: Vec<photyx_xisf::FitsKeyword> = buffer.keywords
         .values()
         .map(|kw| photyx_xisf::FitsKeyword {
@@ -161,7 +134,6 @@ pub(crate) fn buffer_to_xisf_image(
             comment: kw.comment.clone().unwrap_or_default(),
         })
         .collect();
-    // Sort by name for deterministic output
     fits_keywords.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok(XisfImage {
@@ -172,19 +144,8 @@ pub(crate) fn buffer_to_xisf_image(
         color_space,
         pixels,
         fits_keywords,
-        properties:    Vec::new(), // XISF Properties not yet populated from Photyx session
+        properties:    Vec::new(),
     })
 }
 
-// Command alias — WriteAllXISFFiles is the pcode command name per spec §7.8
-pub struct WriteAllXISFFiles;
-
-impl PhotonPlugin for WriteAllXISFFiles {
-    fn name(&self) -> &str { "WriteAllXISFFiles" }
-    fn version(&self) -> &str { "1.0" }
-    fn description(&self) -> &str { "Writes all loaded images as XISF files" }
-    fn parameters(&self) -> Vec<ParamSpec> { WriteXISF.parameters() }
-    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        WriteXISF.execute(ctx, args)
-    }
-}
+// ----------------------------------------------------------------------

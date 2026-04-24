@@ -1,4 +1,4 @@
-// plugins/read_fits.rs — ReadFITS built-in native plugin
+// plugins/read_fits.rs — ReadFIT built-in native plugin
 // Spec §5.2, §6.3
 
 use std::path::Path;
@@ -9,16 +9,13 @@ use fitsio::images::ImageType;
 use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::{AppContext, ImageBuffer, BitDepth, ColorSpace, KeywordEntry, PixelData};
 
-pub struct ReadFITS;
+pub struct ReadFIT;
 
-impl PhotonPlugin for ReadFITS {
-    fn name(&self) -> &str { "ReadFITS" }
-    fn version(&self) -> &str { "1.0" }
+impl PhotonPlugin for ReadFIT {
+    fn name(&self)        -> &str { "ReadFIT" }
+    fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Reads all FITS files in the active directory into the image buffer pool" }
-
-    fn parameters(&self) -> Vec<ParamSpec> {
-        vec![]
-    }
+    fn parameters(&self)  -> Vec<ParamSpec> { vec![] }
 
     fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError> {
         let dir = ctx.active_directory.clone().ok_or_else(|| {
@@ -47,9 +44,7 @@ impl PhotonPlugin for ReadFITS {
         files.sort();
 
         if files.is_empty() {
-            return Ok(PluginOutput::Message(
-                format!("No FITS files found in '{}'", dir)
-            ));
+            return Ok(PluginOutput::Message(format!("No FITS files found in '{}'", dir)));
         }
 
         let total = files.len();
@@ -96,7 +91,6 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
     let hdu = fitsfile.primary_hdu()
         .map_err(|e| format!("Cannot read primary HDU: {}", e))?;
 
-    // Extract shape and data type from HduInfo
     let (width, height, channels, bit_depth) = match &hdu.info {
         HduInfo::ImageInfo { shape, image_type } => {
             let (w, h, c) = match shape.as_slice() {
@@ -120,7 +114,6 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
 
     let color_space = if channels == 3 { ColorSpace::RGB } else { ColorSpace::Mono };
 
-    // Read ALL header keywords dynamically using raw cfitsio calls
     let mut keywords = std::collections::HashMap::new();
 
     unsafe {
@@ -129,7 +122,6 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
         let mut nkeys: std::os::raw::c_int = 0;
         let mut morekeys: std::os::raw::c_int = 0;
 
-        // Get total number of keywords in header
         fitsio_sys::ffghsp(fptr, &mut nkeys, &mut morekeys, &mut status);
 
         for i in 1..=nkeys {
@@ -138,18 +130,15 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
             fitsio_sys::ffgrec(fptr, i, record.as_mut_ptr(), &mut status);
             if status != 0 { continue; }
 
-            // Convert to string — each record is 80 chars
             let record_str: String = record[..80].iter()
                 .map(|&c| if c == 0 { ' ' } else { c as u8 as char })
                 .collect();
 
-            // Skip blank, COMMENT, HISTORY, END records
             let key = record_str[..8].trim().to_uppercase();
             if key.is_empty() || key == "COMMENT" || key == "HISTORY" || key == "END" {
                 continue;
             }
 
-            // Parse value and comment — format is: KEY     = VALUE / comment
             if record_str.len() > 10 && &record_str[8..9] == "=" {
                 let rest = &record_str[9..].trim_start().to_string();
                 let (value, comment) = if let Some(slash) = rest.find(" /") {
@@ -158,7 +147,6 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
                     (rest.trim().to_string(), None)
                 };
 
-                // Strip surrounding quotes from string values
                 let value = if value.starts_with('\'') && value.ends_with('\'') {
                     value[1..value.len()-1].trim_end().to_string()
                 } else {
@@ -173,7 +161,6 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
         }
     }
 
-    // Check for Bayer pattern keyword to override color space
     let color_space = if color_space == ColorSpace::Mono && keywords.contains_key("BAYERPAT") {
         ColorSpace::Bayer
     } else {
@@ -186,7 +173,6 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
         .unwrap_or(path)
         .to_string();
 
-    // Read pixel data
     let pixels = match &bit_depth {
         BitDepth::U8 => {
             let data: Vec<u8> = hdu.read_image(&mut fitsfile)
@@ -195,8 +181,6 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
             Some(PixelData::U8(data))
         }
         BitDepth::U16 => {
-            // Read as i32 — cfitsio applies BZERO=32768 automatically, producing
-            // values 0-65535 which fit in i32 but not i16. Clamp and convert to u16.
             let data: Vec<i32> = hdu.read_image(&mut fitsfile)
                 .map_err(|e| format!("Cannot read pixel data: {}", e))?;
             if data.is_empty() { return Err("Pixel data is empty".to_string()); }
@@ -215,7 +199,7 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
         filename,
         width,
         height,
-        display_width: 0,  // set by AutoStretch after display cache is built
+        display_width: 0,
         bit_depth,
         color_space,
         channels,
@@ -224,15 +208,5 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
     })
 }
 
-// Command alias — ReadAllFITFiles is the pcode command name per spec §7.8
-pub struct ReadAllFITFiles;
 
-impl PhotonPlugin for ReadAllFITFiles {
-    fn name(&self) -> &str { "ReadAllFITFiles" }
-    fn version(&self) -> &str { "1.0" }
-    fn description(&self) -> &str { "Reads all FITS files in the active directory into the image buffer pool" }
-    fn parameters(&self) -> Vec<ParamSpec> { vec![] }
-    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        ReadFITS.execute(ctx, args)
-    }
-}
+// ----------------------------------------------------------------------

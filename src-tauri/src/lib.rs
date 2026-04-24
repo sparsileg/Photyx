@@ -1,20 +1,19 @@
 // lib.rs — Tauri application entry point and command handlers
 // Spec §4.2
 
-mod plugin;
 mod context;
-mod plugins;
 mod logging;
+mod plugin;
+mod plugins;
 mod utils;
 
-use std::sync::{Arc, Mutex};
-use tauri::{Manager, State};
-use serde::{Deserialize, Serialize};
-use tracing::info;
-
+use context::AppContext;
 use plugin::registry::PluginRegistry;
 use plugin::{ArgMap, PluginOutput};
-use context::AppContext;
+use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
+use tauri::{Manager, State};
+use tracing::info;
 
 mod pcode;
 
@@ -66,20 +65,61 @@ fn dispatch_command(
     }
 }
 
-/// Execute a pcode script string — used by the macro editor Run button
+#[derive(Debug, Serialize)]
+pub struct ScriptResponse {
+    pub results:         Vec<ScriptResult>,
+    pub session_changed: bool,
+    pub display_changed: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ScriptResult {
+    pub line_number: usize,
+    pub command:     String,
+    pub success:     bool,
+    pub message:     Option<String>,
+}
+
+const SESSION_COMMANDS: &[&str] = &[
+    "readfit", "readtiff", "readxisf", "readall",
+    "readallfitfiles", "readalltifffiles", "readallxisffiles", "readallfiles",
+    "selectdirectory", "clearsession", "movefile",
+];
+
+const DISPLAY_COMMANDS: &[&str] = &[
+    "autostretch", "linearstretch", "histogramequalization",
+];
+
+/// Execute a pcode script string — used by the macro editor and Quick Launch
 #[tauri::command]
 fn run_script(
     script: String,
     state:  State<PhotoxState>,
-) -> Vec<serde_json::Value> {
+) -> ScriptResponse {
     let mut ctx = state.context.lock().expect("context lock poisoned");
     let results = pcode::execute_script(&script, &mut ctx, &state.registry, true);
-    results.iter().map(|r| serde_json::json!({
-        "line_number": r.line_number,
-        "command":     r.command,
-        "success":     r.success,
-        "message":     r.message,
-    })).collect()
+
+    let mut session_changed = false;
+    let mut display_changed = false;
+
+    for r in &results {
+        if r.success {
+            let cmd = r.command.to_lowercase();
+            if SESSION_COMMANDS.contains(&cmd.as_str()) { session_changed = true; }
+            if DISPLAY_COMMANDS.contains(&cmd.as_str()) { display_changed = true; }
+        }
+    }
+
+    ScriptResponse {
+        results: results.iter().map(|r| ScriptResult {
+            line_number: r.line_number,
+            command:     r.command.clone(),
+            success:     r.success,
+            message:     r.message.clone(),
+        }).collect(),
+        session_changed,
+        display_changed,
+    }
 }
 
 // ── Tauri command: list registered plugins ────────────────────────────────────
@@ -162,27 +202,27 @@ pub fn run() {
 
     let registry = Arc::new(PluginRegistry::new());
 
-    registry.register(Arc::new(plugins::select_directory::SelectDirectory));
-    registry.register(Arc::new(plugins::read_fits::ReadAllFITFiles));
-    registry.register(Arc::new(plugins::read_tiff::ReadAllTIFFFiles));
-    registry.register(Arc::new(plugins::read_xisf::ReadAllXISFFiles));
-    registry.register(Arc::new(plugins::read_all_files::ReadAllFiles));
-    registry.register(Arc::new(plugins::write_xisf::WriteAllXISFFiles));
-    registry.register(Arc::new(plugins::write_fits::WriteAllFITFiles));
-    registry.register(Arc::new(plugins::write_tiff::WriteAllTIFFFiles));
-    registry.register(Arc::new(plugins::write_current_files::WriteCurrentFiles));
-
+    plugins::scripting::register_all(&registry);
     registry.register(Arc::new(plugins::auto_stretch::AutoStretch));
-    registry.register(Arc::new(plugins::set_frame::SetFrame));
-    registry.register(Arc::new(plugins::clear_session::ClearSession));
     registry.register(Arc::new(plugins::cache_frames::CacheFrames));
+    registry.register(Arc::new(plugins::clear_session::ClearSession));
+    registry.register(Arc::new(plugins::get_histogram::GetHistogram));
     registry.register(Arc::new(plugins::keywords::AddKeyword));
+    registry.register(Arc::new(plugins::keywords::CopyKeyword));
     registry.register(Arc::new(plugins::keywords::DeleteKeyword));
     registry.register(Arc::new(plugins::keywords::ModifyKeyword));
-    registry.register(Arc::new(plugins::keywords::CopyKeyword));
     registry.register(Arc::new(plugins::list_keywords::ListKeywords));
-    registry.register(Arc::new(plugins::get_histogram::GetHistogram));
+    registry.register(Arc::new(plugins::read_all_files::ReadAll));
+    registry.register(Arc::new(plugins::read_fits::ReadFIT));
+    registry.register(Arc::new(plugins::read_tiff::ReadTIFF));
+    registry.register(Arc::new(plugins::read_xisf::ReadXISF));
     registry.register(Arc::new(plugins::run_macro::RunMacro));
+    registry.register(Arc::new(plugins::select_directory::SelectDirectory));
+    registry.register(Arc::new(plugins::set_frame::SetFrame));
+    registry.register(Arc::new(plugins::write_current_files::WriteCurrent));
+    registry.register(Arc::new(plugins::write_fits::WriteFIT));
+    registry.register(Arc::new(plugins::write_tiff::WriteTIFF));
+    registry.register(Arc::new(plugins::write_xisf::WriteXISF));
 
     let _ = GLOBAL_REGISTRY.set(registry.clone());
     let state = PhotoxState {
@@ -191,6 +231,8 @@ pub fn run() {
     };
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)

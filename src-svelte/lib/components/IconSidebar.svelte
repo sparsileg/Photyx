@@ -19,7 +19,7 @@
     function onWindowClick(e: MouseEvent) {
         if ($ui.activePanel === null) return;
         const target = e.target as HTMLElement;
-        if (target.closest('#panel-container') || target.closest('#icon-sidebar')) return;
+        if (target.closest('#panel-container') || target.closest('#icon-sidebar') || target.closest('.macro-editor-panel')) return;
         ui.closePanel();
     }
 </script>
@@ -37,14 +37,12 @@
     {/each}
 </div>
 
-{#if $ui.activePanel !== null}
+{#if $ui.activePanel !== null && $ui.activePanel !== 'macro-editor'}
 <div id="panel-container" class="open">
     {#if $ui.activePanel === 'files'}
         <FileBrowser />
     {:else if $ui.activePanel === 'keywords'}
         <KeywordEditor />
-    {:else if $ui.activePanel === 'macro-editor'}
-        <MacroEditor />
     {:else if $ui.activePanel === 'macro-lib'}
         <MacroLibrary />
     {:else if $ui.activePanel === 'plugins'}

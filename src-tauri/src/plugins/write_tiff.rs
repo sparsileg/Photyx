@@ -41,9 +41,7 @@ impl PhotonPlugin for WriteTIFF {
             ctx.active_directory.as_deref(),
         );
 
-        let overwrite = args.get("overwrite")
-            .map(|v| v == "true")
-            .unwrap_or(false);
+        let overwrite = args.get("overwrite").map(|v| v == "true").unwrap_or(false);
 
         if ctx.file_list.is_empty() {
             return Ok(PluginOutput::Message("No files loaded.".to_string()));
@@ -65,11 +63,8 @@ impl PhotonPlugin for WriteTIFF {
             };
 
             let stem = Path::new(&buffer.filename)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("image");
-            let out_path = format!("{}/{}.tiff",
-                destination.trim_end_matches('/'), stem);
+                .file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+            let out_path = format!("{}/{}.tiff", destination.trim_end_matches('/'), stem);
 
             if !overwrite && Path::new(&out_path).exists() {
                 skipped += 1;
@@ -93,12 +88,9 @@ impl PhotonPlugin for WriteTIFF {
     }
 }
 
-/// Build the AstroTIFF ImageDescription string from buffer keywords.
-/// Format: NAME = VALUE / comment  (one per line)
 fn build_image_description(buffer: &ImageBuffer) -> String {
     let mut sorted: Vec<_> = buffer.keywords.values().collect();
     sorted.sort_by(|a, b| a.name.cmp(&b.name));
-
     sorted.iter().map(|kw| {
         let comment = kw.comment.as_deref().unwrap_or("");
         if comment.is_empty() {
@@ -109,7 +101,6 @@ fn build_image_description(buffer: &ImageBuffer) -> String {
     }).collect::<Vec<_>>().join("\n")
 }
 
-/// Write a single ImageBuffer to a TIFF file with AstroTIFF keyword embedding.
 pub(crate) fn write_tiff_file(out_path: &str, buffer: &ImageBuffer) -> Result<(), String> {
     let file = std::fs::File::create(out_path)
         .map_err(|e| format!("Cannot create file: {}", e))?;
@@ -131,8 +122,7 @@ pub(crate) fn write_tiff_file(out_path: &str, buffer: &ImageBuffer) -> Result<()
                 let mut image = encoder.new_image_with_compression::<colortype::RGB8, _>(
                     w, h, tiff::encoder::compression::Uncompressed)
                     .map_err(|e| format!("Encoder error: {}", e))?;
-                image.encoder().write_tag(tiff::tags::Tag::ImageDescription,
-                    description.as_str())
+                image.encoder().write_tag(tiff::tags::Tag::ImageDescription, description.as_str())
                     .map_err(|e| format!("Tag write error: {}", e))?;
                 image.write_data(data.as_slice())
                     .map_err(|e| format!("Write error: {}", e))?;
@@ -140,8 +130,7 @@ pub(crate) fn write_tiff_file(out_path: &str, buffer: &ImageBuffer) -> Result<()
                 let mut image = encoder.new_image_with_compression::<colortype::Gray8, _>(
                     w, h, tiff::encoder::compression::Uncompressed)
                     .map_err(|e| format!("Encoder error: {}", e))?;
-                image.encoder().write_tag(tiff::tags::Tag::ImageDescription,
-                    description.as_str())
+                image.encoder().write_tag(tiff::tags::Tag::ImageDescription, description.as_str())
                     .map_err(|e| format!("Tag write error: {}", e))?;
                 image.write_data(data.as_slice())
                     .map_err(|e| format!("Write error: {}", e))?;
@@ -152,8 +141,7 @@ pub(crate) fn write_tiff_file(out_path: &str, buffer: &ImageBuffer) -> Result<()
                 let mut image = encoder.new_image_with_compression::<colortype::RGB16, _>(
                     w, h, tiff::encoder::compression::Uncompressed)
                     .map_err(|e| format!("Encoder error: {}", e))?;
-                image.encoder().write_tag(tiff::tags::Tag::ImageDescription,
-                    description.as_str())
+                image.encoder().write_tag(tiff::tags::Tag::ImageDescription, description.as_str())
                     .map_err(|e| format!("Tag write error: {}", e))?;
                 image.write_data(data.as_slice())
                     .map_err(|e| format!("Write error: {}", e))?;
@@ -161,22 +149,19 @@ pub(crate) fn write_tiff_file(out_path: &str, buffer: &ImageBuffer) -> Result<()
                 let mut image = encoder.new_image_with_compression::<colortype::Gray16, _>(
                     w, h, tiff::encoder::compression::Uncompressed)
                     .map_err(|e| format!("Encoder error: {}", e))?;
-                image.encoder().write_tag(tiff::tags::Tag::ImageDescription,
-                    description.as_str())
+                image.encoder().write_tag(tiff::tags::Tag::ImageDescription, description.as_str())
                     .map_err(|e| format!("Tag write error: {}", e))?;
                 image.write_data(data.as_slice())
                     .map_err(|e| format!("Write error: {}", e))?;
             }
         }
         PixelData::F32(data) => {
-            // Reinterpret f32 bits as u32 — required by tiff 0.9 RGB32/Gray32 color types
             let as_u32: Vec<u32> = data.iter().map(|&f| f.to_bits()).collect();
             if is_rgb {
                 let mut image = encoder.new_image_with_compression::<colortype::RGB32, _>(
                     w, h, tiff::encoder::compression::Uncompressed)
                     .map_err(|e| format!("Encoder error: {}", e))?;
-                image.encoder().write_tag(tiff::tags::Tag::ImageDescription,
-                    description.as_str())
+                image.encoder().write_tag(tiff::tags::Tag::ImageDescription, description.as_str())
                     .map_err(|e| format!("Tag write error: {}", e))?;
                 image.write_data(as_u32.as_slice())
                     .map_err(|e| format!("Write error: {}", e))?;
@@ -184,8 +169,7 @@ pub(crate) fn write_tiff_file(out_path: &str, buffer: &ImageBuffer) -> Result<()
                 let mut image = encoder.new_image_with_compression::<colortype::Gray32, _>(
                     w, h, tiff::encoder::compression::Uncompressed)
                     .map_err(|e| format!("Encoder error: {}", e))?;
-                image.encoder().write_tag(tiff::tags::Tag::ImageDescription,
-                    description.as_str())
+                image.encoder().write_tag(tiff::tags::Tag::ImageDescription, description.as_str())
                     .map_err(|e| format!("Tag write error: {}", e))?;
                 image.write_data(as_u32.as_slice())
                     .map_err(|e| format!("Write error: {}", e))?;
@@ -196,17 +180,5 @@ pub(crate) fn write_tiff_file(out_path: &str, buffer: &ImageBuffer) -> Result<()
     Ok(())
 }
 
-// Command alias — WriteAllTIFFFiles is the pcode command name per spec §7.8
-pub struct WriteAllTIFFFiles;
-
-impl PhotonPlugin for WriteAllTIFFFiles {
-    fn name(&self)        -> &str { "WriteAllTIFFFiles" }
-    fn version(&self)     -> &str { "1.0" }
-    fn description(&self) -> &str { "Writes all loaded images as TIFF files to a destination directory" }
-    fn parameters(&self)  -> Vec<ParamSpec> { WriteTIFF.parameters() }
-    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        WriteTIFF.execute(ctx, args)
-    }
-}
 
 // ----------------------------------------------------------------------

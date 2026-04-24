@@ -151,6 +151,28 @@
     background: var(--bg-color);
 }
 
+.ql-context-menu {
+    position: fixed;
+    z-index: 1000;
+    background: #1a1a1a;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 4px 0;
+    min-width: 180px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.8);
+}
+
+
+.ql-context-item {
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--panel-fg);
+}
+.ql-context-item:hover { background: var(--btn-hover-bg); }
+.ql-context-remove { color: var(--error-fg, #ff6666); }
+.ql-context-remove:hover { background: var(--error-bg, #2a1010); }
+
 .ql-btn {
     height: 24px;
     padding: 0 10px;

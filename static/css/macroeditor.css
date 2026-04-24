@@ -1,0 +1,257 @@
+/* ── Layout ─────────────────────────────────────────────────────────────────── */
+.macro-editor-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    background: var(--panel-bg);
+    color: var(--panel-fg);
+    font-family: var(--font-mono, 'Cascadia Code', 'Fira Code', 'Consolas', monospace);
+    overflow: hidden;
+    transition: width 0.25s ease;
+}
+
+/* Expanded: break out of the sliding panel to an overlay like the console */
+.macro-editor-panel.expanded {
+    position: absolute;
+    inset: 0;
+    z-index: 200;
+    border-radius: 0;
+    overflow: hidden;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+.me-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--panel-header-bg);
+    border-bottom: 1px solid var(--panel-border);
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+}
+.me-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--panel-header-fg);
+}
+.me-icon { font-size: 14px; }
+.me-filename {
+    font-weight: 400;
+    font-size: 11px;
+    color: var(--panel-fg-muted);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.me-expand-hint {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--panel-fg-muted);
+}
+.me-close-btn {
+    background: none;
+    border: none;
+    color: var(--panel-fg-muted);
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 13px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.me-close-btn:hover { color: var(--panel-fg); }
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────────── */
+.me-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px;
+    background: var(--panel-toolbar-bg, var(--panel-header-bg));
+    border-bottom: 1px solid var(--panel-border);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+.me-btn {
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    border: 1px solid var(--btn-border);
+    border-radius: 3px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+}
+.me-btn:hover:not(:disabled) { background: var(--btn-hover-bg); }
+.me-btn:disabled { opacity: 0.4; cursor: default; }
+
+.me-btn-run {
+    background: var(--accent-bg, #1a4a1a);
+    color: var(--accent-fg, #33ff33);
+    border-color: var(--accent-border, #33ff33);
+    font-weight: 600;
+    padding: 3px 14px;
+}
+.me-btn-run:hover:not(:disabled) { background: var(--accent-hover-bg, #225522); }
+
+.me-btn-pin {
+    background: var(--pin-bg, #2a2a1a);
+    border-color: var(--pin-border, #aaaa33);
+    color: var(--pin-fg, #dddd66);
+}
+.me-btn-pin:hover { background: var(--pin-hover-bg, #333322); }
+
+.me-btn-font {
+    padding: 2px 6px;
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 24px;
+}
+
+.me-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--panel-border);
+    margin: 0 4px;
+    flex-shrink: 0;
+}
+.me-spacer { flex: 1; }
+
+.me-font-label {
+    font-size: 11px;
+    color: var(--panel-fg-muted);
+    font-family: inherit;
+    user-select: none;
+}
+.me-font-label-lg { font-size: 15px; }
+.me-font-size {
+    font-size: 11px;
+    color: var(--panel-fg-muted);
+    min-width: 32px;
+    text-align: center;
+    user-select: none;
+}
+
+/* ── Editor body ─────────────────────────────────────────────────────────────── */
+.me-editor-wrap {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--editor-bg, #0a0a0a);
+}
+
+/* Line numbers */
+.me-gutter {
+    flex-shrink: 0;
+    width: 42px;
+    padding: 10px 0;
+    background: var(--gutter-bg, #0d0d0d);
+    border-right: 1px solid var(--panel-border);
+    overflow: hidden;
+    user-select: none;
+    pointer-events: none;
+}
+
+.me-line-num {
+    font-size: var(--me-font);
+    line-height: 1.55;
+    text-align: right;
+    padding-right: 8px;
+    color: var(--gutter-fg, #444);
+    font-family: inherit;
+}
+
+/* Code area: stacked backdrop + textarea */
+.me-code-area {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Backdrop: receives the highlighted HTML, scrolls with textarea */
+.me-backdrop {
+    position: absolute;
+    inset: 0;
+    padding: 10px 12px;
+    font-size: var(--me-font);
+    line-height: 1.55;
+    white-space: pre;
+    word-break: normal;
+    overflow: auto;
+    pointer-events: none;
+    font-family: inherit;
+    color: var(--editor-fg, #ccc);
+    background: transparent;
+    /* Hide scrollbars — the textarea drives scrolling */
+    scrollbar-width: none;
+}
+.me-backdrop::-webkit-scrollbar { display: none; }
+
+/* Actual textarea — transparent text, caret visible */
+.me-textarea {
+    position: absolute;
+    inset: 0;
+    padding: 10px 12px;
+    font-size: var(--me-font);
+    line-height: 1.55;
+    white-space: pre;
+    background: transparent;
+    color: transparent;
+    caret-color: var(--editor-caret, #33ff33);
+    border: none;
+    outline: none;
+    resize: none;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    font-family: inherit;
+    overflow-y: scroll;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb, #333) transparent;
+}
+
+.me-textarea::placeholder {
+    color: var(--placeholder-fg, #333);
+}
+
+.me-textarea::-webkit-scrollbar { width: 6px; height: 6px; }
+.me-textarea::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, #333); border-radius: 3px; }
+
+/* ── Syntax highlight token colours (CSS vars → theme-neutral) ───────────────── */
+:global(.hl-command)  { color: var(--hl-command,  #33ff33); font-weight: 600; }
+:global(.hl-unknown)  { color: var(--hl-unknown,  #ff6666); }
+:global(.hl-argkey)   { color: var(--hl-argkey,   #66ccff); }
+:global(.hl-argval)   { color: var(--hl-argval,   #ffdd88); }
+:global(.hl-string)   { color: var(--hl-string,   #ff9944); }
+:global(.hl-variable) { color: var(--hl-variable, #cc88ff); }
+:global(.hl-comment)  { color: var(--hl-comment,  #557755); font-style: italic; }
+
+/* ── Status bar ──────────────────────────────────────────────────────────────── */
+.me-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    font-size: 11px;
+    color: var(--panel-fg-muted);
+    background: var(--panel-header-bg);
+    border-top: 1px solid var(--panel-border);
+    flex-shrink: 0;
+    user-select: none;
+}
+.me-status-sep { opacity: 0.4; }
+.me-running-indicator { color: var(--accent-fg, #33ff33); animation: blink 1s step-start infinite; }
+.me-dirty-indicator   { color: var(--warning-fg, #ffaa33); }
+
+@keyframes blink { 50% { opacity: 0; } }

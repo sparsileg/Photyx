@@ -10,10 +10,10 @@ use tiff::tags::Tag;
 use tiff::ColorType;
 use tracing::{info, warn};
 
-pub struct ReadAllTIFFFiles;
+pub struct ReadTIFF;
 
-impl PhotonPlugin for ReadAllTIFFFiles {
-    fn name(&self)        -> &str { "ReadAllTIFFFiles" }
+impl PhotonPlugin for ReadTIFF {
+    fn name(&self)        -> &str { "ReadTIFF" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Reads all TIFF image files (.tif, .tiff) in the active directory" }
     fn parameters(&self)  -> Vec<ParamSpec> { vec![] }
@@ -49,12 +49,10 @@ impl PhotonPlugin for ReadAllTIFFFiles {
         tiff_files.sort();
 
         if tiff_files.is_empty() {
-            return Ok(PluginOutput::Message(
-                format!("No TIFF files found in '{}'", dir)
-            ));
+            return Ok(PluginOutput::Message(format!("No TIFF files found in '{}'", dir)));
         }
 
-        info!("ReadAllTIFFFiles: loading {} files from {}", tiff_files.len(), dir);
+        info!("ReadTIFF: loading {} files from {}", tiff_files.len(), dir);
 
         ctx.file_list.clear();
         ctx.image_buffers.clear();
@@ -98,31 +96,25 @@ pub(crate) fn read_tiff_file(path: &str) -> Result<ImageBuffer, String> {
     let mut decoder = Decoder::new(file)
         .map_err(|e| format!("TIFF decode error: {e}"))?;
 
-    let (width, height) = decoder
-        .dimensions()
+    let (width, height) = decoder.dimensions()
         .map_err(|e| format!("Cannot read dimensions: {e}"))?;
 
-    let color_type = decoder
-        .colortype()
+    let color_type = decoder.colortype()
         .map_err(|e| format!("Cannot read color type: {e}"))?;
 
     let (channels, color_space): (u8, ColorSpace) = match color_type {
         ColorType::Gray(_) => (1, ColorSpace::Mono),
         ColorType::RGB(_)  => (3, ColorSpace::RGB),
-        other => {
-            return Err(format!("Unsupported color type: {other:?}"));
-        }
+        other => return Err(format!("Unsupported color type: {other:?}")),
     };
 
-    let result = decoder
-        .read_image()
+    let result = decoder.read_image()
         .map_err(|e| format!("Failed to read image data: {e}"))?;
 
     let (pixels, bit_depth): (PixelData, BitDepth) = match result {
         DecodingResult::U8(data)  => (PixelData::U8(data), BitDepth::U8),
         DecodingResult::U16(data) => (PixelData::U16(data), BitDepth::U16),
         DecodingResult::U32(data) => {
-            // Downconvert to U16 by taking the high 16 bits
             let converted: Vec<u16> = data.iter().map(|&v| (v >> 16) as u16).collect();
             (PixelData::U16(converted), BitDepth::U16)
         }
@@ -131,9 +123,7 @@ pub(crate) fn read_tiff_file(path: &str) -> Result<ImageBuffer, String> {
             let converted: Vec<f32> = data.iter().map(|&v| v as f32).collect();
             (PixelData::F32(converted), BitDepth::F32)
         }
-        other => {
-            return Err(format!("Unsupported pixel format: {other:?}"));
-        }
+        other => return Err(format!("Unsupported pixel format: {other:?}")),
     };
 
     let filename = Path::new(path)
@@ -148,13 +138,10 @@ pub(crate) fn read_tiff_file(path: &str) -> Result<ImageBuffer, String> {
         KeywordEntry::new("FILENAME", &filename, Some("Source filename")),
     );
 
-    // Parse AstroTIFF keywords from ImageDescription tag (§5.4)
-    // Format: NAME    = VALUE / comment  (one per line)
     if let Ok(desc) = decoder.get_tag_ascii_string(Tag::ImageDescription) {
         for line in desc.lines() {
             let line = line.trim();
             if line.is_empty() { continue; }
-            // Must contain '=' at position 8 (FITS-style fixed format)
             if line.len() < 10 || &line[8..9] != "=" { continue; }
             let name = line[..8].trim().to_uppercase();
             if name.is_empty() { continue; }
@@ -164,16 +151,12 @@ pub(crate) fn read_tiff_file(path: &str) -> Result<ImageBuffer, String> {
             } else {
                 (rest.trim().to_string(), None)
             };
-            // Strip surrounding quotes from string values
             let value = if value.starts_with('\'') && value.ends_with('\'') {
                 value[1..value.len()-1].trim_end().to_string()
             } else {
                 value
             };
-            keywords.insert(
-                name.clone(),
-                KeywordEntry::new(&name, &value, comment.as_deref()),
-            );
+            keywords.insert(name.clone(), KeywordEntry::new(&name, &value, comment.as_deref()));
         }
     }
 
@@ -189,5 +172,6 @@ pub(crate) fn read_tiff_file(path: &str) -> Result<ImageBuffer, String> {
         pixels: Some(pixels),
     })
 }
+
 
 // ----------------------------------------------------------------------

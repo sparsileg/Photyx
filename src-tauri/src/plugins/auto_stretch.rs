@@ -48,7 +48,7 @@ impl PhotonPlugin for AutoStretch {
             .unwrap_or(-2.8);
 
         let path = ctx.file_list.get(ctx.current_frame).cloned().ok_or_else(|| {
-            PluginError::new("NO_IMAGE", "No image loaded. Use ReadAllFITFiles first.")
+            PluginError::new("NO_IMAGE", "No image loaded. Use ReadAll first.")
         })?;
 
         let buffer = ctx.image_buffers.get(&path).ok_or_else(|| {

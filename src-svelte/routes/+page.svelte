@@ -3,15 +3,16 @@
     import { onMount } from 'svelte';
     import { ui } from '../lib/stores/ui';
 
-    import MenuBar from '../lib/components/MenuBar.svelte';
-    import Toolbar from '../lib/components/Toolbar.svelte';
-    import QuickLaunch from '../lib/components/QuickLaunch.svelte';
-    import IconSidebar from '../lib/components/IconSidebar.svelte';
-    import Viewer from '../lib/components/Viewer.svelte';
     import Console from '../lib/components/Console.svelte';
+    import IconSidebar from '../lib/components/IconSidebar.svelte';
     import InfoPanel from '../lib/components/InfoPanel.svelte';
-    import StatusBar from '../lib/components/StatusBar.svelte';
     import KeywordModal from '../lib/components/KeywordModal.svelte';
+    import MacroEditor from '../lib/components/panels/MacroEditor.svelte';
+    import MenuBar from '../lib/components/MenuBar.svelte';
+    import QuickLaunch from '../lib/components/QuickLaunch.svelte';
+    import StatusBar from '../lib/components/StatusBar.svelte';
+    import Toolbar from '../lib/components/Toolbar.svelte';
+    import Viewer from '../lib/components/Viewer.svelte';
 
     // Load theme stylesheet dynamically
     let themeLink: HTMLLinkElement | null = null;
@@ -60,9 +61,11 @@
     <MenuBar />
     <Toolbar />
     <QuickLaunch />
-
     <div id="content-area">
         <IconSidebar />
+        {#if $ui.activePanel === 'macro-editor'}
+            <MacroEditor />
+        {/if}
 
         <div id="viewer-region">
             <Viewer onMousePixel={onMousePixel} />

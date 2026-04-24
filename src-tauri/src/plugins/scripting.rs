@@ -1,0 +1,289 @@
+// plugins/scripting.rs — Scripting and utility plugins
+// Covers: GetKeyword, MoveFile, Print, Assert, CountFiles
+// Spec §7.8, §7.12
+
+use std::path::Path;
+use std::sync::Arc;
+
+use crate::context::AppContext;
+use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
+
+// ── GetKeyword ────────────────────────────────────────────────────────────────
+
+/// Retrieves a keyword value from the current frame and stores it as a variable.
+/// Usage: GetKeyword name=PXFLAG
+/// Result is stored in $PXFLAG (uppercase of the name arg) in AppContext.variables.
+pub struct GetKeyword;
+
+impl PhotonPlugin for GetKeyword {
+    fn name(&self)        -> &str { "GetKeyword" }
+    fn version(&self)     -> &str { "1.0.0" }
+    fn description(&self) -> &str { "Retrieves a FITS keyword value from the current frame into a script variable" }
+
+    fn parameters(&self) -> Vec<ParamSpec> {
+        vec![
+            ParamSpec {
+                name:        "name".to_string(),
+                param_type:  ParamType::String,
+                required:    true,
+                description: "Keyword name to retrieve".to_string(),
+                default:     None,
+            },
+        ]
+    }
+
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+        let name = args.get("name")
+            .ok_or_else(|| PluginError::missing_arg("name"))?
+            .trim()
+            .to_uppercase();
+
+        let file_path = ctx.file_list
+            .get(ctx.current_frame)
+            .cloned()
+            .ok_or_else(|| PluginError::new("NO_FRAME", "GetKeyword: no current frame"))?;
+
+        let buffer = ctx.image_buffers.get(&file_path)
+            .ok_or_else(|| PluginError::new("NO_BUFFER", "GetKeyword: no image buffer for current frame"))?;
+
+        // Keywords stored as HashMap<String, KeywordEntry> — match on key
+        let entry = buffer.keywords.iter()
+            .find(|(k, _)| k.to_uppercase() == name)
+            .map(|(_, v)| v)
+            .ok_or_else(|| PluginError::new(
+                "NOT_FOUND",
+                &format!("GetKeyword: keyword '{}' not found in current frame", name),
+            ))?;
+
+        let value = entry.value.trim().to_string();
+
+        // Store in AppContext variables so the interpreter can read it
+        ctx.variables.insert(name.clone(), value.clone());
+
+        Ok(PluginOutput::Value(value))
+    }
+}
+
+// ── MoveFile ──────────────────────────────────────────────────────────────────
+
+/// Moves the current frame's source file to a destination directory.
+/// Usage: MoveFile destination="D:/Rejects"
+pub struct MoveFile;
+
+impl PhotonPlugin for MoveFile {
+    fn name(&self)        -> &str { "MoveFile" }
+    fn version(&self)     -> &str { "1.0.0" }
+    fn description(&self) -> &str { "Moves the current frame's file to a destination directory" }
+
+    fn parameters(&self) -> Vec<ParamSpec> {
+        vec![
+            ParamSpec {
+                name:        "destination".to_string(),
+                param_type:  ParamType::Path,
+                required:    true,
+                description: "Destination directory path".to_string(),
+                default:     None,
+            },
+        ]
+    }
+
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+        let destination = args.get("destination")
+            .ok_or_else(|| PluginError::missing_arg("destination"))?;
+
+        let dest_dir = crate::utils::resolve_path(
+            destination,
+            ctx.active_directory.as_deref(),
+        );
+
+        let src_path = ctx.file_list
+            .get(ctx.current_frame)
+            .cloned()
+            .ok_or_else(|| PluginError::new("NO_FRAME", "MoveFile: no current frame"))?;
+
+        let src = Path::new(&src_path);
+        let filename = src.file_name()
+            .ok_or_else(|| PluginError::new("BAD_PATH", "MoveFile: cannot determine filename"))?;
+
+        std::fs::create_dir_all(&dest_dir)
+            .map_err(|e| PluginError::new(
+                "IO_ERROR",
+                &format!("MoveFile: cannot create directory '{}': {}", dest_dir, e),
+            ))?;
+
+        let dest_path = Path::new(&dest_dir).join(filename);
+
+        std::fs::rename(&src_path, &dest_path)
+            .map_err(|e| PluginError::new(
+                "IO_ERROR",
+                &format!("MoveFile: cannot move '{}' to '{}': {}", src_path, dest_path.display(), e),
+            ))?;
+
+        let dest_str = dest_path.display().to_string();
+
+        // Remove from all session caches
+        ctx.file_list.retain(|f| f != &src_path);
+        ctx.image_buffers.remove(&src_path);
+        ctx.display_cache.remove(&src_path);
+        ctx.full_res_cache.remove(&src_path);
+        ctx.blink_cache_12.remove(&src_path);
+        ctx.blink_cache_25.remove(&src_path);
+
+        if ctx.current_frame >= ctx.file_list.len() && !ctx.file_list.is_empty() {
+            ctx.current_frame = ctx.file_list.len() - 1;
+        }
+
+        tracing::info!("MoveFile: '{}' -> '{}'", src_path, dest_str);
+        Ok(PluginOutput::Message(format!("Moved '{}' to '{}'", src_path, dest_str)))
+    }
+}
+
+// ── Print ─────────────────────────────────────────────────────────────────────
+
+/// Outputs a literal message to the pcode console.
+/// Usage: Print message="Hello, world!"
+pub struct Print;
+
+impl PhotonPlugin for Print {
+    fn name(&self)        -> &str { "Print" }
+    fn version(&self)     -> &str { "1.0.0" }
+    fn description(&self) -> &str { "Outputs a literal message to the console" }
+
+    fn parameters(&self) -> Vec<ParamSpec> {
+        vec![
+            ParamSpec {
+                name:        "message".to_string(),
+                param_type:  ParamType::String,
+                required:    true,
+                description: "Message text to print".to_string(),
+                default:     None,
+            },
+        ]
+    }
+
+    fn execute(&self, _ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+        let message = args.get("message")
+            .cloned()
+            .unwrap_or_default();
+        Ok(PluginOutput::Message(message))
+    }
+}
+
+// ── Assert ────────────────────────────────────────────────────────────────────
+
+/// Halts execution with an error if the condition is false.
+/// Usage: Assert expression="$filecount > 0"
+pub struct Assert;
+
+impl PhotonPlugin for Assert {
+    fn name(&self)        -> &str { "Assert" }
+    fn version(&self)     -> &str { "1.0.0" }
+    fn description(&self) -> &str { "Halts execution if the expression evaluates to false" }
+
+    fn parameters(&self) -> Vec<ParamSpec> {
+        vec![
+            ParamSpec {
+                name:        "expression".to_string(),
+                param_type:  ParamType::String,
+                required:    true,
+                description: "Boolean expression to test".to_string(),
+                default:     None,
+            },
+        ]
+    }
+
+    fn execute(&self, _ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+        let expr = args.get("expression")
+            .ok_or_else(|| PluginError::missing_arg("expression"))?;
+
+        if evaluate_truth(expr) {
+            Ok(PluginOutput::Message(format!("Assert passed: {}", expr)))
+        } else {
+            Err(PluginError::new("ASSERT_FAILED", &format!("Assertion failed: {}", expr)))
+        }
+    }
+}
+
+fn evaluate_truth(expr: &str) -> bool {
+    let expr = expr.trim();
+    if expr.is_empty() || expr == "false" || expr == "0" {
+        return false;
+    }
+    for op in &["==", "!=", "<=", ">=", "<", ">"] {
+        if let Some(op_pos) = expr.find(op) {
+            let lhs = expr[..op_pos].trim();
+            let rhs = strip_quotes(expr[op_pos + op.len()..].trim());
+            return compare_values(lhs, op, &rhs);
+        }
+    }
+    true
+}
+
+fn compare_values(lhs: &str, op: &str, rhs: &str) -> bool {
+    if let (Ok(l), Ok(r)) = (lhs.parse::<f64>(), rhs.parse::<f64>()) {
+        return match op {
+            "==" => (l - r).abs() < f64::EPSILON,
+            "!=" => (l - r).abs() >= f64::EPSILON,
+            "<"  => l < r,
+            ">"  => l > r,
+            "<=" => l <= r,
+            ">=" => l >= r,
+            _    => false,
+        };
+    }
+    let l = lhs.to_uppercase();
+    let r = rhs.to_uppercase();
+    match op {
+        "==" => l == r,
+        "!=" => l != r,
+        "<"  => l <  r,
+        ">"  => l >  r,
+        "<=" => l <= r,
+        ">=" => l >= r,
+        _    => false,
+    }
+}
+
+fn strip_quotes(s: &str) -> String {
+    let s = s.trim();
+    if (s.starts_with('"') && s.ends_with('"'))
+        || (s.starts_with('\'') && s.ends_with('\''))
+    {
+        s[1..s.len() - 1].to_string()
+    } else {
+        s.to_string()
+    }
+}
+
+// ── CountFiles ────────────────────────────────────────────────────────────────
+
+/// Returns the number of files currently loaded in the session.
+/// Stores result in $filecount variable.
+/// Usage: CountFiles
+pub struct CountFiles;
+
+impl PhotonPlugin for CountFiles {
+    fn name(&self)        -> &str { "CountFiles" }
+    fn version(&self)     -> &str { "1.0.0" }
+    fn description(&self) -> &str { "Returns the number of loaded files; stores result in $filecount" }
+
+    fn parameters(&self) -> Vec<ParamSpec> { vec![] }
+
+    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError> {
+        let count = ctx.file_list.len();
+        ctx.variables.insert("filecount".to_string(), count.to_string());
+        Ok(PluginOutput::Value(count.to_string()))
+    }
+}
+
+// ── Registration ──────────────────────────────────────────────────────────────
+
+pub fn register_all(registry: &crate::plugin::registry::PluginRegistry) {
+    registry.register(Arc::new(Assert));
+    registry.register(Arc::new(CountFiles));
+    registry.register(Arc::new(GetKeyword));
+    registry.register(Arc::new(MoveFile));
+    registry.register(Arc::new(Print));
+}
+
+// ----------------------------------------------------------------------

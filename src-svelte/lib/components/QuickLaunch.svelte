@@ -1,36 +1,88 @@
-<!-- QuickLaunch.svelte — Spec §8.4 -->
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
     import { notifications } from '../stores/notifications';
     import { ui } from '../stores/ui';
+    import { quickLaunch } from '../stores/quickLaunch';
+    import { session } from '../stores/session';
 
-    const macros = [
-        { label: 'List Files', cmd: 'ListFiles', args: {} },
-        { label: 'FWHM',       cmd: 'ComputeFWHM', args: {} },
-        { label: 'Star Count', cmd: 'CountStars', args: {} },
-    ];
+    // ── Context menu state ───────────────────────────────────────────────────
+    let contextMenu = $state<{ x: number; y: number; id: string } | null>(null);
 
-    async function run(cmd: string, args: Record<string, string>) {
+    function onContextMenu(e: MouseEvent, entry: { id: string; protected?: boolean }) {
+        e.preventDefault();
+        if (entry.protected) return;
+        contextMenu = { x: e.clientX, y: e.clientY, id: entry.id };
+    }
+
+    function removeEntry() {
+        if (contextMenu) {
+            quickLaunch.remove(contextMenu.id);
+            contextMenu = null;
+        }
+    }
+
+    function dismissContext() {
+        contextMenu = null;
+    }
+
+    // ── Run entry ────────────────────────────────────────────────────────────
+    async function runEntry(script: string) {
         try {
-            const response = await invoke<{ success: boolean; output: string | null; error: string | null }>(
-                'dispatch_command', { request: { command: cmd, args } }
-            );
-            if (response.success && response.output) notifications.success(response.output);
-            else if (!response.success) notifications.error(response.error ?? 'Error');
+            const response = await invoke<{
+                results: Array<{ line_number: number; command: string; success: boolean; message: string | null }>;
+                session_changed: boolean;
+                display_changed: boolean;
+            }>('run_script', { script });
+
+            let anyError = false;
+            for (const r of response.results) {
+                if (!r.success) {
+                    notifications.error(`${r.command}: ${r.message ?? 'error'}`);
+                    anyError = true;
+                }
+                if (r.command.toLowerCase() === 'listkeywords' && r.success) {
+                    ui.openKeywordModal();
+                }
+            }
+            if (!anyError) notifications.success('Done.');
+
+            if (response.session_changed) {
+                const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
+                session.setDirectory(s.activeDirectory ?? '');
+                session.setFileList(s.fileList);
+            }
+            if (response.display_changed) {
+                ui.requestFrameRefresh();
+            }
         } catch (err) {
-            notifications.error(`${cmd}: ${err}`);
+            notifications.error(`Quick Launch error: ${err}`);
         }
     }
 </script>
 
+<svelte:window onclick={dismissContext} />
+
 <div id="quick-launch">
     <div id="ql-buttons">
-        {#each macros as macro}
-            <button class="ql-btn" onclick={() => run(macro.cmd, macro.args)}>{macro.label}</button>
+        {#each $quickLaunch as entry (entry.id)}
+            <button
+                class="ql-btn"
+                onclick={() => runEntry(entry.script)}
+                oncontextmenu={(e) => onContextMenu(e, entry)}
+            >
+                {#if entry.icon}<span class="ql-icon">{entry.icon}</span>{/if}
+                {entry.name}
+            </button>
         {/each}
-        <button class="ql-btn" onclick={() => ui.openKeywordModal()}>List KW</button>
     </div>
 </div>
 
-
-<!-- ---------------------------------------------------------------------- -->
+{#if contextMenu}
+    <div
+        class="ql-context-menu"
+        style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
+        onclick={(e) => e.stopPropagation()}
+    >
+        <div class="ql-context-item ql-context-remove" onclick={removeEntry}>Remove from Quick Launch</div>
+    </div>
+{/if}

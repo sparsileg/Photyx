@@ -1,7 +1,7 @@
 // pcode/tokenizer.rs — Line tokenizer for pcode scripts
 // Spec §7.6
 
-/// A parsed pcode line — either a command or a variable assignment.
+/// A parsed pcode line — either a command, assignment, or flow control construct.
 #[derive(Debug, Clone)]
 pub enum PcodeLine {
     /// A command with a name and argument map
@@ -14,6 +14,22 @@ pub enum PcodeLine {
         name:  String,
         value: String,
     },
+    /// If <expr> — begins a conditional block
+    If {
+        expr: String,
+    },
+    /// Else — optional else branch of an If block
+    Else,
+    /// EndIf — closes an If block
+    EndIf,
+    /// For varname = N to M — begins a numeric loop
+    For {
+        var:  String,
+        from: String,
+        to:   String,
+    },
+    /// EndFor — closes a For block
+    EndFor,
     /// A comment or blank line — skip silently
     Skip,
 }
@@ -40,37 +56,74 @@ pub fn tokenize_line(line: &str) -> PcodeLine {
         String::new()
     };
 
-    // Handle Set command specially: Set varname = value
-    if command.to_lowercase() == "set" {
-        if let Some(eq_pos) = rest.find('=') {
-            let name = rest[..eq_pos].trim().to_string();
-            let value = rest[eq_pos + 1..].trim().to_string();
-            // Strip surrounding quotes if present
-            let value = strip_quotes(&value);
-            return PcodeLine::Assignment { name, value };
+    match command.to_lowercase().as_str() {
+        "set" => {
+            if let Some(eq_pos) = rest.find('=') {
+                let name  = rest[..eq_pos].trim().to_string();
+                let value = strip_quotes(rest[eq_pos + 1..].trim());
+                return PcodeLine::Assignment { name, value };
+            }
         }
+        "if" => {
+            return PcodeLine::If { expr: rest.trim().to_string() };
+        }
+        "else" => {
+            return PcodeLine::Else;
+        }
+        "endif" => {
+            return PcodeLine::EndIf;
+        }
+        "for" => {
+            // Form: varname = N to M
+            if let Some(eq_pos) = rest.find('=') {
+                let var       = rest[..eq_pos].trim().to_string();
+                let after_eq  = rest[eq_pos + 1..].trim();
+                if let Some(to_pos) = find_word(after_eq, "to") {
+                    let from = after_eq[..to_pos].trim().to_string();
+                    let to   = after_eq[to_pos + 2..].trim().to_string();
+                    return PcodeLine::For { var, from, to };
+                }
+            }
+        }
+        "endfor" => {
+            return PcodeLine::EndFor;
+        }
+        _ => {}
     }
 
-    // Parse named arguments: key=value or key="quoted value"
     let args = parse_args(&rest);
-
     PcodeLine::Command { command, args }
+}
+
+/// Find `needle` as a whole word in `haystack`. Returns byte position or None.
+fn find_word(haystack: &str, needle: &str) -> Option<usize> {
+    let lower = haystack.to_lowercase();
+    let mut start = 0;
+    while let Some(pos) = lower[start..].find(needle) {
+        let abs_pos  = start + pos;
+        let before_ok = abs_pos == 0 || lower.as_bytes()[abs_pos - 1] == b' ';
+        let after_pos = abs_pos + needle.len();
+        let after_ok  = after_pos >= lower.len() || lower.as_bytes()[after_pos] == b' ';
+        if before_ok && after_ok {
+            return Some(abs_pos);
+        }
+        start = abs_pos + 1;
+    }
+    None
 }
 
 /// Parse named arguments from a string.
 /// Handles: key=value  key="quoted value"  key='quoted value'
 pub fn parse_args(rest: &str) -> std::collections::HashMap<String, String> {
-    let mut args = std::collections::HashMap::new();
+    let mut args  = std::collections::HashMap::new();
     let mut chars = rest.chars().peekable();
 
     loop {
-        // Skip whitespace
         while chars.peek().map(|c| c.is_whitespace()).unwrap_or(false) {
             chars.next();
         }
         if chars.peek().is_none() { break; }
 
-        // Read key
         let mut key = String::new();
         while let Some(&c) = chars.peek() {
             if c == '=' || c.is_whitespace() { break; }
@@ -79,15 +132,12 @@ pub fn parse_args(rest: &str) -> std::collections::HashMap<String, String> {
         }
         if key.is_empty() { break; }
 
-        // Expect '='
         if chars.peek() != Some(&'=') {
-            // Positional arg without value — store as empty
             args.insert(key.to_lowercase(), String::new());
             continue;
         }
         chars.next(); // consume '='
 
-        // Read value — quoted or unquoted
         let value = if chars.peek() == Some(&'"') || chars.peek() == Some(&'\'') {
             let quote = chars.next().unwrap();
             let mut v = String::new();

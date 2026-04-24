@@ -434,7 +434,13 @@ The pcode interpreter is implemented in Rust as a built-in native component of t
 3. **Executor** — calls `plugin.execute(ctx, args)` and handles the result
 4. **Reporter** — collects results for display in the UI or API response
 
-> **Note on async execution (Phase 5).** Long-running plugin executions should use Tauri's event emission model rather than blocking invoke/response. The dispatcher should return immediately with a command ID, and the plugin emits a completion event when done. This keeps the frontend fully responsive during execution. Currently, long-running commands block the JavaScript event loop. Implementation deferred to Phase 5.
+> **Note on async execution (Phase 5).** Long-running plugin executions
+> should use Tauri's event emission model rather than blocking
+> invoke/response. The dispatcher should return immediately with a command
+> ID, and the plugin emits a completion event when done. This keeps the
+> frontend fully responsive during execution. Currently, long-running
+> commands block the JavaScript event loop. But do we really need it? Async
+> Dispatch is deferred.
 
 ### 7.7 Saved Macros
 
@@ -1264,13 +1270,13 @@ curl -X POST http://localhost:7171/api/macro/run \
 | **Phase 2** | Blink engine, stretch pipeline (Auto-STF), pyramid cache, zoom, keyboard shortcuts, Info Panel, pixel tracking |
 | **Phase 3** | `photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, ReadAllTIFFFiles, RGB display/histogram, background display cache, true median histogram |
 | **Phase 4** | keyword plugins (Add/Delete/Modify/Copy), WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit handling, blink cache quality improvement, relative path resolution, window resize fix, pwd console command |
-| **Phase 5** | pcode interpreter, RunMacro, variable substitution, Log command, async dispatch, macro editor UI, save/load macros, conditional logic, Quick Launch Panel |
+| **Phase 5** | pcode interpreter, RunMacro, variable substitution, Log command, macro editor UI, save/load macros, conditional logic, Quick Launch Panel |
 | **Phase 6** | REST API (Axum), CLI access, external program integration, authentication middleware stub |
 | **Phase 7** | Analysis plugins as WASM (FWHM, star count, eccentricity, contour), analysis results windows; AnalyzeFrames Phase 7 metrics unlocked |
 | **Phase 8** | Native built-in analysis plugins, benchmarking vs. WASM versions |
 | **Phase 9** | Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations |
 | **Phase 10** | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI |
-| **Deferred** | Full keyword management UI, PNG/JPEG readers and writers, debayering, Auto-STF toolbar toggle |
+| **Deferred** | Full keyword management UI, PNG/JPEG readers and writers, debayering, Auto-STF toolbar toggle, async dispatch,  |
 
 ---
 

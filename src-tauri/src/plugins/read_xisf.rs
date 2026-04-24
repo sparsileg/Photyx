@@ -10,11 +10,10 @@ use crate::context::{AppContext, ImageBuffer, BitDepth, ColorSpace, KeywordEntry
 pub struct ReadXISF;
 
 impl PhotonPlugin for ReadXISF {
-    fn name(&self) -> &str { "ReadXISF" }
-    fn version(&self) -> &str { "1.0" }
+    fn name(&self)        -> &str { "ReadXISF" }
+    fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Reads all XISF files in the active directory into the image buffer pool" }
-
-    fn parameters(&self) -> Vec<ParamSpec> { vec![] }
+    fn parameters(&self)  -> Vec<ParamSpec> { vec![] }
 
     fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError> {
         let dir = ctx.active_directory.clone().ok_or_else(|| {
@@ -41,9 +40,7 @@ impl PhotonPlugin for ReadXISF {
         files.sort();
 
         if files.is_empty() {
-            return Ok(PluginOutput::Message(
-                format!("No XISF files found in '{}'", dir)
-            ));
+            return Ok(PluginOutput::Message(format!("No XISF files found in '{}'", dir)));
         }
 
         let total = files.len();
@@ -98,28 +95,24 @@ pub fn read_xisf_file(path: &str) -> Result<ImageBuffer, String> {
     let height   = meta.height;
     let channels = meta.channels as u8;
 
-    // Map XISF SampleFormat → Photyx BitDepth
     let bit_depth = match meta.sample_format {
         SampleFormat::UInt8   => BitDepth::U8,
         SampleFormat::UInt16  => BitDepth::U16,
-        SampleFormat::UInt32  => BitDepth::U16, // promote to U16 for display
+        SampleFormat::UInt32  => BitDepth::U16,
         SampleFormat::Float32 => BitDepth::F32,
-        SampleFormat::Float64 => BitDepth::F32, // demote to F32 for display
+        SampleFormat::Float64 => BitDepth::F32,
     };
 
-    // Map XISF ColorSpace → Photyx ColorSpace
     let mut color_space = match meta.color_space {
-        XisfColorSpace::Gray          => ColorSpace::Mono,
-        XisfColorSpace::RGB           => ColorSpace::RGB,
-        XisfColorSpace::CFA           => ColorSpace::Bayer,
-        XisfColorSpace::Unknown(_)    => ColorSpace::Mono,
+        XisfColorSpace::Gray       => ColorSpace::Mono,
+        XisfColorSpace::RGB        => ColorSpace::RGB,
+        XisfColorSpace::CFA        => ColorSpace::Bayer,
+        XisfColorSpace::Unknown(_) => ColorSpace::Mono,
     };
 
-    // Convert XISF FITSKeywords → Photyx KeywordEntry map
     let mut keywords = std::collections::HashMap::new();
     for kw in &meta.fits_keywords {
         let name = kw.name.to_uppercase();
-        // Skip COMMENT and HISTORY — they don't fit the key/value model cleanly
         if name == "COMMENT" || name == "HISTORY" { continue; }
         keywords.insert(
             name.clone(),
@@ -127,7 +120,6 @@ pub fn read_xisf_file(path: &str) -> Result<ImageBuffer, String> {
         );
     }
 
-    // Override color space if BAYERPAT keyword present and image is mono
     if color_space == ColorSpace::Mono && keywords.contains_key("BAYERPAT") {
         color_space = ColorSpace::Bayer;
     }
@@ -138,22 +130,15 @@ pub fn read_xisf_file(path: &str) -> Result<ImageBuffer, String> {
         .unwrap_or(path)
         .to_string();
 
-    // Read pixel data
     let image = reader.read_image(0)
         .map_err(|e| format!("Cannot read pixels: {}", e))?;
 
     let pixels = match image.pixels {
         XisfPixelData::U8(v)  => Some(PixelData::U8(v)),
         XisfPixelData::U16(v) => Some(PixelData::U16(v)),
-        XisfPixelData::U32(v) => {
-            // Downscale U32 → U16 (shift right 16 bits)
-            Some(PixelData::U16(v.iter().map(|&p| (p >> 16) as u16).collect()))
-        }
+        XisfPixelData::U32(v) => Some(PixelData::U16(v.iter().map(|&p| (p >> 16) as u16).collect())),
         XisfPixelData::F32(v) => Some(PixelData::F32(v)),
-        XisfPixelData::F64(v) => {
-            // Downscale F64 → F32
-            Some(PixelData::F32(v.iter().map(|&p| p as f32).collect()))
-        }
+        XisfPixelData::F64(v) => Some(PixelData::F32(v.iter().map(|&p| p as f32).collect())),
     };
 
     Ok(ImageBuffer {
@@ -169,15 +154,5 @@ pub fn read_xisf_file(path: &str) -> Result<ImageBuffer, String> {
     })
 }
 
-// Command alias — ReadAllXISFFiles is the pcode command name per spec §7.8
-pub struct ReadAllXISFFiles;
 
-impl PhotonPlugin for ReadAllXISFFiles {
-    fn name(&self) -> &str { "ReadAllXISFFiles" }
-    fn version(&self) -> &str { "1.0" }
-    fn description(&self) -> &str { "Reads all XISF files in the active directory into the image buffer pool" }
-    fn parameters(&self) -> Vec<ParamSpec> { vec![] }
-    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        ReadXISF.execute(ctx, args)
-    }
-}
+// ----------------------------------------------------------------------

@@ -98,6 +98,21 @@ Photyx/
 | Tauri CLI | 2.10.1 | `cargo install tauri-cli` |
 | vcpkg | latest | Required for cfitsio on Windows |
 
+### Tauri Permissions
+
+Frontend access to OS APIs (filesystem, dialogs, etc.) requires explicit permission entries in `src-tauri/capabilities/default.json`. This file is the single source of truth for what the frontend is allowed to do. If a Tauri plugin API call fails silently with no console error, a missing permission here is the first thing to check.
+
+Current permissions granted:
+- `core:default` — core Tauri APIs
+- `opener:default` — open URLs/files externally
+- `dialog:allow-open` — file open dialog
+- `dialog:allow-save` — file save dialog
+- `fs:allow-read-text-file` — read text files from disk
+- `fs:allow-write-text-file` — write text files to disk
+- `core:window:allow-close` — window close
+
+---
+
 ### Windows-specific: cfitsio Setup
 
 cfitsio is installed via vcpkg on `J:\vcpkg`. The PKG_CONFIG environment variables are now set automatically via `.cargo/config.toml`:
@@ -452,6 +467,17 @@ The pcode console expands to a full-width overlay (60vh, 85% opacity) when the h
 ---
 
 ## 6. UI State Store (`ui.ts`) — Key Fields
+
+Photyx will use an embedded SQLite database via the rusqlite crate, which
+statically links SQLite into the binary with no external dependencies. The
+tauri-plugin-sql plugin exposes the database to the Svelte frontend via
+invoke. Planned uses include: replacing localStorage for Quick Launch
+buttons, theme, and user preferences; a macro library table storing name,
+description, script text, created date, and last run date; a frame analysis
+results table (one row per file per analysis type — FWHM, star count,
+eccentricity, median value) so results persist across sessions and can be
+queried; and a session history log. This is deferred to phase 9 alongside
+other persistence work.
 
 | Field | Purpose |
 |---|---|

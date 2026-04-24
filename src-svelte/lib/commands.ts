@@ -10,12 +10,12 @@ import { notifications } from './stores/notifications';
 export type FormatFilter = 'all' | 'fits' | 'xisf' | 'tiff' | 'png' | 'jpeg';
 
 export const FORMAT_FILTERS: { id: FormatFilter; label: string; commands: string[] }[] = [
-    { id: 'all',  label: 'All Supported', commands: ['ReadAllFiles'] },
-    { id: 'fits', label: 'FITS only',     commands: ['ReadAllFITFiles'] },
-    { id: 'xisf', label: 'XISF only',     commands: ['ReadAllXISFFiles'] },
-    { id: 'tiff', label: 'TIFF only',     commands: ['ReadAllTIFFFiles'] },
-    { id: 'png',  label: 'PNG only',      commands: ['ReadAllPNGFiles'] },
-    { id: 'jpeg', label: 'JPEG only',     commands: ['ReadAllJPEGFiles'] },
+    { id: 'all',  label: 'All Supported', commands: ['ReadAll'] },
+    { id: 'fits', label: 'FITS only',     commands: ['ReadFIT'] },
+    { id: 'xisf', label: 'XISF only',     commands: ['ReadXISF'] },
+    { id: 'tiff', label: 'TIFF only',     commands: ['ReadTIFF'] },
+    { id: 'png',  label: 'PNG only',      commands: ['ReadPNG'] },
+    { id: 'jpeg', label: 'JPEG only',     commands: ['ReadJPEG'] },
 ];
 
 /** Sync session store from backend state */

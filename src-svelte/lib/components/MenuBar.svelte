@@ -18,8 +18,8 @@
     function action(a: string) {
         close();
         switch (a) {
-            case 'open-file':    selectDirectory(); break;
-            case 'close-file':   closeSession(); break;
+            case 'select-directory': selectDirectory(); break;
+            case 'close-session':    closeSession(); break;
             case 'exit':         getCurrentWindow().close(); break;
             case 'theme-dark':   ui.setTheme('dark'); break;
             case 'theme-light':  ui.setTheme('light'); break;
@@ -38,8 +38,8 @@
 <div id="menu-bar">
     {#each [
         { name: 'File', items: [
-            { label: 'Select Directory…',        action: 'open-file',     shortcut: 'Ctrl+O' },
-            { label: 'Close',        action: 'close-file' },
+            { label: 'Select Directory…',    action: 'select-directory',     shortcut: 'Ctrl+O' },
+            { label: 'Close Session',        action: 'close-session' },
             { sep: true },
             { label: 'Exit',         action: 'exit' },
         ]},

@@ -4,6 +4,7 @@
     import { session } from '../stores/session';
     import { notifications } from '../stores/notifications';
     import { ui } from '../stores/ui';
+    import { consoleHistory } from '../stores/consoleHistory';
 
     interface ConsoleLine {
         id: number;
@@ -25,20 +26,8 @@
     let pendingInput = '';
     let nextId = 2;
 
-    const ALL_COMMANDS = [
-        'SelectDirectory','ListFiles','FilterByKeyword',
-        'ReadAllFITFiles','ReadAllXISFFiles','ReadAllTIFFFiles','ReadAllFiles',
-        'WriteAllFITFiles','WriteAllXISFFiles','WriteAllTIFFFiles','WriteCurrentFiles',
-        'WritePNG','WriteJPEG',
-        'AddKeyword','DeleteKeyword','ModifyKeyword','CopyKeyword','ListKeywords','GetKeyword',
-        'GetHistogram',
-        'GetImageProperty','GetSessionProperty','Test',
-        'AutoStretch','CropImage','BinImage','DebayerImage',
-        'BlinkSequence','CacheFrames','SetZoom',
-        'ComputeFWHM','CountStars','ComputeEccentricity','MedianValue','ContourPlot',
-        'Set','Print','Echo','CountFiles','RunMacro',
-        'Help','Clear','Version','pwd',
-    ];
+    import { PCODE_COMMANDS } from '../pcodeCommands';
+    const ALL_COMMANDS = [...PCODE_COMMANDS].sort();
 
     const ARG_HINTS: Record<string, string> = {
         addkeyword:         'name=  value=  comment=',
@@ -63,12 +52,30 @@
         writecurrentfiles:  '',
         writealltifffiles:  'destination=  overwrite=',
         writeallxisffiles:  'destination=  overwrite=',
+        writefit:           'destination=  overwrite=',
+        writetiff:          'destination=  overwrite=',
+        writexisf:          'destination=  overwrite=  compress=',
+        writecurrent:       '',
+        readfit:            '',
+        readtiff:           '',
+        readxisf:           '',
+        readall:            '',
+        addkeyword:         'name=  value=  comment=  scope=',
+        deletekeyword:      'name=  scope=',
+        modifykeyword:      'name=  value=  comment=  scope=',
+        movefile:           'destination=',
+        setframe:           'index=',
+        log:                'path=  append=',
+        countfiles:         '',
+        print:              'message=',
+        assert:             'expression=',
         writejpeg:          'filename=  destination=  quality=',
         writepng:           'filename=  destination=',
     };
 
     function append(text: string, type: ConsoleLine['type']) {
         lines = [...lines, { id: nextId++, text, type }];
+        consoleHistory.set(lines);
         setTimeout(() => {
             if (outputEl) outputEl.scrollTop = outputEl.scrollHeight;
         }, 0);
@@ -101,8 +108,8 @@
         help: () => {
             append('Photyx pcode v1.0  —  commands:', 'output');
             append('  File:     SelectDirectory ListFiles FilterByKeyword', 'output');
-            append('  I/O:      ReadAllFITFiles ReadAllXISFFiles ReadAllTIFFFiles ReadAllFiles', 'output');
-            append('            WriteAllFITFiles WriteAllXISFFiles WriteAllTIFFFiles WriteCurrentFiles WritePNG WriteJPEG', 'output');
+            append('  I/O:      ReadFIT ReadXISF ReadTIFF ReadAll', 'output');
+            append('            WriteFIT WriteXISF WriteTIFF WriteCurrent WritePNG WriteJPEG', 'output');
             append('  Keyword:  AddKeyword DeleteKeyword ModifyKeyword CopyKeyword ListKeywords GetKeyword', 'output');
             append('  Query:    GetImageProperty GetSessionProperty Test', 'output');
             append('  Process:  AutoStretch CropImage BinImage DebayerImage', 'output');
@@ -171,8 +178,16 @@
             ui.requestViewerClear();
             notifications.info(`Directory: ${args.path}`);
         }
+        if (cmd === 'clearsession') {
+            session.setDirectory('');
+            session.setFileList([]);
+            session.setCurrentFrame(0);
+            session.update(s => ({ ...s, loadedImages: {} }));
+            ui.clearViewer();
+        }
         if (cmd === 'readallfitfiles' || cmd === 'readallxisffiles' || cmd === 'readalltifffiles'
-            || cmd === 'readallfiles' || cmd === 'runmacro') {
+            || cmd === 'readallfiles' || cmd === 'readfit' || cmd === 'readtiff'
+            || cmd === 'readxisf' || cmd === 'readall' || cmd === 'runmacro') {
             if (output) notifications.success(output);
             try {
                 const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
