@@ -121,6 +121,7 @@ pub fn estimate_background(luma: &[f32], config: &SigmaClipConfig) -> Background
 
 /// Compute the background median for a luminance image.
 /// Returns a value in the 0.0–1.0 normalized range.
+#[allow(dead_code)]
 pub fn background_median(luma: &[f32], config: &BackgroundConfig) -> f32 {
     estimate_background(luma, &config.sigma_clip).median
 }
@@ -129,6 +130,7 @@ pub fn background_median(luma: &[f32], config: &BackgroundConfig) -> f32 {
 
 /// Compute the background standard deviation for a luminance image.
 /// Returns a value in the 0.0–1.0 normalized range.
+#[allow(dead_code)]
 pub fn background_stddev(luma: &[f32], config: &BackgroundConfig) -> f32 {
     estimate_background(luma, &config.sigma_clip).stddev
 }

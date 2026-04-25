@@ -30,6 +30,7 @@ pub struct StarCandidate {
     /// row-major, same dimensions as bbox
     pub patch: Vec<f32>,
     /// Number of pixels in the connected component
+    #[allow(dead_code)]
     pub pixel_count: usize,
 }
 
