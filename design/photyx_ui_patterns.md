@@ -2,83 +2,97 @@
 
 ## Overview
 
-Photyx uses Tauri + Svelte + Rust. The frontend is in `src-svelte/`, the backend in `src-tauri/src/`. This note describes the established pattern for adding new floating windows (like the Analysis Graph) and new pcode console commands that trigger frontend actions.
+Photyx uses Tauri + Svelte + Rust. The frontend is in `src-svelte/`, the backend in `src-tauri/src/`. This note describes the established pattern for adding new viewer-region components (like the Analysis Graph) and new pcode console commands that trigger frontend actions.
+
+**Important:** Photyx is a single-window SPA. There are no floating OS windows or draggable overlays. Components that need full screen real estate (like the Analysis Graph) replace the viewer region entirely, controlled by a boolean in the `ui` store. The user closes them to return to the image viewer.
 
 ---
 
-## Pattern 1 — New Floating Window (e.g. Analysis Graph)
+## Pattern 1 — New Viewer-Region Component (e.g. Analysis Graph)
 
-A floating window is a Svelte component that renders conditionally based on a boolean in the `ui` store. It is **not** a modal with a backdrop — it is `position: fixed` and draggable.
+A viewer-region component replaces the image viewer when active. It is toggled by a boolean in the `ui` store and rendered in `+page.svelte` using `{#if}/{:else}` alongside `<Viewer>`.
 
 ### Step 1 — Add a boolean to `src-svelte/lib/stores/ui.ts`
 
 Add to the `UIState` interface:
 ```typescript
-showMyWindow: boolean;
+showMyComponent: boolean;
 ```
 
 Add to the `initial` object:
 ```typescript
-showMyWindow: false,
+showMyComponent: false,
 ```
 
 Add a setter to the store's returned object:
 ```typescript
-setShowMyWindow: (v: boolean) => update(s => ({ ...s, showMyWindow: v })),
+setShowMyComponent: (v: boolean) => update(s => ({ ...s, showMyComponent: v })),
 ```
 
 ### Step 2 — Create the Svelte component
 
-Place it in `src-svelte/lib/components/MyWindow.svelte`.
+Place it in `src-svelte/lib/components/MyComponent.svelte`.
 
 The component:
-- Reads `$ui.showMyWindow` and wraps everything in `{#if $ui.showMyWindow}`
-- Has a drag handle div with `onmousedown` that adds `mousemove`/`mouseup` listeners to `window`
-- Cleans up listeners in `onDestroy`
-- Has a close button that calls `ui.setShowMyWindow(false)`
-- Uses `position: fixed` with `left` and `top` bound to `$state` variables
+- Fills `100%` width and height of the viewer region
+- Has a Close button that calls `ui.setShowMyComponent(false)`
+- Has a toolbar row at the top for controls
+- Uses `display: flex; flex-direction: column` layout
+- Does NOT use `position: fixed` or dragging — it lives in the normal document flow
 
 ### Step 3 — Create the CSS file
 
-Place it in your styles directory (e.g. `src-svelte/styles/MyWindow.css`). Import it wherever other component CSS files are imported.
+Place it in `src-svelte/static/css/mycomponent.css`. Import it in `src-svelte/app.html` alongside the other CSS imports:
+```html
+<link rel="stylesheet" href="/css/mycomponent.css" />
+```
 
 ### Step 4 — Register in `+page.svelte`
 
 In `src-svelte/routes/+page.svelte`:
 ```svelte
-import MyWindow from '../lib/components/MyWindow.svelte';
+import MyComponent from '../lib/components/MyComponent.svelte';
 ```
 
-Add to the template (outside `#app`, alongside `KeywordModal`):
+In the viewer region, replace `<Viewer>` with an if/else:
 ```svelte
-<MyWindow />
+<div id="viewer-region">
+    {#if $ui.showMyComponent}
+        <MyComponent />
+    {:else}
+        <Viewer onMousePixel={onMousePixel} />
+    {/if}
+    ...
+</div>
 ```
 
 ### Step 5 — Trigger from the menu
 
-In `src-svelte/lib/components/MenuBar.svelte`, add a menu item to the appropriate menu and handle it in the `action()` switch:
+In `src-svelte/lib/components/MenuBar.svelte`, add a menu item and handle it in the `action()` switch:
 ```typescript
-case 'my-window': ui.setShowMyWindow(true); break;
+case 'my-component': ui.setShowMyComponent(true); break;
 ```
 
 ### Step 6 — Trigger from the pcode console
 
 In `src-svelte/lib/components/Console.svelte`, add to the `CLIENT_COMMANDS` map:
 ```typescript
-showmywindow: () => {
-    ui.setShowMyWindow(true);
+showmycomponent: () => {
+    ui.setShowMyComponent(true);
     return true;
 },
 ```
 
 `CLIENT_COMMANDS` handles commands entirely on the frontend — no Rust plugin needed. The key is the command name lowercased.
 
-### Step 7 — Add to pcodeCommands.ts
+### Step 7 — Add to pcodeCommands.ts for tab completion
 
 In `src-svelte/lib/pcodeCommands.ts`, add the command name to the Set so tab completion works:
 ```typescript
-'ShowMyWindow',
+'ShowMyComponent',
 ```
+
+**Tab completion applies to ALL commands** — both client-side (`CLIENT_COMMANDS`) and Rust plugin commands. Any command that should be discoverable via Tab must be added to `pcodeCommands.ts`. The key is the PascalCase command name exactly as the user would type it.
 
 ---
 
@@ -111,6 +125,70 @@ Only use this when the command needs to read or modify `AppContext` on the Rust 
 2. Add `pub mod my_plugin;` to `src-tauri/src/plugins/mod.rs`
 3. Register in `lib.rs` `run()`: `registry.register(Arc::new(plugins::my_plugin::MyPlugin));`
 4. Add command name to `pcodeCommands.ts`
+
+---
+
+## Pattern 4 — Sending Output to the Console from Outside Console.svelte
+
+Components other than `Console.svelte` (e.g. `QuickLaunch.svelte`) can write lines to the console using the `consolePipe` store in `consoleHistory.ts`.
+
+### How it works
+
+`consoleHistory.ts` exports a `consolePipe` writable store:
+```typescript
+export const consolePipe = writable<ConsoleLine | null>(null);
+```
+
+`Console.svelte` watches it via `$effect` and appends any non-null value to the console output, then resets it to null.
+
+### Usage in an external component
+
+```typescript
+import { consolePipe } from '../stores/consoleHistory';
+
+// Send a single line
+consolePipe.set({ id: Date.now(), text: 'Hello from QuickLaunch', type: 'success' });
+
+// Send multiple lines (e.g. from a plugin result)
+result.message.split('\n').forEach(line => {
+    if (line) consolePipe.set({ id: Date.now(), text: line, type: 'success' });
+});
+```
+
+### Line types
+- `'success'` — green, for successful plugin output
+- `'error'`   — red, for errors
+- `'warning'` — yellow, for warnings
+- `'info'`    — dim, for informational messages
+- `'output'`  — neutral, for general output
+- `'input-echo'` — shows the `>` prompt prefix, for echoing user input
+
+---
+
+## Pattern 5 — Post-Command Side Effects in Console.svelte
+
+When a Rust plugin command succeeds, `Console.svelte` runs `syncSessionState()` to handle any side effects. Add cases here for commands that need to trigger frontend state changes after execution.
+
+```typescript
+async function syncSessionState(cmd: string, args: Record<string, string>, output: string | null) {
+    // existing cases...
+    if (cmd === 'mycommand') {
+        ui.doSomething();
+    }
+}
+```
+
+The same pattern applies in `QuickLaunch.svelte` — inspect `response.results` after `run_script` completes:
+
+```typescript
+for (const r of response.results) {
+    if (r.command.toLowerCase() === 'mycommand' && r.success) {
+        ui.doSomething();
+    }
+}
+```
+
+Both places must be updated if a command can be triggered from both the console and the Quick Launch bar.
 
 ---
 

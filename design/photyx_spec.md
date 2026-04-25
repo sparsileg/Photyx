@@ -1,8 +1,8 @@
 # Photyx — Specification & Requirements Document
 
-**Version:** 18
-**Date:** 24 April 2026 9:43pm
-**Status:** Active Development — Phase 6 underway
+**Version:** 19
+**Date:** 25 April 2026 2:57pm
+**Status:** Active Development — Phase 8 substantially complete
 
 ---
 
@@ -298,13 +298,16 @@ The following table explicitly designates the loading mechanism for each plugin 
 | pcode Interpreter | Scripting | Built-in Native |
 | RunMacro | Scripting | Built-in Native |
 | DefineMacro | Scripting | Built-in Native |
-| ComputeFWHM | Analysis | WASM |
-| CountStars | Analysis | WASM |
-| ComputeEccentricity | Analysis | WASM |
-| MedianValue | Analysis | WASM |
-| ContourPlot (FWHM) | Analysis | WASM |
+| ComputeFWHM | Analysis | Built-in Native |
+| CountStars | Analysis | Built-in Native |
+| ComputeEccentricity | Analysis | Built-in Native |
+| MedianValue | Analysis | Built-in Native |
+| ContourPlot (FWHM) | Analysis | Deferred |
 
-Analysis plugins are implemented initially as WASM modules to serve as a benchmark baseline. Once the system is stable, native built-in equivalents will be developed and benchmarked against the WASM versions. Benchmark results will inform the long-term policy for which analysis plugins are promoted to built-in native.
+Analysis plugins are implemented as built-in native Rust plugins. The WASM
+plugin path remains available for user-authored analysis extensions. WASM
+benchmarking vs. native is deferred.
+
 
 ### 6.4 Plugin Interface (Rust Trait)
 
@@ -497,11 +500,11 @@ The following table defines all pcode commands in the initial release. Arguments
 | CropImage | Processing | Crops the image to a specified region | x, y, width, height |
 | BinImage | Processing | Bins the image by an integer factor | factor |
 | DebayerImage | Processing | Debayers a Bayer CFA image on demand | [pattern], [method] |
-| AnalyzeFrames | Frame Analysis | Computes per-frame quality metrics for all loaded frames, classifies each as PASS / SUSPECT / REJECT, and writes PXFLAG keyword to each file; uses active rig profile thresholds | [profile] |
+| AnalyzeFrames | Frame Analysis | Computes seven quality metrics for all loaded frames, classifies each as PASS or REJECT, and writes PXFLAG keyword to each file | — |
 | BlinkSequence | Blink & View | Starts blinking the loaded image set | [fps] |
 | CacheFrames | Blink & View | Pre-decodes and caches all frames for blinking | — |
 | SetZoom | Blink & View | Sets the viewer zoom level | level (fit, 25, 50, 100, 200) |
-| ComputeFWHM | Analysis | Calculates Full Width at Half Maximum for detected stars | — |
+| ComputeFWHM | Analysis | Calculates Full Width at Half Maximum for detected stars; displays per-star circle annotations on viewer overlay | — |
 | CountStars | Analysis | Counts detected stars in the image | — |
 | ComputeEccentricity | Analysis | Calculates eccentricity for detected stars | — |
 | MedianValue | Analysis | Returns the median pixel value per channel | — |
@@ -687,7 +690,7 @@ The layout from top to bottom:
 | Edit | Preferences |
 | View | Dark, Light, Matrix |
 | Process | Auto Stretch |
-| Analyze | FWHM, Star Count, Eccentricity, Median Value, Contour Plot |
+| Analyze | FWHM, Star Count, Eccentricity, Median Value, Contour Plot, Analysis Graph |
 | Tools | Settings, Log Viewer |
 | Help | About, Documentation, Check for Updates |
 
@@ -777,8 +780,7 @@ When `AnalyzeFrames` has been run, each frame displays a visual indicator of its
 | PXFLAG | Visual Indicator |
 |---|---|
 | PASS | No overlay |
-| SUSPECT | Thin yellow border around the viewer |
-| REJECT | White X drawn corner-to-corner with a 2-pixel black border on each line, ensuring visibility against any image content |
+| REJECT | Red border (~5px) inside the image boundary |
 
 During blink playback the overlay updates in real time as frames change. The user can override any frame's flag during blink review using keyboard shortcuts (see §8.13). Each keypress immediately updates the `PXFLAG` keyword in the file header.
 
@@ -867,15 +869,19 @@ A single-line persistent bar spanning the full width of the window at the very b
 - Clicking anywhere on the bar opens the Notification History panel, showing a scrollable list of all notifications with timestamps, types, and full message text
 - All error notifications are automatically written to the application log file
 
-### 8.11 Analysis Results Windows
+### 8.11 Analysis Graph
 
-Analysis results open in separate floating windows, one per analysis run.
+The Analysis Graph displays per-frame quality metrics as a time-series chart in the main viewer region, replacing the image viewer while open. It is triggered from the Analyze menu or the `ShowAnalysisGraph` console command.
 
-- Each window is titled with the analysis type and source filename
-- Contains a Close button
-- Multiple analysis windows may be open simultaneously
-- Windows are not modal — the main application remains fully interactive while results are displayed
-- Window position and size are not persisted (future consideration)
+- Metric 1 (primary): solid line with dots; REJECT frames shown as larger red dots
+- Metric 2 (reference): dotted line, no dots
+- Sigma bands for Metric 1: shaded regions at ±1σ, ±2σ, ±3σ from session mean
+- Red dashed line showing the REJECT threshold for Metric 1
+- Two-line tooltip on hover: metric value + flag + triggered metrics / filename
+- Click on a dot to navigate to that frame
+- Close button returns to image viewer
+- Refresh button re-fetches results after re-running AnalyzeFrames
+- Theme-aware: adapts to the active color theme
 
 ### 8.12 Themes
 
@@ -897,7 +903,6 @@ Theme CSS files are maintained externally and loaded at runtime. The active them
 | J | Previous frame (blink) |
 | K | Next frame (blink) |
 | P | Mark current frame PASS (overrides AnalyzeFrames recommendation; writes PXFLAG immediately) |
-| S | Mark current frame SUSPECT (writes PXFLAG immediately) |
 | R | Mark current frame REJECT (writes PXFLAG immediately) |
 | 0 | Zoom: Fit (fill screen) |
 | 1 | Zoom: 25% |
@@ -1007,21 +1012,12 @@ values is shown below; all thresholds are user-configurable per profile.
 | Setting | Type | Default |
 |---|---|---|
 | Profile name | String | — |
-| Background median Suspect | Sigma | +1.5σ |
 | Background median Reject | Sigma | +2.5σ |
-| Background std dev Suspect | Sigma | +1.5σ |
 | Background std dev Reject | Sigma | +2.5σ |
-| Background gradient Suspect | Sigma | +1.5σ |
 | Background gradient Reject | Sigma | +2.5σ |
-| Highlight clipping Suspect | Absolute % | 0.1% |
-| Highlight clipping Reject | Absolute % | 0.5% |
-| SNR estimate Suspect | Sigma | -1.5σ |
 | SNR estimate Reject | Sigma | -2.5σ |
-| FWHM Suspect | Sigma | +1.5σ |
 | FWHM Reject | Sigma | +2.5σ |
-| Eccentricity Suspect | Absolute | 0.65 |
-| Eccentricity Reject | Absolute | 0.80 |
-| Star count Suspect | Sigma | -1.0σ |
+| Eccentricity Reject | Absolute | 0.85 |
 | Star count Reject | Sigma | -1.5σ |
 
 A formula similar to the following will be used to classify individual
@@ -1140,21 +1136,24 @@ Photyx treats image header keywords as first-class data. Keyword operations are 
 
 ### 14.1 Architecture
 
-Analysis functions are WASM plugins in the standard plugin system. Each analysis plugin receives an image buffer (or set of buffers) via `AppContext`, performs its computation, and returns a structured result displayed in a dedicated floating analysis results window.
+Analysis functions are built-in native Rust plugins in the standard plugin
+system. Each analysis plugin receives an image buffer via `AppContext`,
+performs its computation, and returns a structured result. The Analysis
+Graph viewer-region component displays per-frame metrics as an interactive
+time-series chart. Standalone analysis plugins (ComputeFWHM, CountStars,
+ComputeEccentricity) operate on the current frame only and display results
+in the console and as viewer overlay annotations.
+
 
 ### 14.2 Built-in Analysis (Initial Set)
 
 | Analysis | Plugin | Output |
 |---|---|---|
-| FWHM (Full Width at Half Maximum) | ComputeFWHM | Median FWHM value, per-star values, contour plot overlay |
+| FWHM (Full Width at Half Maximum) | ComputeFWHM | Median FWHM in pixels and arcseconds; per-star circle annotations on viewer overlay |
 | Star Count | CountStars | Integer count of detected stars |
-| Eccentricity | ComputeEccentricity | Median eccentricity, per-star values, histogram |
-| Median Value | MedianValue | Per-channel median of pixel values |
-| Contour Plot (FWHM) | ContourPlot | 2D contour map for FWHM star analysis output |
-| Background Std Dev | ComputeBackgroundNoise | Per-frame noise floor estimate |
-| Background Gradient | ComputeBackgroundGradient | Gradient strength as percentage of dynamic range |
-| Highlight Clipping | ComputeClipping | Percentage of pixels at or near saturation |
-| SNR Estimate | ComputeSNR | Mean signal / background std dev ratio |
+| Eccentricity | ComputeEccentricity | Median eccentricity across detected stars |
+| Batch frame analysis | AnalyzeFrames | 7 metrics per frame, PASS/REJECT classification, PXFLAG keyword, Analysis Graph |
+| Contour Plot (FWHM) | ContourPlot | 2D spatial heatmap of FWHM across image zones (deferred) |
 
 ### 14.3 Benchmarking Plan
 
@@ -1175,9 +1174,13 @@ Photyx provides a fast, automated first-pass triage of loaded frames to identify
 Key principles:
 
 - **Automated analysis flags, humans decide.** `AnalyzeFrames` writes recommendations; the user makes all final deletion decisions.
-- **Confident rejection of disasters only.** Frames that are catastrophically bad by any measure are flagged REJECT. Borderline frames are flagged SUSPECT and left for human review.
-- **No cross-session absolute decisions.** A frame that looks poor relative to its own session may rank acceptably against frames from other sessions. SUSPECT frames are never auto-rejected.
-- **Results travel with the file.** The `PXFLAG` keyword is written directly to each file's header immediately when `AnalyzeFrames` completes, so the recommendation survives session close and is available on reopen.
+- **Confident rejection of disasters only.** Frames that are catastrophically bad by any single metric are flagged REJECT. The bias is always toward keeping frames — borderline frames are left for downstream tools such as PixInsight SubframeSelector to handle via weight-based ranking.
+- **No cross-session absolute decisions.** Classification is session-relative. A frame that looks poor relative to its own session may rank acceptably in another context.
+- **Results travel with the file.** The `PXFLAG` keyword is written
+  directly to each file's header immediately when `AnalyzeFrames`
+  completes, so the recommendation survives session close and is available
+  on reopen. Note that the WriteCurrent command must be given to physically
+  save the file with the updated keyword.
 
 ### 15.2 PXFLAG Keyword
 
@@ -1185,7 +1188,6 @@ Key principles:
 
 ```
 PXFLAG  = 'PASS'    / Photyx frame analysis recommendation
-PXFLAG  = 'SUSPECT' / Photyx frame analysis recommendation
 PXFLAG  = 'REJECT'  / Photyx frame analysis recommendation
 ```
 
@@ -1195,23 +1197,19 @@ The keyword is written immediately on completion of `AnalyzeFrames` — there is
 
 `AnalyzeFrames` is a built-in native plugin implemented in Rust using Rayon for parallel processing across all loaded frames. It computes the following metrics per frame:
 
-**Early-phase metrics (pixel data only — no star detection required):**
+`AnalyzeFrames` computes seven metrics per frame using a two-pass Rayon parallel implementation:
 
-| Metric | Description | Threshold Type |
-|---|---|---|
-| Background median | Mean background sky level | Sigma (session-relative) |
-| Background std dev | Noise floor estimate | Sigma (session-relative) |
-| Background gradient | Difference between mean background sampled in opposite corners, expressed as sigma deviation from session mean | Sigma (session-relative) |
-| Highlight clipping % | Fraction of pixels at or within 1% of sensor saturation value | Absolute % |
-| SNR estimate | Mean signal / background std dev | Sigma (session-relative) |
+| Metric | Description | Threshold Type | Algorithm |
+|---|---|---|---|
+| Background median | Sigma-clipped sky background level | Sigma (session-relative) | Sigma-clipped median |
+| Background std dev | Noise floor estimate | Sigma (session-relative) | Sigma-clipped std dev |
+| Background gradient | Spatial variation in background across an 8×8 grid | Sigma (session-relative) | Max cell deviation |
+| SNR estimate | Composite quality indicator responding to background noise and PSF degradation | Sigma (session-relative) | Star signal / background noise |
+| FWHM | Median full width at half maximum across detected stars | Sigma (session-relative) | Intensity-weighted second-order moments: `2.355 × sqrt((Mxx+Myy)/2)` |
+| Eccentricity | Median eccentricity across detected stars | Absolute | Second-order intensity-weighted moments |
+| Star count | Number of detected stars (minimum 5 connected pixels) | Sigma (session-relative) | Peak detection + flood fill |
 
-**Phase 7 metrics (star detection required — unlocked when Phase 7 analysis plugins are available):**
-
-| Metric | Description | Threshold Type |
-|---|---|---|
-| FWHM | Median full width at half maximum across detected stars | Sigma (session-relative) |
-| Eccentricity | Median eccentricity across detected stars | Absolute |
-| Star count | Number of detected stars | Sigma (session-relative) |
+Note: Highlight Clipping was removed — values were consistently too low to trigger meaningful classification thresholds. PXSCORE was removed — a weighted average score that could contradict PXFLAG provided no useful information.
 
 Session-wide mean and standard deviation are computed for each sigma-based metric. Per-frame sigma scores are then derived as `(frameValue - sessionMean) / sessionStdDev`.
 
@@ -1219,36 +1217,42 @@ Background gradient is computed by sampling the mean pixel value in each of the 
 
 ### 15.4 Classification Logic
 
-Each frame is classified using the active rig profile thresholds (see §9.9). A frame is classified REJECT if any single metric exceeds its Reject threshold. A frame is classified SUSPECT if no metric exceeds its Reject threshold but any metric exceeds its Suspect threshold. Otherwise the frame is classified PASS.
+Each frame is classified PASS or REJECT based on whether any single metric exceeds its reject threshold. There is no SUSPECT classification — the philosophy is that Photyx removes extreme outliers only; PixInsight PSFSW weighting handles fine-grained quality differentiation.
 
-The default thresholds are designed to catch obvious disasters confidently while leaving borderline decisions to the user:
+The `triggered_by` field records which metrics caused a REJECT, visible in the Analysis Graph tooltip.
 
-| Metric | Suspect Default | Reject Default |
-|---|---|---|
-| Background median | > +1.5σ | > +2.5σ |
-| Background std dev | > +1.5σ | > +2.5σ |
-| Background gradient | > +1.5σ | > +2.5σ |
-| Highlight clipping | > 0.1% | > 0.5% |
-| SNR estimate | < -1.5σ | < -2.5σ |
-| FWHM | > +1.5σ | > +2.5σ |
-| Eccentricity | > 0.65 | > 0.80 |
-| Star count | < -1.0σ | < -1.5σ |
+| Metric | Reject Default |
+|---|---|
+| Background median | > +2.5σ |
+| Background std dev | > +2.5σ |
+| Background gradient | > +2.5σ |
+| SNR estimate | < -2.5σ |
+| FWHM | > +2.5σ |
+| Eccentricity | > 0.85 (absolute) |
+| Star count | < -1.5σ |
 
 ### 15.5 Blink Review Workflow
 
 The recommended workflow after running `AnalyzeFrames`:
 
-1. **Fast blink pass** — play the full sequence at speed (0.1s default). The PXFLAG overlay provides peripheral awareness of problem frames without demanding attention. REJECT frames show the white X overlay; SUSPECT frames show a yellow border; PASS frames show nothing.
+1. **Fast blink pass** — play the full sequence at speed (0.1s default). The PXFLAG overlay provides peripheral awareness of problem frames. REJECT frames show a red border; PASS frames show nothing.
 
-2. **Deliberate review pass** — slow the blink rate or step manually through the sequence. For each flagged frame, make a final decision using the keyboard shortcuts (P / S / R). Each keypress writes `PXFLAG` to the file immediately.
+2. **Deliberate review pass** — slow the blink rate or step manually through the sequence. For each flagged frame, make a final decision using the keyboard shortcuts (P / R). Each keypress writes `PXFLAG` to the file immediately.
 
-3. **Delete confirmed rejects** — use the `DeleteRejected` command or the equivalent UI action to permanently remove files where `PXFLAG = REJECT` from disk. A confirmation dialog shows the count of files to be deleted before proceeding. SUSPECT frames are left untouched and passed to downstream tools.
+3. **Delete confirmed rejects** — use the `DeleteRejected` command or the equivalent UI action to permanently remove files where `PXFLAG = REJECT` from disk. A confirmation dialog shows the count of files to be deleted before proceeding.
 
 ### 15.6 Multi-Session Considerations
 
-`AnalyzeFrames` operates on a single loaded session at a time. Its sigma-based metrics are session-relative and should not be used to make absolute quality comparisons across sessions captured under different conditions.
+`AnalyzeFrames` operates on a single loaded session at a time. Its
+sigma-based metrics are session-relative and should not be used to make
+absolute quality comparisons across sessions captured under different
+conditions.
 
-When integrating frames from multiple sessions, borderline SUSPECT frames from one session may rank acceptably against frames from another session. The recommended approach is to pass all PASS and SUSPECT frames to PixInsight SubframeSelector for cross-session weight-based ranking, reserving Photyx rejection for only the clear disasters (REJECT frames) that no ranking tool would salvage.
+When integrating frames from multiple sessions, the recommended approach is
+to pass all PASS frames to PixInsight SubframeSelector for cross-session
+weight-based ranking, reserving Photyx rejection for only the clear
+disasters (REJECT frames) that no ranking tool would salvage.
+
 
 ---
 
@@ -1298,9 +1302,9 @@ curl -X POST http://localhost:7171/api/macro/run \
 | **Phase 3** | `photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, ReadAllTIFFFiles, RGB display/histogram, background display cache, true median histogram |
 | **Phase 4** | keyword plugins (Add/Delete/Modify/Copy), WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit handling, blink cache quality improvement, relative path resolution, window resize fix, pwd console command |
 | **Phase 5** | pcode interpreter with variable substitution, Log, RunMacro, If/Else/EndIf, For/EndFor; Macro Editor UI with syntax highlighting, save/load .phs files, Copy from Console; Quick Launch panel with persistent store, Pin to Quick Launch, right-click remove; GetKeyword, MoveFile, Print, Assert, CountFiles plugins; scope=all\|current on keyword commands; command rename refactor (ReadFIT, WriteTIFF, etc.); WriteCurrent atomic writes; ScriptResponse session_changed/display_changed flags |
-| **Phase 6** | Cleanup UI |
-| **Phase 7** | analysis results windows; AnalyzeFrames Phase 7 metrics unlocked |
-| **Phase 8** | Native built-in analysis plugins |
+| **Phase 6** | UI cleanup complete |
+| **Phase 7** | ✅ Complete — AnalyzeFrames with 7 native metrics (background median/stddev/gradient, SNR, FWHM, eccentricity, star count); PASS/REJECT classification; PXFLAG keyword; Analysis Graph viewer-region component with sigma bands, reject threshold line, two-line tooltip, triggered_by; star annotation overlay for ComputeFWHM; consolePipe store; blink red border overlay; viewer filename overlay; theme-aware chart colors |
+| **Phase 8** | Substantially complete — moment-based FWHM (geometric mean of intensity-weighted second-order moments); 8×8 background gradient grid; 5-pixel minimum star filter; WriteFITS U16 sign conversion fix; histogram canvas width fix |
 | **Phase 9** | Embedded SQLite, Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations |
 | **Phase 10** | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI |
 | **Deferred** | Full keyword management UI, PNG/JPEG readers and writers, debayering, Auto-STF toolbar toggle, async dispatch,  |
@@ -1355,5 +1359,5 @@ Automated tests are required for each significant module, crate, and plugin. Tes
 ---
 
 *Document prepared by: Development Team*
-*Previous version: 17*
-*Next review: Upon completion of Phase 7*
+*Previous version: 18*
+*Next review: Upon completion of Phase 9*

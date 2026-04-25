@@ -1,7 +1,7 @@
 # Photyx — Developer Notes
 
-**Version:** 18
-**Last updated:** 23 April 2026 9:59pm
+**Version:** 19
+**Last updated:** 25 April 2026
 **Status:** Active development — Phase 5 substantially complete
 
 ---
@@ -461,6 +461,91 @@ The editor uses the backdrop technique for syntax highlighting — a `<div>` wit
 
 ---
 
+### 3.33 WriteFITS U16 Sign Conversion Bug (Fixed)
+
+FITS `BITPIX=16` is signed. When writing u16 pixel data, the correct convention is to subtract 32768 before casting to i16, then write `BZERO=32768`. The original code used `v as i16` which silently reinterprets bits above 32767 as negative numbers. On read-back, adding BZERO=32768 gives the wrong result. Fixed to `(v as i32 - 32768) as i16`. This bug was causing all previously written FITS files to have corrupted pixel values (appearing stretched in histogram and analysis).
+
+---
+
+### 3.34 Analysis Layer Architecture
+
+Analysis code lives in `src-tauri/src/analysis/` as pure computation modules with no Tauri or plugin dependencies:
+
+| Module | Purpose |
+|---|---|
+| `background.rs` | Sigma-clipped background median, std dev, gradient (8×8 grid) |
+| `stars.rs` | Star detection: local maximum finding, flood fill, centroid, minimum 5-pixel filter |
+| `fwhm.rs` | Moment-based FWHM: `2.355 * sqrt((Mxx + Myy) / 2)` — geometric mean of axes, matches PI |
+| `eccentricity.rs` | Second-order intensity-weighted moments → eccentricity |
+| `metrics.rs` | SNR estimate (signal/noise via star pixels and background std dev) |
+| `profiles.rs` | Camera pixel size lookup table and plate scale formula |
+| `session_stats.rs` | Session mean/stddev per metric, `classify_frame` returning (PxFlag, Vec<triggered>) |
+| `mod.rs` | Shared types: `PxFlag`, `AnalysisResult`, `StarDetectionConfig`, `BackgroundConfig`, `SigmaClipConfig`, `to_luminance()` |
+
+**Design rule:** `AnalyzeFrames` calls analysis functions directly in a two-pass Rayon parallel loop. Standalone plugins (`ComputeFWHM`, `CountStars`, `ComputeEccentricity`) are thin wrappers for interactive use on the current frame only.
+
+---
+
+### 3.35 AnalyzeFrames Classification
+
+**PASS / REJECT only** — SUSPECT classification was removed. The philosophy is that Photyx removes extreme outliers only; PixInsight PSFSW weighting handles fine-grained quality differentiation.
+
+**PXSCORE removed** — a weighted score that could contradict PXFLAG was actively misleading. PXFLAG is the only output.
+
+**Current reject thresholds (`session_stats.rs` defaults):**
+
+| Metric | Type | Reject |
+|---|---|---|
+| Background Median | +σ | 2.5σ |
+| Background Std Dev | +σ | 2.5σ |
+| Background Gradient | +σ | 2.5σ |
+| SNR Estimate | -σ | 2.5σ |
+| FWHM | +σ | 2.5σ |
+| Star Count | -σ | 1.5σ |
+| Eccentricity | absolute | 0.85 |
+
+**triggered_by** — `classify_frame` returns `(PxFlag, Vec<String>)` where the Vec contains the names of metrics that triggered REJECT. Stored in `AnalysisResult.triggered_by` and returned by `get_analysis_results` for tooltip display in the Analysis Graph.
+
+---
+
+### 3.36 Analysis Graph
+
+The Analysis Graph is a viewer-region component (`AnalysisGraph.svelte`) that replaces the image viewer when `$ui.showAnalysisGraph` is true. It is NOT a floating window. Key features:
+
+- 7 metrics in Metric 1 dropdown; Metric 2 defaults to None
+- Metric 1: solid line with larger red dots for REJECT, white for PASS
+- Metric 2: dotted line, no dots
+- Sigma bands (metric 1 only): transparent at mean, more opaque toward ±3σ
+- Red dashed reject threshold line with "REJECT" label
+- Two-line tooltip: line 1 = metric value + flag + triggered metrics, line 2 = filename
+- Tooltip position-aware: left/center/right thirds of chart
+- Click on dot: closes graph, navigates to frame
+- Refresh button: re-fetches from Rust, calls `resizeCanvas()` after load to fix blob rendering
+- Theme-aware: reads CSS variables via `getComputedStyle` at draw time
+- Data from `get_analysis_results` Tauri command
+
+---
+
+### 3.37 Star Annotation Overlay
+
+`ComputeFWHM` (standalone plugin) triggers a star annotation overlay on the viewer canvas:
+
+1. Plugin runs successfully → frontend calls `ui.refreshAnnotations()` (from Console or QuickLaunch)
+2. `Viewer.svelte` watches `$ui.annotationToken` — guarded by `lastAnnotationToken` to prevent spurious re-fetches
+3. On token change: calls `drawStarAnnotations()` which invokes `get_star_positions` Tauri command (re-runs star detection, returns `{cx, cy, fwhm, r}` per star)
+4. Positions cached in `cachedStars` — pan/zoom/resize calls synchronous `paintStarAnnotations()` from cache only
+5. `ClearAnnotations` console command or frame navigation clears the overlay
+
+**Critical rule:** `drawStarAnnotations()` (Rust fetch) must NEVER be called from `renderBitmap()` — it runs star detection and will lock up the app during panning. Only `paintStarAnnotations()` (cache-only, synchronous) should be called from `renderBitmap()`.
+
+---
+
+### 3.38 consolePipe Store
+
+External components that need to write to the pcode console (e.g. `QuickLaunch.svelte`) use the `consolePipe` writable store exported from `consoleHistory.ts`. `Console.svelte` watches it via `$effect` and appends non-null values then resets to null. See `photyx_ui_patterns.md` Pattern 4 for usage.
+
+---
+
 ## 4. Tauri Commands (Implemented)
 
 | Command | Description |
@@ -478,6 +563,9 @@ The editor uses the backdrop technique for syntax highlighting — a `<div>` wit
 | `get_session` | Returns current session state (directory, file list, current frame) |
 | `list_plugins` | Returns list of registered plugin names |
 | `start_background_cache` | Spawns background task to build display cache and both blink caches |
+| `get_analysis_results` | Returns per-frame analysis metrics, flags, triggered_by, and session stats for Analysis Graph |
+| `get_frame_flags` | Returns PXFLAG values for all loaded frames (used by blink overlay) |
+| `get_star_positions` | Re-runs star detection on current frame, returns {cx, cy, fwhm, r} per star for annotation overlay |
 
 ---
 
@@ -574,5 +662,6 @@ other persistence work.
 | Phase 3 | ✅ Complete | photyx-xisf crate (reader + writer), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllTIFFFiles, ReadAllFiles, RGB display/histogram, background display cache |
 | Phase 4 | ✅ Complete | Keyword plugins, WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit, blink cache quality, relative path resolution, window resize fix, pwd command |
 | Phase 5 | ✅ Complete | pcode interpreter with If/Else/EndIf and For/EndFor; Macro Editor UI with syntax highlighting; Quick Launch panel with store persistence and context menu; command rename refactor; scope parameter on keyword commands; WriteCurrent atomic writes; ScriptResponse flags; pcodeCommands.ts single source of truth |
-| Phase 6-10 | ⬜ Not started | |
+| Phase 6 | 🔄 In progress | Analysis plugins (native), AnalyzeFrames, Analysis Graph, star annotations |
+| Phase 7-10 | ⬜ Not started | |
 | Deferred | ⬜ Parked | Full keyword UI, PNG/JPEG readers/writers, debayering, Auto-STF toolbar toggle |
