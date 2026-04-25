@@ -93,8 +93,8 @@ function createUIStore() {
         setShowQualityFlags: (v: boolean) => update(s => ({ ...s, showQualityFlags: v })),
         setCurrentBlinkFlag:  (v: string)  => update(s => ({ ...s, currentBlinkFlag: v })),
         setShowAnalysisGraph: (v: boolean) => update(s => ({ ...s, showAnalysisGraph: v })),
-        refreshAnnotations:   ()           => update(s => ({ ...s, annotationToken: s.annotationToken + 1 })),
-        clearAnnotations:     ()           => update(s => ({ ...s, annotationToken: -s.annotationToken - 1 })),
+        refreshAnnotations: () => update(s => ({ ...s, annotationToken: Math.abs(s.annotationToken) + 1 })),
+        clearAnnotations:   () => update(s => ({ ...s, annotationToken: -(Math.abs(s.annotationToken) + 1) })),
     };
 
 }

@@ -4,7 +4,7 @@
     import { session } from '../stores/session';
     import { notifications } from '../stores/notifications';
     import { ui } from '../stores/ui';
-    import { consoleHistory } from '../stores/consoleHistory';
+    import { consoleHistory, consolePipe } from '../stores/consoleHistory';
 
     interface ConsoleLine {
         id: number;
@@ -27,6 +27,15 @@
     let nextId = 2;
 
     import { PCODE_COMMANDS } from '../pcodeCommands';
+
+    // Watch for external console output
+    $effect(() => {
+        const line = $consolePipe;
+        if (line) {
+            append(line.text, line.type);
+            consolePipe.set(null);
+        }
+    });
     const ALL_COMMANDS = [...PCODE_COMMANDS].sort();
 
     const ARG_HINTS: Record<string, string> = {
@@ -129,6 +138,10 @@
         },
         showanalysisgraph: () => {
             ui.setShowAnalysisGraph(true);
+            return true;
+        },
+        clearannotations: () => {
+            ui.clearAnnotations();
             return true;
         },
     };

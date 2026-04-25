@@ -1,6 +1,7 @@
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
     import { notifications } from '../stores/notifications';
+    import { consolePipe } from '../stores/consoleHistory';
     import { ui } from '../stores/ui';
     import { quickLaunch } from '../stores/quickLaunch';
     import { session } from '../stores/session';
@@ -39,6 +40,10 @@
                 if (!r.success) {
                     notifications.error(`${r.command}: ${r.message ?? 'error'}`);
                     anyError = true;
+                } else if (r.message) {
+                    r.message.split('\n').forEach(line => {
+                        if (line) consolePipe.set({ id: Date.now(), text: line, type: 'success' });
+                    });
                 }
                 if (r.command.toLowerCase() === 'listkeywords' && r.success) {
                     ui.openKeywordModal();

@@ -11,3 +11,6 @@ export interface ConsoleLine {
 }
 
 export const consoleHistory = writable<ConsoleLine[]>([]);
+
+// Pipe for external components to send lines to the console
+export const consolePipe = writable<ConsoleLine | null>(null);

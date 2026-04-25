@@ -226,7 +226,11 @@
             overlayCanvas.width  = w;
             overlayCanvas.height = h;
             overlayCtx = overlayCanvas.getContext('2d');
-            drawFlagOverlay($ui.currentBlinkFlag);
+            if (cachedStars.length > 0) {
+                paintStarAnnotations();
+            } else {
+                drawFlagOverlay($ui.currentBlinkFlag);
+            }
         }
     }
 
