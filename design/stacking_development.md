@@ -1,5 +1,10 @@
 # Quick Astrophotography Stacking (Preview Pipeline)
 
+**Version:** 1
+**Date:** 23 April 2026
+**Status:** Theory and Top-level Design
+
+
 ## Goal
 
 Build a fast, lightweight stacking pipeline to answer a single question:
