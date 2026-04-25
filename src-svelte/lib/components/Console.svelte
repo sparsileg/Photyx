@@ -204,6 +204,12 @@
         if (cmd === 'autostretch' || cmd === 'linearstretch' || cmd === 'histogramequalization') {
             ui.requestFrameRefresh();
         }
+        if (cmd === 'computefwhm') {
+            ui.refreshAnnotations();
+        }
+        if (cmd === 'setframe' || cmd === 'autostretch') {
+            ui.clearAnnotations();
+        }
     }
 
     function submit() {

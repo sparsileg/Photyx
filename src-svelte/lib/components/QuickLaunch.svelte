@@ -45,7 +45,11 @@
                 }
             }
             if (!anyError) notifications.success('Done.');
-
+            for (const r of response.results) {
+                if (r.command.toLowerCase() === 'computefwhm' && r.success) {
+                    ui.refreshAnnotations();
+                }
+            }
             if (response.session_changed) {
                 const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
                 session.setDirectory(s.activeDirectory ?? '');

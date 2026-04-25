@@ -27,6 +27,9 @@
     // Current bitmap held in memory for zoom/pan redraws without re-fetching
     let currentBitmap: ImageBitmap | null = null;
 
+    // Cached star annotation positions — populated by drawStarAnnotations, reused by paintStarAnnotations
+    let cachedStars: Array<{ cx: number; cy: number; fwhm: number; r: number }> = [];
+
     // ── Pan state ─────────────────────────────────────────────────────────────
     let panX = 0;
     let panY = 0;
@@ -331,6 +334,11 @@
 
         const { dx, dy, dw, dh } = getDrawRect(bitmap);
         imageCtx.drawImage(bitmap, dx, dy, dw, dh);
+
+        // Repaint cached annotations to stay in sync with pan/zoom
+        if (cachedStars.length > 0) {
+            paintStarAnnotations();
+        }
     }
 
     async function drawImageFromUrl(dataUrl: string) {
@@ -346,6 +354,11 @@
             renderBitmap(bitmap);
             drawFlagOverlay($ui.currentBlinkFlag);
             hasImage = true;
+
+            // Repaint annotations after new frame is loaded
+            if (cachedStars.length > 0) {
+                paintStarAnnotations();
+            }
 
             running = false;
             if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
@@ -478,6 +491,63 @@
             loop();
         }
     });
+
+// ── Star annotations ──────────────────────────────────────────────────────
+   let lastAnnotationToken = 0;
+    $effect(() => {
+        const token = $ui.annotationToken;
+        if (token === lastAnnotationToken) return;
+        lastAnnotationToken = token;
+        if (token > 0) {
+            drawStarAnnotations();
+        } else {
+            clearAnnotationOverlay();
+        }
+    });
+
+    async function drawStarAnnotations() {
+        if (!overlayCanvas || !overlayCtx || !currentBitmap) return;
+        const result = await invoke<{ stars: Array<{ cx: number; cy: number; fwhm: number; r: number }> }>(
+            'get_star_positions'
+        );
+        cachedStars = result.stars;
+        paintStarAnnotations();
+    }
+
+    function paintStarAnnotations() {
+        if (!overlayCanvas || !overlayCtx || !currentBitmap) return;
+        if (cachedStars.length === 0) return;
+        const img = $session.loadedImages[$session.fileList[$session.currentFrame]];
+        if (!img) return;
+        const { dx, dy, dw, dh } = getDrawRect(currentBitmap);
+        const scaleX = dw / img.width;
+        const scaleY = dh / img.height;
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        overlayCtx.save();
+        overlayCtx.strokeStyle = 'rgba(0, 255, 100, 0.8)';
+        overlayCtx.fillStyle   = 'rgba(0, 255, 100, 0.9)';
+        overlayCtx.font        = '10px monospace';
+        overlayCtx.lineWidth   = 1;
+        overlayCtx.textAlign   = 'left';
+        for (const s of cachedStars) {
+            const sx = dx + s.cx * scaleX;
+            const sy = dy + s.cy * scaleY;
+            const sr = Math.max(4, s.fwhm * scaleX);
+            overlayCtx.beginPath();
+            overlayCtx.arc(sx, sy, sr, 0, Math.PI * 2);
+            overlayCtx.closePath();
+            overlayCtx.stroke();
+            overlayCtx.fillText(s.fwhm.toFixed(1), sx + sr + 2, sy + 3);
+        }
+        overlayCtx.restore();
+    }
+
+    function clearAnnotationOverlay() {
+        cachedStars = [];
+        if (!overlayCanvas || !overlayCtx) return;
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        drawFlagOverlay($ui.currentBlinkFlag);
+    }
 
     onMount(() => {
         if (!starCanvas) return;

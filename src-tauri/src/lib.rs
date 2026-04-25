@@ -264,6 +264,7 @@ pub fn run() {
             get_keywords,
             get_pixel,
             get_session,
+            get_star_positions,
             list_plugins,
             run_script,
             start_background_cache,
@@ -839,5 +840,45 @@ fn get_histogram(state: State<PhotoxState>) -> Result<serde_json::Value, String>
     }))
 }
 
+
+#[tauri::command]
+fn get_star_positions(state: State<PhotoxState>) -> serde_json::Value {
+    use crate::analysis::{self, stars::detect_stars, fwhm::star_fwhm, StarDetectionConfig};
+
+    let ctx = state.context.lock().expect("context lock poisoned");
+
+    let img = match ctx.current_image() {
+        Some(i) => i,
+        None => return serde_json::json!({ "stars": [] }),
+    };
+
+    let pixels = match img.pixels.as_ref() {
+        Some(p) => p,
+        None => return serde_json::json!({ "stars": [] }),
+    };
+
+    let channels = img.channels as usize;
+    let width    = img.width as usize;
+    let height   = img.height as usize;
+
+    let luma   = analysis::to_luminance(pixels, channels);
+    let config = StarDetectionConfig::default();
+    let stars  = detect_stars(&luma, width, height, &config);
+
+    let positions: Vec<serde_json::Value> = stars.iter()
+        .filter_map(|s| {
+            let fwhm = star_fwhm(s)?;
+            if fwhm < 0.5 || fwhm > 50.0 { return None; }
+            Some(serde_json::json!({
+                "cx":   s.cx,
+                "cy":   s.cy,
+                "fwhm": fwhm,
+                "r":    fwhm / 2.0,
+            }))
+        })
+        .collect();
+
+    serde_json::json!({ "stars": positions })
+}
 
 // ----------------------------------------------------------------------

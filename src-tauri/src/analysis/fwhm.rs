@@ -81,7 +81,6 @@ pub struct FwhmResult {
     pub fwhm_arcsec:    Option<f32>,
     pub star_count:     usize,
     pub rejected_count: usize,
-    /// Per-star FWHM values and centroids for annotation overlay
 }
 
 /// Compute median FWHM across all detected stars.
