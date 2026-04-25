@@ -335,3 +335,15 @@
     display: block;
     border: 1px solid var(--border-color);
 }
+
+
+.blink-flag-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+.blink-flag-toggle input[type="checkbox"] {
+    accent-color: var(--accent, #00ff00);
+    cursor: pointer;
+}

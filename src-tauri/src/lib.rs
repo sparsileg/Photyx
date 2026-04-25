@@ -261,6 +261,7 @@ pub fn run() {
             get_full_frame,
             get_blink_frame,
             get_blink_cache_status,
+            get_frame_flags,
             start_background_cache,
             get_keywords,
             get_histogram,
@@ -271,6 +272,26 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+
+#[tauri::command]
+fn get_frame_flags(state: State<PhotoxState>) -> Vec<String> {
+    let ctx = state.context.lock().expect("context lock poisoned");
+    ctx.file_list.iter().map(|path| {
+        // Check analysis_results first (in-memory, most current)
+        if let Some(result) = ctx.analysis_results.get(path) {
+            if let Some(flag) = &result.flag {
+                return flag.as_str().to_string();
+            }
+        }
+        // Fall back to PXFLAG keyword in image buffer
+        if let Some(buf) = ctx.image_buffers.get(path) {
+            if let Some(kw) = buf.keywords.get("PXFLAG") {
+                return kw.value.clone();
+            }
+        }
+        String::new()
+    }).collect()
+}
 
 #[tauri::command]
 fn get_blink_frame(index: usize, resolution: String, state: State<PhotoxState>) -> Result<String, String> {

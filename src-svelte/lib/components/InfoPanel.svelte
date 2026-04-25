@@ -106,6 +106,7 @@
             wasOnBlinkTab = true;
             ui.setBlinkTabActive(true);
             ui.setBlinkModeActive(true);
+            fetchFrameFlags();
         } else if (wasOnBlinkTab) {
             wasOnBlinkTab = false;
             ui.setBlinkTabActive(false);
@@ -126,6 +127,16 @@
     let blinkDelay      = $state(0.1);
     let blinkTimer: ReturnType<typeof setTimeout> | null = null;
     let playInProgress  = false;
+    let frameFlags      = $state<string[]>([]);
+
+    async function fetchFrameFlags() {
+        try {
+            frameFlags = await invoke<string[]>('get_frame_flags');
+        } catch (e) {
+            console.error('get_frame_flags error:', e);
+            frameFlags = [];
+        }
+    }
 
     const DELAY_OPTIONS = [0, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0];
 
@@ -158,6 +169,7 @@
         try {
             const dataUrl = await invoke<string>('get_blink_frame', { index, resolution: blinkResolution });
             ui.setBlinkFrame(dataUrl);
+            ui.setCurrentBlinkFlag(frameFlags[index] ?? '');
             const filename = $session.fileList[index]?.split(/[\\/]/).pop() ?? '';
             onBlinkFrame(filename);
         } catch (e) {
@@ -542,7 +554,7 @@
                     {/if}
                 </div>
 
-                <!-- Row 2: Res + Min Delay -->
+                <!-- Row 2: Res + Min Delay + Quality Flags toggle -->
                 <div class="blink-row">
                     <span class="blink-inline-label">Res</span>
                     <select
@@ -569,6 +581,15 @@
                             <option value={d}>{d === 0 ? 'Max' : `${d}s`}</option>
                         {/each}
                     </select>
+
+                    <label class="blink-flag-toggle" style="margin-left:12px;" title="Show quality flag overlays">
+                        <input
+                            type="checkbox"
+                            checked={$ui.showQualityFlags}
+                            onchange={(e) => ui.setShowQualityFlags((e.target as HTMLInputElement).checked)}
+                        />
+                        <span class="blink-inline-label">Flags</span>
+                    </label>
                 </div>
             </div>
         </div>

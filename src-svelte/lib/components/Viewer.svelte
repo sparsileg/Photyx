@@ -20,6 +20,10 @@
     let imageCtx: CanvasRenderingContext2D | null = null;
     let hasImage = $state(false);
 
+    // ── Quality flag overlay canvas ───────────────────────────────────────────
+    let overlayCanvas = $state<HTMLCanvasElement>();
+    let overlayCtx: CanvasRenderingContext2D | null = null;
+
     // Current bitmap held in memory for zoom/pan redraws without re-fetching
     let currentBitmap: ImageBitmap | null = null;
 
@@ -214,6 +218,13 @@
             imageCtx = imageCanvas.getContext('2d');
             if (currentBitmap) renderBitmap(currentBitmap);
         }
+
+        if (overlayCanvas) {
+            overlayCanvas.width  = w;
+            overlayCanvas.height = h;
+            overlayCtx = overlayCanvas.getContext('2d');
+            drawFlagOverlay($ui.currentBlinkFlag);
+        }
     }
 
     function drawSpikes(s: Star) {
@@ -333,6 +344,7 @@
             currentBitmap = bitmap;
 
             renderBitmap(bitmap);
+            drawFlagOverlay($ui.currentBlinkFlag);
             hasImage = true;
 
             running = false;
@@ -350,6 +362,50 @@
         hasImage = false;
         resetPan();
     }
+
+    function drawFlagOverlay(flag: string) {
+        if (!overlayCanvas) return;
+        overlayCtx = overlayCanvas.getContext('2d');
+        if (!overlayCtx) return;
+
+        const cw = overlayCanvas.width;
+        const ch = overlayCanvas.height;
+        overlayCtx.clearRect(0, 0, cw, ch);
+
+        if (!$ui.showQualityFlags || !$ui.blinkModeActive) return;
+        if (!currentBitmap) return;
+
+        const { dx, dy, dw, dh } = getDrawRect(currentBitmap);
+
+        if (flag === 'REJECT') {
+            // Translucent red X corner to corner of the image
+            overlayCtx.save();
+            overlayCtx.strokeStyle = 'rgba(255, 40, 40, 0.75)';
+            overlayCtx.lineWidth = 4;
+            overlayCtx.lineCap = 'round';
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(dx, dy);
+            overlayCtx.lineTo(dx + dw, dy + dh);
+            overlayCtx.moveTo(dx + dw, dy);
+            overlayCtx.lineTo(dx, dy + dh);
+            overlayCtx.stroke();
+            overlayCtx.restore();
+        } else if (flag === 'SUSPECT') {
+            // Yellow border ~5px inside the image rect
+            overlayCtx.save();
+            overlayCtx.strokeStyle = 'rgba(255, 220, 0, 0.85)';
+            overlayCtx.lineWidth = 5;
+            overlayCtx.strokeRect(dx + 3, dy + 3, dw - 6, dh - 6);
+            overlayCtx.restore();
+        }
+    }
+
+    // Redraw overlay when flag or toggle changes
+    $effect(() => {
+        const flag = $ui.currentBlinkFlag;
+        const show = $ui.showQualityFlags;
+        drawFlagOverlay(flag);
+    });
 
     // ── Frame loading ─────────────────────────────────────────────────────────
     async function loadCurrentFrame() {
@@ -616,6 +672,19 @@
         style:left="0"
         style:width="100%"
         style:height="100%"
+    ></canvas>
+
+    <!-- Quality flag overlay canvas — sits above image, pointer-events:none so mouse still works -->
+    <canvas
+        id="viewer-overlay-canvas"
+        bind:this={overlayCanvas}
+        style:display={hasImage ? 'block' : 'none'}
+        style:position="absolute"
+        style:top="0"
+        style:left="0"
+        style:width="100%"
+        style:height="100%"
+        style:pointer-events="none"
     ></canvas>
 
     {#if hasImage}

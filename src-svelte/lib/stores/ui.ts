@@ -24,6 +24,8 @@ export interface UIState {
     blinkModeActive: boolean;
     keywordModalOpen: boolean;
     blinkPlaying: boolean;
+    showQualityFlags: boolean;
+    currentBlinkFlag: string;
 }
 
 function createUIStore() {
@@ -48,6 +50,8 @@ function createUIStore() {
         blinkModeActive: false,
         keywordModalOpen: false,
         blinkPlaying: false,
+        showQualityFlags: true,
+        currentBlinkFlag: '',
     };
 
     const { subscribe, set, update } = writable<UIState>(initial);
@@ -82,7 +86,10 @@ function createUIStore() {
         openKeywordModal: () => update(s => ({ ...s, keywordModalOpen: true })),
         closeKeywordModal: () => update(s => ({ ...s, keywordModalOpen: false })),
         setBlinkPlaying: (v: boolean) => update(s => ({ ...s, blinkPlaying: v })),
+        setShowQualityFlags: (v: boolean) => update(s => ({ ...s, showQualityFlags: v })),
+        setCurrentBlinkFlag: (v: string) => update(s => ({ ...s, currentBlinkFlag: v })),
     };
+
 }
 
 export const ui = createUIStore();
