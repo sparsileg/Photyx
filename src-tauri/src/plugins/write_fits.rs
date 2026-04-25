@@ -125,7 +125,12 @@ pub(crate) fn write_fits_new(out_path: &str, buffer: &ImageBuffer) -> Result<(),
                 .map_err(|e| format!("Cannot write pixel data: {}", e))?;
         }
         PixelData::U16(data) => {
-            let data_i16: Vec<i16> = data.iter().map(|&v| v as i16).collect();
+            // FITS stores unsigned 16-bit as signed 16-bit with BZERO=32768.
+            // Subtract 32768 before writing so that adding BZERO back on read
+            // restores the original unsigned value.
+            let data_i16: Vec<i16> = data.iter()
+                .map(|&v| (v as i32 - 32768) as i16)
+                .collect();
             hdu.write_image(&mut fitsfile, data_i16.as_slice())
                 .map_err(|e| format!("Cannot write pixel data: {}", e))?;
         }
