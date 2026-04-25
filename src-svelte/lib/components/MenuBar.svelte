@@ -18,16 +18,17 @@
     function action(a: string) {
         close();
         switch (a) {
-            case 'select-directory': selectDirectory(); break;
+            case 'analysis-graph': ui.setShowAnalysisGraph(true); brea
             case 'close-session':    closeSession(); break;
             case 'exit':         getCurrentWindow().close(); break;
-            case 'theme-dark':   ui.setTheme('dark'); break;
-            case 'theme-light':  ui.setTheme('light'); break;
-            case 'theme-matrix': ui.setTheme('matrix'); break;
             case 'keywords':     ui.togglePanel('keywords'); break;
-            case 'run-macro':    ui.togglePanel('macro-editor'); break;
             case 'macro-library': ui.togglePanel('macro-lib'); break;
             case 'plugin-manager': ui.togglePanel('plugins'); break;
+            case 'run-macro':    ui.togglePanel('macro-editor'); break;
+            case 'select-directory': selectDirectory(); break;
+            case 'theme-dark':   ui.setTheme('dark'); break;
+            case 'theme-light':  ui.setTheme('light'); break;
+            case 'theme-matrix': ui.setTheme('matrix'); break;k;
             default: notifications.info(`${a} — not yet implemented`);
         }
     }
@@ -55,11 +56,13 @@
             { label: 'Auto Stretch',   action: 'auto-stretch' },
         ]},
         { name: 'Analyze', items: [
-            { label: 'FWHM',         action: 'fwhm' },
-            { label: 'Star Count',   action: 'star-count' },
-            { label: 'Eccentricity', action: 'eccentricity' },
-            { label: 'Median Value', action: 'median-value' },
-            { label: 'Contour Plot', action: 'contour' },
+            { label: 'FWHM',           action: 'fwhm' },
+            { label: 'Star Count',     action: 'star-count' },
+            { label: 'Eccentricity',   action: 'eccentricity' },
+            { label: 'Median Value',   action: 'median-value' },
+            { label: 'Contour Plot',   action: 'contour' },
+            { sep: true },
+            { label: 'Analysis Graph', action: 'analysis-graph' },
         ]},
         { name: 'Tools', items: [
             { label: 'Settings',     action: 'settings' },

@@ -308,7 +308,7 @@
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        canvas.width = canvas.offsetWidth || 400;
+        canvas.width = canvas.parentElement?.clientWidth || canvas.offsetWidth || 400;
         canvas.height = 80;
 
         const w = canvas.width;

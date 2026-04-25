@@ -44,8 +44,8 @@ export const PCODE_COMMANDS = new Set([
     'GetHistogram',
     'GetImageProperty',
     'GetSessionProperty',
-    'HighlightClipping',
     'MedianValue',
+    'ShowAnalysisGraph',
     'SnrEstimate',
 
     // ── Image processing ─────────────────────────────────────────────────────

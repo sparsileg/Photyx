@@ -2,21 +2,21 @@
 // Spec §15, §7.8
 //
 // Two-pass operation:
-//   Pass 1 — run all eight metrics on every loaded frame (or current frame if scope=current)
-//   Pass 2 — compute session stats → sigma deviations → PXSCORE → PXFLAG → write keywords
+//   Pass 1 — run all seven metrics on every loaded frame (or current frame if scope=current)
+//   Pass 2 — compute session stats → PXFLAG (PASS/REJECT) → write keyword
 //
-// scope=current — runs all eight metrics on the current frame and prints raw results.
-//                 No session stats, no PXSCORE, no PXFLAG written.
+// scope=current — runs all seven metrics on the current frame and prints raw results.
+//                 No session stats, no PXFLAG written.
 
 use crate::analysis::{
     self,
     background::compute_background_metrics,
     eccentricity::compute_eccentricity,
     fwhm::compute_fwhm,
-    metrics::{highlight_clipping, snr_estimate},
+    metrics::snr_estimate,
     profiles,
     session_stats::{
-        classify_frame, compute_session_stats, AnalysisThresholds, MetricWeights,
+        classify_frame, compute_session_stats, AnalysisThresholds,
     },
     stars::detect_stars,
     AnalysisResult, BackgroundConfig, StarDetectionConfig,
@@ -33,8 +33,8 @@ impl PhotonPlugin for AnalyzeFrames {
     fn name(&self)        -> &str { "AnalyzeFrames" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {
-        "Computes all eight quality metrics for loaded frames, classifies each as \
-         PASS / SUSPECT / REJECT, and writes PXFLAG and PXSCORE keywords to each file. \
+        "Computes seven quality metrics for loaded frames, classifies each as \
+         PASS or REJECT, and writes PXFLAG keyword to each file. \
          Use scope=current to inspect a single frame without writing keywords."
     }
 
@@ -100,10 +100,8 @@ fn execute_current(
     let path        = result.filename.clone();
     let plate_scale = derive_plate_scale(&img.keywords);
 
-    // Drop immutable borrow before taking mutable borrow
     let _ = img;
 
-    // Store in context
     *ctx.analysis_result_for(&path) = result.clone();
 
     let fwhm_str = match (result.fwhm, plate_scale) {
@@ -116,7 +114,6 @@ fn execute_current(
         "Background median:   {}\n\
          Background std dev:  {}\n\
          Background gradient: {}\n\
-         Highlight clipping:  {}\n\
          SNR estimate:        {}\n\
          FWHM:                {}\n\
          Eccentricity:        {}\n\
@@ -124,7 +121,6 @@ fn execute_current(
         fmt_opt_adu(result.background_median),
         fmt_opt_adu(result.background_stddev),
         fmt_opt_adu(result.background_gradient),
-        result.highlight_clipping.map(|v| format!("{:.4}%", v * 100.0)).unwrap_or_else(|| "n/a".to_string()),
         result.snr_estimate.map(|v| format!("{:.1}", v)).unwrap_or_else(|| "n/a".to_string()),
         fwhm_str,
         result.eccentricity.map(|v| format!("{:.3}", v)).unwrap_or_else(|| "n/a".to_string()),
@@ -138,7 +134,6 @@ fn execute_current(
         "background_median":    result.background_median,
         "background_stddev":    result.background_stddev,
         "background_gradient":  result.background_gradient,
-        "highlight_clipping":   result.highlight_clipping,
         "snr_estimate":         result.snr_estimate,
         "fwhm_pixels":          result.fwhm,
         "eccentricity":         result.eccentricity,
@@ -160,9 +155,6 @@ fn execute_all(
     let thresholds = AnalysisThresholds::default();
     ctx.analysis_results.clear();
 
-    // ── Snapshot pixel data and keywords out of ctx ───────────────────────────
-    // Owned snapshot so Rayon can process frames in parallel without
-    // holding a reference to ctx across threads.
     struct FrameSnapshot {
         path:     String,
         width:    u32,
@@ -188,7 +180,6 @@ fn execute_all(
     let total = snapshots.len();
     info!("AnalyzeFrames: Pass 1 — computing metrics for {} frames", total);
 
-    // ── Pass 1: parallel metric computation ───────────────────────────────────
     let det_config_ref = det_config;
 
     let par_results: Vec<Result<AnalysisResult, (String, String)>> = snapshots
@@ -198,11 +189,10 @@ fn execute_all(
             let width    = snap.width as usize;
             let height   = snap.height as usize;
 
-            let luma = analysis::to_luminance(&snap.pixels, channels);
+            let luma      = analysis::to_luminance(&snap.pixels, channels);
             let bg_config = BackgroundConfig::default();
-            let bg = compute_background_metrics(&luma, width, height, &bg_config);
-            let clipping = highlight_clipping(&luma);
-            let stars = detect_stars(&luma, width, height, det_config_ref);
+            let bg        = compute_background_metrics(&luma, width, height, &bg_config);
+            let stars     = detect_stars(&luma, width, height, det_config_ref);
             let plate_scale = derive_plate_scale(&snap.keywords);
             let fwhm_result = compute_fwhm(&stars, plate_scale);
             let ecc_result  = compute_eccentricity(&stars);
@@ -213,7 +203,6 @@ fn execute_all(
                 background_median:   Some(bg.median),
                 background_stddev:   Some(bg.stddev),
                 background_gradient: Some(bg.gradient),
-                highlight_clipping:  Some(clipping),
                 snr_estimate:        snr_result.map(|r| r.snr),
                 fwhm:                fwhm_result.as_ref().map(|r| r.fwhm_pixels),
                 eccentricity:        ecc_result.as_ref().map(|r| r.eccentricity),
@@ -228,7 +217,6 @@ fn execute_all(
         })
         .collect();
 
-    // Separate successes from errors
     let mut results: Vec<AnalysisResult> = Vec::with_capacity(total);
     let mut errors:  Vec<String>         = Vec::new();
 
@@ -246,63 +234,50 @@ fn execute_all(
         ));
     }
 
-    // ── Pass 2: session stats → classify → write keywords ────────────────────
+    // ── Pass 2: session stats → classify → write PXFLAG keyword ──────────────
     info!("AnalyzeFrames: Pass 2 — classifying {} frames", results.len());
 
     let result_refs: Vec<&AnalysisResult> = results.iter().collect();
     let session_stats = compute_session_stats(&result_refs);
 
-    let mut pass_count    = 0u32;
-    let mut suspect_count = 0u32;
-    let mut reject_count  = 0u32;
+    let mut pass_count   = 0u32;
+    let mut reject_count = 0u32;
     let mut frame_summaries: Vec<serde_json::Value> = Vec::new();
 
     for result in &mut results {
-        let filter = snapshots.iter()
-            .find(|s| s.path == result.filename)
-            .and_then(|s| s.keywords.get("FILTER"))
-            .map(|kw| kw.value.clone());
-
-        let weights = MetricWeights::for_filter(filter.as_deref());
-        let (flag, score) = classify_frame(result, &session_stats, &thresholds, &weights);
+        let (flag, triggered) = classify_frame(result, &session_stats, &thresholds);
         result.flag = Some(flag.clone());
 
-        // Write PXFLAG and PXSCORE keywords back to image buffer
+        // Write PXFLAG keyword to image buffer
         if let Some(buf) = ctx.image_buffers.get_mut(&result.filename) {
             buf.keywords.insert(
                 "PXFLAG".to_string(),
                 KeywordEntry::new("PXFLAG", flag.as_str(), Some("Photyx frame quality flag")),
             );
-            buf.keywords.insert(
-                "PXSCORE".to_string(),
-                KeywordEntry::new("PXSCORE", &score.to_string(), Some("Photyx quality score 0-100")),
-            );
         }
 
         match flag {
-            crate::analysis::PxFlag::Pass    => pass_count    += 1,
-            crate::analysis::PxFlag::Suspect => suspect_count += 1,
-            crate::analysis::PxFlag::Reject  => reject_count  += 1,
+            crate::analysis::PxFlag::Pass   => pass_count   += 1,
+            crate::analysis::PxFlag::Reject => reject_count += 1,
         }
 
         frame_summaries.push(json!({
-            "filename": short_name(&result.filename),
-            "flag":     result.flag.as_ref().map(|f| f.as_str()).unwrap_or("?"),
-            "score":    score,
-            "fwhm":     result.fwhm,
-            "ecc":      result.eccentricity,
-            "snr":      result.snr_estimate,
-            "stars":    result.star_count,
+            "filename":    short_name(&result.filename),
+            "flag":        result.flag.as_ref().map(|f| f.as_str()).unwrap_or("?"),
+            "triggered":   triggered,
+            "fwhm":        result.fwhm,
+            "ecc":         result.eccentricity,
+            "snr":         result.snr_estimate,
+            "stars":       result.star_count,
         }));
 
         ctx.analysis_results.insert(result.filename.clone(), result.clone());
     }
 
     let message = format!(
-        "AnalyzeFrames complete: {} frames — {} PASS, {} SUSPECT, {} REJECT{}",
+        "AnalyzeFrames complete: {} frames — {} PASS, {} REJECT{}",
         results.len(),
         pass_count,
-        suspect_count,
         reject_count,
         if errors.is_empty() { String::new() } else { format!(" ({} errors)", errors.len()) }
     );
@@ -310,15 +285,14 @@ fn execute_all(
     info!("{}", message);
 
     Ok(PluginOutput::Data(json!({
-        "plugin":        "AnalyzeFrames",
-        "scope":         "all",
-        "frame_count":   results.len(),
-        "pass_count":    pass_count,
-        "suspect_count": suspect_count,
-        "reject_count":  reject_count,
-        "errors":        errors,
-        "frames":        frame_summaries,
-        "message":       message,
+        "plugin":       "AnalyzeFrames",
+        "scope":        "all",
+        "frame_count":  results.len(),
+        "pass_count":   pass_count,
+        "reject_count": reject_count,
+        "errors":       errors,
+        "frames":       frame_summaries,
+        "message":      message,
     })))
 }
 
@@ -336,49 +310,27 @@ fn compute_metrics_for_image(
     let width     = img.width  as usize;
     let height    = img.height as usize;
 
-    let luma = analysis::to_luminance(pixels, channels);
+    let luma      = analysis::to_luminance(pixels, channels);
     let bg_config = BackgroundConfig::default();
-
-    // Background metrics (single pass)
-    let bg = compute_background_metrics(&luma, width, height, &bg_config);
-
-    // Highlight clipping
-    let clipping = highlight_clipping(&luma);
-
-    // Star detection (shared across FWHM, eccentricity, SNR, star count)
-    let stars = detect_stars(&luma, width, height, det_config);
-
-    // Plate scale from keywords
+    let bg        = compute_background_metrics(&luma, width, height, &bg_config);
+    let stars     = detect_stars(&luma, width, height, det_config);
     let plate_scale = derive_plate_scale(&img.keywords);
-
-    // FWHM
     let fwhm_result = compute_fwhm(&stars, plate_scale);
-
-    // Eccentricity
-    let ecc_result = compute_eccentricity(&stars);
-
-    // SNR
-    let snr_result = snr_estimate(
-        &luma,
-        width,
-        height,
-        &stars,
-        &bg_config.sigma_clip,
-    );
+    let ecc_result  = compute_eccentricity(&stars);
+    let snr_result  = snr_estimate(&luma, width, height, &stars, &bg_config.sigma_clip);
 
     Ok(AnalysisResult {
-        filename:             img.filename.clone(),
-        background_median:    Some(bg.median),
-        background_stddev:    Some(bg.stddev),
-        background_gradient:  Some(bg.gradient),
-        highlight_clipping:   Some(clipping),
-        snr_estimate:         snr_result.map(|r| r.snr),
-        fwhm:                 fwhm_result.as_ref().map(|r| r.fwhm_pixels),
-        eccentricity:         ecc_result.as_ref().map(|r| r.eccentricity),
-        star_count:           fwhm_result.as_ref().map(|r| r.star_count as u32)
+        filename:            img.filename.clone(),
+        background_median:   Some(bg.median),
+        background_stddev:   Some(bg.stddev),
+        background_gradient: Some(bg.gradient),
+        snr_estimate:        snr_result.map(|r| r.snr),
+        fwhm:                fwhm_result.as_ref().map(|r| r.fwhm_pixels),
+        eccentricity:        ecc_result.as_ref().map(|r| r.eccentricity),
+        star_count:          fwhm_result.as_ref().map(|r| r.star_count as u32)
                                 .or_else(|| ecc_result.as_ref().map(|r| r.star_count as u32))
                                 .or_else(|| Some(stars.len() as u32)),
-        flag:                 None,
+        flag: None,
     })
 }
 

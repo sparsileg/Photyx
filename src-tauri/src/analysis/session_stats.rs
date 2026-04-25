@@ -1,20 +1,19 @@
 // analysis/session_stats.rs — session-level statistics for AnalyzeFrames
-// Computes mean and std dev for each metric across all frames in a session,
-// then derives sigma deviations and PXSCORE/PXFLAG classifications.
+// PASS / REJECT classification only — no SUSPECT, no PXSCORE.
+// Philosophy: remove extreme outliers only; PI weighting handles fine-grained quality.
 
 use crate::analysis::AnalysisResult;
 use crate::analysis::PxFlag;
 use serde::{Deserialize, Serialize};
 
 // ── Threshold table ───────────────────────────────────────────────────────────
-// Default thresholds per spec §9.9.
 // Sigma-based: deviation from session mean in units of session std dev.
 // Absolute: fixed value regardless of session statistics.
+// Only reject thresholds — SUSPECT has been removed.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricThresholds {
-    pub suspect: f32,
-    pub reject:  f32,
+    pub reject: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,27 +27,28 @@ pub struct AnalysisThresholds {
     pub star_count:          MetricThresholds,  // -σ (fewer stars = worse)
 
     // Absolute
-    pub highlight_clipping:  MetricThresholds,  // fraction (not %)
     pub eccentricity:        MetricThresholds,  // absolute 0.0–1.0
 }
 
 impl Default for AnalysisThresholds {
     fn default() -> Self {
         Self {
-            background_median:   MetricThresholds { suspect: 1.5, reject: 2.5 },
-            background_stddev:   MetricThresholds { suspect: 1.5, reject: 2.5 },
-            background_gradient: MetricThresholds { suspect: 1.5, reject: 2.5 },
-            snr_estimate:        MetricThresholds { suspect: 1.5, reject: 2.5 },
-            fwhm:                MetricThresholds { suspect: 1.5, reject: 2.5 },
-            star_count:          MetricThresholds { suspect: 1.0, reject: 1.5 },
-            highlight_clipping:  MetricThresholds { suspect: 0.001, reject: 0.005 }, // 0.1% / 0.5%
-            eccentricity:        MetricThresholds { suspect: 0.65, reject: 0.80 },
+            background_median:   MetricThresholds { reject: 2.5 },
+            background_stddev:   MetricThresholds { reject: 2.5 },
+            background_gradient: MetricThresholds { reject: 2.5 },
+            snr_estimate:        MetricThresholds { reject: 2.5 },
+            fwhm:                MetricThresholds { reject: 2.5 },
+            star_count:          MetricThresholds { reject: 1.5 },
+            eccentricity:        MetricThresholds { reject: 0.85 },
         }
     }
 }
 
 // ── Filter-adjusted weights ───────────────────────────────────────────────────
+// Weights are used only for informational purposes — classification is driven
+// by individual metric thresholds, not weighted scores.
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct MetricWeights {
     pub background_median:   f32,
@@ -58,9 +58,9 @@ pub struct MetricWeights {
     pub fwhm:                f32,
     pub eccentricity:        f32,
     pub star_count:          f32,
-    pub highlight_clipping:  f32,
 }
 
+#[allow(dead_code)]
 impl MetricWeights {
     /// Broadband weights (FILTER = ircut or absent)
     pub fn broadband() -> Self {
@@ -72,7 +72,6 @@ impl MetricWeights {
             background_gradient: 2.0,
             star_count:          2.0,
             background_median:   1.0,
-            highlight_clipping:  1.0,
         }
     }
 
@@ -87,23 +86,10 @@ impl MetricWeights {
             background_gradient: 2.0,
             star_count:          0.0,
             background_median:   1.0,
-            highlight_clipping:  1.0,
         }
     }
 
-    pub fn total(&self) -> f32 {
-        self.background_median
-            + self.background_stddev
-            + self.background_gradient
-            + self.snr_estimate
-            + self.fwhm
-            + self.eccentricity
-            + self.star_count
-            + self.highlight_clipping
-    }
-
     /// Select weights based on FILTER keyword value.
-    /// Defaults to broadband if keyword is absent or unrecognized.
     pub fn for_filter(filter: Option<&str>) -> Self {
         match filter {
             Some(f) if f.to_lowercase().contains("duo") => Self::narrowband(),
@@ -137,7 +123,6 @@ pub struct SessionStats {
     pub background_median:   MetricStats,
     pub background_stddev:   MetricStats,
     pub background_gradient: MetricStats,
-    pub highlight_clipping:  MetricStats,
     pub snr_estimate:        MetricStats,
     pub fwhm:                MetricStats,
     pub eccentricity:        MetricStats,
@@ -158,7 +143,6 @@ pub fn compute_session_stats(results: &[&AnalysisResult]) -> SessionStats {
         background_median:   MetricStats::from_values(&collect!(background_median)),
         background_stddev:   MetricStats::from_values(&collect!(background_stddev)),
         background_gradient: MetricStats::from_values(&collect!(background_gradient)),
-        highlight_clipping:  MetricStats::from_values(&collect!(highlight_clipping)),
         snr_estimate:        MetricStats::from_values(&collect!(snr_estimate)),
         fwhm:                MetricStats::from_values(&collect!(fwhm)),
         eccentricity:        MetricStats::from_values(&collect!(eccentricity)),
@@ -172,8 +156,6 @@ pub fn compute_session_stats(results: &[&AnalysisResult]) -> SessionStats {
 
 // ── Sigma deviation ───────────────────────────────────────────────────────────
 
-/// Compute signed sigma deviation: (value - mean) / stddev.
-/// Returns 0.0 if stddev is zero (all frames identical).
 fn sigma_dev(value: f32, stats: &MetricStats) -> f32 {
     if stats.stddev < f32::EPSILON {
         return 0.0;
@@ -183,110 +165,59 @@ fn sigma_dev(value: f32, stats: &MetricStats) -> f32 {
 
 // ── Classification ────────────────────────────────────────────────────────────
 
-/// Classify a single frame given its metrics, session stats, and thresholds.
-/// Returns (PxFlag, PXSCORE 0–100).
+/// Classify a single frame — PASS or REJECT only.
+/// Returns (PxFlag, Vec<String>) where the Vec contains names of metrics that
+/// triggered REJECT (empty for PASS).
 pub fn classify_frame(
     result:     &AnalysisResult,
     stats:      &SessionStats,
     thresholds: &AnalysisThresholds,
-    weights:    &MetricWeights,
-) -> (PxFlag, u32) {
-    let total_weight = weights.total();
+) -> (PxFlag, Vec<String>) {
+    let mut triggered: Vec<String> = Vec::new();
 
-    // ── Per-metric penalty and flag evaluation ────────────────────────────────
-    // penalty: 0.0 = perfect, 1.0 = at reject threshold, >1.0 = beyond reject
-    // For sigma metrics: penalty = |deviation| / reject_threshold
-    // For absolute metrics: penalty = value / reject_threshold
-
-    struct MetricEval {
-        is_reject:  bool,
-        is_suspect: bool,
-        penalty:    f32,
-        weight:     f32,
+    // Higher-is-worse sigma metrics
+    macro_rules! check_high {
+        ($field:expr, $stats:expr, $thresh:expr, $name:expr) => {
+            if let Some(v) = $field {
+                if sigma_dev(v, $stats) >= $thresh.reject {
+                    triggered.push($name.to_string());
+                }
+            }
+        };
     }
 
-    let mut evals: Vec<MetricEval> = Vec::with_capacity(8);
-
-    // Helper: higher-is-worse sigma metric (background median, stddev, gradient, FWHM)
-    let sigma_high = |value: Option<f32>, stats: &MetricStats, thresh: &MetricThresholds, weight: f32| -> MetricEval {
-        match value {
-            None => MetricEval { is_reject: false, is_suspect: false, penalty: 0.0, weight },
-            Some(v) => {
-                let dev = sigma_dev(v, stats);
-                let penalty = (dev / thresh.reject).max(0.0).min(2.0);
-                MetricEval {
-                    is_reject:  dev >= thresh.reject,
-                    is_suspect: dev >= thresh.suspect,
-                    penalty,
-                    weight,
+    // Lower-is-worse sigma metrics
+    macro_rules! check_low {
+        ($field:expr, $stats:expr, $thresh:expr, $name:expr) => {
+            if let Some(v) = $field {
+                if sigma_dev(v, $stats) <= -$thresh.reject {
+                    triggered.push($name.to_string());
                 }
             }
+        };
+    }
+
+    check_high!(result.background_median,   &stats.background_median,   &thresholds.background_median,   "BackgroundMedian");
+    check_high!(result.background_stddev,   &stats.background_stddev,   &thresholds.background_stddev,   "BackgroundStdDev");
+    check_high!(result.background_gradient, &stats.background_gradient, &thresholds.background_gradient, "BackgroundGradient");
+    check_high!(result.fwhm,                &stats.fwhm,                &thresholds.fwhm,                "FWHM");
+    check_low!( result.snr_estimate,        &stats.snr_estimate,        &thresholds.snr_estimate,        "SNR");
+    check_low!( result.star_count.map(|v| v as f32), &stats.star_count, &thresholds.star_count,          "StarCount");
+
+    // Absolute metric
+    if let Some(ecc) = result.eccentricity {
+        if ecc >= thresholds.eccentricity.reject {
+            triggered.push("Eccentricity".to_string());
         }
-    };
+    }
 
-    // Helper: lower-is-worse sigma metric (SNR, star count)
-    let sigma_low = |value: Option<f32>, stats: &MetricStats, thresh: &MetricThresholds, weight: f32| -> MetricEval {
-        match value {
-            None => MetricEval { is_reject: false, is_suspect: false, penalty: 0.0, weight },
-            Some(v) => {
-                let dev = sigma_dev(v, stats); // negative = worse
-                let penalty = ((-dev) / thresh.reject).max(0.0).min(2.0);
-                MetricEval {
-                    is_reject:  dev <= -thresh.reject,
-                    is_suspect: dev <= -thresh.suspect,
-                    penalty,
-                    weight,
-                }
-            }
-        }
-    };
-
-    // Helper: absolute metric (highlight clipping, eccentricity)
-    let absolute = |value: Option<f32>, thresh: &MetricThresholds, weight: f32| -> MetricEval {
-        match value {
-            None => MetricEval { is_reject: false, is_suspect: false, penalty: 0.0, weight },
-            Some(v) => {
-                let penalty = (v / thresh.reject).max(0.0).min(2.0);
-                MetricEval {
-                    is_reject:  v >= thresh.reject,
-                    is_suspect: v >= thresh.suspect,
-                    penalty,
-                    weight,
-                }
-            }
-        }
-    };
-
-    evals.push(sigma_high(result.background_median,   &stats.background_median,   &thresholds.background_median,   weights.background_median));
-    evals.push(sigma_high(result.background_stddev,   &stats.background_stddev,   &thresholds.background_stddev,   weights.background_stddev));
-    evals.push(sigma_high(result.background_gradient, &stats.background_gradient, &thresholds.background_gradient, weights.background_gradient));
-    evals.push(sigma_high(result.fwhm,                &stats.fwhm,                &thresholds.fwhm,                weights.fwhm));
-    evals.push(sigma_low( result.snr_estimate,        &stats.snr_estimate,        &thresholds.snr_estimate,        weights.snr_estimate));
-    evals.push(sigma_low( result.star_count.map(|v| v as f32), &stats.star_count, &thresholds.star_count,          weights.star_count));
-    evals.push(absolute(  result.highlight_clipping,  &thresholds.highlight_clipping,                              weights.highlight_clipping));
-    evals.push(absolute(  result.eccentricity,        &thresholds.eccentricity,                                    weights.eccentricity));
-
-    // ── PXFLAG: REJECT if any metric exceeds reject threshold ─────────────────
-    // SUSPECT if any metric exceeds suspect threshold but none exceed reject
-    let flag = if evals.iter().any(|e| e.is_reject) {
-        PxFlag::Reject
-    } else if evals.iter().any(|e| e.is_suspect) {
-        PxFlag::Suspect
-    } else {
+    let flag = if triggered.is_empty() {
         PxFlag::Pass
-    };
-
-    // ── PXSCORE: weighted penalty → 0–100 (higher = better) ──────────────────
-    let weighted_penalty: f32 = if total_weight > 0.0 {
-        evals.iter().map(|e| e.penalty * e.weight).sum::<f32>() / total_weight
     } else {
-        0.0
+        PxFlag::Reject
     };
 
-    // penalty of 0.0 → score 100, penalty of 1.0 → score 50, penalty of 2.0 → score 0
-    let score = ((1.0 - weighted_penalty * 0.5) * 100.0).clamp(0.0, 100.0).round() as u32;
-
-    (flag, score)
+    (flag, triggered)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -302,7 +233,6 @@ mod tests {
             background_median:    Some(bg),
             background_stddev:    Some(bg * 0.1),
             background_gradient:  Some(bg * 0.05),
-            highlight_clipping:   Some(0.0),
             snr_estimate:         Some(snr),
             fwhm:                 Some(fwhm),
             eccentricity:         Some(ecc),
@@ -330,23 +260,41 @@ mod tests {
         let results = vec![&r1, &r2, &r3];
         let stats = compute_session_stats(&results);
         let thresholds = AnalysisThresholds::default();
-        let weights = MetricWeights::broadband();
-        let (flag, score) = classify_frame(&r1, &stats, &thresholds, &weights);
+        let (flag, triggered) = classify_frame(&r1, &stats, &thresholds);
         assert_eq!(flag, PxFlag::Pass);
-        assert!(score >= 90, "score {} should be high for average frame", score);
+        assert!(triggered.is_empty());
     }
 
     #[test]
     fn test_classify_bad_eccentricity_rejects() {
         let r1 = make_result("f1", 2.5, 0.4,  6.0, 600, 0.05);
         let r2 = make_result("f2", 2.5, 0.4,  6.0, 600, 0.05);
-        let r3 = make_result("f3", 2.5, 0.85, 6.0, 600, 0.05); // eccentricity above reject (0.80)
+        let r3 = make_result("f3", 2.5, 0.86, 6.0, 600, 0.05); // above 0.85
         let results = vec![&r1, &r2, &r3];
         let stats = compute_session_stats(&results);
         let thresholds = AnalysisThresholds::default();
-        let weights = MetricWeights::broadband();
-        let (flag, _) = classify_frame(&r3, &stats, &thresholds, &weights);
+        let (flag, triggered) = classify_frame(&r3, &stats, &thresholds);
         assert_eq!(flag, PxFlag::Reject);
+        assert!(triggered.contains(&"Eccentricity".to_string()));
+    }
+
+    #[test]
+    fn test_triggered_by_populated() {
+        // Good frames have some variance so stddev > 0
+        let g1 = make_result("g1", 2.4, 0.4, 6.0, 600, 0.05);
+        let g2 = make_result("g2", 2.5, 0.4, 6.0, 600, 0.05);
+        let g3 = make_result("g3", 2.6, 0.4, 6.0, 600, 0.05);
+        let g4 = make_result("g4", 2.5, 0.4, 6.0, 600, 0.05);
+        let g5 = make_result("g5", 2.4, 0.4, 6.0, 600, 0.05);
+        // Bad frame with FWHM far above the session mean
+        // mean=2.48, stddev≈0.07, so 10.0 is ~107σ above mean
+        let bad = make_result("bad", 10.0, 0.4, 6.0, 600, 0.05);
+        let good_results = vec![&g1, &g2, &g3, &g4, &g5];
+        let stats = compute_session_stats(&good_results);
+        let thresholds = AnalysisThresholds::default();
+        let (flag, triggered) = classify_frame(&bad, &stats, &thresholds);
+        assert_eq!(flag, PxFlag::Reject);
+        assert!(triggered.contains(&"FWHM".to_string()));
     }
 
     #[test]
@@ -358,26 +306,13 @@ mod tests {
 
     #[test]
     fn test_filter_selection() {
-        let w_duo    = MetricWeights::for_filter(Some("duo"));
-        let w_ircut  = MetricWeights::for_filter(Some("ircut"));
-        let w_none   = MetricWeights::for_filter(None);
+        let w_duo       = MetricWeights::for_filter(Some("duo"));
+        let w_ircut     = MetricWeights::for_filter(Some("ircut"));
+        let w_none      = MetricWeights::for_filter(None);
         let w_duo_upper = MetricWeights::for_filter(Some("DUO"));
-        assert_eq!(w_duo.star_count,   0.0);
-        assert_eq!(w_ircut.star_count, 2.0);
-        assert_eq!(w_none.star_count,  2.0);
+        assert_eq!(w_duo.star_count,       0.0);
+        assert_eq!(w_ircut.star_count,     2.0);
+        assert_eq!(w_none.star_count,      2.0);
         assert_eq!(w_duo_upper.star_count, 0.0);
     }
-
-    #[test]
-    fn test_score_perfect_frame() {
-        // All frames identical → all deviations zero → score 100
-        let r = make_result("f1", 2.5, 0.4, 6.0, 600, 0.05);
-        let results = vec![&r, &r, &r];
-        let stats = compute_session_stats(&results);
-        let (_, score) = classify_frame(&r, &stats, &AnalysisThresholds::default(), &MetricWeights::broadband());
-        assert!(score >= 90, "score {} should be high for perfect frame", score);
-    }
 }
-
-
-// ----------------------------------------------------------------------

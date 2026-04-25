@@ -220,7 +220,6 @@ pub fn run() {
     registry.register(Arc::new(plugins::compute_eccentricity::ComputeEccentricity));
     registry.register(Arc::new(plugins::compute_fwhm::ComputeFWHM));
     registry.register(Arc::new(plugins::get_histogram::GetHistogram));
-    registry.register(Arc::new(plugins::highlight_clipping::HighlightClippingPlugin));
     registry.register(Arc::new(plugins::highlight_clipping::SnrEstimatePlugin));
     registry.register(Arc::new(plugins::keywords::AddKeyword));
     registry.register(Arc::new(plugins::keywords::CopyKeyword));
@@ -262,6 +261,7 @@ pub fn run() {
             get_blink_frame,
             get_blink_cache_status,
             get_frame_flags,
+            get_analysis_results,
             start_background_cache,
             get_keywords,
             get_histogram,
@@ -272,6 +272,88 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+
+#[tauri::command]
+fn get_analysis_results(state: State<PhotoxState>) -> serde_json::Value {
+    let ctx = state.context.lock().expect("context lock poisoned");
+
+    let frames: Vec<serde_json::Value> = ctx.file_list.iter().enumerate().map(|(i, path)| {
+        let flag = ctx.analysis_results.get(path)
+            .and_then(|r| r.flag.as_ref())
+            .map(|f| f.as_str().to_string())
+            .or_else(|| ctx.image_buffers.get(path)
+                .and_then(|b| b.keywords.get("PXFLAG"))
+                .map(|kw| kw.value.clone()))
+            .unwrap_or_default();
+
+        let score: Option<u32> = ctx.image_buffers.get(path)
+            .and_then(|b| b.keywords.get("PXSCORE"))
+            .and_then(|kw| kw.value.parse().ok());
+
+        let short = path.rsplit(['/', '\\']).next().unwrap_or(path);
+        let label = extract_frame_label(short);
+
+        if let Some(r) = ctx.analysis_results.get(path) {
+            serde_json::json!({
+                "index":               i,
+                "filename":            path,
+                "label":               label,
+                "short_name":          short,
+                "background_median":   r.background_median,
+                "background_stddev":   r.background_stddev,
+                "background_gradient": r.background_gradient,
+                "snr_estimate":        r.snr_estimate,
+                "fwhm":                r.fwhm,
+                "eccentricity":        r.eccentricity,
+                "star_count":          r.star_count,
+                "flag":                flag,
+            })
+        } else {
+            serde_json::json!({
+                "index":      i,
+                "filename":   path,
+                "label":      label,
+                "short_name": short,
+                "flag":       flag,
+                "score":      score,
+            })
+        }
+    }).collect();
+
+    use crate::analysis::session_stats::compute_session_stats;
+    let result_refs: Vec<&crate::analysis::AnalysisResult> = ctx.file_list.iter()
+        .filter_map(|p| ctx.analysis_results.get(p))
+        .collect();
+    let stats = compute_session_stats(&result_refs);
+
+    serde_json::json!({
+        "frames": frames,
+        "session_stats": {
+            "background_median":   { "mean": stats.background_median.mean,   "stddev": stats.background_median.stddev },
+            "background_stddev":   { "mean": stats.background_stddev.mean,   "stddev": stats.background_stddev.stddev },
+            "background_gradient": { "mean": stats.background_gradient.mean, "stddev": stats.background_gradient.stddev },
+            "snr_estimate":        { "mean": stats.snr_estimate.mean,        "stddev": stats.snr_estimate.stddev },
+            "fwhm":                { "mean": stats.fwhm.mean,                "stddev": stats.fwhm.stddev },
+            "eccentricity":        { "mean": stats.eccentricity.mean,        "stddev": stats.eccentricity.stddev },
+            "star_count":          { "mean": stats.star_count.mean,          "stddev": stats.star_count.stddev },
+            "score":               { "mean": 0.0, "stddev": 0.0 },
+        }
+    })
+}
+
+fn extract_frame_label(filename: &str) -> String {
+    let stem = filename.rsplit('.').nth(1).unwrap_or(filename);
+    let digits: String = stem.chars().rev()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<String>()
+        .chars().rev().collect();
+    if !digits.is_empty() && digits.len() <= 6 {
+        return digits.trim_start_matches('0').to_string()
+            .parse::<u32>().unwrap_or(0).to_string();
+    }
+    let chars: Vec<char> = stem.chars().collect();
+    chars[chars.len().saturating_sub(8)..].iter().collect()
+}
 
 #[tauri::command]
 fn get_frame_flags(state: State<PhotoxState>) -> Vec<String> {

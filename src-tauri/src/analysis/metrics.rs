@@ -13,11 +13,13 @@ use crate::analysis::SigmaClipConfig;
 
 /// Fixed clipping threshold per spec §8.8: pixels at or above this value
 /// are considered highlight-clipped.
+#[allow(dead_code)]
 pub const CLIP_THRESHOLD: f32 = 0.995;
 
 /// Compute highlight clipping fraction for a luminance image.
 /// Returns the fraction of pixels at or above CLIP_THRESHOLD (0.0–1.0).
 /// Multiply by 100.0 for percentage.
+#[allow(dead_code)]
 pub fn highlight_clipping(luma: &[f32]) -> f32 {
     if luma.is_empty() {
         return 0.0;

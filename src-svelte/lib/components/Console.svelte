@@ -127,6 +127,10 @@
             append('Photyx 1.0.0-dev  |  pcode v1.0  |  Tauri + Svelte + Rust', 'output');
             return true;
         },
+        showanalysisgraph: () => {
+            ui.setShowAnalysisGraph(true);
+            return true;
+        },
     };
 
     async function dispatch(raw: string) {

@@ -3,6 +3,7 @@
     import { onMount } from 'svelte';
     import { ui } from '../lib/stores/ui';
 
+    import AnalysisGraph from '../lib/components/AnalysisGraph.svelte';
     import Console from '../lib/components/Console.svelte';
     import IconSidebar from '../lib/components/IconSidebar.svelte';
     import InfoPanel from '../lib/components/InfoPanel.svelte';
@@ -67,8 +68,12 @@
             <MacroEditor />
         {/if}
 
-        <div id="viewer-region">
-            <Viewer onMousePixel={onMousePixel} />
+            <div id="viewer-region">
+            {#if $ui.showAnalysisGraph}
+                <AnalysisGraph />
+            {:else}
+                <Viewer onMousePixel={onMousePixel} />
+            {/if}
             {#if $ui.blinkTabActive && blinkFilename}
                 <div id="blink-filename-overlay">{blinkFilename}</div>
             {/if}
