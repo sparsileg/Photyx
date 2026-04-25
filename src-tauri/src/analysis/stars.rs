@@ -103,8 +103,8 @@ pub fn detect_stars(
             flood_thresh - bg, // flood threshold in background-subtracted space
         );
 
-        if component.is_empty() {
-            continue;
+        if component.len() < 5 {
+            continue; // reject hot pixels and cosmic rays (fewer than 5 connected pixels)
         }
 
         // Bounding box

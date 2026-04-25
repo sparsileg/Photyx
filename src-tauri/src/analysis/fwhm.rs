@@ -1,12 +1,17 @@
 // analysis/fwhm.rs — FWHM computation
 // Spec §7.8, §15.4
 //
-// For each StarCandidate:
-//   1. Sample the intensity profile through the centroid on 4 axes
-//      (horizontal, vertical, diagonal /, diagonal \)
-//   2. Find the half-maximum points on each side of the centroid
-//      using sub-pixel linear interpolation
-//   3. FWHM for the star = mean across all valid axis measurements
+// Moment-based FWHM using intensity-weighted second-order moments.
+// This matches PI's approach of using the geometric mean of major/minor axes:
+//
+//   Mxx = Σ(w * dx²) / Σw
+//   Myy = Σ(w * dy²) / Σw
+//   FWHM = 2.355 * sqrt((Mxx + Myy) / 2)
+//
+// This is more accurate than the previous axis-crossing approach, especially
+// for elongated stars where the narrow axis was pulling the measurement down.
+// The geometric mean correctly captures the overall star size regardless of
+// orientation, matching PI's SubframeSelector FWHM values more closely.
 //
 // Final result = median FWHM across all stars (robust against outliers).
 
@@ -14,127 +19,75 @@ use crate::analysis::stars::StarCandidate;
 
 // ── Per-star FWHM ─────────────────────────────────────────────────────────────
 
-/// Compute FWHM in pixels for a single star using its pixel patch.
-/// Returns None if the star profile is too flat or malformed to measure.
+/// Compute FWHM in pixels for a single star using intensity-weighted moments.
+/// Returns None if the star profile is too small or degenerate.
 pub fn star_fwhm(star: &StarCandidate) -> Option<f32> {
     let (x0, y0, x1, y1) = star.bbox;
     let bw = x1 - x0 + 1;
     let bh = y1 - y0 + 1;
 
+    if bw < 2 || bh < 2 {
+        return None;
+    }
+
+    if star.peak <= 0.0 {
+        return None;
+    }
+
     // Centroid in patch-local coordinates
-    let lcx = (star.cx - x0 as f32).round() as isize;
-    let lcy = (star.cy - y0 as f32).round() as isize;
+    let lcx = star.cx - x0 as f32;
+    let lcy = star.cy - y0 as f32;
 
-    if lcx < 0 || lcy < 0 || lcx >= bw as isize || lcy >= bh as isize {
+    // Intensity-weighted second-order moments
+    let mut mxx = 0.0f64;
+    let mut myy = 0.0f64;
+    let mut total_weight = 0.0f64;
+
+    for y in 0..bh {
+        for x in 0..bw {
+            let w = star.patch[y * bw + x] as f64;
+            if w <= 0.0 { continue; }
+            let dx = x as f64 - lcx as f64;
+            let dy = y as f64 - lcy as f64;
+            mxx += w * dx * dx;
+            myy += w * dy * dy;
+            total_weight += w;
+        }
+    }
+
+    if total_weight <= 0.0 {
         return None;
     }
 
-    let peak = star.peak;
-    if peak <= 0.0 {
-        return None;
-    }
-    let half_max = peak * 0.5;
+    mxx /= total_weight;
+    myy /= total_weight;
 
-    // Sample on 4 axes through the centroid
-    let axes: &[(isize, isize)] = &[
-        (1,  0),   // horizontal
-        (0,  1),   // vertical
-        (1,  1),   // diagonal \
-        (1, -1),   // diagonal /
-    ];
+    // FWHM = 2.355 * sqrt((Mxx + Myy) / 2)
+    // Geometric mean of the two axes — matches PI's approach
+    let sigma_mean = ((mxx + myy) / 2.0).sqrt() as f32;
+    let fwhm = 2.355 * sigma_mean;
 
-    let mut measurements: Vec<f32> = Vec::new();
-
-    for &(dx, dy) in axes {
-        // Collect samples along this axis in both directions from centroid
-        let pos_samples = axis_samples(&star.patch, bw, bh, lcx, lcy,  dx,  dy);
-        let neg_samples = axis_samples(&star.patch, bw, bh, lcx, lcy, -dx, -dy);
-
-        if pos_samples.len() < 2 || neg_samples.len() < 2 {
-            continue;
-        }
-
-        // Find half-max crossing in each direction
-        let pos_hm = half_max_distance(&pos_samples, half_max);
-        let neg_hm = half_max_distance(&neg_samples, half_max);
-
-        if let (Some(p), Some(n)) = (pos_hm, neg_hm) {
-            // For diagonal axes, scale by sqrt(2) to get pixel distance
-            let scale = if dx != 0 && dy != 0 { std::f32::consts::SQRT_2 } else { 1.0 };
-            measurements.push((p + n) * scale);
-        }
-    }
-
-    if measurements.is_empty() {
+    if fwhm <= 0.0 || !fwhm.is_finite() {
         return None;
     }
 
-    Some(measurements.iter().sum::<f32>() / measurements.len() as f32)
-}
-
-/// Extract intensity samples along a direction from (cx, cy) inclusive.
-/// Steps in direction (dx, dy) until the patch boundary is reached.
-fn axis_samples(
-    patch: &[f32],
-    bw:    usize,
-    bh:    usize,
-    cx:    isize,
-    cy:    isize,
-    dx:    isize,
-    dy:    isize,
-) -> Vec<f32> {
-    let mut samples = Vec::new();
-    let mut x = cx;
-    let mut y = cy;
-
-    loop {
-        if x < 0 || y < 0 || x >= bw as isize || y >= bh as isize {
-            break;
-        }
-        samples.push(patch[y as usize * bw + x as usize]);
-        x += dx;
-        y += dy;
-    }
-    samples
-}
-
-/// Find the fractional distance from index 0 at which the profile
-/// crosses half_max, using linear interpolation between samples.
-/// Returns None if the profile never drops below half_max.
-fn half_max_distance(samples: &[f32], half_max: f32) -> Option<f32> {
-    // samples[0] is the peak (centroid); we walk outward
-    for i in 1..samples.len() {
-        let prev = samples[i - 1];
-        let curr = samples[i];
-        if curr <= half_max {
-            // Linear interpolation: fraction of the step at which crossing occurs
-            if (prev - curr).abs() < f32::EPSILON {
-                return Some(i as f32);
-            }
-            let frac = (prev - half_max) / (prev - curr);
-            return Some((i - 1) as f32 + frac);
-        }
-    }
-    None // profile never dropped to half-max within the patch
+    Some(fwhm)
 }
 
 // ── Image-level FWHM ──────────────────────────────────────────────────────────
 
 pub struct FwhmResult {
-    /// Median FWHM across all measured stars, in pixels
-    pub fwhm_pixels: f32,
-    /// Median FWHM in arcseconds (None if plate scale not available)
-    pub fwhm_arcsec: Option<f32>,
-    /// Number of stars that contributed to the measurement
-    pub star_count: usize,
-    /// Number of stars that could not be measured (profile too flat/small)
+    pub fwhm_pixels:    f32,
+    pub fwhm_arcsec:    Option<f32>,
+    pub star_count:     usize,
     pub rejected_count: usize,
+    /// Per-star FWHM values and centroids for annotation overlay
 }
 
 /// Compute median FWHM across all detected stars.
 pub fn compute_fwhm(
     stars:       &[StarCandidate],
-    plate_scale: Option<f32>,   // arcsec/pixel; None if unavailable
+    plate_scale: Option<f32>,
 ) -> Option<FwhmResult> {
     if stars.is_empty() {
         return None;
@@ -143,7 +96,7 @@ pub fn compute_fwhm(
     let mut measurements: Vec<f32> = stars
         .iter()
         .filter_map(star_fwhm)
-        .filter(|&f| f > 0.5 && f < 50.0) // sanity bounds: 0.5–50px
+        .filter(|&f| f > 0.5 && f < 50.0)
         .collect();
 
     if measurements.is_empty() {
@@ -177,10 +130,8 @@ mod tests {
     use super::*;
     use crate::analysis::stars::StarCandidate;
 
-    /// Create a synthetic Gaussian-ish star patch with known FWHM.
-    /// sigma in pixels; FWHM = 2.355 * sigma
     fn gaussian_star(sigma: f32) -> StarCandidate {
-        let size = (sigma * 6.0).ceil() as usize | 1; // odd size
+        let size = (sigma * 6.0).ceil() as usize | 1;
         let cx = (size / 2) as f32;
         let cy = (size / 2) as f32;
         let mut patch = vec![0.0f32; size * size];
@@ -198,23 +149,46 @@ mod tests {
         }
 
         StarCandidate {
-            cx,
-            cy,
-            peak,
+            cx, cy, peak,
             bbox: (0, 0, size - 1, size - 1),
             patch,
             pixel_count: size * size,
         }
     }
 
+    fn elongated_gaussian_star(sigma_x: f32, sigma_y: f32) -> StarCandidate {
+        let size_x = (sigma_x * 6.0).ceil() as usize | 1;
+        let size_y = (sigma_y * 6.0).ceil() as usize | 1;
+        let cx = (size_x / 2) as f32;
+        let cy = (size_y / 2) as f32;
+        let mut patch = vec![0.0f32; size_x * size_y];
+        let mut peak = 0.0f32;
+
+        for y in 0..size_y {
+            for x in 0..size_x {
+                let dx = x as f32 - cx;
+                let dy = y as f32 - cy;
+                let val = (-(dx*dx/(2.0*sigma_x*sigma_x) + dy*dy/(2.0*sigma_y*sigma_y))).exp();
+                patch[y * size_x + x] = val;
+                if val > peak { peak = val; }
+            }
+        }
+
+        StarCandidate {
+            cx, cy, peak,
+            bbox: (0, 0, size_x - 1, size_y - 1),
+            patch,
+            pixel_count: size_x * size_y,
+        }
+    }
+
     #[test]
     fn test_fwhm_gaussian_sigma2() {
-        // sigma=2 → expected FWHM ≈ 4.71px
         let star = gaussian_star(2.0);
         let fwhm = star_fwhm(&star).expect("should measure FWHM");
         let expected = 2.0 * 2.355_f32;
         assert!(
-            (fwhm - expected).abs() < 0.5,
+            (fwhm - expected).abs() < 0.3,
             "FWHM {} not near expected {}", fwhm, expected
         );
     }
@@ -225,18 +199,26 @@ mod tests {
         let fwhm = star_fwhm(&star).expect("should measure FWHM");
         let expected = 3.0 * 2.355_f32;
         assert!(
-            (fwhm - expected).abs() < 0.7,
+            (fwhm - expected).abs() < 0.3,
             "FWHM {} not near expected {}", fwhm, expected
         );
     }
 
     #[test]
+    fn test_fwhm_elongated_star_geometric_mean() {
+        // sigma_x=3, sigma_y=1 → expected FWHM = 2.355 * sqrt((9+1)/2) = 2.355 * sqrt(5) ≈ 5.27
+        let star = elongated_gaussian_star(3.0, 1.0);
+        let fwhm = star_fwhm(&star).expect("should measure FWHM");
+        let expected = 2.355 * (5.0f32).sqrt();
+        assert!(
+            (fwhm - expected).abs() < 0.5,
+            "FWHM {} not near expected geometric mean {}", fwhm, expected
+        );
+    }
+
+    #[test]
     fn test_compute_fwhm_with_plate_scale() {
-        let stars: Vec<StarCandidate> = vec![
-            gaussian_star(2.0),
-            gaussian_star(2.0),
-            gaussian_star(2.0),
-        ];
+        let stars = vec![gaussian_star(2.0), gaussian_star(2.0), gaussian_star(2.0)];
         let result = compute_fwhm(&stars, Some(0.964)).expect("should return result");
         assert!(result.fwhm_pixels > 3.0 && result.fwhm_pixels < 7.0);
         assert!(result.fwhm_arcsec.is_some());

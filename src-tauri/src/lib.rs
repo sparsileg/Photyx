@@ -252,21 +252,21 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
-            dispatch_command,
-            run_script,
-            list_plugins,
-            get_session,
-            get_current_frame,
-            get_full_frame,
-            get_blink_frame,
-            get_blink_cache_status,
-            get_frame_flags,
-            get_analysis_results,
-            start_background_cache,
-            get_keywords,
-            get_histogram,
-            get_pixel,
             debug_buffer_info,
+            dispatch_command,
+            get_analysis_results,
+            get_blink_cache_status,
+            get_blink_frame,
+            get_current_frame,
+            get_frame_flags,
+            get_full_frame,
+            get_histogram,
+            get_keywords,
+            get_pixel,
+            get_session,
+            list_plugins,
+            run_script,
+            start_background_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -286,10 +286,6 @@ fn get_analysis_results(state: State<PhotoxState>) -> serde_json::Value {
                 .map(|kw| kw.value.clone()))
             .unwrap_or_default();
 
-        let score: Option<u32> = ctx.image_buffers.get(path)
-            .and_then(|b| b.keywords.get("PXSCORE"))
-            .and_then(|kw| kw.value.parse().ok());
-
         let short = path.rsplit(['/', '\\']).next().unwrap_or(path);
         let label = extract_frame_label(short);
 
@@ -307,6 +303,7 @@ fn get_analysis_results(state: State<PhotoxState>) -> serde_json::Value {
                 "eccentricity":        r.eccentricity,
                 "star_count":          r.star_count,
                 "flag":                flag,
+                "triggered":           r.triggered_by,
             })
         } else {
             serde_json::json!({
@@ -315,7 +312,7 @@ fn get_analysis_results(state: State<PhotoxState>) -> serde_json::Value {
                 "label":      label,
                 "short_name": short,
                 "flag":       flag,
-                "score":      score,
+                "triggered":  [],
             })
         }
     }).collect();
@@ -336,7 +333,6 @@ fn get_analysis_results(state: State<PhotoxState>) -> serde_json::Value {
             "fwhm":                { "mean": stats.fwhm.mean,                "stddev": stats.fwhm.stddev },
             "eccentricity":        { "mean": stats.eccentricity.mean,        "stddev": stats.eccentricity.stddev },
             "star_count":          { "mean": stats.star_count.mean,          "stddev": stats.star_count.stddev },
-            "score":               { "mean": 0.0, "stddev": 0.0 },
         }
     })
 }

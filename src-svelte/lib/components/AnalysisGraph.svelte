@@ -3,6 +3,7 @@
     import { onMount, onDestroy } from 'svelte';
     import { invoke } from '@tauri-apps/api/core';
     import { ui } from '../stores/ui';
+    import { displayFrame } from '../commands';
 
     // ── Data types ────────────────────────────────────────────────────────────
     interface FrameData {
@@ -13,13 +14,12 @@
         background_median?:   number;
         background_stddev?:   number;
         background_gradient?: number;
-        highlight_clipping?:  number;
         snr_estimate?:        number;
         fwhm?:                number;
         eccentricity?:        number;
         star_count?:          number;
-        score?:               number;
         flag:                 string;
+        triggered?:           string[];
     }
 
     interface MetricStats { mean: number; stddev: number; }
@@ -38,23 +38,41 @@
         { key: 'background_median',   label: 'Background Median',   fmt: (v: number) => v.toFixed(4) },
         { key: 'background_stddev',   label: 'Background Std Dev',  fmt: (v: number) => v.toFixed(4) },
         { key: 'background_gradient', label: 'Background Gradient', fmt: (v: number) => v.toFixed(4) },
-        { key: 'highlight_clipping',  label: 'Highlight Clipping',  fmt: (v: number) => (v * 100).toFixed(4) + '%' },
-        { key: 'score',               label: 'PXSCORE',             fmt: (v: number) => Math.round(v).toString() },
     ];
 
     function metricDef(key: string) {
         return METRICS.find(m => m.key === key) ?? METRICS[0];
     }
 
+    // ── Reject threshold lookup ───────────────────────────────────────────────
+    // Mirrors defaults in session_stats.rs
+    const REJECT_THRESHOLDS: Record<string, { type: 'sigma' | 'absolute'; value: number; direction: 'high' | 'low' }> = {
+        background_median:   { type: 'sigma',    value: 2.5,  direction: 'high' },
+        background_stddev:   { type: 'sigma',    value: 2.5,  direction: 'high' },
+        background_gradient: { type: 'sigma',    value: 2.5,  direction: 'high' },
+        snr_estimate:        { type: 'sigma',    value: 2.5,  direction: 'low'  },
+        fwhm:                { type: 'sigma',    value: 2.5,  direction: 'high' },
+        star_count:          { type: 'sigma',    value: 1.5,  direction: 'low'  },
+        eccentricity:        { type: 'absolute', value: 0.85, direction: 'high' },
+    };
+
     // ── State ─────────────────────────────────────────────────────────────────
     let data    = $state<AnalysisData | null>(null);
     let loading = $state(false);
     let error   = $state('');
     let metric1 = $state('fwhm');
-    let metric2 = $state('eccentricity');
+    let metric2 = $state('none');
     let canvas  = $state<HTMLCanvasElement>();
     let wrap    = $state<HTMLDivElement>();
-    let tooltip = $state<{ x: number; y: number; text: string } | null>(null);
+
+    interface TooltipState {
+        x:      number;
+        y:      number;
+        line1:  string;
+        line2:  string;
+        region: 'left' | 'center' | 'right';
+    }
+    let tooltip = $state<TooltipState | null>(null);
 
     // ── Load data ─────────────────────────────────────────────────────────────
     async function loadData() {
@@ -66,15 +84,14 @@
             error = `${e}`;
         } finally {
             loading = false;
+            setTimeout(resizeCanvas, 10);
         }
     }
 
-    // Load when first shown
     $effect(() => {
         if ($ui.showAnalysisGraph && !data) loadData();
     });
 
-    // Redraw when data or metrics change
     $effect(() => {
         const _d  = data;
         const _m1 = metric1;
@@ -110,6 +127,46 @@
         return (f as any)[key];
     }
 
+    // Read theme colors from CSS variables at draw time
+    function getThemeColors(el: HTMLCanvasElement) {
+        const s = getComputedStyle(el);
+        const get = (v: string) => s.getPropertyValue(v).trim() || null;
+        return {
+            bg:          get('--bg-color')         ?? '#000000',
+            cardBg:      get('--card-bg')           ?? '#001100',
+            border:      get('--border-color')      ?? '#004400',
+            borderLight: get('--border-color-light') ?? '#002200',
+            primary:     get('--primary-color')     ?? '#00ff00',
+            secondary:   get('--text-secondary')    ?? '#00aa00',
+            warning:     get('--warning-color')     ?? '#ffaa00',
+            error:       get('--error-color')       ?? '#ff0000',
+        };
+    }
+
+    function rejectThresholdY(
+        key:    string,
+        stats:  MetricStats,
+        lo:     number,
+        hi:     number,
+        PT:     number,
+        CH:     number,
+    ): number | null {
+        const thresh = REJECT_THRESHOLDS[key];
+        if (!thresh || !stats || stats.stddev === 0) return null;
+
+        let threshVal: number;
+        if (thresh.type === 'sigma') {
+            threshVal = thresh.direction === 'high'
+                ? stats.mean + thresh.value * stats.stddev
+                : stats.mean - thresh.value * stats.stddev;
+        } else {
+            threshVal = thresh.value;
+        }
+
+        if (threshVal < lo || threshVal > hi) return null;
+        return PT + CH - ((threshVal - lo) / (hi - lo)) * CH;
+    }
+
     function drawChart() {
         if (!canvas || !data || data.frames.length === 0) return;
         const ctx = canvas.getContext('2d');
@@ -124,9 +181,10 @@
 
         const frames = data.frames;
         const n = frames.length;
+        const C = getThemeColors(canvas);
 
         ctx.clearRect(0, 0, W, H);
-        ctx.fillStyle = '#000d00';
+        ctx.fillStyle = C.bg;
         ctx.fillRect(0, 0, W, H);
 
         const m1def = metricDef(metric1);
@@ -154,17 +212,18 @@
         // Sigma bands (metric 1 only)
         const stats1 = data.session_stats[metric1];
         if (stats1 && stats1.stddev > 0) {
+            // Parse primary color for sigma band tinting
             [[3, 0.20], [2, 0.13], [1, 0.07]].forEach(([sigma, alpha]) => {
                 const blo = Math.max(stats1.mean - sigma * stats1.stddev, r1.lo);
                 const bhi = Math.min(stats1.mean + sigma * stats1.stddev, r1.hi);
                 const y1 = toY1(bhi), y2 = toY1(blo);
-                ctx.fillStyle = `rgba(0,180,70,${alpha})`;
+                ctx.fillStyle = C.primary + Math.round((alpha as number) * 255).toString(16).padStart(2, '0');
                 ctx.fillRect(PL, y1, CW, y2 - y1);
             });
         }
 
         // Grid lines
-        ctx.strokeStyle = '#0d200d';
+        ctx.strokeStyle = C.borderLight;
         ctx.lineWidth = 1;
         const ticks = 5;
         for (let t = 0; t <= ticks; t++) {
@@ -175,20 +234,34 @@
         // Mean line (metric 1)
         if (stats1 && stats1.mean >= r1.lo && stats1.mean <= r1.hi) {
             const my = toY1(stats1.mean);
-            ctx.strokeStyle = 'rgba(0,255,80,0.45)';
+            ctx.strokeStyle = C.primary + '73'; // ~45% opacity
             ctx.lineWidth = 1;
             ctx.setLineDash([4, 4]);
             ctx.beginPath(); ctx.moveTo(PL, my); ctx.lineTo(PL + CW, my); ctx.stroke();
             ctx.setLineDash([]);
         }
 
+        // Reject threshold line (metric 1)
+        const rejY = rejectThresholdY(metric1, stats1, r1.lo, r1.hi, PT, CH);
+        if (rejY !== null) {
+            ctx.strokeStyle = 'rgba(255,60,60,0.75)';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([6, 3]);
+            ctx.beginPath(); ctx.moveTo(PL, rejY); ctx.lineTo(PL + CW, rejY); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = 'rgba(255,80,80,0.9)';
+            ctx.font = '15px monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText('REJECT', PL + 4, rejY - 3);
+        }
+
         // Chart border
-        ctx.strokeStyle = '#1a3a1a';
+        ctx.strokeStyle = C.border;
         ctx.lineWidth = 1;
         ctx.strokeRect(PL, PT, CW, CH);
 
         // Left Y labels
-        ctx.fillStyle = '#00cc44';
+        ctx.fillStyle = C.secondary;
         ctx.font = '11px monospace';
         ctx.textAlign = 'right';
         for (let t = 0; t <= ticks; t++) {
@@ -198,7 +271,7 @@
 
         // Right Y labels
         if (m2def && m2valid.length) {
-            ctx.fillStyle = '#00cccc';
+            ctx.fillStyle = C.warning;
             ctx.textAlign = 'left';
             for (let t = 0; t <= ticks; t++) {
                 const v = r2.lo + (t / ticks) * (r2.hi - r2.lo);
@@ -207,7 +280,7 @@
         }
 
         // X labels
-        ctx.fillStyle = '#5a8a5a';
+        ctx.fillStyle = C.secondary;
         ctx.textAlign = 'center';
         ctx.font = '11px monospace';
         const maxLabels = Math.floor(CW / 30);
@@ -217,7 +290,7 @@
         }
 
         // X title
-        ctx.fillStyle = '#3a6a3a';
+        ctx.fillStyle = C.secondary;
         ctx.font = '11px monospace';
         ctx.textAlign = 'center';
         ctx.fillText('Frame', PL + CW / 2, PT + CH + 34);
@@ -225,7 +298,7 @@
         // Left axis title
         ctx.save();
         ctx.font = '12px monospace';
-        ctx.fillStyle = '#00cc44';
+        ctx.fillStyle = C.secondary;
         ctx.translate(14, PT + CH / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.textAlign = 'center';
@@ -236,7 +309,7 @@
         if (m2def) {
             ctx.save();
             ctx.font = '12px monospace';
-            ctx.fillStyle = '#00cccc';
+            ctx.fillStyle = C.warning;
             ctx.translate(W - 14, PT + CH / 2);
             ctx.rotate(Math.PI / 2);
             ctx.textAlign = 'center';
@@ -244,9 +317,10 @@
             ctx.restore();
         }
 
-        // Metric 1 line
-        ctx.strokeStyle = '#00ff44';
-        ctx.lineWidth = 1.5;
+        // Metric 1 line (solid)
+        ctx.strokeStyle = C.primary;
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([]);
         ctx.beginPath();
         let started = false;
         for (let i = 0; i < n; i++) {
@@ -257,10 +331,11 @@
         }
         ctx.stroke();
 
-        // Metric 2 line
+        // Metric 2 line (dotted)
         if (m2def) {
-            ctx.strokeStyle = '#00cccc';
-            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = C.warning;
+            ctx.lineWidth = 1.0;
+            ctx.setLineDash([4, 4]);
             ctx.beginPath();
             started = false;
             for (let i = 0; i < n; i++) {
@@ -270,35 +345,24 @@
                 started = true;
             }
             ctx.stroke();
+            ctx.setLineDash([]);
         }
 
-        // Dots
+        // Dots — metric 1 only
         for (let i = 0; i < n; i++) {
             const f = frames[i];
             const x = toX(i);
             const v1 = m1vals[i];
             if (v1 !== undefined) drawDot(ctx, x, toY1(v1), f.flag);
-            if (m2def) {
-                const v2 = m2vals[i];
-                if (v2 !== undefined) drawDot(ctx, x, toY2(v2), f.flag);
-            }
         }
     }
 
     function drawDot(ctx: CanvasRenderingContext2D, x: number, y: number, flag: string) {
-        const r = 4;
+        const r = flag === 'REJECT' ? 8 : 4;
+        ctx.fillStyle = flag === 'REJECT' ? '#ff3030' : '#ffffff';
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = flag === 'REJECT' ? '#ff3030' : flag === 'SUSPECT' ? '#ffdd00' : '#ffffff';
         ctx.fill();
-        if (flag === 'REJECT') {
-            ctx.strokeStyle = '#ff2020';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r);
-            ctx.moveTo(x + r, y - r); ctx.lineTo(x - r, y + r);
-            ctx.stroke();
-        }
     }
 
     // ── Hit test ──────────────────────────────────────────────────────────────
@@ -355,11 +419,24 @@
         const mdef = metricDef(key);
         const val  = getVal(frame, key);
         const rect = canvas!.getBoundingClientRect();
-        tooltip = {
-            x: e.clientX - rect.left + 14,
-            y: e.clientY - rect.top  - 36,
-            text: `${mdef.label}: ${val !== undefined ? mdef.fmt(val) : 'n/a'}  [${frame.flag || '—'}]  ${frame.short_name}`,
-        };
+
+        // Line 1: metric value + flag + triggered metrics
+        let flagStr = frame.flag || '—';
+        if (frame.flag === 'REJECT' && frame.triggered && frame.triggered.length > 0) {
+            flagStr += ` (${frame.triggered.join(', ')})`;
+        }
+        const line1 = `${mdef.label}: ${val !== undefined ? mdef.fmt(val) : 'n/a'}  |  ${flagStr}`;
+        const line2 = frame.short_name;
+
+        // Determine tooltip position region
+        const pct = (e.clientX - rect.left) / rect.width;
+        const region: 'left' | 'center' | 'right' =
+            pct < 0.33 ? 'left' : pct > 0.66 ? 'right' : 'center';
+
+        const tx = e.clientX - rect.left;
+        const ty = e.clientY - rect.top - 56;
+
+        tooltip = { x: tx, y: ty, line1, line2, region };
     }
 
     function onMouseLeave() { tooltip = null; }
@@ -367,12 +444,8 @@
     async function onClick(e: MouseEvent) {
         const hit = hitTest(e);
         if (!hit) return;
-        try {
-            await invoke('dispatch_command', {
-                request: { command: 'SetFrame', args: { index: hit.frame.index.toString() } }
-            });
-            ui.setShowAnalysisGraph(false);
-        } catch {}
+        ui.setShowAnalysisGraph(false);
+        await displayFrame(hit.frame.index);
     }
 </script>
 
@@ -417,9 +490,15 @@
             {#if tooltip}
                 <div
                     class="ag-tooltip"
+                    class:ag-tooltip-left={tooltip.region === 'left'}
+                    class:ag-tooltip-center={tooltip.region === 'center'}
+                    class:ag-tooltip-right={tooltip.region === 'right'}
                     style:left="{tooltip.x}px"
                     style:top="{tooltip.y}px"
-                >{tooltip.text}</div>
+                >
+                    <div class="ag-tooltip-line1">{tooltip.line1}</div>
+                    <div class="ag-tooltip-line2">{tooltip.line2}</div>
+                </div>
             {/if}
         {/if}
     </div>

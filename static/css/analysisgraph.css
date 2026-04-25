@@ -5,7 +5,7 @@
     flex-direction: column;
     width: 100%;
     height: 100%;
-    background: #000d00;
+    background: var(--bg-color);
 }
 
 #ag-toolbar {
@@ -13,8 +13,8 @@
     align-items: center;
     gap: 10px;
     padding: 6px 12px;
-    background: #030e03;
-    border-bottom: 1px solid #1a4a1a;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
 }
 
@@ -33,8 +33,8 @@
 }
 
 .ag-select {
-    background: #041404;
-    border: 1px solid #1a4a1a;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
     font-size: 11px;
     font-family: monospace;
     padding: 3px 6px;
@@ -48,9 +48,9 @@
 .ag-select:focus { outline: none; border-color: #00aa44; }
 
 .ag-btn {
-    background: #041404;
-    border: 1px solid #1a4a1a;
-    color: #5a8a5a;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
     font-size: 11px;
     font-family: monospace;
     padding: 3px 10px;
@@ -103,16 +103,42 @@
 
 .ag-error { color: #cc4444; }
 
+/* ── Tooltip ─────────────────────────────────────────────────────────────── */
+
 .ag-tooltip {
     position: absolute;
     background: rgba(0,10,0,0.92);
     border: 1px solid #1a4a1a;
-    color: #00ff44;
     font-size: 11px;
     font-family: monospace;
-    padding: 4px 8px;
+    padding: 5px 8px;
     border-radius: 2px;
     pointer-events: none;
     white-space: nowrap;
     z-index: 10;
+}
+
+/* Left third — tooltip starts at the dot, opens right */
+.ag-tooltip-left {
+    transform: translateX(0%);
+}
+
+/* Center third — tooltip centered on the dot */
+.ag-tooltip-center {
+    transform: translateX(-50%);
+}
+
+/* Right third — tooltip ends at the dot, opens left */
+.ag-tooltip-right {
+    transform: translateX(-100%);
+}
+
+.ag-tooltip-line1 {
+    color: #00ff44;
+    margin-bottom: 2px;
+}
+
+.ag-tooltip-line2 {
+    color: #5a8a5a;
+    font-size: 10px;
 }

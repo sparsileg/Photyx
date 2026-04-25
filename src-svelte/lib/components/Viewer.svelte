@@ -378,22 +378,9 @@
         const { dx, dy, dw, dh } = getDrawRect(currentBitmap);
 
         if (flag === 'REJECT') {
-            // Translucent red X corner to corner of the image
+            // Red border ~5px inside the image rect
             overlayCtx.save();
-            overlayCtx.strokeStyle = 'rgba(255, 40, 40, 0.75)';
-            overlayCtx.lineWidth = 4;
-            overlayCtx.lineCap = 'round';
-            overlayCtx.beginPath();
-            overlayCtx.moveTo(dx, dy);
-            overlayCtx.lineTo(dx + dw, dy + dh);
-            overlayCtx.moveTo(dx + dw, dy);
-            overlayCtx.lineTo(dx, dy + dh);
-            overlayCtx.stroke();
-            overlayCtx.restore();
-        } else if (flag === 'SUSPECT') {
-            // Yellow border ~5px inside the image rect
-            overlayCtx.save();
-            overlayCtx.strokeStyle = 'rgba(255, 220, 0, 0.85)';
+            overlayCtx.strokeStyle = 'rgba(255, 40, 40, 0.85)';
             overlayCtx.lineWidth = 5;
             overlayCtx.strokeRect(dx + 3, dy + 3, dw - 6, dh - 6);
             overlayCtx.restore();

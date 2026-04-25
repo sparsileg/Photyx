@@ -2,7 +2,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { ui } from '../lib/stores/ui';
-
+    import { session } from '../lib/stores/session';
     import AnalysisGraph from '../lib/components/AnalysisGraph.svelte';
     import Console from '../lib/components/Console.svelte';
     import IconSidebar from '../lib/components/IconSidebar.svelte';
@@ -76,6 +76,8 @@
             {/if}
             {#if $ui.blinkTabActive && blinkFilename}
                 <div id="blink-filename-overlay">{blinkFilename}</div>
+            {:else if !$ui.blinkTabActive && !$ui.showAnalysisGraph && $session.fileList.length > 0 && $session.loadedImages[$session.fileList[$session.currentFrame]]?.displayWidth > 0}
+                <div id="blink-filename-overlay">{$session.fileList[$session.currentFrame]?.split(/[\\/]/).pop() ?? ''}</div>
             {/if}
             <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded}>
                 <Console />

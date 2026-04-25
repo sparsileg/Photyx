@@ -238,6 +238,7 @@ mod tests {
             eccentricity:         Some(ecc),
             star_count:           Some(stars),
             flag:                 None,
+            triggered_by:         vec![],
         }
     }
 

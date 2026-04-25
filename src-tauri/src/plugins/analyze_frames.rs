@@ -210,6 +210,7 @@ fn execute_all(
                                          .or_else(|| ecc_result.as_ref().map(|r| r.star_count as u32))
                                          .or_else(|| Some(stars.len() as u32)),
                 flag: None,
+                triggered_by: vec![],
             };
 
             info!("AnalyzeFrames: {} — done", short_name(&snap.path));
@@ -247,6 +248,7 @@ fn execute_all(
     for result in &mut results {
         let (flag, triggered) = classify_frame(result, &session_stats, &thresholds);
         result.flag = Some(flag.clone());
+        result.triggered_by = triggered.clone();
 
         // Write PXFLAG keyword to image buffer
         if let Some(buf) = ctx.image_buffers.get_mut(&result.filename) {
@@ -331,6 +333,7 @@ fn compute_metrics_for_image(
                                 .or_else(|| ecc_result.as_ref().map(|r| r.star_count as u32))
                                 .or_else(|| Some(stars.len() as u32)),
         flag: None,
+        triggered_by: vec![],
     })
 }
 

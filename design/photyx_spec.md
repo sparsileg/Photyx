@@ -1299,12 +1299,13 @@ curl -X POST http://localhost:7171/api/macro/run \
 | **Phase 4** | keyword plugins (Add/Delete/Modify/Copy), WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit handling, blink cache quality improvement, relative path resolution, window resize fix, pwd console command |
 | **Phase 5** | pcode interpreter with variable substitution, Log, RunMacro, If/Else/EndIf, For/EndFor; Macro Editor UI with syntax highlighting, save/load .phs files, Copy from Console; Quick Launch panel with persistent store, Pin to Quick Launch, right-click remove; GetKeyword, MoveFile, Print, Assert, CountFiles plugins; scope=all\|current on keyword commands; command rename refactor (ReadFIT, WriteTIFF, etc.); WriteCurrent atomic writes; ScriptResponse session_changed/display_changed flags |
 | **Phase 6** | Cleanup UI |
-| **Phase 7** | Analysis plugins as WASM (FWHM, star count, eccentricity, contour), analysis results windows; AnalyzeFrames Phase 7 metrics unlocked |
-| **Phase 8** | Native built-in analysis plugins, benchmarking vs. WASM versions |
+| **Phase 7** | analysis results windows; AnalyzeFrames Phase 7 metrics unlocked |
+| **Phase 8** | Native built-in analysis plugins |
 | **Phase 9** | Embedded SQLite, Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations |
 | **Phase 10** | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI |
 | **Deferred** | Full keyword management UI, PNG/JPEG readers and writers, debayering, Auto-STF toolbar toggle, async dispatch,  |
 | **Deferred** | REST API (Axum), CLI access, external program integration, authentication middleware stub |
+| **Deferred** | WASM versions of analysis plugins, analysis benchmarking vs. WASM versions |
 
 ---
 

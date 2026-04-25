@@ -56,7 +56,8 @@ pub struct AnalysisResult {
     pub star_count:           Option<u32>,   // number of detected stars
 
     // Final classification (set by AnalyzeFrames)
-    pub flag:                 Option<PxFlag>,
+    pub flag:          Option<PxFlag>,
+    pub triggered_by:  Vec<String>,
 }
 
 impl AnalysisResult {
@@ -118,7 +119,7 @@ impl Default for BackgroundConfig {
     fn default() -> Self {
         Self {
             sigma_clip:         SigmaClipConfig::default(),
-            gradient_grid_size: 4,
+            gradient_grid_size: 8,
         }
     }
 }
