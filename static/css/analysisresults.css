@@ -1,0 +1,102 @@
+/* analysisresults.css — Analysis results viewer styles */
+
+#analysis-results {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-color);
+    color: var(--text-color);
+    font-family: monospace;
+    font-size: 12px;
+}
+
+.ar-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.ar-title {
+    font-size: 13px;
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.ar-close-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 3px 10px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.ar-close-btn:hover {
+    background: var(--card-hover);
+}
+
+.ar-loading {
+    padding: 20px;
+    color: var(--text-secondary);
+}
+
+.ar-table-wrap {
+    flex: 1;
+    overflow: auto;
+}
+
+.ar-table {
+    width: 100%;
+    border-collapse: collapse;
+    white-space: nowrap;
+}
+
+.ar-table thead {
+    position: sticky;
+    top: 0;
+    background: var(--bg-color);
+    z-index: 1;
+}
+
+.ar-table th {
+    padding: 6px 12px;
+    text-align: right;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    user-select: none;
+    color: var(--primary-color);
+}
+
+.ar-table th:first-child,
+.ar-table th:nth-child(2) {
+    text-align: left;
+}
+
+.ar-table th:hover {
+    background: var(--card-hover);
+}
+
+.ar-table td {
+    padding: 4px 12px;
+    text-align: right;
+    border-bottom: 1px solid var(--border-color-light);
+}
+
+.ar-table td:first-child,
+.ar-table td:nth-child(2) {
+    text-align: left;
+}
+
+.ar-filename {
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ar-table tbody tr:hover {
+    background: var(--card-hover);
+}

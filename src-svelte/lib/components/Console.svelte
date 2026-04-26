@@ -137,7 +137,11 @@
             return true;
         },
         showanalysisgraph: () => {
-            ui.setShowAnalysisGraph(true);
+            ui.showView('analysisGraph');
+            return true;
+        },
+        showanalysisresults: () => {
+            ui.showView('analysisResults');
             return true;
         },
         clearannotations: () => {

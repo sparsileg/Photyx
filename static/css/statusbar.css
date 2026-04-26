@@ -33,6 +33,23 @@
     color: var(--error-color);
 }
 
+#status-bar.status-running {
+    background: rgba(255, 170, 0, 0.12);
+    border-top-color: var(--warning-color);
+    color: var(--warning-color);
+}
+
+#status-bar.status-running #status-text,
+#status-bar.status-running #status-icon {
+    animation: status-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+    0%   { opacity: 1; }
+    50%  { opacity: 0.35; }
+    100% { opacity: 1; }
+}
+
 #status-icon {
     font-size: 12px;
     flex: 0 0 auto;
@@ -135,6 +152,7 @@
     color: var(--text-color);
 }
 
-.notif-item.error .notif-msg { color: var(--error-color); }
+.notif-item.error .notif-msg   { color: var(--error-color); }
 .notif-item.warning .notif-msg { color: var(--warning-color); }
 .notif-item.success .notif-msg { color: var(--success-color); }
+.notif-item.running .notif-msg { color: var(--warning-color); }

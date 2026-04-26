@@ -4,6 +4,8 @@
     import { ui } from '../lib/stores/ui';
     import { session } from '../lib/stores/session';
     import AnalysisGraph from '../lib/components/AnalysisGraph.svelte';
+    import AnalysisResults from '../lib/components/AnalysisResults.svelte';
+    import { VIEWS } from '../lib/stores/ui.ts';
     import Console from '../lib/components/Console.svelte';
     import IconSidebar from '../lib/components/IconSidebar.svelte';
     import InfoPanel from '../lib/components/InfoPanel.svelte';
@@ -69,14 +71,16 @@
         {/if}
 
             <div id="viewer-region">
-            {#if $ui.showAnalysisGraph}
+            {#if $ui.activeView === 'analysisGraph'}
                 <AnalysisGraph />
+            {:else if $ui.activeView === 'analysisResults'}
+                <AnalysisResults />
             {:else}
                 <Viewer onMousePixel={onMousePixel} />
             {/if}
             {#if $ui.blinkTabActive && blinkFilename}
                 <div id="blink-filename-overlay">{blinkFilename}</div>
-            {:else if !$ui.blinkTabActive && !$ui.showAnalysisGraph && $session.fileList.length > 0 && $session.loadedImages[$session.fileList[$session.currentFrame]]?.displayWidth > 0}
+                {:else if !$ui.blinkTabActive && $ui.activeView === null && $session.fileList.length > 0 && $session.loadedImages[$session.fileList[$session.currentFrame]]?.displayWidth > 0}
                 <div id="blink-filename-overlay">{$session.fileList[$session.currentFrame]?.split(/[\\/]/).pop() ?? ''}</div>
             {/if}
             <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded}>

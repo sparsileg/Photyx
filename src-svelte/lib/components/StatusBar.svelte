@@ -10,6 +10,7 @@
         success: { icon: '✓', cls: 'status-success' },
         warning: { icon: '⚠', cls: 'status-warning' },
         error:   { icon: '✕', cls: 'status-error' },
+        running: { icon: '◎', cls: 'status-running' },
     };
 
     let meta = $derived(

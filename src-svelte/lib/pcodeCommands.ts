@@ -1,43 +1,32 @@
 // pcodeCommands.ts — Single source of truth for all pcode command names.
 // Imported by Console.svelte (tab completion) and MacroEditor.svelte (syntax highlighting).
 // Update this file only when commands are added, removed, or renamed.
-
 export const PCODE_COMMANDS = new Set([
     // ── Directory & session ──────────────────────────────────────────────────
-    'SelectDirectory',
     'ClearSession',
-
+    'SelectDirectory',
     // ── Read commands ────────────────────────────────────────────────────────
-    'ReadFIT',
-    'ReadXISF',
-    'ReadTIFF',
     'ReadAll',
-
+    'ReadFIT',
+    'ReadTIFF',
+    'ReadXISF',
     // ── Write commands ───────────────────────────────────────────────────────
-    'WriteFIT',
-    'WriteXISF',
-    'WriteTIFF',
     'WriteCurrent',
-    'WritePNG',
+    'WriteFIT',
     'WriteJPEG',
-
+    'WritePNG',
+    'WriteTIFF',
+    'WriteXISF',
     // ── Keyword commands ─────────────────────────────────────────────────────
     'AddKeyword',
-    'DeleteKeyword',
-    'ModifyKeyword',
     'CopyKeyword',
-    'ListKeywords',
+    'DeleteKeyword',
     'GetKeyword',
-
+    'ListKeywords',
+    'ModifyKeyword',
     // ── Image analysis ───────────────────────────────────────────────────────
     'AnalyzeFrames',
-    'BackgroundGradient',
-    'BackgroundMedian',
-    'BackgroundStdDev',
     'ClearAnnotations',
-    'ComputeEccentricity',
-    'ComputeFWHM',
-    'CountStars',
     'ComputeEccentricity',
     'ComputeFWHM',
     'ContourPlot',
@@ -47,21 +36,17 @@ export const PCODE_COMMANDS = new Set([
     'GetSessionProperty',
     'MedianValue',
     'ShowAnalysisGraph',
-    'SnrEstimate',
-
+    'ShowAnalysisResults',
     // ── Image processing ─────────────────────────────────────────────────────
     'AutoStretch',
-    'CropImage',
     'BinImage',
+    'CropImage',
     'DebayerImage',
-    'AnalyzeFrames',
-
     // ── Display & navigation ─────────────────────────────────────────────────
-    'SetFrame',
-    'SetZoom',
     'BlinkSequence',
     'CacheFrames',
-
+    'SetFrame',
+    'SetZoom',
     // ── Scripting ────────────────────────────────────────────────────────────
     'Assert',
     'CountFiles',
@@ -77,15 +62,16 @@ export const PCODE_COMMANDS = new Set([
     'Print',
     'RunMacro',
     'Set',
-
+    'Test',
+    // ── File management ──────────────────────────────────────────────────────
+    'FilterByKeyword',
+    'ListFiles',
+    'MoveFile',
     // ── Console built-ins ────────────────────────────────────────────────────
-    'Help',
     'Clear',
+    'Help',
     'Version',
     'pwd',
-    'Test',
-    'ListFiles',
-    'FilterByKeyword',
 ]);
 
 

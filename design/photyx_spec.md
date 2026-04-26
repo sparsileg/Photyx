@@ -24,11 +24,11 @@ Photyx is a high-performance desktop application for reading, viewing, processin
 
 ## 3. Target Platforms
 
-| Platform | Minimum Version |
-|---|---|
-| Windows | Windows 10 (64-bit) |
-| macOS | macOS 12 Monterey |
-| Linux | Ubuntu 22.04 LTS or equivalent |
+| Platform | Minimum Version                |
+| -------- | ------------------------------ |
+| Windows  | Windows 11 (64-bit)            |
+| macOS    | macOS 12 Monterey              |
+| Linux    | Ubuntu 22.04 LTS or equivalent |
 
 The application will be distributed as a native installable package on each platform (.msi / .exe on Windows, .dmg on macOS, .AppImage or .deb on Linux).
 
@@ -56,25 +56,25 @@ The frontend is responsible for all user-facing panels: file browser, image view
 
 ### 4.3 Key Rust Crates (Planned)
 
-| Crate | Purpose |
-|---|---|
-| `fitsio` | FITS file reading/writing (wraps cfitsio) |
-| `tiff` | TIFF file reading/writing |
-| `image` | PNG, JPEG encoding/decoding |
-| `rayon` | Parallel batch processing |
-| `axum` | REST API server |
-| `notify` | File system watching |
-| `fast_image_resize` | SIMD-accelerated thumbnail generation |
-| `wasmtime` | WASM runtime for user plugins |
-| `tracing` | Structured application logging |
-| `serde` / `serde_json` | Plugin manifests, config, API payloads |
+| Crate                  | Purpose                                   |
+| ---------------------- | ----------------------------------------- |
+| `fitsio`               | FITS file reading/writing (wraps cfitsio) |
+| `tiff`                 | TIFF file reading/writing                 |
+| `image`                | PNG, JPEG encoding/decoding               |
+| `rayon`                | Parallel batch processing                 |
+| `axum`                 | REST API server                           |
+| `notify`               | File system watching                      |
+| `fast_image_resize`    | SIMD-accelerated thumbnail generation     |
+| `wasmtime`             | WASM runtime for user plugins             |
+| `tracing`              | Structured application logging            |
+| `serde` / `serde_json` | Plugin manifests, config, API payloads    |
 
 ### 4.4 Key Tauri Plugins (Planned)
 
-| Plugin | Purpose |
-|---|---|
-| `tauri-plugin-store` | Persistent key/value settings storage |
-| `tauri-plugin-updater` | Application update mechanism |
+| Plugin                 | Purpose                               |
+| ---------------------- | ------------------------------------- |
+| `tauri-plugin-store`   | Persistent key/value settings storage |
+| `tauri-plugin-updater` | Application update mechanism          |
 
 ### 4.5 XISF Support
 
@@ -93,14 +93,14 @@ XISF (Extensible Image Serialization Format) is a priority format. The dedicated
 
 The File Browser panel includes a format filter dropdown that controls which file types are loaded when the user clicks the Load button. The filter options are:
 
-| Filter Label | Extensions |
-|---|---|
+| Filter Label            | Extensions                                                        |
+| ----------------------- | ----------------------------------------------------------------- |
 | All Supported (default) | *.fit, *.fits, *.fts, *.xisf, *.tif, *.tiff, *.png, *.jpg, *.jpeg |
-| FITS only | *.fit, *.fits, *.fts |
-| XISF only | *.xisf |
-| TIFF only | *.tif, *.tiff |
-| PNG only | *.png |
-| JPEG only | *.jpg, *.jpeg |
+| FITS only               | *.fit, *.fits, *.fts                                              |
+| XISF only               | *.xisf                                                            |
+| TIFF only               | *.tif, *.tiff                                                     |
+| PNG only                | *.png                                                             |
+| JPEG only               | *.jpg, *.jpeg                                                     |
 
 The selected filter determines which read plugin(s) are invoked when the Load button is clicked. The filter selection is persisted across sessions via the settings store.
 
@@ -118,23 +118,23 @@ Every file format reader and writer is a discrete plugin module. Adding support 
 
 ### 5.2 Read Support (Initial)
 
-| Format | Notes |
-|---|---|
-| FITS (.fit, .fits, .fts) | Via `fitsio` / cfitsio |
-| XISF (.xisf) | Via custom `photyx-xisf` crate |
-| TIFF (.tif, .tiff) | Including 8-bit, 16-bit, and 32-bit float variants |
-| PNG (.png) | Supported for viewing and format conversion purposes only; keyword import not applicable |
-| JPEG (.jpg, .jpeg) | Supported for viewing and format conversion purposes only; keyword import not applicable; lossy 8-bit format |
+| Format                   | Notes                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| FITS (.fit, .fits, .fts) | Via `fitsio` / cfitsio                                                                                       |
+| XISF (.xisf)             | Via custom `photyx-xisf` crate                                                                               |
+| TIFF (.tif, .tiff)       | Including 8-bit, 16-bit, and 32-bit float variants                                                           |
+| PNG (.png)               | Supported for viewing and format conversion purposes only; keyword import not applicable                     |
+| JPEG (.jpg, .jpeg)       | Supported for viewing and format conversion purposes only; keyword import not applicable; lossy 8-bit format |
 
 ### 5.3 Write Support (Initial)
 
-| Format | Notes |
-|---|---|
-| FITS (.fit, .fits) | Full keyword support |
-| XISF (.xisf) | Full keyword support; dual-write to FITSKeyword block and Properties block |
-| TIFF (.tif, .tiff) | AstroTIFF keyword conventions supported |
-| PNG (.png) | 16-bit support |
-| JPEG (.jpg) | 8-bit, quality-configurable; default quality 75% |
+| Format             | Notes                                                                      |
+| ------------------ | -------------------------------------------------------------------------- |
+| FITS (.fit, .fits) | Full keyword support                                                       |
+| XISF (.xisf)       | Full keyword support; dual-write to FITSKeyword block and Properties block |
+| TIFF (.tif, .tiff) | AstroTIFF keyword conventions supported                                    |
+| PNG (.png)         | 16-bit support                                                             |
+| JPEG (.jpg)        | 8-bit, quality-configurable; default quality 75%                           |
 
 ### 5.4 AstroTIFF Keyword Convention
 
@@ -169,21 +169,21 @@ Many astrophotos are captured with one-shot color (OSC) cameras that use a Bayer
 
 Photyx detects the presence of a Bayer pattern by checking for the BAYERPAT keyword (or equivalent) in the file header on load. CFA files are loaded and displayed as mono by default — no automatic debayering is performed. Debayering is available on demand via the `DebayerImage` plugin command.
 
-| File Type | Channels | Action |
-|---|---|---|
-| Mono camera raw | 1 (grayscale) | None — display as mono |
-| OSC camera raw (Bayer) | 1 (CFA pattern) | Display as mono by default; debayer on demand via DebayerImage |
-| Pre-debayered color | 3 (RGB) | None — display as RGB |
-| Narrowband (Ha, OIII, etc.) | 1 per filter | None — display as mono per channel |
+| File Type                   | Channels        | Action                                                         |
+| --------------------------- | --------------- | -------------------------------------------------------------- |
+| Mono camera raw             | 1 (grayscale)   | None — display as mono                                         |
+| OSC camera raw (Bayer)      | 1 (CFA pattern) | Display as mono by default; debayer on demand via DebayerImage |
+| Pre-debayered color         | 3 (RGB)         | None — display as RGB                                          |
+| Narrowband (Ha, OIII, etc.) | 1 per filter    | None — display as mono per channel                             |
 
 Debayering is handled by the `DebayerImage` built-in native plugin. The following algorithms are supported:
 
-| Algorithm | Speed | Quality | Notes |
-|---|---|---|---|
-| Nearest Neighbor | Fastest | Lowest | Quick preview only |
-| Bilinear | Fast | Moderate | Default |
-| VNG (Variable Number of Gradients) | Moderate | Good | Better for detailed review |
-| AHD (Adaptive Homogeneity-Directed) | Slower | Highest | Best quality; recommended for production |
+| Algorithm                           | Speed    | Quality  | Notes                                    |
+| ----------------------------------- | -------- | -------- | ---------------------------------------- |
+| Nearest Neighbor                    | Fastest  | Lowest   | Quick preview only                       |
+| Bilinear                            | Fast     | Moderate | Default                                  |
+| VNG (Variable Number of Gradients)  | Moderate | Good     | Better for detailed review               |
+| AHD (Adaptive Homogeneity-Directed) | Slower   | Highest  | Best quality; recommended for production |
 
 Bilinear interpolation is the default. The algorithm is user-configurable and exposed as a pcode argument.
 
@@ -205,29 +205,29 @@ Example — `FILTER=duo` in a converted XISF file:
 
 The following table defines the initial FITS-to-XISF property mapping. This list is not closed and additional mappings can be added as the XISF standard evolves:
 
-| FITS Keyword | XISF Property |
-|---|---|
-| OBJECT | Observation:Object:Name |
-| TELESCOP | Instrument:Telescope:Name |
-| INSTRUME | Instrument:Camera:Name |
-| EXPTIME | Observation:Time:ExposureTime |
-| FILTER | Instrument:Filter:Name |
-| GAIN | Instrument:Camera:Gain |
-| TEMP | Instrument:Camera:Temperature |
-| DATE-OBS | Observation:Time:Start |
-| RA | Observation:Object:RA |
-| DEC | Observation:Object:Dec |
-| CRVAL1 | Observation:Center:RA |
-| CRVAL2 | Observation:Center:Dec |
-| RADESYS | Observation:CelestialReferenceSystem |
-| EQUINOX | Observation:Equinox |
-| SITELAT | Observation:Location:Latitude |
-| SITELONG | Observation:Location:Longitude |
-| SITEELEV | Observation:Location:Elevation |
-| XBINNING | Instrument:Camera:XBinning |
-| YBINNING | Instrument:Camera:YBinning |
-| FOCALLEN | Instrument:Telescope:FocalLength |
-| IMAGETYP | Observation:Image:Type |
+| FITS Keyword | XISF Property                        |
+| ------------ | ------------------------------------ |
+| OBJECT       | Observation:Object:Name              |
+| TELESCOP     | Instrument:Telescope:Name            |
+| INSTRUME     | Instrument:Camera:Name               |
+| EXPTIME      | Observation:Time:ExposureTime        |
+| FILTER       | Instrument:Filter:Name               |
+| GAIN         | Instrument:Camera:Gain               |
+| TEMP         | Instrument:Camera:Temperature        |
+| DATE-OBS     | Observation:Time:Start               |
+| RA           | Observation:Object:RA                |
+| DEC          | Observation:Object:Dec               |
+| CRVAL1       | Observation:Center:RA                |
+| CRVAL2       | Observation:Center:Dec               |
+| RADESYS      | Observation:CelestialReferenceSystem |
+| EQUINOX      | Observation:Equinox                  |
+| SITELAT      | Observation:Location:Latitude        |
+| SITELONG     | Observation:Location:Longitude       |
+| SITEELEV     | Observation:Location:Elevation       |
+| XBINNING     | Instrument:Camera:XBinning           |
+| YBINNING     | Instrument:Camera:YBinning           |
+| FOCALLEN     | Instrument:Telescope:FocalLength     |
+| IMAGETYP     | Observation:Image:Type               |
 
 > **Note on WCS transformation keywords.** `CRPIX1`, `CRPIX2`, `CD1_1`, `CD1_2`, `CD2_1`, `CD2_2`,
 > `PC1_1`, `PC1_2`, `PC2_1`, `PC2_2`, `CROTA1`, `CROTA2`, `CDELT1`, `CDELT2`, `LONPOLE`,
@@ -262,52 +262,51 @@ This boundary can be adjusted per plugin type as the system matures. The interfa
 
 The following table explicitly designates the loading mechanism for each plugin in the initial release:
 
-| Plugin | Category | Type |
-|---|---|---|
-| ReadFITS | I/O Reader | Built-in Native |
-| ReadXISF | I/O Reader | Built-in Native |
-| ReadTIFF | I/O Reader | Built-in Native |
-| ReadPNG | I/O Reader | Built-in Native |
-| ReadJPEG | I/O Reader | Built-in Native |
-| WriteFITS | I/O Writer | Built-in Native |
-| WriteXISF | I/O Writer | Built-in Native |
-| WriteTIFF | I/O Writer | Built-in Native |
-| WritePNG | I/O Writer | Built-in Native |
-| WriteJPEG | I/O Writer | Built-in Native |
-| AddKeyword | Keyword | Built-in Native |
-| DeleteKeyword | Keyword | Built-in Native |
-| ModifyKeyword | Keyword | Built-in Native |
-| CopyKeyword | Keyword | Built-in Native |
-| ListKeywords | Keyword | Built-in Native |
-| SelectDirectory | File Management | Built-in Native |
-| ListFiles | File Management | Built-in Native |
-| FilterByKeyword | File Management | Built-in Native |
-| BlinkSequence | Blink & View | Built-in Native |
-| CacheFrames | Blink & View | Built-in Native |
-| SetZoom | Blink & View | Built-in Native |
-| AutoStretch | Processing | Built-in Native |
-| GetHistogram | Processing | Built-in Native |
-| CropImage | Processing | Built-in Native |
-| BinImage | Processing | Built-in Native |
-| DebayerImage | Processing | Built-in Native |
-| AnalyzeFrames | Frame Analysis | Built-in Native |
-| GetImageProperty | Interrogation | Built-in Native |
-| GetKeyword | Interrogation | Built-in Native |
-| GetSessionProperty | Interrogation | Built-in Native |
-| Test | Interrogation | Built-in Native |
-| pcode Interpreter | Scripting | Built-in Native |
-| RunMacro | Scripting | Built-in Native |
-| DefineMacro | Scripting | Built-in Native |
-| ComputeFWHM | Analysis | Built-in Native |
-| CountStars | Analysis | Built-in Native |
-| ComputeEccentricity | Analysis | Built-in Native |
-| MedianValue | Analysis | Built-in Native |
-| ContourPlot (FWHM) | Analysis | Deferred |
+| Plugin              | Category        | Type            |
+| ------------------- | --------------- | --------------- |
+| ReadFITS            | I/O Reader      | Built-in Native |
+| ReadXISF            | I/O Reader      | Built-in Native |
+| ReadTIFF            | I/O Reader      | Built-in Native |
+| ReadPNG             | I/O Reader      | Built-in Native |
+| ReadJPEG            | I/O Reader      | Built-in Native |
+| WriteFITS           | I/O Writer      | Built-in Native |
+| WriteXISF           | I/O Writer      | Built-in Native |
+| WriteTIFF           | I/O Writer      | Built-in Native |
+| WritePNG            | I/O Writer      | Built-in Native |
+| WriteJPEG           | I/O Writer      | Built-in Native |
+| AddKeyword          | Keyword         | Built-in Native |
+| DeleteKeyword       | Keyword         | Built-in Native |
+| ModifyKeyword       | Keyword         | Built-in Native |
+| CopyKeyword         | Keyword         | Built-in Native |
+| ListKeywords        | Keyword         | Built-in Native |
+| SelectDirectory     | File Management | Built-in Native |
+| ListFiles           | File Management | Built-in Native |
+| FilterByKeyword     | File Management | Built-in Native |
+| BlinkSequence       | Blink & View    | Built-in Native |
+| CacheFrames         | Blink & View    | Built-in Native |
+| SetZoom             | Blink & View    | Built-in Native |
+| AutoStretch         | Processing      | Built-in Native |
+| GetHistogram        | Processing      | Built-in Native |
+| CropImage           | Processing      | Built-in Native |
+| BinImage            | Processing      | Built-in Native |
+| DebayerImage        | Processing      | Built-in Native |
+| AnalyzeFrames       | Frame Analysis  | Built-in Native |
+| GetImageProperty    | Interrogation   | Built-in Native |
+| GetKeyword          | Interrogation   | Built-in Native |
+| GetSessionProperty  | Interrogation   | Built-in Native |
+| Test                | Interrogation   | Built-in Native |
+| pcode Interpreter   | Scripting       | Built-in Native |
+| RunMacro            | Scripting       | Built-in Native |
+| DefineMacro         | Scripting       | Built-in Native |
+| ComputeFWHM         | Analysis        | Built-in Native |
+| CountStars          | Analysis        | Built-in Native |
+| ComputeEccentricity | Analysis        | Built-in Native |
+| MedianValue         | Analysis        | Built-in Native |
+| ContourPlot (FWHM)  | Analysis        | Deferred        |
 
 Analysis plugins are implemented as built-in native Rust plugins. The WASM
 plugin path remains available for user-authored analysis extensions. WASM
 benchmarking vs. native is deferred.
-
 
 ### 6.4 Plugin Interface (Rust Trait)
 
@@ -471,53 +470,53 @@ ProcessLightFrames path="D:/Lights" destination="D:/Output"
 
 The following table defines all pcode commands in the initial release. Arguments shown in brackets are optional.
 
-| Command | Category | Description | Key Arguments |
-|---|---|---|---|
-| SelectDirectory | File Management | Sets the active working directory | path |
-| ReadFIT | I/O | Reads all FITS files in the active directory into the buffer pool | — |
-| ReadXISF | I/O | Reads all XISF files in the active directory | — |
-| ReadTIFF | I/O | Reads all TIFF files in the active directory | — |
-| ReadAll | I/O | Reads all supported image files (FITS + XISF + TIFF) in the active directory | — |
-| WriteFIT | I/O | Writes all buffered images as FITS files | destination, [overwrite] |
-| WriteXISF | I/O | Writes all buffered images as XISF files | destination, [overwrite], [compress] |
-| WriteTIFF | I/O | Writes all buffered images as TIFF files | destination, [overwrite] |
-| WriteCurrent | I/O | Writes all buffered images back to their source paths in their original format | — |
-| WritePNG | I/O | Writes a single image as PNG | filename, destination |
-| WriteJPEG | I/O | Writes a single image as JPEG | filename, destination, [quality] |
-| ListFiles | File Management | Lists files in the active directory | [filter] |
-| FilterByKeyword | File Management | Filters the active file list by keyword value | name, value |
-| AddKeyword | Keyword | Adds or replaces a keyword on loaded images | name, value, [comment], [scope] |
-| DeleteKeyword | Keyword | Removes a keyword from loaded images | name, [scope] |
-| ModifyKeyword | Keyword | Changes the value of an existing keyword | name, value, [comment], [scope] |
-| CopyKeyword | Keyword | Copies a keyword value to a new keyword name | from, to |
-| ListKeywords | Keyword | Lists all keywords for the current image | — |
-| GetKeyword | Interrogation | Retrieves a keyword value into a variable; see Section 7.12 for full keyword list | name |
-| GetImageProperty | Interrogation | Retrieves an image property into a variable; see Section 7.12 for full property list | property |
-| GetSessionProperty | Interrogation | Retrieves a session state value into a variable; see Section 7.12 for full property list | property |
-| Test | Interrogation | Performs a boolean test and stores result in $Result; see Section 7.12 for full test list | expression |
-| AutoStretch | Processing | Applies automatic screen transfer function stretch (display only — raw buffer unchanged) | [method], [shadowClip], [targetBackground] |
-| GetHistogram | Processing | Computes histogram statistics for the current frame (median, std dev, clipping %) | — |
-| CropImage | Processing | Crops the image to a specified region | x, y, width, height |
-| BinImage | Processing | Bins the image by an integer factor | factor |
-| DebayerImage | Processing | Debayers a Bayer CFA image on demand | [pattern], [method] |
-| AnalyzeFrames | Frame Analysis | Computes seven quality metrics for all loaded frames, classifies each as PASS or REJECT, and writes PXFLAG keyword to each file | — |
-| BlinkSequence | Blink & View | Starts blinking the loaded image set | [fps] |
-| CacheFrames | Blink & View | Pre-decodes and caches all frames for blinking | — |
-| SetZoom | Blink & View | Sets the viewer zoom level | level (fit, 25, 50, 100, 200) |
-| ComputeFWHM | Analysis | Calculates Full Width at Half Maximum for detected stars; displays per-star circle annotations on viewer overlay | — |
-| CountStars | Analysis | Counts detected stars in the image | — |
-| ComputeEccentricity | Analysis | Calculates eccentricity for detected stars | — |
-| MedianValue | Analysis | Returns the median pixel value per channel | — |
-| ContourPlot (FWHM) | Analysis | Generates a 2D contour map for FWHM star analysis output | [x], [y], [radius] |
-| Set | Scripting | Assigns a value to a variable | varname, value |
-| Print | Scripting | Outputs a message to the pcode console | message |
-| Echo | Scripting | Prints the current value of a variable | varname |
-| Assert | Scripting | Halts execution with an error if expression is false | expression |
-| CountFiles | Scripting | Returns the number of files in the current list | — |
-| RunMacro | Scripting | Executes a saved .phs macro file | filename |
-| DefineMacro | Scripting | Begins the definition of a named reusable macro; supports positional ($1, $2) and named arguments | name |
-| Log | Scripting | Writes collected macro output to a file | path, [append] |
-| pwd | Console | Prints the current active directory to the console (client-side only) | — |
+| Command             | Category        | Description                                                                                                                     | Key Arguments                              |
+| ------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| SelectDirectory     | File Management | Sets the active working directory                                                                                               | path                                       |
+| ReadFIT             | I/O             | Reads all FITS files in the active directory into the buffer pool                                                               | —                                          |
+| ReadXISF            | I/O             | Reads all XISF files in the active directory                                                                                    | —                                          |
+| ReadTIFF            | I/O             | Reads all TIFF files in the active directory                                                                                    | —                                          |
+| ReadAll             | I/O             | Reads all supported image files (FITS + XISF + TIFF) in the active directory                                                    | —                                          |
+| WriteFIT            | I/O             | Writes all buffered images as FITS files                                                                                        | destination, [overwrite]                   |
+| WriteXISF           | I/O             | Writes all buffered images as XISF files                                                                                        | destination, [overwrite], [compress]       |
+| WriteTIFF           | I/O             | Writes all buffered images as TIFF files                                                                                        | destination, [overwrite]                   |
+| WriteCurrent        | I/O             | Writes all buffered images back to their source paths in their original format                                                  | —                                          |
+| WritePNG            | I/O             | Writes a single image as PNG                                                                                                    | filename, destination                      |
+| WriteJPEG           | I/O             | Writes a single image as JPEG                                                                                                   | filename, destination, [quality]           |
+| ListFiles           | File Management | Lists files in the active directory                                                                                             | [filter]                                   |
+| FilterByKeyword     | File Management | Filters the active file list by keyword value                                                                                   | name, value                                |
+| AddKeyword          | Keyword         | Adds or replaces a keyword on loaded images                                                                                     | name, value, [comment], [scope]            |
+| DeleteKeyword       | Keyword         | Removes a keyword from loaded images                                                                                            | name, [scope]                              |
+| ModifyKeyword       | Keyword         | Changes the value of an existing keyword                                                                                        | name, value, [comment], [scope]            |
+| CopyKeyword         | Keyword         | Copies a keyword value to a new keyword name                                                                                    | from, to                                   |
+| ListKeywords        | Keyword         | Lists all keywords for the current image                                                                                        | —                                          |
+| GetKeyword          | Interrogation   | Retrieves a keyword value into a variable; see Section 7.12 for full keyword list                                               | name                                       |
+| GetImageProperty    | Interrogation   | Retrieves an image property into a variable; see Section 7.12 for full property list                                            | property                                   |
+| GetSessionProperty  | Interrogation   | Retrieves a session state value into a variable; see Section 7.12 for full property list                                        | property                                   |
+| Test                | Interrogation   | Performs a boolean test and stores result in $Result; see Section 7.12 for full test list                                       | expression                                 |
+| AutoStretch         | Processing      | Applies automatic screen transfer function stretch (display only — raw buffer unchanged)                                        | [method], [shadowClip], [targetBackground] |
+| GetHistogram        | Processing      | Computes histogram statistics for the current frame (median, std dev, clipping %)                                               | —                                          |
+| CropImage           | Processing      | Crops the image to a specified region                                                                                           | x, y, width, height                        |
+| BinImage            | Processing      | Bins the image by an integer factor                                                                                             | factor                                     |
+| DebayerImage        | Processing      | Debayers a Bayer CFA image on demand                                                                                            | [pattern], [method]                        |
+| AnalyzeFrames       | Frame Analysis  | Computes seven quality metrics for all loaded frames, classifies each as PASS or REJECT, and writes PXFLAG keyword to each file | —                                          |
+| BlinkSequence       | Blink & View    | Starts blinking the loaded image set                                                                                            | [fps]                                      |
+| CacheFrames         | Blink & View    | Pre-decodes and caches all frames for blinking                                                                                  | —                                          |
+| SetZoom             | Blink & View    | Sets the viewer zoom level                                                                                                      | level (fit, 25, 50, 100, 200)              |
+| ComputeFWHM         | Analysis        | Calculates Full Width at Half Maximum for detected stars; displays per-star circle annotations on viewer overlay                | —                                          |
+| CountStars          | Analysis        | Counts detected stars in the image                                                                                              | —                                          |
+| ComputeEccentricity | Analysis        | Calculates eccentricity for detected stars                                                                                      | —                                          |
+| MedianValue         | Analysis        | Returns the median pixel value per channel                                                                                      | —                                          |
+| ContourPlot (FWHM)  | Analysis        | Generates a 2D contour map for FWHM star analysis output                                                                        | [x], [y], [radius]                         |
+| Set                 | Scripting       | Assigns a value to a variable                                                                                                   | varname, value                             |
+| Print               | Scripting       | Outputs a message to the pcode console                                                                                          | message                                    |
+| Echo                | Scripting       | Prints the current value of a variable                                                                                          | varname                                    |
+| Assert              | Scripting       | Halts execution with an error if expression is false                                                                            | expression                                 |
+| CountFiles          | Scripting       | Returns the number of files in the current list                                                                                 | —                                          |
+| RunMacro            | Scripting       | Executes a saved .phs macro file                                                                                                | filename                                   |
+| DefineMacro         | Scripting       | Begins the definition of a named reusable macro; supports positional ($1, $2) and named arguments                               | name                                       |
+| Log                 | Scripting       | Writes collected macro output to a file                                                                                         | path, [append]                             |
+| pwd                 | Console         | Prints the current active directory to the console (client-side only)                                                           | —                                          |
 
 ### 7.9 Interactive Console
 
@@ -539,6 +538,7 @@ The interactive console provides a REPL-style interface for entering and executi
 The Macro Library is a designated directory that Photyx scans on startup. Any `.phs` file found in this directory is automatically registered as an available command, indistinguishable from built-in commands in terms of how they are called.
 
 Registered macros:
+
 - Appear in tab completion in the console
 - Appear in the macro editor command list
 - Are accessible in a dedicated Macro Library sliding panel in the UI
@@ -590,78 +590,78 @@ The following tables define all properties and tests available through the inter
 
 #### Image Properties (GetImageProperty)
 
-| Property | Type | Description | Example Value |
-|---|---|---|---|
-| Width | Integer | Image width in pixels | 4656 |
-| Height | Integer | Image height in pixels | 3520 |
-| Channels | Integer | Number of color channels | 1 (mono), 3 (RGB) |
-| BitDepth | Integer | Bits per pixel per channel | 8, 16, 32 |
-| DataType | String | Pixel data type | UInt16, Float32 |
-| ColorSpace | String | Color space of the image | Mono, RGB, Bayer |
-| BayerPattern | String | Bayer filter pattern if present | RGGB, BGGR, GRBG, GBRG |
-| FileFormat | String | Source file format | FITS, XISF, TIFF, PNG, JPEG |
-| Filename | String | Full path of the source file | //192.168.1.100/M31/frame001.fit |
-| FileSize | Integer | File size in bytes | 32440320 |
-| ImageIndex | Integer | Index of image in current file list | 0-based |
-| IsDebayered | Boolean | Whether debayering has been applied | true, false |
-| HasKeywords | Boolean | Whether the file contains header keywords | true, false |
-| Compression | String | Compression algorithm if applicable | LZ4, zstd, zlib, None |
-| ByteOrder | String | Byte order of pixel data | BigEndian, LittleEndian |
+| Property     | Type    | Description                               | Example Value                    |
+| ------------ | ------- | ----------------------------------------- | -------------------------------- |
+| Width        | Integer | Image width in pixels                     | 4656                             |
+| Height       | Integer | Image height in pixels                    | 3520                             |
+| Channels     | Integer | Number of color channels                  | 1 (mono), 3 (RGB)                |
+| BitDepth     | Integer | Bits per pixel per channel                | 8, 16, 32                        |
+| DataType     | String  | Pixel data type                           | UInt16, Float32                  |
+| ColorSpace   | String  | Color space of the image                  | Mono, RGB, Bayer                 |
+| BayerPattern | String  | Bayer filter pattern if present           | RGGB, BGGR, GRBG, GBRG           |
+| FileFormat   | String  | Source file format                        | FITS, XISF, TIFF, PNG, JPEG      |
+| Filename     | String  | Full path of the source file              | //192.168.1.100/M31/frame001.fit |
+| FileSize     | Integer | File size in bytes                        | 32440320                         |
+| ImageIndex   | Integer | Index of image in current file list       | 0-based                          |
+| IsDebayered  | Boolean | Whether debayering has been applied       | true, false                      |
+| HasKeywords  | Boolean | Whether the file contains header keywords | true, false                      |
+| Compression  | String  | Compression algorithm if applicable       | LZ4, zstd, zlib, None            |
+| ByteOrder    | String  | Byte order of pixel data                  | BigEndian, LittleEndian          |
 
 #### Keyword Properties (GetKeyword)
 
 Any keyword present in the file header can be retrieved by name using `GetKeyword name=X`. The following table lists common astrophotography keywords; this is not a closed list.
 
-| Keyword | Type | Description | Example Value |
-|---|---|---|---|
-| OBJECT | String | Target object name | M31 |
-| TELESCOP | String | Telescope name | Celestron EdgeHD 8 |
-| INSTRUME | String | Camera/instrument name | ZWO ASI2600MC |
-| EXPTIME | Float | Exposure time in seconds | 300.0 |
-| GAIN | Integer | Camera gain setting | 100 |
-| OFFSET | Integer | Camera offset setting | 30 |
-| TEMP | Float | Sensor temperature in Celsius | -10.0 |
-| FILTER | String | Filter name | Ha, OIII, Lum, duo |
-| BAYERPAT | String | Bayer pattern from capture software | RGGB |
-| XBINNING | Integer | Horizontal binning factor | 1 |
-| YBINNING | Integer | Vertical binning factor | 1 |
-| FOCALLEN | Float | Focal length in mm | 2032.0 |
-| APERTURE | Float | Aperture in mm | 203.2 |
-| RA | Float | Right ascension of target in degrees | 10.6848 |
-| DEC | Float | Declination of target in degrees | 41.2692 |
-| DATE-OBS | String | Date and time of observation (UTC) | 2024-11-15T22:30:00 |
-| SITELONG | Float | Observatory longitude | -105.1786 |
-| SITELAT | Float | Observatory latitude | 40.5853 |
-| SITEELEV | Float | Observatory elevation in meters | 1524.0 |
-| IMAGETYP | String | Frame type | Light, Dark, Flat, Bias |
-| SWCREATE | String | Software that created the file | Photyx 1.0 |
-| PXFLAG | String | Photyx frame analysis recommendation | PASS, SUSPECT, REJECT |
+| Keyword  | Type    | Description                          | Example Value           |
+| -------- | ------- | ------------------------------------ | ----------------------- |
+| OBJECT   | String  | Target object name                   | M31                     |
+| TELESCOP | String  | Telescope name                       | Celestron EdgeHD 8      |
+| INSTRUME | String  | Camera/instrument name               | ZWO ASI2600MC           |
+| EXPTIME  | Float   | Exposure time in seconds             | 300.0                   |
+| GAIN     | Integer | Camera gain setting                  | 100                     |
+| OFFSET   | Integer | Camera offset setting                | 30                      |
+| TEMP     | Float   | Sensor temperature in Celsius        | -10.0                   |
+| FILTER   | String  | Filter name                          | Ha, OIII, Lum, duo      |
+| BAYERPAT | String  | Bayer pattern from capture software  | RGGB                    |
+| XBINNING | Integer | Horizontal binning factor            | 1                       |
+| YBINNING | Integer | Vertical binning factor              | 1                       |
+| FOCALLEN | Float   | Focal length in mm                   | 2032.0                  |
+| APERTURE | Float   | Aperture in mm                       | 203.2                   |
+| RA       | Float   | Right ascension of target in degrees | 10.6848                 |
+| DEC      | Float   | Declination of target in degrees     | 41.2692                 |
+| DATE-OBS | String  | Date and time of observation (UTC)   | 2024-11-15T22:30:00     |
+| SITELONG | Float   | Observatory longitude                | -105.1786               |
+| SITELAT  | Float   | Observatory latitude                 | 40.5853                 |
+| SITEELEV | Float   | Observatory elevation in meters      | 1524.0                  |
+| IMAGETYP | String  | Frame type                           | Light, Dark, Flat, Bias |
+| SWCREATE | String  | Software that created the file       | Photyx 1.0              |
+| PXFLAG   | String  | Photyx frame analysis recommendation | PASS, SUSPECT, REJECT   |
 
 #### Session Properties (GetSessionProperty)
 
-| Property | Type | Description | Example Value |
-|---|---|---|---|
-| FileCount | Integer | Number of files in the active file list | 47 |
-| ActiveDirectory | String | Current active working directory | D:/Astrophotos/M31 |
-| CurrentFrame | Integer | Index of the currently displayed frame | 0-based |
-| LoadedFileCount | Integer | Number of files loaded into buffer pool | 12 |
-| TotalMemoryUsed | Integer | Buffer pool memory usage in bytes | 1073741824 |
-| Platform | String | Current OS platform | Windows, macOS, Linux |
-| PhotoyxVersion | String | Running version of Photyx | 1.0.0 |
+| Property        | Type    | Description                             | Example Value         |
+| --------------- | ------- | --------------------------------------- | --------------------- |
+| FileCount       | Integer | Number of files in the active file list | 47                    |
+| ActiveDirectory | String  | Current active working directory        | D:/Astrophotos/M31    |
+| CurrentFrame    | Integer | Index of the currently displayed frame  | 0-based               |
+| LoadedFileCount | Integer | Number of files loaded into buffer pool | 12                    |
+| TotalMemoryUsed | Integer | Buffer pool memory usage in bytes       | 1073741824            |
+| Platform        | String  | Current OS platform                     | Windows, macOS, Linux |
+| PhotoyxVersion  | String  | Running version of Photyx               | 1.0.0                 |
 
 #### Boolean Tests (Test)
 
-| Test Expression | Description | Result |
-|---|---|---|
-| ImageHasBayerPattern | True if a Bayer pattern is detected | true, false |
-| ImageIsColor | True if image has 3 channels | true, false |
-| ImageIsMono | True if image has 1 channel | true, false |
-| ImageIsDebayered | True if debayering has been applied | true, false |
-| KeywordExists name=X | True if the named keyword is present | true, false |
-| FileCountExceeds count=X | True if file list exceeds X files | true, false |
-| DirectoryExists path=X | True if the specified path exists | true, false |
-| FileExists path=X | True if the specified file exists | true, false |
-| VariableIsSet name=X | True if the named variable has been assigned | true, false |
+| Test Expression          | Description                                  | Result      |
+| ------------------------ | -------------------------------------------- | ----------- |
+| ImageHasBayerPattern     | True if a Bayer pattern is detected          | true, false |
+| ImageIsColor             | True if image has 3 channels                 | true, false |
+| ImageIsMono              | True if image has 1 channel                  | true, false |
+| ImageIsDebayered         | True if debayering has been applied          | true, false |
+| KeywordExists name=X     | True if the named keyword is present         | true, false |
+| FileCountExceeds count=X | True if file list exceeds X files            | true, false |
+| DirectoryExists path=X   | True if the specified path exists            | true, false |
+| FileExists path=X        | True if the specified file exists            | true, false |
+| VariableIsSet name=X     | True if the named variable has been assigned | true, false |
 
 ---
 
@@ -671,9 +671,10 @@ Any keyword present in the file header can be retrieved by name using `GetKeywor
 
 The Photyx UI is organized as a single main window with a fixed chrome (menu bar, toolbar, notification bar) surrounding a flexible content area. The image viewer is the dominant element and receives the maximum available screen real estate.
 
-![Photyx UI Layout](photyx_layout.svg)
+![Photyx UI Layout](./photyx_layout.svg)
 
 The layout from top to bottom:
+
 - **Title bar** — window controls
 - **Menu bar** — File, Edit, View, Process, Analyze, Tools, Help
 - **Toolbar** — Auto-STF toggle, zoom controls, channel selector
@@ -684,15 +685,15 @@ The layout from top to bottom:
 
 ### 8.2 Menu Bar
 
-| Menu | Items |
-|---|---|
-| File | Select Directory, Clear Session, Exit |
-| Edit | Preferences |
-| View | Dark, Light, Matrix |
-| Process | Auto Stretch |
+| Menu    | Items                                                                      |
+| ------- | -------------------------------------------------------------------------- |
+| File    | Select Directory, Clear Session, Exit                                      |
+| Edit    | Preferences                                                                |
+| View    | Dark, Light, Matrix                                                        |
+| Process | Auto Stretch                                                               |
 | Analyze | FWHM, Star Count, Eccentricity, Median Value, Contour Plot, Analysis Graph |
-| Tools | Settings, Log Viewer |
-| Help | About, Documentation, Check for Updates |
+| Tools   | Settings, Log Viewer                                                       |
+| Help    | About, Documentation, Check for Updates                                    |
 
 ### 8.3 Toolbar
 
@@ -702,12 +703,12 @@ The toolbar contains an Auto-STF toggle button (first button on the left), zoom 
 
 A panel of buttons providing one-click access to frequently used commands. The default buttons are:
 
-| Button | Command |
-|---|---|
-| List Files | ListFiles |
-| FWHM | ComputeFWHM |
-| Star Count | CountStars |
-| List KW | Opens keyword modal dialog |
+| Button     | Command                    |
+| ---------- | -------------------------- |
+| List Files | ListFiles                  |
+| FWHM       | ComputeFWHM                |
+| Star Count | CountStars                 |
+| List KW    | Opens keyword modal dialog |
 
 - List KW opens a modal dialog showing all FITS/XISF keywords for the current frame with search filtering
 - User configurable — additional macros can be added
@@ -717,17 +718,18 @@ A panel of buttons providing one-click access to frequently used commands. The d
 
 A narrow vertical bar on the left edge of the content area. Each icon toggles a sliding panel open or closed. Panels slide in over the image viewer from the left or right.
 
-| Icon | Panel |
-|---|---|
-| Folder | File Browser |
-| Tag | Keyword Editor |
-| Code | Macro Editor |
-| List | Macro Library |
+| Icon   | Panel          |
+| ------ | -------------- |
+| Folder | File Browser   |
+| Tag    | Keyword Editor |
+| Code   | Macro Editor   |
+| List   | Macro Library  |
 | Puzzle | Plugin Manager |
 
 ### 8.6 Sliding Panels
 
 #### File Browser
+
 - Flat file list displaying files loaded into the current session
 - Directory path bar at the top showing the current active directory with a browse button (triggers SelectDirectory — sets the directory and populates the file list with all files of supported formats, but does not load pixel data)
 - Format filter dropdown: All Supported / FITS only / XISF only / TIFF only / PNG only / JPEG only (default: All Supported; persisted across sessions)
@@ -737,12 +739,14 @@ A narrow vertical bar on the left edge of the content area. Each icon toggles a 
 - File list updates automatically when the active directory changes via pcode or UI
 
 #### Keyword Editor
+
 - Displays all header keywords for the currently viewed image
 - Inline editing of keyword values
 - Add and delete keyword buttons
 - Changes are applied immediately and reflected in the image buffer
 
 #### Macro Editor
+
 - Full-featured text editor for writing pcode macros
 - Syntax highlighting for pcode commands, arguments, comments, and variables
 - Run button executes the current macro against the active session
@@ -750,6 +754,7 @@ A narrow vertical bar on the left edge of the content area. Each icon toggles a 
 - "Copy from Console" button imports console history as a starting point
 
 #### Macro Library
+
 - Lists all registered macros from the Macro Library directory
 - Displays macro name, description (from manifest), and argument list
 - Double-click to open in Macro Editor
@@ -757,6 +762,7 @@ A narrow vertical bar on the left edge of the content area. Each icon toggles a 
 - Install and remove user macros
 
 #### Plugin Manager
+
 - Lists all installed plugins with name, version, type (Built-in Native / WASM), and status
 - Enable/disable individual plugins
 - Install new WASM plugins from file
@@ -777,9 +783,9 @@ The image viewer is the central and dominant UI element. It displays the current
 
 When `AnalyzeFrames` has been run, each frame displays a visual indicator of its `PXFLAG` status during both normal viewing and blink playback:
 
-| PXFLAG | Visual Indicator |
-|---|---|
-| PASS | No overlay |
+| PXFLAG | Visual Indicator                            |
+| ------ | ------------------------------------------- |
+| PASS   | No overlay                                  |
 | REJECT | Red border (~5px) inside the image boundary |
 
 During blink playback the overlay updates in real time as frames change. The user can override any frame's flag during blink review using keyboard shortcuts (see §8.13). Each keypress immediately updates the `PXFLAG` keyword in the file header.
@@ -793,11 +799,13 @@ The Info Panel occupies approximately two-thirds of the bottom area. It is alway
 Live readout of pixel values under the mouse cursor, updated in real time as the mouse moves over the viewer.
 
 For mono images:
+
 ```
 X: 1234  Y: 567  Raw: 0.6471  Val: 42381
 ```
 
 For RGB images:
+
 ```
 X: 1234  Y: 567  Raw: 0.647/0.412/0.531  Val: 42381/26998/34799
 ```
@@ -810,6 +818,7 @@ For integer source data (e.g. native 16-bit FITS), both Raw and Val are shown ev
 - **Clipping indicators** — value text turns red when a pixel is at maximum (highlight clip) and blue when at zero (shadow clip)
 
 For plate-solved images containing WCS keywords, celestial coordinates are also displayed:
+
 ```
 X: 1234  Y: 567  Raw: 0.6471  Val: 42381  RA: 10h 42m 31.2s  Dec: +41° 16' 22"
 ```
@@ -819,6 +828,7 @@ When WCS data is not present in the file header, a "no WCS" indicator is shown i
 #### Image Metadata
 
 Displayed for the current image in three rows:
+
 - Row 1: Full filename
 - Row 2: Dimensions (W × H), bit depth, color space
 - Row 3: Image center in RA/Dec (sexagesimal format, derived from WCS keywords CRVAL1/CRVAL2 if present)
@@ -837,6 +847,7 @@ Live histogram of the current image, displayed on the Histogram tab. Updates aut
 #### Blink Controls
 
 Visible on the Blink tab:
+
 - ← Previous frame button (disabled during playback)
 - ▶/⏸ Play/Pause toggle button
 - → Next frame button (disabled during playback)
@@ -887,28 +898,28 @@ The Analysis Graph displays per-frame quality metrics as a time-series chart in 
 
 Three visual themes are provided:
 
-| Theme | Description |
-|---|---|
-| Matrix | Default theme; high-contrast green-on-black |
-| Dark | Optimized for low-light observing environments |
-| Light | Standard light UI for daytime use |
+| Theme  | Description                                    |
+| ------ | ---------------------------------------------- |
+| Matrix | Default theme; high-contrast green-on-black    |
+| Dark   | Optimized for low-light observing environments |
+| Light  | Standard light UI for daytime use              |
 
 Theme CSS files are maintained externally and loaded at runtime. The active theme is persisted across sessions. Theme switching takes effect immediately without restart.
 
 ### 8.13 Keyboard Shortcuts
 
-| Key | Action |
-|---|---|
-| Space | Blink play / pause |
-| J | Previous frame (blink) |
-| K | Next frame (blink) |
-| P | Mark current frame PASS (overrides AnalyzeFrames recommendation; writes PXFLAG immediately) |
-| R | Mark current frame REJECT (writes PXFLAG immediately) |
-| 0 | Zoom: Fit (fill screen) |
-| 1 | Zoom: 25% |
-| 2 | Zoom: 50% |
-| 3 | Zoom: 100% |
-| 4 | Zoom: 200% |
+| Key   | Action                                                                                      |
+| ----- | ------------------------------------------------------------------------------------------- |
+| Space | Blink play / pause                                                                          |
+| J     | Previous frame (blink)                                                                      |
+| K     | Next frame (blink)                                                                          |
+| P     | Mark current frame PASS (overrides AnalyzeFrames recommendation; writes PXFLAG immediately) |
+| R     | Mark current frame REJECT (writes PXFLAG immediately)                                       |
+| 0     | Zoom: Fit (fill screen)                                                                     |
+| 1     | Zoom: 25%                                                                                   |
+| 2     | Zoom: 50%                                                                                   |
+| 3     | Zoom: 100%                                                                                  |
+| 4     | Zoom: 200%                                                                                  |
 
 All shortcuts are user-configurable via the Settings panel.
 
@@ -927,6 +938,142 @@ Double-clicking a registered file in the OS file manager opens it directly in Ph
 
 Photyx v1.0 is English only. However, all user-facing strings are externalized from day one into a string resource file (JSON format) rather than being hard-coded in UI components. This ensures that adding additional language support in a future release requires only providing translated resource files, with no changes to application code.
 
+## 8.16 Contour Plot (FWHM Heatmap)
+
+The Contour Plot displays a smooth spatial heatmap of FWHM values across the image field, revealing optical and atmospheric gradients — field curvature, coma, atmospheric dispersion, and focus gradients. It is triggered from the Analyze menu or the `ContourPlot` pcode command and replaces the image viewer while open.
+
+### 8.16.1 Display
+
+- A continuous smooth surface is rendered as a full-resolution color heatmap overlaid on a dimmed version of the current image
+- The colormap runs from cool (blue) for tight/good FWHM through neutral (green) to warm (red) for bloated/poor FWHM
+- A vertical color legend on the right edge shows the FWHM scale with min/max values labeled
+- A title bar shows the session mean FWHM and the number of stars used in the computation
+- Close button returns to the image viewer
+
+### 8.16.2 Algorithm
+
+The heatmap is computed in Rust as follows:
+
+1. **Star detection** — run the standard star detector on the current frame (reuses `analysis/stars.rs`); retrieve per-star centroid `(cx, cy)` and FWHM value
+2. **Downsampled grid** — compute FWHM estimates on a reduced-resolution grid (target: ~200×150 cells regardless of source image dimensions) to keep computation fast
+3. **Inverse Distance Weighting (IDW)** — for each grid cell, estimate FWHM as a weighted average of all detected stars, weighted by `1 / distance²`. A minimum of 3 stars within a configurable search radius is required for a cell to be considered valid; cells with insufficient nearby stars are marked as no-data
+4. **No-data handling** — no-data cells are filled by a second pass of IDW using a larger search radius; if still unresolvable, the cell is rendered at the session mean FWHM with a distinct hatching pattern to indicate interpolated/missing data
+5. **Upscaling** — the computed grid is bicubic-upscaled to display resolution for smooth visual appearance
+6. **Colormap** — a perceptually uniform colormap maps the FWHM range to color. The range is session-relative: the minimum detected FWHM maps to cool blue, the maximum to warm red
+
+### 8.16.3 Tauri Command
+
+A new `get_contour_data` Tauri command returns the computed grid:
+
+```json
+{
+    "grid":        "number[][]",
+    "cols":        "number",
+    "rows":        "number",
+    "fwhm_min":    "number",
+    "fwhm_max":    "number",
+    "fwhm_mean":   "number",
+    "star_count":  "number",
+    "valid_cells": "number"
+}
+```
+
+### 8.16.4 Performance Target
+
+- Computation target: under 2 seconds for a 200×150 grid with up to 500 detected stars on a mid-range CPU
+- The grid computation runs on the Rust side using Rayon parallelism across grid rows
+- The frontend renders the upscaled result using a standard HTML5 canvas
+
+### 8.16.5 pcode Command
+
+`ContourPlot`
+
+No required arguments. Optional future arguments:
+
+- `grid=NxM` — override default grid resolution (e.g. `grid=400x300`)
+- `stars=N` — limit maximum stars used in computation
+
+### 8.16.6 Interpretation Guide
+
+The heatmap reveals common optical problems:
+
+| Pattern                      | Likely Cause                                 |
+| ---------------------------- | -------------------------------------------- |
+| Uniform cool color           | Good flat field — no significant aberrations |
+| Warm corners, cool center    | Field curvature or vignetting                |
+| Gradient across entire field | Atmospheric dispersion or mount flex         |
+| Warm region on one side only | Tilt in camera or focuser                    |
+| Random warm spots            | Locally poor seeing or satellite trails      |
+
+## 8.17 Log Viewer
+
+The Log Viewer displays the application log files in a modal overlay, similar
+to the Keyword modal. It is triggered from Tools > Log Viewer and does not
+replace the image viewer. The log viewer and image viewer are visible
+simultaneously.
+
+### 8.17.1 Display
+
+The Log Viewer modal contains two panels:
+
+- **Left panel — File List:** Lists all available log files in the logs
+  directory, sorted by date/time descending (newest first). Clicking a file
+  loads it into the right panel. The most recent file is highlighted but not
+  auto-opened.
+- **Right panel — Log Contents:** Displays the contents of the selected log
+  file in a scrollable monospace text area, with the newest entries at the
+  bottom. Auto-tails the active log file — new entries are appended
+  automatically every 2 seconds while the viewer is open.
+
+### 8.17.2 Log Level Filter
+
+Four toggle buttons at the top of the right panel independently show or hide
+entries by log level:
+
+| Toggle | Color | Default |
+| ------ | ----- | ------- |
+| ERROR  | Red   | ON      |
+| WARN   | Amber | ON      |
+| INFO   | Green | ON      |
+| DEBUG  | Dim   | ON      |
+
+All levels are visible by default. Toggling a level off hides all entries of
+that level without reloading the file. Filters apply to both existing entries
+and newly tailed entries.
+
+### 8.17.3 Auto-Tail
+
+While the Log Viewer is open and a file is selected, Photyx polls the log file
+every 2 seconds for new content. New lines are appended to the bottom of the
+display and the view scrolls to follow if the user has not manually scrolled
+up. If the user has scrolled up to review earlier entries, auto-scroll is
+suspended until the user scrolls back to the bottom.
+
+### 8.17.4 Tauri Commands
+
+Two new Tauri commands support the Log Viewer:
+
+- `list_log_files` — returns a list of available log files in the logs
+  directory, each with filename, full path, size in bytes, and last modified
+  date/time, sorted newest first
+- `read_log_file` — returns the contents of a specified log file as an array
+  of parsed log lines, each with fields: `timestamp`, `level`, `message`
+
+### 8.17.5 Log File Location
+
+Per §10, log files are located at:
+
+- Windows: `C:\Users\{user}\AppData\Roaming\Photyx\logs\`
+- macOS: `~/Library/Application Support/Photyx/logs/`
+- Linux: `~/.config/Photyx/logs/`
+
+### 8.17.6 Parsing
+
+Log lines are parsed on the Rust side into structured fields before being
+returned to the frontend. Lines that do not conform to the expected format
+(e.g. multi-line stack traces) are attached to the preceding parsed line as
+continuation text and displayed indented beneath it.
+
 ---
 
 ## 9. Settings & Persistence
@@ -943,30 +1090,30 @@ Settings are written immediately on change and read on startup.
 
 ### 9.2 UI / Viewer Settings
 
-| Setting | Default | Notes |
-|---|---|---|
-| Default zoom level | Fit (fill screen) | Hardcoded; not user-configurable |
-| Default blink rate | 0.1s per frame | Hardcoded; not user-configurable |
-| Color theme | Matrix | Persisted across sessions |
-| Default channel view | RGB | Hardcoded; not user-configurable |
+| Setting              | Default           | Notes                            |
+| -------------------- | ----------------- | -------------------------------- |
+| Default zoom level   | Fit (fill screen) | Hardcoded; not user-configurable |
+| Default blink rate   | 0.1s per frame    | Hardcoded; not user-configurable |
+| Color theme          | Matrix            | Persisted across sessions        |
+| Default channel view | RGB               | Hardcoded; not user-configurable |
 
 ### 9.3 File & Path Settings
 
-| Setting | Default | Notes |
-|---|---|---|
+| Setting                   | Default             | Notes                     |
+| ------------------------- | ------------------- | ------------------------- |
 | Default working directory | Last used directory | Persisted across sessions |
-| Default JPEG quality | 75% | Persisted across sessions |
-| Overwrite behavior | Prompt | Persisted across sessions |
-| Recent directories list | Last 10 | Persisted across sessions |
+| Default JPEG quality      | 75%                 | Persisted across sessions |
+| Overwrite behavior        | Prompt              | Persisted across sessions |
+| Recent directories list   | Last 10             | Persisted across sessions |
 
 ### 9.4 pcode / Macro Settings
 
-| Setting | Default | Notes |
-|---|---|---|
+| Setting                 | Default             | Notes                     |
+| ----------------------- | ------------------- | ------------------------- |
 | Macro library directory | OS app data Macros/ | Persisted across sessions |
-| Console history size | 500 commands | Persisted across sessions |
-| Error behavior | Halt on error | Persisted across sessions |
-| Macro editor font size | 13px | Persisted across sessions |
+| Console history size    | 500 commands        | Persisted across sessions |
+| Error behavior          | Halt on error       | Persisted across sessions |
+| Macro editor font size  | 13px                | Persisted across sessions |
 
 ### 9.5 Plugin Settings
 
@@ -974,27 +1121,27 @@ Each plugin defines its own settings namespace. Plugin settings are stored in th
 
 ### 9.6 API Settings
 
-| Setting | Default | Notes |
-|---|---|---|
-| REST API port | 7171 | Persisted across sessions |
-| API key required | false | Persisted across sessions |
-| Localhost only | true | Persisted across sessions |
+| Setting          | Default | Notes                     |
+| ---------------- | ------- | ------------------------- |
+| REST API port    | 7171    | Persisted across sessions |
+| API key required | false   | Persisted across sessions |
+| Localhost only   | true    | Persisted across sessions |
 
 ### 9.7 Performance Settings
 
-| Setting | Default | Notes |
-|---|---|---|
-| Buffer pool memory limit | 4 GB | Future requirement — current implementation uses in-memory HashMap; persistent buffer pool planned for Phase 9 |
-| Blink pre-cache frame count | All loaded frames | Persisted across sessions |
-| Rayon thread count | All available cores | Persisted across sessions |
+| Setting                     | Default             | Notes                                                                                                          |
+| --------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Buffer pool memory limit    | 4 GB                | Future requirement — current implementation uses in-memory HashMap; persistent buffer pool planned for Phase 9 |
+| Blink pre-cache frame count | All loaded frames   | Persisted across sessions                                                                                      |
+| Rayon thread count          | All available cores | Persisted across sessions                                                                                      |
 
 ### 9.8 Quick Launch Panel Settings
 
-| Setting | Default | Notes |
-|---|---|---|
+| Setting            | Default            | Notes                     |
+| ------------------ | ------------------ | ------------------------- |
 | Button assignments | Full Macro Library | Persisted across sessions |
-| Grid column count | 4 | Persisted across sessions |
-| Panel visible | true | Persisted across sessions |
+| Grid column count  | 4                  | Persisted across sessions |
+| Panel visible      | true               | Persisted across sessions |
 
 ### 9.9 Rig Profiles (AnalyzeFrames)
 
@@ -1004,21 +1151,19 @@ combination. Profiles are stored in the settings store and persist across
 sessions. The active profile is displayed in the status bar and selectable
 from the toolbar or Settings panel.
 
-
 Multiple profiles can be defined. The initial set of default threshold
 values is shown below; all thresholds are user-configurable per profile.
 
-
-| Setting | Type | Default |
-|---|---|---|
-| Profile name | String | — |
-| Background median Reject | Sigma | +2.5σ |
-| Background std dev Reject | Sigma | +2.5σ |
-| Background gradient Reject | Sigma | +2.5σ |
-| SNR estimate Reject | Sigma | -2.5σ |
-| FWHM Reject | Sigma | +2.5σ |
-| Eccentricity Reject | Absolute | 0.85 |
-| Star count Reject | Sigma | -1.5σ |
+| Setting                    | Type     | Default |
+| -------------------------- | -------- | ------- |
+| Profile name               | String   | —       |
+| Background median Reject   | Sigma    | +2.5σ   |
+| Background std dev Reject  | Sigma    | +2.5σ   |
+| Background gradient Reject | Sigma    | +2.5σ   |
+| SNR estimate Reject        | Sigma    | -2.5σ   |
+| FWHM Reject                | Sigma    | +2.5σ   |
+| Eccentricity Reject        | Absolute | 0.85    |
+| Star count Reject          | Sigma    | -1.5σ   |
 
 A formula similar to the following will be used to classify individual
 frames. All metrics are sigma-based and session-relative. That formula
@@ -1111,24 +1256,24 @@ Photyx treats image header keywords as first-class data. Keyword operations are 
 
 ### 13.1 Supported Operations
 
-| Operation | pcode Command |
-|---|---|
-| Add keyword | `AddKeyword name=X value=Y [comment="..."]` |
-| Delete keyword | `DeleteKeyword name=X` |
-| Modify keyword | `ModifyKeyword name=X value=Y` |
-| Copy keyword | `CopyKeyword from=X to=Y` |
-| List keywords | `ListKeywords` |
-| Get keyword value | `GetKeyword name=X` |
+| Operation         | pcode Command                               |
+| ----------------- | ------------------------------------------- |
+| Add keyword       | `AddKeyword name=X value=Y [comment="..."]` |
+| Delete keyword    | `DeleteKeyword name=X`                      |
+| Modify keyword    | `ModifyKeyword name=X value=Y`              |
+| Copy keyword      | `CopyKeyword from=X to=Y`                   |
+| List keywords     | `ListKeywords`                              |
+| Get keyword value | `GetKeyword name=X`                         |
 
 ### 13.2 Format Coverage
 
-| Format | Keyword Support |
-|---|---|
-| FITS | Full FITS header keyword read/write |
-| XISF | Both the XISF Properties block and FITSKeyword block are read and written; GetKeyword checks both blocks transparently so keyword retrieval works identically regardless of source format |
-| TIFF | AstroTIFF convention (FITS-style NAME = VALUE / comment in custom tag) |
-| PNG | No native keyword support; keywords not applicable |
-| JPEG | No native keyword support; keywords not applicable |
+| Format | Keyword Support                                                                                                                                                                           |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FITS   | Full FITS header keyword read/write                                                                                                                                                       |
+| XISF   | Both the XISF Properties block and FITSKeyword block are read and written; GetKeyword checks both blocks transparently so keyword retrieval works identically regardless of source format |
+| TIFF   | AstroTIFF convention (FITS-style NAME = VALUE / comment in custom tag)                                                                                                                    |
+| PNG    | No native keyword support; keywords not applicable                                                                                                                                        |
+| JPEG   | No native keyword support; keywords not applicable                                                                                                                                        |
 
 ---
 
@@ -1144,16 +1289,15 @@ time-series chart. Standalone analysis plugins (ComputeFWHM, CountStars,
 ComputeEccentricity) operate on the current frame only and display results
 in the console and as viewer overlay annotations.
 
-
 ### 14.2 Built-in Analysis (Initial Set)
 
-| Analysis | Plugin | Output |
-|---|---|---|
-| FWHM (Full Width at Half Maximum) | ComputeFWHM | Median FWHM in pixels and arcseconds; per-star circle annotations on viewer overlay |
-| Star Count | CountStars | Integer count of detected stars |
-| Eccentricity | ComputeEccentricity | Median eccentricity across detected stars |
-| Batch frame analysis | AnalyzeFrames | 7 metrics per frame, PASS/REJECT classification, PXFLAG keyword, Analysis Graph |
-| Contour Plot (FWHM) | ContourPlot | 2D spatial heatmap of FWHM across image zones (deferred) |
+| Analysis                          | Plugin              | Output                                                                              |
+| --------------------------------- | ------------------- | ----------------------------------------------------------------------------------- |
+| FWHM (Full Width at Half Maximum) | ComputeFWHM         | Median FWHM in pixels and arcseconds; per-star circle annotations on viewer overlay |
+| Star Count                        | CountStars          | Integer count of detected stars                                                     |
+| Eccentricity                      | ComputeEccentricity | Median eccentricity across detected stars                                           |
+| Batch frame analysis              | AnalyzeFrames       | 7 metrics per frame, PASS/REJECT classification, PXFLAG keyword, Analysis Graph     |
+| Contour Plot (FWHM)               | ContourPlot         | 2D spatial heatmap of FWHM across image zones (deferred)                            |
 
 ### 14.3 Benchmarking Plan
 
@@ -1199,15 +1343,15 @@ The keyword is written immediately on completion of `AnalyzeFrames` — there is
 
 `AnalyzeFrames` computes seven metrics per frame using a two-pass Rayon parallel implementation:
 
-| Metric | Description | Threshold Type | Algorithm |
-|---|---|---|---|
-| Background median | Sigma-clipped sky background level | Sigma (session-relative) | Sigma-clipped median |
-| Background std dev | Noise floor estimate | Sigma (session-relative) | Sigma-clipped std dev |
-| Background gradient | Spatial variation in background across an 8×8 grid | Sigma (session-relative) | Max cell deviation |
-| SNR estimate | Composite quality indicator responding to background noise and PSF degradation | Sigma (session-relative) | Star signal / background noise |
-| FWHM | Median full width at half maximum across detected stars | Sigma (session-relative) | Intensity-weighted second-order moments: `2.355 × sqrt((Mxx+Myy)/2)` |
-| Eccentricity | Median eccentricity across detected stars | Absolute | Second-order intensity-weighted moments |
-| Star count | Number of detected stars (minimum 5 connected pixels) | Sigma (session-relative) | Peak detection + flood fill |
+| Metric              | Description                                                                    | Threshold Type           | Algorithm                                                            |
+| ------------------- | ------------------------------------------------------------------------------ | ------------------------ | -------------------------------------------------------------------- |
+| Background median   | Sigma-clipped sky background level                                             | Sigma (session-relative) | Sigma-clipped median                                                 |
+| Background std dev  | Noise floor estimate                                                           | Sigma (session-relative) | Sigma-clipped std dev                                                |
+| Background gradient | Spatial variation in background across an 8×8 grid                             | Sigma (session-relative) | Max cell deviation                                                   |
+| SNR estimate        | Composite quality indicator responding to background noise and PSF degradation | Sigma (session-relative) | Star signal / background noise                                       |
+| FWHM                | Median full width at half maximum across detected stars                        | Sigma (session-relative) | Intensity-weighted second-order moments: `2.355 × sqrt((Mxx+Myy)/2)` |
+| Eccentricity        | Median eccentricity across detected stars                                      | Absolute                 | Second-order intensity-weighted moments                              |
+| Star count          | Number of detected stars (minimum 5 connected pixels)                          | Sigma (session-relative) | Peak detection + flood fill                                          |
 
 Note: Highlight Clipping was removed — values were consistently too low to trigger meaningful classification thresholds. PXSCORE was removed — a weighted average score that could contradict PXFLAG provided no useful information.
 
@@ -1221,15 +1365,15 @@ Each frame is classified PASS or REJECT based on whether any single metric excee
 
 The `triggered_by` field records which metrics caused a REJECT, visible in the Analysis Graph tooltip.
 
-| Metric | Reject Default |
-|---|---|
-| Background median | > +2.5σ |
-| Background std dev | > +2.5σ |
-| Background gradient | > +2.5σ |
-| SNR estimate | < -2.5σ |
-| FWHM | > +2.5σ |
-| Eccentricity | > 0.85 (absolute) |
-| Star count | < -1.5σ |
+| Metric              | Reject Default    |
+| ------------------- | ----------------- |
+| Background median   | > +2.5σ           |
+| Background std dev  | > +2.5σ           |
+| Background gradient | > +2.5σ           |
+| SNR estimate        | < -2.5σ           |
+| FWHM                | > +2.5σ           |
+| Eccentricity        | > 0.85 (absolute) |
+| Star count          | < -1.5σ           |
 
 ### 15.5 Blink Review Workflow
 
@@ -1253,7 +1397,6 @@ to pass all PASS frames to PixInsight SubframeSelector for cross-session
 weight-based ranking, reserving Photyx rejection for only the clear
 disasters (REJECT frames) that no ranking tool would salvage.
 
-
 ---
 
 ## 16. External API
@@ -1268,14 +1411,14 @@ The Axum routing layer is architected with a middleware insertion point from day
 
 ### 16.3 Endpoints (Planned)
 
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/macro/run` | Execute a pcode command or macro string |
-| POST | `/api/macro/{name}` | Execute a saved macro by name |
-| GET | `/api/images` | List currently loaded images |
-| GET | `/api/keywords/{filename}` | Get keywords for a specific file |
-| POST | `/api/keywords/{filename}` | Add/modify keywords on a file |
-| GET | `/api/status` | Application health and session info |
+| Method | Endpoint                   | Description                             |
+| ------ | -------------------------- | --------------------------------------- |
+| POST   | `/api/macro/run`           | Execute a pcode command or macro string |
+| POST   | `/api/macro/{name}`        | Execute a saved macro by name           |
+| GET    | `/api/images`              | List currently loaded images            |
+| GET    | `/api/keywords/{filename}` | Get keywords for a specific file        |
+| POST   | `/api/keywords/{filename}` | Add/modify keywords on a file           |
+| GET    | `/api/status`              | Application health and session info     |
 
 ### 16.4 CLI Usage Example
 
@@ -1295,21 +1438,21 @@ curl -X POST http://localhost:7171/api/macro/run \
 
 ## 17. Development Phases
 
-| Phase | Focus Areas |
-|---|---|
-| **Phase 1** | Tauri + Svelte + Rust project scaffold, plugin host, FITS reader plugin, basic single-image viewer, notification bar, logging |
-| **Phase 2** | Blink engine, stretch pipeline (Auto-STF), pyramid cache, zoom, keyboard shortcuts, Info Panel, pixel tracking |
-| **Phase 3** | `photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, ReadAllTIFFFiles, RGB display/histogram, background display cache, true median histogram |
-| **Phase 4** | keyword plugins (Add/Delete/Modify/Copy), WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit handling, blink cache quality improvement, relative path resolution, window resize fix, pwd console command |
-| **Phase 5** | pcode interpreter with variable substitution, Log, RunMacro, If/Else/EndIf, For/EndFor; Macro Editor UI with syntax highlighting, save/load .phs files, Copy from Console; Quick Launch panel with persistent store, Pin to Quick Launch, right-click remove; GetKeyword, MoveFile, Print, Assert, CountFiles plugins; scope=all\|current on keyword commands; command rename refactor (ReadFIT, WriteTIFF, etc.); WriteCurrent atomic writes; ScriptResponse session_changed/display_changed flags |
-| **Phase 6** | UI cleanup complete |
-| **Phase 7** | ✅ Complete — AnalyzeFrames with 7 native metrics (background median/stddev/gradient, SNR, FWHM, eccentricity, star count); PASS/REJECT classification; PXFLAG keyword; Analysis Graph viewer-region component with sigma bands, reject threshold line, two-line tooltip, triggered_by; star annotation overlay for ComputeFWHM; consolePipe store; blink red border overlay; viewer filename overlay; theme-aware chart colors |
-| **Phase 8** | Substantially complete — moment-based FWHM (geometric mean of intensity-weighted second-order moments); 8×8 background gradient grid; 5-pixel minimum star filter; WriteFITS U16 sign conversion fix; histogram canvas width fix |
-| **Phase 9** | Embedded SQLite, Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations |
-| **Phase 10** | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI |
-| **Deferred** | Full keyword management UI, PNG/JPEG readers and writers, debayering, Auto-STF toolbar toggle, async dispatch,  |
-| **Deferred** | REST API (Axum), CLI access, external program integration, authentication middleware stub |
-| **Deferred** | WASM versions of analysis plugins, analysis benchmarking vs. WASM versions |
+| Phase        | Focus Areas                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Phase 1**  | ✅Tauri + Svelte + Rust project scaffold, plugin host, FITS reader plugin, basic single-image viewer, notification bar, logging                                                                                                                                                                                                                                                                                                                                                                       |
+| **Phase 2**  | ✅Blink engine, stretch pipeline (Auto-STF), pyramid cache, zoom, keyboard shortcuts, Info Panel, pixel tracking                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Phase 3**  | ✅`photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, ReadAllTIFFFiles, RGB display/histogram, background display cache, true median histogram                                                                                                                                                                                                                                                                                                       |
+| **Phase 4**  | ✅keyword plugins (Add/Delete/Modify/Copy), WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit handling, blink cache quality improvement, relative path resolution, window resize fix, pwd console command                                                                                                                                                                                                                             |
+| **Phase 5**  | ✅pcode interpreter with variable substitution, Log, RunMacro, If/Else/EndIf, For/EndFor; Macro Editor UI with syntax highlighting, save/load .phs files, Copy from Console; Quick Launch panel with persistent store, Pin to Quick Launch, right-click remove; GetKeyword, MoveFile, Print, Assert, CountFiles plugins; scope=all\|current on keyword commands; command rename refactor (ReadFIT, WriteTIFF, etc.); WriteCurrent atomic writes; ScriptResponse session_changed/display_changed flags |
+| **Phase 6**  | ✅UI cleanup complete                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Phase 7**  | ✅ Complete — AnalyzeFrames with 7 native metrics (background median/stddev/gradient, SNR, FWHM, eccentricity, star count); PASS/REJECT classification; PXFLAG keyword; Analysis Graph viewer-region component with sigma bands, reject threshold line, two-line tooltip, triggered_by; star annotation overlay for ComputeFWHM; consolePipe store; blink red border overlay; viewer filename overlay; theme-aware chart colors                                                                       |
+| **Phase 8**  | Substantially complete — moment-based FWHM (geometric mean of intensity-weighted second-order moments); 8×8 background gradient grid; 5-pixel minimum star filter; WriteFITS U16 sign conversion fix; histogram canvas width fix, GUI tweaks                                                                                                                                                                                                                                                         |
+| **Phase 9**  | Embedded SQLite, Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations                                                                                                                                                                                                                                                                                                                                                                                     |
+| **Phase 10** | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Deferred** | ⏸Full keyword management UI, PNG/JPEG readers and writers, debayering, Auto-STF toolbar toggle, async dispatch,                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Deferred** | ⏸REST API (Axum), CLI access, external program integration, authentication middleware stub                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Deferred** | ⏸WASM versions of analysis plugins, analysis benchmarking vs. WASM versions                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ---
 
@@ -1328,25 +1471,25 @@ Automated tests are required for each significant module, crate, and plugin. Tes
 
 ### 19.1 Scope
 
-| Module / Component | Testing Requirement |
-|---|---|
-| `photyx-xisf` crate | Full unit test suite; validated against a library of reference XISF files including compressed variants |
-| Plugin host | Tests for plugin registration, dispatch, error handling, and WASM sandbox isolation |
-| pcode interpreter | Tests for tokenization, dispatch, variable handling, arithmetic expressions, math functions, conditional logic, loop execution, and error conditions |
-| REST API (Axum) | Integration tests for all endpoints; authentication middleware stub tested in both passthrough and enforcing modes |
-| Image buffer pool | Tests for concurrent access, memory mapping, cache eviction, and multi-channel handling |
-| Built-in I/O plugins | Round-trip tests (read → write → read) for each supported format and bit depth |
-| Built-in keyword plugins | Tests for add, delete, modify, copy operations across all supported formats |
-| Built-in processing plugins | Per-plugin tests for correctness of stretch output, crop geometry, bin factor, debayer output |
-| AnalyzeFrames | Tests for metric computation correctness, classification logic against known inputs, PXFLAG keyword write, rig profile threshold application |
-| Interrogation plugins | Tests for all GetImageProperty, GetSessionProperty, GetKeyword, and Test expressions |
-| Analysis plugins (WASM) | Correctness tests against known reference data; performance benchmarks for WASM vs. native comparison |
-| Format conversion | Round-trip keyword fidelity tests across all supported format pairs |
-| Path conventions | Tests for relative, absolute, UNC, home directory, and space-containing paths on all platforms |
-| Settings persistence | Tests for read/write of all settings categories across simulated sessions |
-| Rig profiles | Tests for profile create, select, edit, delete, and threshold application |
-| Crash recovery | Tests for session file write, detection on launch, and restore behavior |
-| UI components | Svelte component tests for pixel tracking display, Info Panel, notification bar, blink controls, and frame analysis overlay |
+| Module / Component          | Testing Requirement                                                                                                                                  |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `photyx-xisf` crate         | Full unit test suite; validated against a library of reference XISF files including compressed variants                                              |
+| Plugin host                 | Tests for plugin registration, dispatch, error handling, and WASM sandbox isolation                                                                  |
+| pcode interpreter           | Tests for tokenization, dispatch, variable handling, arithmetic expressions, math functions, conditional logic, loop execution, and error conditions |
+| REST API (Axum)             | Integration tests for all endpoints; authentication middleware stub tested in both passthrough and enforcing modes                                   |
+| Image buffer pool           | Tests for concurrent access, memory mapping, cache eviction, and multi-channel handling                                                              |
+| Built-in I/O plugins        | Round-trip tests (read → write → read) for each supported format and bit depth                                                                       |
+| Built-in keyword plugins    | Tests for add, delete, modify, copy operations across all supported formats                                                                          |
+| Built-in processing plugins | Per-plugin tests for correctness of stretch output, crop geometry, bin factor, debayer output                                                        |
+| AnalyzeFrames               | Tests for metric computation correctness, classification logic against known inputs, PXFLAG keyword write, rig profile threshold application         |
+| Interrogation plugins       | Tests for all GetImageProperty, GetSessionProperty, GetKeyword, and Test expressions                                                                 |
+| Analysis plugins (WASM)     | Correctness tests against known reference data; performance benchmarks for WASM vs. native comparison                                                |
+| Format conversion           | Round-trip keyword fidelity tests across all supported format pairs                                                                                  |
+| Path conventions            | Tests for relative, absolute, UNC, home directory, and space-containing paths on all platforms                                                       |
+| Settings persistence        | Tests for read/write of all settings categories across simulated sessions                                                                            |
+| Rig profiles                | Tests for profile create, select, edit, delete, and threshold application                                                                            |
+| Crash recovery              | Tests for session file write, detection on launch, and restore behavior                                                                              |
+| UI components               | Svelte component tests for pixel tracking display, Info Panel, notification bar, blink controls, and frame analysis overlay                          |
 
 ### 19.2 Tooling
 

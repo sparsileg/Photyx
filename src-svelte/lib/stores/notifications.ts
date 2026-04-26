@@ -3,7 +3,7 @@
 
 import { writable, derived } from 'svelte/store';
 
-export type NotifType = 'idle' | 'info' | 'success' | 'warning' | 'error';
+export type NotifType = 'idle' | 'info' | 'success' | 'warning' | 'error' | 'running';
 
 export interface Notification {
     id: number;
@@ -35,6 +35,7 @@ function createNotificationStore() {
         success: (msg: string) => push(msg, 'success'),
         warning: (msg: string) => push(msg, 'warning'),
         error:   (msg: string) => push(msg, 'error'),
+        running: (msg: string) => push(msg, 'running'),
     };
 }
 

@@ -67,7 +67,7 @@ export async function loadFiles(filter: FormatFilter) {
     const entry = FORMAT_FILTERS.find(f => f.id === filter);
     if (!entry) return;
 
-    notifications.info(`Loading ${entry.label} files…`);
+    notifications.running(`Loading ${entry.label} files…`);
 
     for (const command of entry.commands) {
         const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(

@@ -26,10 +26,10 @@ This is **not** a production-quality stacker. It is a **diagnostic preview tool*
 
 Two distinct stacking modes are defined. They share the same core pipeline but differ in how frames are delivered.
 
-| Mode | Description | Status |
-|---|---|---|
-| **Batch diagnostic** | Stack all currently loaded frames on demand | In scope — implement first |
-| **Live stack** | Incrementally stack frames as they arrive from the file system | Deferred — separate feature; requires `notify`-based file watching and a background accumulation thread |
+| Mode                 | Description                                                    | Status                                                                                                  |
+| -------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Batch diagnostic** | Stack all currently loaded frames on demand                    | In scope — implement first                                                                              |
+| **Live stack**       | Incrementally stack frames as they arrive from the file system | Deferred — separate feature; requires `notify`-based file watching and a background accumulation thread |
 
 These modes must not be conflated during design or implementation. The remainder of this document addresses **batch diagnostic stacking only**.
 
@@ -141,23 +141,23 @@ place result in viewer as transient ImageBuffer
 
 ### 6.1 Existing Infrastructure Reused
 
-| Component | Reuse |
-|---|---|
-| `analysis/stars.rs` | Star detection for alignment validation |
-| `analysis/background.rs` | Sigma-clipped background for normalization |
-| `AutoStretch` plugin | Stretch for display |
-| `AppContext.image_buffers` | Source frames |
-| `get_current_frame` display path | Render stacked result |
-| pcode console | Progress and error reporting |
+| Component                        | Reuse                                      |
+| -------------------------------- | ------------------------------------------ |
+| `analysis/stars.rs`              | Star detection for alignment validation    |
+| `analysis/background.rs`         | Sigma-clipped background for normalization |
+| `AutoStretch` plugin             | Stretch for display                        |
+| `AppContext.image_buffers`       | Source frames                              |
+| `get_current_frame` display path | Render stacked result                      |
+| pcode console                    | Progress and error reporting               |
 
 ### 6.2 New Infrastructure Required
 
-| Component | Notes |
-|---|---|
-| `StackFrames` plugin | Built-in native plugin; wraps the stacking pipeline |
-| FFT phase correlation | New Rust implementation; candidate crate: `rustfft` |
+| Component                    | Notes                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| `StackFrames` plugin         | Built-in native plugin; wraps the stacking pipeline                           |
+| FFT phase correlation        | New Rust implementation; candidate crate: `rustfft`                           |
 | Transient `ImageBuffer` slot | Mechanism to hold a stacked result in `AppContext` without a source file path |
-| Alignment validation logic | Thin wrapper coordinating FFT result + star position check |
+| Alignment validation logic   | Thin wrapper coordinating FFT result + star position check                    |
 
 ### 6.3 Plugin Classification
 
@@ -186,16 +186,16 @@ This is deferred to a design pass before implementation of this feature.
 
 ## 8. Future Enhancements
 
-| Enhancement | Notes |
-|---|---|
-| Rotation and scale alignment | Extend FFT/star-match to solve similarity transform |
-| Median stacking | More robust; slower |
-| Sigma-clipped mean | Better rejection of outliers; more complex |
-| Star rejection | Per-pixel outlier rejection based on star positions |
-| Background normalization across frames | Useful for sessions with variable sky background |
-| Calibration frame support | Bias, dark, flat subtraction |
-| Live stack mode | Incremental accumulation as frames arrive; requires `notify` crate file watching and background thread; explicitly separate feature |
-| Per-frame contribution display | Analysis Graph-style visualization of per-frame metrics (see §7) |
+| Enhancement                            | Notes                                                                                                                               |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Rotation and scale alignment           | Extend FFT/star-match to solve similarity transform                                                                                 |
+| Median stacking                        | More robust; slower                                                                                                                 |
+| Sigma-clipped mean                     | Better rejection of outliers; more complex                                                                                          |
+| Star rejection                         | Per-pixel outlier rejection based on star positions                                                                                 |
+| Background normalization across frames | Useful for sessions with variable sky background                                                                                    |
+| Calibration frame support              | Bias, dark, flat subtraction                                                                                                        |
+| Live stack mode                        | Incremental accumulation as frames arrive; requires `notify` crate file watching and background thread; explicitly separate feature |
+| Per-frame contribution display         | Analysis Graph-style visualization of per-frame metrics (see §7)                                                                    |
 
 ---
 
@@ -217,15 +217,15 @@ This is deferred to a design pass before implementation of this feature.
 
 Estimates assume the Photyx plugin and display infrastructure is already in place (it is).
 
-| Component | Estimated Effort |
-|---|---|
-| Load + normalize (via `background.rs`) | 2–4 hours |
-| FFT phase correlation | 4–6 hours |
-| Alignment validation (via `stars.rs`) | 2–3 hours |
-| Average stacking | 2–3 hours |
-| `StackFrames` plugin integration | 4–6 hours (wiring into `AppContext`, display pipeline, transient buffer) |
-| pcode console reporting | 1–2 hours |
-| **Total** | **~15–24 hours** |
+| Component                              | Estimated Effort                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------ |
+| Load + normalize (via `background.rs`) | 2–4 hours                                                                |
+| FFT phase correlation                  | 4–6 hours                                                                |
+| Alignment validation (via `stars.rs`)  | 2–3 hours                                                                |
+| Average stacking                       | 2–3 hours                                                                |
+| `StackFrames` plugin integration       | 4–6 hours (wiring into `AppContext`, display pipeline, transient buffer) |
+| pcode console reporting                | 1–2 hours                                                                |
+| **Total**                              | **~15–24 hours**                                                         |
 
 ---
 

@@ -4,6 +4,8 @@
     import { notifications } from '../stores/notifications';
     import { selectDirectory, closeSession } from '../commands';
     import { getCurrentWindow } from '@tauri-apps/api/window';
+    import { invoke } from '@tauri-apps/api/core';
+    import { consolePipe } from '../stores/consoleHistory';
 
     let openMenu = $state<string | null>(null);
 
@@ -18,18 +20,73 @@
     function action(a: string) {
         close();
         switch (a) {
-            case 'analysis-graph': ui.setShowAnalysisGraph(true); brea
-            case 'close-session':    closeSession(); break;
-            case 'exit':         getCurrentWindow().close(); break;
-            case 'keywords':     ui.togglePanel('keywords'); break;
-            case 'macro-library': ui.togglePanel('macro-lib'); break;
-            case 'plugin-manager': ui.togglePanel('plugins'); break;
-            case 'run-macro':    ui.togglePanel('macro-editor'); break;
-            case 'select-directory': selectDirectory(); break;
-            case 'theme-dark':   ui.setTheme('dark'); break;
-            case 'theme-light':  ui.setTheme('light'); break;
-            case 'theme-matrix': ui.setTheme('matrix'); break;k;
+            case 'analyze-frames':   runAnalyzeFrames(); break;
+            case 'analysis-results': ui.showView('analysisResults'); break;
+            case 'analysis-graph':   ui.showView('analysisGraph'); break;
+            case 'close-session':     closeSession(); break;
+            case 'contour-plot':      notifications.info('Contour Plot — not yet implemented'); break;
+            case 'exit':              getCurrentWindow().close(); break;
+            case 'keywords':          ui.togglePanel('keywords'); break;
+            case 'macro-library':     ui.togglePanel('macro-lib'); break;
+            case 'plugin-manager':    ui.togglePanel('plugins'); break;
+            case 'run-macro':         ui.togglePanel('macro-editor'); break;
+            case 'select-directory':  selectDirectory(); break;
+            case 'theme-dark':        ui.setTheme('dark'); break;
+            case 'theme-light':       ui.setTheme('light'); break;
+            case 'theme-matrix':      ui.setTheme('matrix'); break;
             default: notifications.info(`${a} — not yet implemented`);
+        }
+    }
+
+    async function runAnalyzeFrames() {
+        notifications.running('AnalyzeFrames running…');
+        try {
+            const response = await invoke<{
+                success: boolean;
+                output: string | null;
+                error: string | null;
+            }>('dispatch_command', {
+                request: { command: 'AnalyzeFrames', args: {} }
+            });
+            if (response.success) {
+                const msg = response.output ?? 'AnalyzeFrames complete';
+                consolePipe.set({ id: Date.now(), text: msg, type: 'success' });
+                notifications.success('AnalyzeFrames complete');
+            } else {
+                const err = response.error ?? 'AnalyzeFrames failed';
+                consolePipe.set({ id: Date.now(), text: err, type: 'error' });
+                notifications.error(err);
+            }
+        } catch (err) {
+            const msg = `AnalyzeFrames error: ${err}`;
+            consolePipe.set({ id: Date.now(), text: msg, type: 'error' });
+            notifications.error(msg);
+        }
+    }
+
+    async function runAutoStretch() {
+        try {
+            const response = await invoke<{
+                success: boolean;
+                output: string | null;
+                error: string | null;
+            }>('dispatch_command', {
+                request: { command: 'AutoStretch', args: {} }
+            });
+            if (response.success) {
+                const msg = response.output ?? 'AutoStretch applied';
+                consolePipe.set({ id: Date.now(), text: msg, type: 'success' });
+                notifications.success(msg);
+                ui.requestFrameRefresh();
+            } else {
+                const err = response.error ?? 'AutoStretch failed';
+                consolePipe.set({ id: Date.now(), text: err, type: 'error' });
+                notifications.error(err);
+            }
+        } catch (err) {
+            const msg = `AutoStretch error: ${err}`;
+            consolePipe.set({ id: Date.now(), text: msg, type: 'error' });
+            notifications.error(msg);
         }
     }
 </script>
@@ -52,17 +109,11 @@
             { label: 'Theme: Light', action: 'theme-light' },
             { label: 'Theme: Matrix',action: 'theme-matrix' },
         ]},
-        { name: 'Process', items: [
-            { label: 'Auto Stretch',   action: 'auto-stretch' },
-        ]},
         { name: 'Analyze', items: [
-            { label: 'FWHM',           action: 'fwhm' },
-            { label: 'Star Count',     action: 'star-count' },
-            { label: 'Eccentricity',   action: 'eccentricity' },
-            { label: 'Median Value',   action: 'median-value' },
-            { label: 'Contour Plot',   action: 'contour' },
-            { sep: true },
-            { label: 'Analysis Graph', action: 'analysis-graph' },
+            { label: 'Analyze Frames',   action: 'analyze-frames' },
+            { label: 'Analysis Results', action: 'analysis-results' },
+            { label: 'Analysis Graph',   action: 'analysis-graph' },
+            { label: 'Contour Plot',     action: 'contour-plot' },
         ]},
         { name: 'Tools', items: [
             { label: 'Settings',     action: 'settings' },

@@ -32,7 +32,6 @@ function loadFromStorage(): QuickLaunchEntry[] {
 function defaultEntries(): QuickLaunchEntry[] {
     return [
         { id: uid(), name: 'List KW',    script: 'ListKeywords',  icon: '🏷', protected: true },
-        { id: uid(), name: 'AutoStretch',script: 'AutoStretch',   icon: '✨', protected: true },
         { id: uid(), name: 'FWHM',       script: 'ComputeFWHM',   icon: '⭐', protected: true },
         { id: uid(), name: 'Star Count', script: 'CountStars',    icon: '🔢', protected: true },
     ];

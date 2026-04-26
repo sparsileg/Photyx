@@ -89,14 +89,14 @@
     }
 
     $effect(() => {
-        if ($ui.showAnalysisGraph && !data) loadData();
+        if ($ui.activeView === 'analysisGraph' && !data) loadData();
     });
 
     $effect(() => {
         const _d  = data;
         const _m1 = metric1;
         const _m2 = metric2;
-        if ($ui.showAnalysisGraph && canvas && data) {
+        if ($ui.activeView === 'analysisGraph' && canvas && data) {
             requestAnimationFrame(() => drawChart());
         }
     });
@@ -119,7 +119,7 @@
     });
 
     $effect(() => {
-        if ($ui.showAnalysisGraph) setTimeout(resizeCanvas, 50);
+        if ($ui.activeView === 'analysisGraph') setTimeout(resizeCanvas, 50);
     });
 
     // ── Chart ─────────────────────────────────────────────────────────────────
@@ -444,7 +444,7 @@
     async function onClick(e: MouseEvent) {
         const hit = hitTest(e);
         if (!hit) return;
-        ui.setShowAnalysisGraph(false);
+        ui.showView(null);
         await displayFrame(hit.frame.index);
     }
 </script>
@@ -469,7 +469,7 @@
         </select>
 
         <button class="ag-btn" onclick={loadData}>↻ Refresh</button>
-        <button class="ag-btn ag-close" onclick={() => ui.setShowAnalysisGraph(false)}>✕ Close</button>
+        <button class="ag-btn ag-close" onclick={() => ui.showView(null)}>✕ Close</button>
     </div>
 
     <div id="ag-canvas-wrap" bind:this={wrap}>

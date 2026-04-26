@@ -7,9 +7,19 @@ export type Theme = 'dark' | 'light' | 'matrix';
 export type ZoomLevel = 'fit' | '25' | '50' | '100' | '200';
 export type PanelId = 'files' | 'keywords' | 'macro-editor' | 'macro-lib' | 'plugins' | null;
 
+// ── Viewer-region view registry ───────────────────────────────────────────────
+// To add a new view: add one entry here. showView() handles the rest.
+export const VIEWS = [
+    'analysisGraph',
+    'analysisResults',
+] as const;
+
+export type ViewName = typeof VIEWS[number];
+
 export interface UIState {
     theme: Theme;
     activePanel: PanelId;
+    activeView: ViewName | null;
     zoomLevel: ZoomLevel;
     quickLaunchVisible: boolean;
     activeChannel: 'rgb' | 'r' | 'g' | 'b';
@@ -26,7 +36,6 @@ export interface UIState {
     blinkPlaying: boolean;
     showQualityFlags:  boolean;
     currentBlinkFlag:  string;
-    showAnalysisGraph: boolean;
     annotationToken:   number;
 }
 
@@ -38,6 +47,7 @@ function createUIStore() {
     const initial: UIState = {
         theme: saved ?? 'matrix',
         activePanel: null,
+        activeView: null,
         zoomLevel: 'fit',
         quickLaunchVisible: true,
         activeChannel: 'rgb',
@@ -54,7 +64,6 @@ function createUIStore() {
         blinkPlaying: false,
         showQualityFlags:  true,
         currentBlinkFlag:  '',
-        showAnalysisGraph: false,
         annotationToken:   0,
     };
 
@@ -91,12 +100,15 @@ function createUIStore() {
         closeKeywordModal: () => update(s => ({ ...s, keywordModalOpen: false })),
         setBlinkPlaying: (v: boolean) => update(s => ({ ...s, blinkPlaying: v })),
         setShowQualityFlags: (v: boolean) => update(s => ({ ...s, showQualityFlags: v })),
-        setCurrentBlinkFlag:  (v: string)  => update(s => ({ ...s, currentBlinkFlag: v })),
-        setShowAnalysisGraph: (v: boolean) => update(s => ({ ...s, showAnalysisGraph: v })),
+        setCurrentBlinkFlag: (v: string) => update(s => ({ ...s, currentBlinkFlag: v })),
         refreshAnnotations: () => update(s => ({ ...s, annotationToken: Math.abs(s.annotationToken) + 1 })),
         clearAnnotations:   () => update(s => ({ ...s, annotationToken: -(Math.abs(s.annotationToken) + 1) })),
-    };
 
+        // ── View management ───────────────────────────────────────────────────
+        // To show a view: ui.showView('analysisGraph')
+        // To return to image viewer: ui.showView(null)
+        showView: (view: ViewName | null) => update(s => ({ ...s, activeView: view })),
+    };
 }
 
 export const ui = createUIStore();

@@ -12,6 +12,13 @@ use std::io::Cursor;
 use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, ColorSpace, PixelData};
 
+// ── AutoStretch defaults ──────────────────────────────────────────────────
+// Adjust these constants to tune the default stretch behaviour.
+// shadowClip:       PixInsight default is -2.8. Less negative = brighter shadows.
+// targetBackground: PixInsight default is 0.25. Lower = darker background / less stretch.
+const DEFAULT_SHADOW_CLIP:       f32 = -2.8;
+const DEFAULT_TARGET_BACKGROUND: f32 = 0.15;
+
 pub struct AutoStretch;
 
 impl PhotonPlugin for AutoStretch {
@@ -25,15 +32,15 @@ impl PhotonPlugin for AutoStretch {
                 name:        "shadowclip".to_string(),
                 param_type:  ParamType::Float,
                 required:    false,
-                description: "Shadow clipping factor (PixInsight default: -2.8)".to_string(),
-                default:     Some("-2.8".to_string()),
+                description: format!("Shadow clipping factor (default: {})", DEFAULT_SHADOW_CLIP),
+                default:     Some(DEFAULT_SHADOW_CLIP.to_string()),
             },
             ParamSpec {
                 name:        "targetbackground".to_string(),
                 param_type:  ParamType::Float,
                 required:    false,
-                description: "Target background value 0.0-1.0 (default 0.25)".to_string(),
-                default:     Some("0.25".to_string()),
+                description: format!("Target background value 0.0-1.0 (default: {})", DEFAULT_TARGET_BACKGROUND),
+                default:     Some(DEFAULT_TARGET_BACKGROUND.to_string()),
             },
         ]
     }
@@ -41,11 +48,11 @@ impl PhotonPlugin for AutoStretch {
     fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
         let target_bg = args.get("targetbackground")
             .and_then(|v| v.parse::<f32>().ok())
-            .unwrap_or(0.25);
+            .unwrap_or(DEFAULT_TARGET_BACKGROUND);
 
         let shadow_clip = args.get("shadowclip")
             .and_then(|v| v.parse::<f32>().ok())
-            .unwrap_or(-2.8);
+            .unwrap_or(DEFAULT_SHADOW_CLIP);
 
         let path = ctx.file_list.get(ctx.current_frame).cloned().ok_or_else(|| {
             PluginError::new("NO_IMAGE", "No image loaded. Use ReadAll first.")
