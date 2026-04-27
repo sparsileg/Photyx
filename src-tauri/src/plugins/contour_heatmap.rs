@@ -483,23 +483,19 @@ impl PhotonPlugin for ContourHeatmap {
         {
             use photyx_xisf::{XisfWriter, WriteOptions, Codec};
             use crate::plugins::write_xisf::buffer_to_xisf_image;
-
             let xisf_image = buffer_to_xisf_image(&heatmap_buffer)
                 .map_err(|e| PluginError::new("XISF_CONVERT", &e))?;
-
             let options = WriteOptions {
                 codec:           Codec::None,
                 shuffle:         false,
                 creator_app:     "Photyx".to_string(),
                 block_alignment: 4096,
             };
-
             XisfWriter::write(&out_path, &xisf_image, &options)
                 .map_err(|e| PluginError::new("XISF_WRITE", &format!("Failed to write heatmap: {}", e)))?;
-
             info!("ContourHeatmap: wrote {}", out_path);
-            ctx.variables.insert("NEW_FILE".to_string(), out_path.clone());
         }
+        ctx.variables.insert("NEW_FILE".to_string(), out_path.clone());
 
         // ── Build response ────────────────────────────────────────────────────
 
