@@ -121,25 +121,26 @@ export async function displayFrame(index: number) {
         session.setCurrentFrame(index);
 
         // Check if display cache already populated for this frame
-        const cacheCheck = await invoke<{
-            current_frame: number;
-            file_count: number;
-            buffer: { display_width: number } | null;
-        }>('debug_buffer_info');
+        // disable check so autostretch is no longer automatically done for every image
+        // const cacheCheck = await invoke<{
+        //     current_frame: number;
+        //     file_count: number;
+        //     buffer: { display_width: number } | null;
+        // }>('debug_buffer_info');
 
-        const needsStretch = !cacheCheck.buffer || cacheCheck.buffer.display_width === 0;
+        // const needsStretch = !cacheCheck.buffer || cacheCheck.buffer.display_width === 0;
 
-        if (needsStretch) {
-            const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(
-                'dispatch_command',
-                { request: { command: 'AutoStretch', args: {} } }
-            );
+        // if (needsStretch) {
+        //     const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(
+        //         'dispatch_command',
+        //         { request: { command: 'AutoStretch', args: {} } }
+        //     );
 
-            if (!result.success) {
-                notifications.error(result.error ?? 'AutoStretch failed');
-                return;
-            }
-        }
+        //     if (!result.success) {
+        //         notifications.error(result.error ?? 'AutoStretch failed');
+        //         return;
+        //     }
+        // }
 
         // Fetch buffer metadata for the current frame
         const info = await invoke<{

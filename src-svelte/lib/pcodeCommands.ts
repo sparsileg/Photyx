@@ -30,7 +30,7 @@ export const PCODE_COMMANDS = new Set([
     'ClearAnnotations',
     'ComputeEccentricity',
     'ComputeFWHM',
-    'ContourPlot',
+    'ContourHeatmap',
     'CountStars',
     'GetHistogram',
     'GetImageProperty',

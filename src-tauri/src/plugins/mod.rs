@@ -8,6 +8,7 @@ pub mod cache_frames;
 pub mod clear_session;
 pub mod compute_eccentricity;
 pub mod compute_fwhm;
+pub mod contour_heatmap;
 pub mod get_histogram;
 pub mod highlight_clipping;
 pub mod keywords;

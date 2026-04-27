@@ -219,6 +219,7 @@ pub fn run() {
     registry.register(Arc::new(plugins::clear_session::ClearSession));
     registry.register(Arc::new(plugins::compute_eccentricity::ComputeEccentricity));
     registry.register(Arc::new(plugins::compute_fwhm::ComputeFWHM));
+    registry.register(Arc::new(plugins::contour_heatmap::ContourHeatmap));
     registry.register(Arc::new(plugins::get_histogram::GetHistogram));
     registry.register(Arc::new(plugins::highlight_clipping::SnrEstimatePlugin));
     registry.register(Arc::new(plugins::keywords::AddKeyword));
@@ -431,13 +432,16 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
                 let snaps: Vec<_> = ctx.file_list.iter().filter_map(|path| {
                     let buf = ctx.image_buffers.get(path)?;
                     let pixels = buf.pixels.as_ref()?;
+                    let is_prerendered = buf.keywords.get("PXTYPE")
+                        .map(|kw| kw.value == "HEATMAP")
+                        .unwrap_or(false);
                     use crate::context::PixelData;
                     let snap = match pixels {
                         PixelData::U8(v)  => PixelData::U8(v.clone()),
                         PixelData::U16(v) => PixelData::U16(v.clone()),
                         PixelData::F32(v) => PixelData::F32(v.clone()),
                     };
-                    Some((path.clone(), buf.width as usize, buf.height as usize, snap))
+                    Some((path.clone(), buf.width as usize, buf.height as usize, buf.channels as usize, is_prerendered, snap))
                 }).collect();
                 snaps
             };
@@ -445,30 +449,64 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
             const MAX_DISPLAY_W: usize = 1200;
             let results: Vec<(String, Vec<u8>)> = pool.install(|| {
                 use rayon::prelude::*;
-                snapshots.par_iter().filter_map(|(path, src_w, src_h, pixels)| {
+                snapshots.par_iter().filter_map(|(path, src_w, src_h, channels, is_prerendered, pixels)| {
                     let step = if *src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
                     let disp_w = src_w / step;
                     let disp_h = src_h / step;
                     let pixel_count = disp_w * disp_h;
-                    let mut display: Vec<f32> = Vec::with_capacity(pixel_count);
+                    let is_rgb = *channels == 3;
 
                     use crate::context::PixelData;
+
+                    // ── Prerendered RGB (e.g. heatmap): downsample directly, no stretch ──
+                    if *is_prerendered && is_rgb {
+                        if let PixelData::U8(v) = pixels {
+                            let mut rgb = Vec::with_capacity(pixel_count * 3);
+                            for oy in 0..disp_h {
+                                for ox in 0..disp_w {
+                                    let sy = oy * step;
+                                    let sx = ox * step;
+                                    let idx = (sy * src_w + sx) * 3;
+                                    rgb.push(v[idx]);
+                                    rgb.push(v[idx + 1]);
+                                    rgb.push(v[idx + 2]);
+                                }
+                            }
+                            let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
+                            let mut buf = std::io::Cursor::new(Vec::new());
+                            use image::codecs::jpeg::JpegEncoder;
+                            JpegEncoder::new_with_quality(&mut buf, 90).encode_image(&img).ok()?;
+                            return Some((path.clone(), buf.into_inner()));
+                        }
+                    }
+
+                    // ── Normal path: extract luminance, apply STF stretch, encode ──
+                    let mut display: Vec<f32> = Vec::with_capacity(pixel_count);
+
                     match pixels {
                         PixelData::U16(v) => {
                             for oy in 0..disp_h {
                                 for ox in 0..disp_w {
-                                    let mut sum = 0u32; let mut count = 0u32;
+                                    let mut sum = 0.0f32; let mut count = 0u32;
                                     for dy in 0..step {
                                         let sy = oy * step + dy;
                                         if sy >= *src_h { continue; }
                                         for dx in 0..step {
                                             let sx = ox * step + dx;
                                             if sx >= *src_w { continue; }
-                                            sum += v[sy * src_w + sx] as u32;
-                                            count += 1;
+                                            let luma = if is_rgb {
+                                                let idx = (sy * src_w + sx) * 3;
+                                                let r = v[idx]     as f32 / 65535.0;
+                                                let g = v[idx + 1] as f32 / 65535.0;
+                                                let b = v[idx + 2] as f32 / 65535.0;
+                                                0.2126 * r + 0.7152 * g + 0.0722 * b
+                                            } else {
+                                                v[sy * src_w + sx] as f32 / 65535.0
+                                            };
+                                            sum += luma; count += 1;
                                         }
                                     }
-                                    display.push(sum as f32 / (count as f32 * 65535.0));
+                                    display.push(if count > 0 { sum / count as f32 } else { 0.0 });
                                 }
                             }
                         }
@@ -482,8 +520,19 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
                                         for dx in 0..step {
                                             let sx = ox * step + dx;
                                             if sx >= *src_w { continue; }
-                                            let val = v[sy * src_w + sx];
-                                            if val.is_finite() { sum += val; count += 1; }
+                                            let luma = if is_rgb {
+                                                let idx = (sy * src_w + sx) * 3;
+                                                let r = v[idx];
+                                                let g = v[idx + 1];
+                                                let b = v[idx + 2];
+                                                if r.is_finite() && g.is_finite() && b.is_finite() {
+                                                    0.2126 * r + 0.7152 * g + 0.0722 * b
+                                                } else { continue; }
+                                            } else {
+                                                let val = v[sy * src_w + sx];
+                                                if val.is_finite() { val } else { continue; }
+                                            };
+                                            sum += luma; count += 1;
                                         }
                                     }
                                     display.push(if count > 0 { sum / count as f32 } else { 0.0 });
@@ -493,18 +542,26 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
                         PixelData::U8(v) => {
                             for oy in 0..disp_h {
                                 for ox in 0..disp_w {
-                                    let mut sum = 0u32; let mut count = 0u32;
+                                    let mut sum = 0.0f32; let mut count = 0u32;
                                     for dy in 0..step {
                                         let sy = oy * step + dy;
                                         if sy >= *src_h { continue; }
                                         for dx in 0..step {
                                             let sx = ox * step + dx;
                                             if sx >= *src_w { continue; }
-                                            sum += v[sy * src_w + sx] as u32;
-                                            count += 1;
+                                            let luma = if is_rgb {
+                                                let idx = (sy * src_w + sx) * 3;
+                                                let r = v[idx]     as f32 / 255.0;
+                                                let g = v[idx + 1] as f32 / 255.0;
+                                                let b = v[idx + 2] as f32 / 255.0;
+                                                0.2126 * r + 0.7152 * g + 0.0722 * b
+                                            } else {
+                                                v[sy * src_w + sx] as f32 / 255.0
+                                            };
+                                            sum += luma; count += 1;
                                         }
                                     }
-                                    display.push(sum as f32 / (count as f32 * 255.0));
+                                    display.push(if count > 0 { sum / count as f32 } else { 0.0 });
                                 }
                             }
                         }

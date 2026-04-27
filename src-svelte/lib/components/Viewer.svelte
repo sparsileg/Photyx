@@ -590,12 +590,12 @@
     let needsFullRes = $derived((() => {
         const img = $session.loadedImages[$session.fileList[$session.currentFrame]];
         if (!img) return false;
-        const displayCacheWidth = img.displayWidth || img.width;
+        const DISPLAY_CACHE_WIDTH = 1200;
         if ($ui.zoomLevel === 'fit') {
-            return viewerWidth > displayCacheWidth;
+            return viewerWidth > DISPLAY_CACHE_WIDTH;
         }
         const factor = ZOOM_FACTORS[$ui.zoomLevel] ?? 1;
-        return factor * img.width > displayCacheWidth;
+        return factor * img.width > DISPLAY_CACHE_WIDTH;
     })());
 
     // ── Mouse handling ────────────────────────────────────────────────────────

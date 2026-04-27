@@ -39,47 +39,48 @@
     const ALL_COMMANDS = [...PCODE_COMMANDS].sort();
 
     const ARG_HINTS: Record<string, string> = {
+        addkeyword:         'name=  value=  comment=  scope=',
         addkeyword:         'name=  value=  comment=',
+        assert:             'expression=',
         autostretch:        'shadowClip=  targetBackground=',
         binimage:           'factor=',
         blinksequence:      'fps=',
+        contourheatmap:     'palette=  contour_levels=  threshold=  saturation=',
         copykeyword:        'from=  to=',
+        countfiles:         '',
         cropimage:          'x=  y=  width=  height=',
         debayerimage:       'method=  pattern=',
+        deletekeyword:      'name=  scope=',
         deletekeyword:      'name=',
         filterbykeyword:    'name=  value=',
         gethistogram:       '',
         getimageproperty:   'property=',
         getsessionproperty: 'property=',
+        log:                'path=  append=',
+        modifykeyword:      'name=  value=  comment=  scope=',
         modifykeyword:      'name=  value= comment=',
-        runmacro:           'filename=',
-        selectdirectory:    'path=',
-        set:                '<varname> = <value>',
-        setzoom:            'level=',
-        writeallfitfiles:   'destination=  overwrite=',
+        movefile:           'destination=',
+        print:              'message=',
+        readall:            '',
         readallfiles:       '',
-        writecurrentfiles:  '',
-        writealltifffiles:  'destination=  overwrite=',
-        writeallxisffiles:  'destination=  overwrite=',
-        writefit:           'destination=  overwrite=',
-        writetiff:          'destination=  overwrite=',
-        writexisf:          'destination=  overwrite=  compress=',
-        writecurrent:       '',
         readfit:            '',
         readtiff:           '',
         readxisf:           '',
-        readall:            '',
-        addkeyword:         'name=  value=  comment=  scope=',
-        deletekeyword:      'name=  scope=',
-        modifykeyword:      'name=  value=  comment=  scope=',
-        movefile:           'destination=',
+        runmacro:           'filename=',
+        selectdirectory:    'path=',
+        set:                '<varname> = <value>',
         setframe:           'index=',
-        log:                'path=  append=',
-        countfiles:         '',
-        print:              'message=',
-        assert:             'expression=',
+        setzoom:            'level=',
+        writeallfitfiles:   'destination=  overwrite=',
+        writealltifffiles:  'destination=  overwrite=',
+        writeallxisffiles:  'destination=  overwrite=',
+        writecurrent:       '',
+        writecurrentfiles:  '',
+        writefit:           'destination=  overwrite=',
         writejpeg:          'filename=  destination=  quality=',
         writepng:           'filename=  destination=',
+        writetiff:          'destination=  overwrite=',
+        writexisf:          'destination=  overwrite=  compress=',
     };
 
     function append(text: string, type: ConsoleLine['type']) {
@@ -123,7 +124,7 @@
             append('  Query:    GetImageProperty GetSessionProperty Test', 'output');
             append('  Process:  AutoStretch CropImage BinImage DebayerImage', 'output');
             append('  View:     BlinkSequence CacheFrames SetZoom', 'output');
-            append('  Analysis: ComputeFWHM CountStars ComputeEccentricity MedianValue ContourPlot', 'output');
+            append('  Analysis: ComputeFWHM CountStars ComputeEccentricity MedianValue ContourHeatmap', 'output');
             append('  Script:   Set Print Echo CountFiles RunMacro', 'output');
             append('  Console:  pwd Help Clear Version', 'output');
             return true;
@@ -223,6 +224,16 @@
         }
         if (cmd === 'computefwhm') {
             ui.refreshAnnotations();
+        }
+        if (cmd === 'contourheatmap') {
+            try {
+                const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
+                session.setFileList(s.fileList);
+                session.setCurrentFrame(s.currentFrame);
+                ui.requestFrameRefresh();
+            } catch (e) {
+                notifications.error(`Session sync failed: ${e}`);
+            }
         }
         if (cmd === 'setframe' || cmd === 'autostretch') {
             ui.clearAnnotations();
