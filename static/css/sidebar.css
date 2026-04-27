@@ -70,6 +70,14 @@
     border-bottom: 1px solid var(--border-color);
     background: var(--card-bg);
     color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
 }
 
 .panel-close {
@@ -165,16 +173,54 @@
 
 /* ── Keyword editor panel ───────────────────────────────────────────────── */
 
+.kw-empty {
+    padding: 12px 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.kw-selected td {
+    background: var(--card-hover);
+    border-left: 2px solid var(--primary-color);
+}
+
+.kw-input {
+    width: 100%;
+    font-family: inherit;
+    font-size: 14px;
+    background: var(--input-bg);
+    border: 1px solid var(--primary-color);
+    color: var(--text-color);
+    padding: 1px 4px;
+    outline: none;
+}
+
+.kw-btn-write {
+    color: var(--success-color);
+    border-color: var(--success-color);
+}
+
+.kw-btn-write:hover:not(:disabled) {
+    background: var(--success-color);
+    color: var(--primary-text);
+}
+
+.kw-btn-write:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
 .keyword-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 11px;
+    font-size: 14px;
 }
 
 .keyword-table th {
     text-align: left;
     padding: 4px 6px;
-    font-size: 10px;
+    font-size: 13px;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -205,7 +251,7 @@
 
 .kw-comment {
     color: var(--text-secondary);
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .kw-actions {
@@ -291,7 +337,194 @@
     box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
-/* ── Macro library panel ────────────────────────────────────────────────── */
+/* ── Macro library panel (dynamic) ─────────────────────────────────────── */
+
+.panel-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.panel-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-secondary);
+    padding: 2px 4px;
+    line-height: 1;
+}
+
+.panel-action-btn:hover {
+    color: var(--primary-color);
+}
+
+.ml-empty {
+    padding: 12px 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.ml-item {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-color-light);
+}
+
+.ml-item:hover {
+    background: var(--card-hover);
+}
+
+.ml-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.ml-item-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 3px;
+}
+
+.ml-name {
+    font-size: 12px;
+    color: var(--primary-color);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ml-size {
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.ml-filename {
+    font-size: 10px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ml-item-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.ml-action-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 10px;
+    padding: 1px 6px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.ml-action-btn:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.ml-pin-active {
+    border-color: var(--success-color) !important;
+    color: var(--success-color) !important;
+}
+
+.ml-run-btn {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+    font-weight: 600;
+}
+
+.ml-run-btn:hover:not(:disabled) {
+    background: var(--primary-color);
+    color: var(--primary-text);
+}
+
+.ml-run-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.ml-delete-btn {
+    color: var(--error-color) !important;
+    border-color: var(--error-color) !important;
+}
+
+.ml-delete-btn:hover {
+    background: var(--error-color) !important;
+    color: #000 !important;
+}
+
+.ml-confirm-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    margin-top: 4px;
+    background: rgba(255, 0, 0, 0.08);
+    border: 1px solid var(--error-color);
+    font-size: 11px;
+    color: var(--error-color);
+}
+
+.ml-pinned-warning {
+    background: rgba(255, 170, 0, 0.08);
+    border-color: var(--warning-color);
+    color: var(--warning-color);
+}
+
+.ml-confirm-bar span {
+    flex: 1;
+}
+
+.ml-confirm-yes {
+    background: none;
+    border: 1px solid var(--error-color);
+    color: var(--error-color);
+    font-size: 10px;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+
+.ml-confirm-yes:hover {
+    background: var(--error-color);
+    color: #000;
+}
+
+.ml-confirm-no {
+    background: none;
+    border: 1px solid var(--text-secondary);
+    color: var(--text-secondary);
+    font-size: 10px;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+
+.ml-confirm-no:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.ml-footer {
+    padding: 4px 8px;
+    font-size: 10px;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border-color);
+    background: var(--card-bg);
+    flex-shrink: 0;
+}
+
+/* ── Plugin manager panel ───────────────────────────────────────────────── */
 
 .macro-lib-item {
     padding: 6px 8px;

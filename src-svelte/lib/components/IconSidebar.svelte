@@ -9,11 +9,10 @@
     import PluginManager from './panels/PluginManager.svelte';
 
     const icons: { id: PanelId; icon: string; tooltip: string }[] = [
-        { id: 'files',        icon: '📁', tooltip: 'File Browser' },
-        { id: 'keywords',     icon: '🏷',  tooltip: 'Keyword Editor' },
-        { id: 'macro-editor', icon: '{}',  tooltip: 'Macro Editor' },
-        { id: 'macro-lib',    icon: '☰',   tooltip: 'Macro Library' },
-        { id: 'plugins',      icon: '⬡',   tooltip: 'Plugin Manager' },
+        { id: 'files',    icon: '📁', tooltip: 'File Browser' },
+        { id: 'keywords', icon: '🏷',  tooltip: 'Keyword Editor' },
+        { id: 'macro-lib',icon: '☰',   tooltip: 'Macro Library' },
+        { id: 'plugins',  icon: '⬡',   tooltip: 'Plugin Manager' },
     ];
 
     function onWindowClick(e: MouseEvent) {
@@ -38,7 +37,7 @@
 </div>
 
 {#if $ui.activePanel !== null && $ui.activePanel !== 'macro-editor'}
-<div id="panel-container" class="open">
+<div id="panel-container" class="open" class:wide={$ui.activePanel === 'keywords'}>
     {#if $ui.activePanel === 'files'}
         <FileBrowser />
     {:else if $ui.activePanel === 'keywords'}

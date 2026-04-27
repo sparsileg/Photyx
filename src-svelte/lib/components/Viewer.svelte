@@ -442,6 +442,7 @@
         const url = $ui.blinkImageUrl;
         if (url && url !== lastBlinkUrl) {
             lastBlinkUrl = url;
+            ui.clearAnnotations();
             drawImageFromUrl(url);
         } else if (!url) {
             lastBlinkUrl = null;

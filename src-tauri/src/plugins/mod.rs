@@ -23,6 +23,7 @@ pub mod set_frame;
 pub mod star_count;
 pub mod write_current_files;
 pub mod write_fits;
+pub mod write_frame;
 pub mod write_tiff;
 pub mod write_xisf;
 

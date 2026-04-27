@@ -768,6 +768,12 @@ A narrow vertical bar on the left edge of the content area. Each icon toggles a 
 - Install new WASM plugins from file
 - View plugin parameter specifications and settings
 
+**Enable/Disable scope:** The enable/disable control applies to WASM user
+plugins only. Built-in native plugins are always active and do not expose
+an enable/disable toggle. The Plugin Manager displays native plugins with
+a status of "Active" (read-only) and WASM plugins with a toggleable
+enabled/disabled state.
+
 ### 8.7 Image Viewer
 
 The image viewer is the central and dominant UI element. It displays the current image with the active stretch applied.

@@ -132,8 +132,8 @@ fn run_script(
 // ── Tauri command: list registered plugins ────────────────────────────────────
 
 #[tauri::command]
-fn list_plugins(state: State<PhotoxState>) -> Vec<String> {
-    state.registry.list()
+fn list_plugins(state: State<PhotoxState>) -> Vec<serde_json::Value> {
+    state.registry.list_with_details()
 }
 
 // ── Tauri command: get session state ─────────────────────────────────────────
@@ -236,6 +236,7 @@ pub fn run() {
     registry.register(Arc::new(plugins::star_count::CountStarsPlugin));
     registry.register(Arc::new(plugins::write_current_files::WriteCurrent));
     registry.register(Arc::new(plugins::write_fits::WriteFIT));
+    registry.register(Arc::new(plugins::write_frame::WriteFrame));
     registry.register(Arc::new(plugins::write_tiff::WriteTIFF));
     registry.register(Arc::new(plugins::write_xisf::WriteXISF));
 
@@ -265,7 +266,13 @@ pub fn run() {
             get_pixel,
             get_session,
             get_star_positions,
+            delete_macro,
+            get_macros_dir,
+            rename_macro,
+            list_log_files,
+            list_macros,
             list_plugins,
+            read_log_file,
             run_script,
             start_background_cache,
         ])
@@ -879,6 +886,239 @@ fn get_star_positions(state: State<PhotoxState>) -> serde_json::Value {
         .collect();
 
     serde_json::json!({ "stars": positions })
+}
+
+// ── Tauri command: get macros directory ──────────────────────────────────────
+
+#[tauri::command]
+fn get_macros_dir() -> String {
+    crate::utils::get_macros_dir()
+        .to_str()
+        .unwrap_or("")
+        .replace('\\', "/")
+}
+
+// ── Tauri command: list macros ────────────────────────────────────────────────
+
+#[tauri::command]
+fn list_macros(state: State<PhotoxState>) -> Result<Vec<serde_json::Value>, String> {
+    // Resolve macros directory — ctx.log_dir pattern; future: ctx.macros_dir
+    let macros_path = {
+        let _ctx = state.context.lock().expect("context lock poisoned");
+        crate::utils::get_macros_dir()
+    };
+
+    // Create directory if it doesn't exist
+    if !macros_path.exists() {
+        std::fs::create_dir_all(&macros_path)
+            .map_err(|e| format!("Failed to create Macros directory: {}", e))?;
+    }
+
+    let mut entries: Vec<serde_json::Value> = std::fs::read_dir(&macros_path)
+        .map_err(|e| e.to_string())?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path  = entry.path();
+            if path.extension()?.to_str()? != "phs" { return None; }
+            let filename  = path.file_name()?.to_str()?.to_string();
+            let stem      = path.file_stem()?.to_str()?.to_string();
+            let full_path = path.to_str()?.to_string();
+            let tooltip   = extract_macro_tooltip(&full_path);
+            let lines     = std::fs::read_to_string(&full_path)
+                .map(|s| s.lines().count())
+                .unwrap_or(0);
+            Some(serde_json::json!({
+                "name":     stem,
+                "filename": filename,
+                "path":     full_path,
+                "lines":    lines,
+                "tooltip":  tooltip,
+            }))
+        })
+        .collect();
+
+    // Sort alphabetically by name
+    entries.sort_by(|a, b| {
+        let na = a["name"].as_str().unwrap_or("");
+        let nb = b["name"].as_str().unwrap_or("");
+        na.cmp(nb)
+    });
+
+    Ok(entries)
+}
+
+/// Reads the first contiguous block of # comment lines from a .phs file
+/// and returns them as a tooltip string with # stripped.
+fn extract_macro_tooltip(path: &str) -> String {
+    let Ok(contents) = std::fs::read_to_string(path) else { return String::new() };
+    let lines: Vec<&str> = contents.lines()
+        .take_while(|l| l.trim().starts_with('#') || l.trim().is_empty())
+        .filter(|l| l.trim().starts_with('#'))
+        .map(|l| l.trim().trim_start_matches('#').trim())
+        .collect();
+    lines.join("\n")
+}
+
+// ── Tauri command: rename macro ───────────────────────────────────────────────
+
+#[tauri::command]
+fn rename_macro(old_path: String, new_name: String) -> Result<String, String> {
+    let old = std::path::PathBuf::from(&old_path);
+    let dir = old.parent()
+        .ok_or_else(|| "Cannot determine macro directory".to_string())?;
+    let safe = new_name.replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-' && c != ' ', "").trim().to_string();
+    if safe.is_empty() {
+        return Err("Invalid macro name".to_string());
+    }
+    let new_path = dir.join(format!("{}.phs", safe));
+    if new_path.exists() {
+        return Err(format!("A macro named '{}' already exists", safe));
+    }
+    std::fs::rename(&old, &new_path)
+        .map_err(|e| format!("Rename failed: {}", e))?;
+    Ok(new_path.to_str().unwrap_or("").replace('\\', "/"))
+}
+
+// ── Tauri command: delete macro ───────────────────────────────────────────────
+
+#[tauri::command]
+fn delete_macro(path: String) -> Result<(), String> {
+    std::fs::remove_file(&path)
+        .map_err(|e| format!("Failed to delete macro: {}", e))
+}
+
+// ── Tauri command: list log files ─────────────────────────────────────────────
+
+#[tauri::command]
+fn list_log_files(
+    state: State<PhotoxState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    // Resolve log directory — ctx.log_dir overrides the default
+    let log_dir = {
+        let ctx = state.context.lock().expect("context lock poisoned");
+        ctx.log_dir.clone()
+    };
+
+    let log_path = if let Some(dir) = log_dir {
+        std::path::PathBuf::from(dir)
+    } else {
+        crate::utils::get_log_dir()
+    };
+
+    if !log_path.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut entries: Vec<serde_json::Value> = std::fs::read_dir(&log_path)
+        .map_err(|e| e.to_string())?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path  = entry.path();
+            if path.extension()?.to_str()? != "log" { return None; }
+            let meta     = std::fs::metadata(&path).ok()?;
+            let modified = meta.modified().ok()?;
+            let modified_secs = modified
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let size = meta.len();
+            let filename = path.file_name()?.to_str()?.to_string();
+            let full_path = path.to_str()?.to_string();
+            Some(serde_json::json!({
+                "filename":      filename,
+                "path":          full_path,
+                "size":          size,
+                "modified_secs": modified_secs,
+            }))
+        })
+        .collect();
+
+    // Sort newest first
+    entries.sort_by(|a, b| {
+        let ta = a["modified_secs"].as_u64().unwrap_or(0);
+        let tb = b["modified_secs"].as_u64().unwrap_or(0);
+        tb.cmp(&ta)
+    });
+
+    Ok(entries)
+}
+
+// ── Tauri command: read and parse a log file ──────────────────────────────────
+
+#[tauri::command]
+fn read_log_file(path: String) -> Result<Vec<serde_json::Value>, String> {
+    let contents = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Cannot read log file: {}", e))?;
+
+    let mut lines: Vec<serde_json::Value> = Vec::new();
+
+    for raw in contents.lines() {
+        // Expected format:
+        // 2026-04-26T06:40:43.946544Z  INFO photyx_lib::module: message
+        // 2026-04-26T06:42:14.158053Z DEBUG tao::module: message
+        let parsed = parse_log_line(raw);
+        lines.push(parsed);
+    }
+
+    Ok(lines)
+}
+
+fn parse_log_line(line: &str) -> serde_json::Value {
+    // Split on first 'Z ' to get timestamp and remainder
+    if let Some(z_pos) = line.find("Z ") {
+        let timestamp = &line[..z_pos + 1]; // include the Z
+        let rest = line[z_pos + 1..].trim();
+
+        // rest is like " INFO photyx_lib::module: message"
+        // or           "DEBUG tao::module: message"
+        let level;
+        let remainder;
+
+        if rest.starts_with("ERROR") {
+            level = "ERROR";
+            remainder = rest[5..].trim();
+        } else if rest.starts_with("WARN") {
+            level = "WARN";
+            remainder = rest[4..].trim();
+        } else if rest.starts_with("INFO") {
+            level = "INFO";
+            remainder = rest[4..].trim();
+        } else if rest.starts_with("DEBUG") {
+            level = "DEBUG";
+            remainder = rest[5..].trim();
+        } else if rest.starts_with("TRACE") {
+            level = "TRACE";
+            remainder = rest[5..].trim();
+        } else {
+            level = "INFO";
+            remainder = rest;
+        }
+
+        // remainder is "photyx_lib::module: message"
+        // Split on first ': ' to separate module from message
+        let (module, message) = if let Some(colon_pos) = remainder.find(": ") {
+            (&remainder[..colon_pos], remainder[colon_pos + 2..].trim())
+        } else {
+            ("", remainder)
+        };
+
+        serde_json::json!({
+            "timestamp": timestamp,
+            "level":     level,
+            "module":    module,
+            "message":   message,
+            "raw":       line,
+        })
+    } else {
+        // Non-conforming line — return as raw continuation
+        serde_json::json!({
+            "timestamp": "",
+            "level":     "RAW",
+            "module":    "",
+            "message":   line,
+            "raw":       line,
+        })
+    }
 }
 
 // ----------------------------------------------------------------------

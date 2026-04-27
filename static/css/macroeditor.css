@@ -255,3 +255,49 @@
 .me-dirty-indicator   { color: var(--warning-fg, #ffaa33); }
 
 @keyframes blink { 50% { opacity: 0; } }
+
+/* ── Unsaved changes confirmation bar ───────────────────────────────────────── */
+.me-confirm-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    background: rgba(255, 170, 0, 0.12);
+    border-bottom: 1px solid var(--warning-color);
+    color: var(--warning-color);
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.me-confirm-bar span {
+    flex: 1;
+}
+
+.me-confirm-btn {
+    padding: 2px 12px;
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid;
+    background: none;
+}
+
+.me-confirm-yes {
+    color: var(--error-color);
+    border-color: var(--error-color);
+}
+
+.me-confirm-yes:hover {
+    background: var(--error-color);
+    color: #000;
+}
+
+.me-confirm-no {
+    color: var(--text-secondary);
+    border-color: var(--text-secondary);
+}
+
+.me-confirm-no:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}

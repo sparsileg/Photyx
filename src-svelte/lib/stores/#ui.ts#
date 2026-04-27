@@ -113,7 +113,7 @@ function createUIStore() {
             macroEditorFile: file,
             activePanel: 'macro-editor',
         })),
-        showMacroLibrary:  () => update(s => ({ ...s, activePanel: 'macro-lib', macroEditorFile: null })),
+        showMacroLibrary:  () => update(s => ({ ...s, activePanel: 'macro-lib' })),
         setBlinkPlaying: (v: boolean) => update(s => ({ ...s, blinkPlaying: v })),
         setShowQualityFlags: (v: boolean) => update(s => ({ ...s, showQualityFlags: v })),
         setCurrentBlinkFlag: (v: string) => update(s => ({ ...s, currentBlinkFlag: v })),

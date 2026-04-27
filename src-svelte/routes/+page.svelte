@@ -1,4 +1,5 @@
 <!-- +page.svelte — Photyx main application shell. Spec §8.1 -->
+
 <script lang="ts">
     import { onMount } from 'svelte';
     import { ui } from '../lib/stores/ui';
@@ -10,6 +11,8 @@
     import IconSidebar from '../lib/components/IconSidebar.svelte';
     import InfoPanel from '../lib/components/InfoPanel.svelte';
     import KeywordModal from '../lib/components/KeywordModal.svelte';
+    import AboutModal from '../lib/components/AboutModal.svelte';
+    import LogViewer from '../lib/components/LogViewer.svelte';
     import MacroEditor from '../lib/components/panels/MacroEditor.svelte';
     import MenuBar from '../lib/components/MenuBar.svelte';
     import QuickLaunch from '../lib/components/QuickLaunch.svelte';
@@ -59,6 +62,12 @@
 {#if $ui.keywordModalOpen}
     <KeywordModal onclose={() => ui.closeKeywordModal()} />
 {/if}
+{#if $ui.logViewerOpen}
+    <LogViewer onclose={() => ui.closeLogViewer()} />
+{/if}
+{#if $ui.aboutOpen}
+    <AboutModal onclose={() => ui.closeAbout()} />
+{/if}
 
 <div id="app">
     <MenuBar />
@@ -66,9 +75,9 @@
     <QuickLaunch />
     <div id="content-area">
         <IconSidebar />
-        {#if $ui.activePanel === 'macro-editor'}
-            <MacroEditor />
-        {/if}
+            {#if $ui.activePanel === 'macro-editor'}
+                <MacroEditor />
+            {/if}
 
             <div id="viewer-region">
             {#if $ui.activeView === 'analysisGraph'}

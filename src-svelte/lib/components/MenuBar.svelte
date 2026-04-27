@@ -20,13 +20,14 @@
     function action(a: string) {
         close();
         switch (a) {
-            case 'analyze-frames':   runAnalyzeFrames(); break;
-            case 'analysis-results': ui.showView('analysisResults'); break;
-            case 'analysis-graph':   ui.showView('analysisGraph'); break;
+            case 'analyze-frames':    runAnalyzeFrames(); break;
+            case 'analysis-results':  ui.showView('analysisResults'); break;
+            case 'analysis-graph':    ui.showView('analysisGraph'); break;
             case 'close-session':     closeSession(); break;
             case 'contour-plot':      notifications.info('Contour Plot — not yet implemented'); break;
             case 'exit':              getCurrentWindow().close(); break;
             case 'keywords':          ui.togglePanel('keywords'); break;
+            case 'log-viewer':        ui.openLogViewer(); break;
             case 'macro-library':     ui.togglePanel('macro-lib'); break;
             case 'plugin-manager':    ui.togglePanel('plugins'); break;
             case 'run-macro':         ui.togglePanel('macro-editor'); break;
@@ -34,6 +35,7 @@
             case 'theme-dark':        ui.setTheme('dark'); break;
             case 'theme-light':       ui.setTheme('light'); break;
             case 'theme-matrix':      ui.setTheme('matrix'); break;
+            case 'about':             ui.openAbout(); break;
             default: notifications.info(`${a} — not yet implemented`);
         }
     }

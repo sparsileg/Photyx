@@ -56,25 +56,7 @@ pub fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
 
 /// Returns the OS-appropriate log directory per spec §10
 fn get_log_dir() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(appdata).join("Photyx").join("logs")
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home)
-            .join("Library")
-            .join("Application Support")
-            .join("Photyx")
-            .join("logs")
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home).join(".config").join("Photyx").join("logs")
-    }
+    crate::utils::get_log_dir()
 }
 
 /// Generate a log filename for this session: photyx_YYYY-MM-DD_HH-MM-SS.log

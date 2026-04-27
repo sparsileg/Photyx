@@ -113,6 +113,7 @@ export async function closeSession() {
 export async function displayFrame(index: number) {
     console.trace('displayFrame called with index:', index);
     try {
+        ui.clearAnnotations();
         await invoke('dispatch_command', {
             request: { command: 'SetFrame', args: { index: String(index) } }
         });

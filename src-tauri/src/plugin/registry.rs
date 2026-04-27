@@ -72,6 +72,25 @@ impl PluginRegistry {
         names.sort();
         names
     }
+
+    // List all registered plugins with name, version, and type
+    pub fn list_with_details(&self) -> Vec<serde_json::Value> {
+        let guard = self.plugins
+            .read()
+            .expect("plugin registry lock poisoned");
+        let mut plugins: Vec<serde_json::Value> = guard.values().map(|p| {
+            serde_json::json!({
+                "name":        p.name(),
+                "version":     p.version(),
+                "plugin_type": p.plugin_type(),
+            })
+        }).collect();
+        plugins.sort_by(|a, b| {
+            a["name"].as_str().unwrap_or("")
+                .cmp(b["name"].as_str().unwrap_or(""))
+        });
+        plugins
+    }
 }
 
 impl Default for PluginRegistry {

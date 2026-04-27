@@ -1,5 +1,4 @@
 /* ── Modal ──────────────────────────────────────────────────────── */
-
 .modal-overlay {
     position: fixed;
     top: 0; left: 0;
@@ -11,7 +10,6 @@
     align-items: center;
     justify-content: center;
 }
-
 .modal-box {
     background: var(--sidebar-bg);
     border: 1px solid var(--border-color);
@@ -22,7 +20,6 @@
     flex-direction: column;
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
 }
-
 .modal-header {
     display: flex;
     align-items: center;
@@ -32,7 +29,6 @@
     background: var(--card-bg);
     flex: 0 0 auto;
 }
-
 .modal-title {
     font-size: 11px;
     font-weight: 600;
@@ -41,22 +37,19 @@
     color: var(--primary-color);
     flex: 0 0 auto;
 }
-
 .modal-search {
     flex: 1;
     font-family: inherit;
-    font-size: 11px;
+    font-size: 13px;
     background: var(--input-bg);
     border: 1px solid var(--border-color);
     color: var(--text-color);
     padding: 2px 8px;
     outline: none;
 }
-
 .modal-search:focus {
     border-color: var(--primary-color);
 }
-
 .modal-close {
     cursor: pointer;
     font-size: 14px;
@@ -64,43 +57,37 @@
     padding: 2px 4px;
     flex: 0 0 auto;
 }
-
 .modal-close:hover {
     color: var(--error-color);
 }
-
 .modal-body {
     flex: 1 1 auto;
     overflow-y: scroll;
     min-height: 0;
 }
-
 .modal-loading {
     padding: 20px;
     text-align: center;
-    font-size: 11px;
+    font-size: 13px;
     color: var(--text-secondary);
 }
-
 .modal-footer {
     flex: 0 0 auto;
     padding: 4px 12px;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--text-secondary);
     border-top: 1px solid var(--border-color);
     background: var(--card-bg);
 }
-
 .kw-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 11px;
+    font-size: 13px;
 }
-
 .kw-table th {
     text-align: left;
     padding: 4px 10px;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -110,31 +97,87 @@
     position: sticky;
     top: 0;
 }
-
 .kw-table td {
     padding: 3px 10px;
     border-bottom: 1px solid var(--border-color-light);
     vertical-align: top;
 }
-
 .kw-table tr:hover td {
     background: var(--card-hover);
 }
-
 .kw-name {
     color: var(--primary-color);
     font-weight: 600;
     white-space: nowrap;
     width: 100px;
 }
-
 .kw-value {
     color: var(--text-color);
     white-space: nowrap;
     width: 160px;
 }
 
+
 .kw-comment {
     color: var(--text-secondary);
     font-size: 10px;
+}
+
+/* ── About modal ─────────────────────────────────────────────────────────── */
+
+.about-box {
+    width: 560px;
+    max-width: 88vw;
+}
+
+.about-body {
+    padding: 24px 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    overflow-y: auto;
+}
+
+.about-title {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    color: var(--primary-color);
+    text-align: center;
+}
+
+.about-version {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+    letter-spacing: 0.05em;
+}
+
+.about-divider {
+    width: 100%;
+    border-top: 1px solid var(--border-color);
+    margin: 4px 0;
+}
+
+.about-text {
+    font-size: 13px;
+    color: var(--text-color);
+    line-height: 1.7;
+    text-align: left;
+    margin: 0;
+}
+
+.about-stack {
+    display: flex;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    letter-spacing: 0.04em;
+}
+
+.about-copy {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-align: center;
 }

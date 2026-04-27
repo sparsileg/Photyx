@@ -546,6 +546,34 @@ External components that need to write to the pcode console (e.g. `QuickLaunch.s
 
 ---
 
+### 3.39 Plugin Manager
+
+The Plugin Manager panel (`PluginManager.svelte`) displays all registered
+plugins with name, version, and type. Plugin type (`Native` or `WASM`) is
+returned from the Rust side via `list_plugins` — the `PhotonPlugin` trait
+has a `plugin_type()` method with a default implementation returning
+`"Native"`. WASM plugins will override this when implemented in Phase 10.
+
+**Enable/Disable scope:** Enable/disable is intentionally restricted to
+WASM plugins only. Native plugins are compiled into the binary and cannot
+be disabled. The UI should reflect this — native plugin rows have no
+toggle, only a static "Active" status. WASM plugin rows will have a toggle
+when Phase 10 is implemented. Do not add enable/disable controls to native
+plugin rows.
+
+---
+
+### 3.40 Histogram ADU Mouse Tracking
+
+When the mouse moves over the histogram canvas in the Info Panel, track
+and display the ADU value corresponding to the mouse's horizontal position.
+The display should show the ADU value (0–65535 scale) at the cursor's
+x-position on the histogram, updated in real time as the mouse moves.
+This gives the user a quick way to read specific ADU values off the
+histogram without needing to hover over the image itself.
+
+---
+
 ## 4. Tauri Commands (Implemented)
 
 | Command | Description |

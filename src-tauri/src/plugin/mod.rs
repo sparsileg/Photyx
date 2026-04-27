@@ -88,6 +88,7 @@ pub trait PhotonPlugin: Send + Sync {
     fn version(&self)     -> &str;
     fn description(&self) -> &str;
     fn parameters(&self)  -> Vec<ParamSpec>;
+    fn plugin_type(&self) -> &str { "Native" }  // WASM plugins override this
     fn execute(
         &self,
         ctx:  &mut AppContext,

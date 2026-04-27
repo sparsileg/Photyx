@@ -1,0 +1,135 @@
+/* logviewer.css — Log viewer modal styles */
+
+/* Overrides modal-box dimensions for log viewer */
+.lv-wide {
+    width: 860px;
+    max-width: 88vw;
+    max-height: 75vh;
+}
+
+/* ── File picker selected row ────────────────────────────────────────────── */
+
+.lv-picker-selected td {
+    background: var(--card-hover);
+    border-left: 2px solid var(--primary-color);
+}
+
+/* ── Selected file name in header ────────────────────────────────────────── */
+
+.lv-selected-name {
+    flex: 1;
+    font-size: 11px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lv-change-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 10px;
+    padding: 2px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.lv-change-btn:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+/* ── Level toggles ───────────────────────────────────────────────────────── */
+
+.lv-toggles {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--card-bg);
+    flex-shrink: 0;
+}
+
+.lv-check {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: monospace;
+    user-select: none;
+}
+
+.lv-check input[type="checkbox"] {
+    cursor: pointer;
+    accent-color: var(--primary-color);
+    width: 12px;
+    height: 12px;
+}
+
+.lv-check-error span { color: var(--error-color); }
+.lv-check-warn  span { color: var(--warning-color); }
+.lv-check-info  span { color: var(--success-color); }
+.lv-check-debug span { color: var(--text-secondary); }
+
+.lv-line-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* ── Log output ──────────────────────────────────────────────────────────── */
+
+.lv-output {
+    overflow: scroll !important;
+}
+
+.lv-output table {
+    min-width: max-content;
+}
+
+/* ── Log table cells ─────────────────────────────────────────────────────── */
+
+.lv-ts {
+    color: var(--text-secondary);
+    white-space: nowrap;
+    font-size: 13px;
+}
+
+.lv-level {
+    font-weight: bold;
+    white-space: nowrap;
+    font-size: 13px;
+}
+
+.lv-msg {
+    white-space: nowrap;
+    font-size: 13px;
+}
+
+.lv-error .lv-level { color: var(--error-color); }
+.lv-error .lv-msg   { color: var(--error-color); }
+.lv-warn  .lv-level { color: var(--warning-color); }
+.lv-warn  .lv-msg   { color: var(--warning-color); }
+.lv-info  .lv-level { color: var(--success-color); }
+.lv-info  .lv-msg   { color: var(--text-color); }
+.lv-debug .lv-level { color: var(--text-secondary); }
+.lv-debug .lv-msg   { color: var(--text-secondary); }
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
+.lv-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.lv-tail-indicator {
+    color: var(--warning-color);
+    font-size: 10px;
+    animation: status-pulse 1.2s ease-in-out infinite;
+}

@@ -106,6 +106,7 @@
             wasOnBlinkTab = true;
             ui.setBlinkTabActive(true);
             ui.setBlinkModeActive(true);
+            ui.clearAnnotations();
             blinkFrame = $session.currentFrame;
             fetchFrameFlags();
         } else if (wasOnBlinkTab) {

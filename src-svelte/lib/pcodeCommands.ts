@@ -13,6 +13,7 @@ export const PCODE_COMMANDS = new Set([
     // ── Write commands ───────────────────────────────────────────────────────
     'WriteCurrent',
     'WriteFIT',
+    'WriteFrame',
     'WriteJPEG',
     'WritePNG',
     'WriteTIFF',
