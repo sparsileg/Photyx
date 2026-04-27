@@ -2,7 +2,7 @@
 <script lang="ts">
     import { ui } from '../stores/ui';
     import { notifications } from '../stores/notifications';
-    import { selectDirectory, closeSession, applyAutoStretch } from '../commands';
+    import { selectDirectory, closeSession, applyAutoStretch, loadFile } from '../commands';
     import { getCurrentWindow } from '@tauri-apps/api/window';
     import { invoke } from '@tauri-apps/api/core';
     import { consolePipe } from '../stores/consoleHistory';
@@ -99,6 +99,7 @@ async function runContourHeatmap() {
                 success: boolean;
                 output: string | null;
                 error: string | null;
+                data: Record<string, unknown> | null;
             }>('dispatch_command', {
                 request: { command: 'ContourHeatmap', args: {} }
             });
@@ -106,6 +107,8 @@ async function runContourHeatmap() {
                 const msg = response.output ?? 'ContourHeatmap complete';
                 consolePipe.set({ id: Date.now(), text: msg, type: 'success' });
                 notifications.success(msg);
+                const filePath = response.data?.output as string | null;
+                if (filePath) await loadFile(filePath);
             } else {
                 const err = response.error ?? 'ContourHeatmap failed';
                 consolePipe.set({ id: Date.now(), text: err, type: 'error' });

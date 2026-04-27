@@ -42,6 +42,7 @@ pub struct DispatchResponse {
     pub success: bool,
     pub output:  Option<String>,
     pub error:   Option<String>,
+    pub data:    Option<serde_json::Value>,
 }
 
 #[tauri::command]
@@ -52,22 +53,25 @@ fn dispatch_command(
     let mut ctx = state.context.lock().expect("context lock poisoned");
     match state.registry.dispatch(&mut ctx, &request.command, &request.args) {
         Ok(output) => {
-            let msg = match output {
-                PluginOutput::Success        => None,
-                PluginOutput::Message(m)     => Some(m),
-                PluginOutput::Value(v)       => Some(v),
-                PluginOutput::Values(vs)     => Some(vs.join("\n")),
-                PluginOutput::Data(d)        => Some(
-                    d.get("message")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or("Done")
-                        .to_string()
-               ),
-           };
-            DispatchResponse { success: true, output: msg, error: None }
+            let (msg, data) = match output {
+                PluginOutput::Success        => (None, None),
+                PluginOutput::Message(m)     => (Some(m), None),
+                PluginOutput::Value(v)       => (Some(v), None),
+                PluginOutput::Values(vs)     => (Some(vs.join("\n")), None),
+                PluginOutput::Data(d)        => (
+                    Some(
+                        d.get("message")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("Done")
+                            .to_string()
+                    ),
+                    Some(d),
+                ),
+            };
+            DispatchResponse { success: true, output: msg, error: None, data }
         }
         Err(e) => {
-            DispatchResponse { success: false, output: None, error: Some(e.message) }
+            DispatchResponse { success: false, output: None, error: Some(e.message), data: None }
         }
     }
 }
@@ -462,7 +466,9 @@ pub fn run() {
             rename_macro,
             list_log_files,
             list_macros,
+            get_variable,
             list_plugins,
+            load_file,
             read_log_file,
             run_script,
             start_background_cache,
@@ -1347,6 +1353,140 @@ fn parse_log_line(line: &str) -> serde_json::Value {
             "raw":       line,
         })
     }
+}
+
+/// Load a file from disk and return it as a base64 JPEG data URL for preview.
+/// Does NOT add the file to the session file list or image buffers.
+#[tauri::command]
+fn load_file(path: String) -> Result<String, String> {
+    use photyx_xisf::XisfReader;
+    use photyx_xisf::PixelData as XisfPixelData;
+    use crate::context::PixelData;
+    // Read the XISF file
+    let xisf_image = XisfReader::open(&path)
+        .map_err(|e| format!("Failed to read '{}': {}", path, e))?
+        .read_image(0)
+        .map_err(|e| format!("Failed to decode '{}': {}", path, e))?;
+
+    let width    = xisf_image.width as usize;
+    let height   = xisf_image.height as usize;
+    let channels = xisf_image.channels as usize;
+
+    // Check if prerendered (PXTYPE=HEATMAP)
+    let is_prerendered = xisf_image.fits_keywords.iter()
+        .any(|kw| kw.name == "PXTYPE" && kw.value == "HEATMAP");
+
+    // Convert pixels
+    let pixels = match &xisf_image.pixels {
+        XisfPixelData::U8(v)  => PixelData::U8(v.clone()),
+        XisfPixelData::U16(v) => PixelData::U16(v.clone()),
+        XisfPixelData::F32(v) => PixelData::F32(v.clone()),
+        _ => return Err("Unsupported pixel format in preview file".to_string()),
+    };
+
+    const MAX_DISPLAY_W: usize = 1200;
+    let step = if width > MAX_DISPLAY_W { (width + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
+    let disp_w = width / step;
+    let disp_h = height / step;
+    let pixel_count = disp_w * disp_h;
+
+    let mut rgb = Vec::with_capacity(pixel_count * 3);
+
+    // Prerendered RGB: downsample directly, no stretch
+    if is_prerendered && channels == 3 {
+        if let PixelData::U8(v) = &pixels {
+            for oy in 0..disp_h {
+                for ox in 0..disp_w {
+                    let sy = oy * step;
+                    let sx = ox * step;
+                    let idx = (sy * width + sx) * 3;
+                    rgb.push(v[idx]);
+                    rgb.push(v[idx + 1]);
+                    rgb.push(v[idx + 2]);
+                }
+            }
+        }
+    } else {
+        // Raw render — no stretch
+        match &pixels {
+            PixelData::U16(v) => {
+                for oy in 0..disp_h {
+                    for ox in 0..disp_w {
+                        let mut sum = 0u32; let mut count = 0u32;
+                        for dy in 0..step {
+                            let sy = oy * step + dy;
+                            if sy >= height { continue; }
+                            for dx in 0..step {
+                                let sx = ox * step + dx;
+                                if sx >= width { continue; }
+                                sum += v[sy * width + sx] as u32;
+                                count += 1;
+                            }
+                        }
+                        let val = (sum as f32 / (count as f32 * 65535.0) * 255.0) as u8;
+                        rgb.push(val); rgb.push(val); rgb.push(val);
+                    }
+                }
+            }
+            PixelData::F32(v) => {
+                for oy in 0..disp_h {
+                    for ox in 0..disp_w {
+                        let mut sum = 0.0f32; let mut count = 0u32;
+                        for dy in 0..step {
+                            let sy = oy * step + dy;
+                            if sy >= height { continue; }
+                            for dx in 0..step {
+                                let sx = ox * step + dx;
+                                if sx >= width { continue; }
+                                let val = v[sy * width + sx];
+                                if val.is_finite() { sum += val; count += 1; }
+                            }
+                        }
+                        let val = (sum / count as f32 * 255.0).clamp(0.0, 255.0) as u8;
+                        rgb.push(val); rgb.push(val); rgb.push(val);
+                    }
+                }
+            }
+            PixelData::U8(v) => {
+                for oy in 0..disp_h {
+                    for ox in 0..disp_w {
+                        let mut sum = 0u32; let mut count = 0u32;
+                        for dy in 0..step {
+                            let sy = oy * step + dy;
+                            if sy >= height { continue; }
+                            for dx in 0..step {
+                                let sx = ox * step + dx;
+                                if sx >= width { continue; }
+                                sum += v[sy * width + sx] as u32;
+                                count += 1;
+                            }
+                        }
+                        let val = (sum as f32 / (count as f32 * 255.0) * 255.0) as u8;
+                        rgb.push(val); rgb.push(val); rgb.push(val);
+                    }
+                }
+            }
+        }
+    }
+
+    let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
+        .ok_or_else(|| "Failed to create preview image".to_string())?;
+    let mut buf = std::io::Cursor::new(Vec::new());
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 90)
+        .encode_image(&img)
+        .map_err(|e| e.to_string())?;
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+    Ok(format!("data:image/jpeg;base64,{}", b64))
+}
+
+/// Get a pcode variable value from AppContext.
+#[tauri::command]
+fn get_variable(name: String, state: State<PhotoxState>) -> Option<String> {
+    let ctx = state.context.lock().expect("context lock poisoned");
+    ctx.variables.get(&name.to_uppercase())
+        .or_else(|| ctx.variables.get(&name))
+        .cloned()
 }
 
 // ----------------------------------------------------------------------

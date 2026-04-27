@@ -109,6 +109,16 @@ export async function closeSession() {
     notifications.info('Session cleared.');
 }
 
+/** Load a file from disk and display it in the viewer without adding to the session */
+export async function loadFile(path: string) {
+    try {
+        const dataUrl = await invoke<string>('load_file', { path });
+        ui.setDisplayImage(dataUrl);
+    } catch (e) {
+        notifications.error(`Failed to load file: ${e}`);
+    }
+}
+
 /** Apply AutoStretch to the current frame and display the result */
 export async function applyAutoStretch(shadowClip?: number, targetBackground?: number) {
     try {

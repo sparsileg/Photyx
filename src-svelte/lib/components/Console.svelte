@@ -27,7 +27,7 @@
     let nextId = 2;
 
     import { PCODE_COMMANDS } from '../pcodeCommands';
-    import { applyAutoStretch } from '../commands';
+    import { applyAutoStretch, loadFile } from '../commands';
 
     // Watch for external console output
     $effect(() => {
@@ -165,10 +165,11 @@
 
         try {
             const response = await invoke<{
-                success: boolean;
-                output: string | null;
-                error: string | null;
-            }>('dispatch_command', {
+            success: boolean;
+            output: string | null;
+            error: string | null;
+            data: Record<string, unknown> | null;
+        }>('dispatch_command', {
                 request: {
                     command: parsed.command,
                     args: parsed.args,
@@ -181,7 +182,7 @@
                         if (line) append(line, 'success');
                     });
                 }
-                await syncSessionState(cmdLower, parsed.args, response.output);
+                await syncSessionState(cmdLower, parsed.args, response.output, response.data);
             } else {
                 append(response.error ?? 'Unknown error', 'error');
                 notifications.error(response.error ?? 'Unknown error');
@@ -193,7 +194,7 @@
         }
     }
 
-    async function syncSessionState(cmd: string, args: Record<string, string>, output: string | null) {
+    async function syncSessionState(cmd: string, args: Record<string, string>, output: string | null, data: Record<string, unknown> | null = null) {
         if (cmd === 'selectdirectory' && args.path) {
             session.setDirectory(args.path);
             session.setFileList([]);
@@ -230,14 +231,9 @@
             ui.refreshAnnotations();
         }
         if (cmd === 'contourheatmap') {
-            try {
-                const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
-                session.setFileList(s.fileList);
-                session.setCurrentFrame(s.currentFrame);
-                ui.requestFrameRefresh();
-            } catch (e) {
-                notifications.error(`Session sync failed: ${e}`);
-            }
+            if (output) notifications.success(output);
+            const filePath = data?.output as string | null;
+            if (filePath) await loadFile(filePath);
         }
         if (cmd === 'setframe' || cmd === 'autostretch') {
             ui.clearAnnotations();

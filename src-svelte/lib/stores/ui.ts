@@ -28,6 +28,7 @@ export interface UIState {
     consoleExpanded: boolean;
     blinkImageUrl: string | null;
     autostretchImageUrl: string | null;  // set by AutoStretch, cleared on frame change
+    displayImageUrl: string | null;      // set by load_file, cleared on frame change
     blinkCached: boolean;
     blinkCaching: boolean;
     blinkTabActive: boolean;
@@ -60,6 +61,7 @@ function createUIStore() {
         consoleExpanded: false,
         blinkImageUrl: null,
         autostretchImageUrl: null,
+        displayImageUrl: null,
         blinkCached: false,
         blinkCaching: false,
         blinkTabActive: false,
@@ -98,7 +100,8 @@ function createUIStore() {
         requestFrameRefresh: () => update(s => ({
             ...s,
             frameRefreshToken: s.frameRefreshToken + 1,
-            autostretchImageUrl: null,   // clear stretch on any frame change
+            autostretchImageUrl: null,
+            displayImageUrl: null,
         })),
         requestViewerClear: () => update(s => ({ ...s, viewerClearToken: s.viewerClearToken + 1 })),
         clearViewer: () => update(s => ({
@@ -109,6 +112,7 @@ function createUIStore() {
         toggleConsole: () => update(s => ({ ...s, consoleExpanded: !s.consoleExpanded })),
         setBlinkFrame: (url: string | null) => update(s => ({ ...s, blinkImageUrl: url })),
         setAutostretchFrame: (url: string | null) => update(s => ({ ...s, autostretchImageUrl: url })),
+        setDisplayImage: (url: string | null) => update(s => ({ ...s, displayImageUrl: url })),
         setBlinkCached: (v: boolean) => update(s => ({ ...s, blinkCached: v })),
         setBlinkCaching: (v: boolean) => update(s => ({ ...s, blinkCaching: v })),
         setBlinkTabActive: (v: boolean) => update(s => ({ ...s, blinkTabActive: v })),

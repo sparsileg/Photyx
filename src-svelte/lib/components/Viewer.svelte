@@ -462,13 +462,22 @@
         }
     });
 
+    // ── Display image (e.g. heatmap loaded via load_file) ─────────────────────
+    let lastDisplayImageUrl: string | null = null;
+    $effect(() => {
+        const url = $ui.displayImageUrl;
+        if (url && url !== lastDisplayImageUrl) {
+            lastDisplayImageUrl = url;
+            drawImageFromUrl(url);
+        } else if (!url) {
+            lastDisplayImageUrl = null;
+        }
+    });
     // ── Frame refresh effects ─────────────────────────────────────────────────
     let lastToken = 0;
     let lastNeedsFullRes = false;
-
     $effect(() => {
         const token = $ui.frameRefreshToken;
-        console.log('frameRefreshToken changed:', token);
         if (token > 0 && token !== lastToken) {
             lastToken = token;
             lastNeedsFullRes = false;
@@ -481,7 +490,9 @@
         if (full === lastNeedsFullRes) return;
         lastNeedsFullRes = full;
         if (!hasImage) return;
-        if ($ui.autostretchImageUrl) {
+        if ($ui.displayImageUrl) {
+            return;
+        } else if ($ui.autostretchImageUrl) {
             applyAutoStretch();
         } else if (full) {
             loadFullFrame();

@@ -116,8 +116,10 @@
             onBlinkFrame('');
             if (blinkPlaying) pause();
             ui.setBlinkFrame(null);
-            if ($ui.blinkCached) {
-                displayFrame(blinkFrame);
+            if (!$ui.displayImageUrl) {
+                if ($ui.blinkCached) {
+                    displayFrame(blinkFrame);
+                }
             }
         }
     });
