@@ -1,8 +1,8 @@
 # Photyx — Developer Notes
 
-**Version:** 20
+**Version:** 21
 **Last updated:** 27 April 2026
-**Status:** Active development — Phase 8 substantially complete; UI audit pass in progress
+**Status:** Active development — Phase 8 substantially complete; ContourHeatmap and display pipeline refactor complete
 
 ---
 
@@ -73,7 +73,9 @@ Photyx/
 │           ├── clear_session.rs
 │           ├── compute_eccentricity.rs
 │           ├── compute_fwhm.rs
+│           ├── contour_heatmap.rs
 │           ├── get_histogram.rs
+│           ├── image_reader.rs
 │           ├── highlight_clipping.rs
 │           ├── keywords.rs
 │           ├── list_keywords.rs
@@ -134,12 +136,12 @@ Photyx/
 
 ### Prerequisites
 
-| Tool | Version | Notes |
-|---|---|---|
-| Rust | stable | Install via rustup.rs |
-| Node.js | 18+ | Required for Svelte/Vite |
-| Tauri CLI | 2.10.1 | `cargo install tauri-cli` |
-| vcpkg | latest | Required for cfitsio on Windows |
+| Tool      | Version | Notes                           |
+| --------- | ------- | ------------------------------- |
+| Rust      | stable  | Install via rustup.rs           |
+| Node.js   | 18+     | Required for Svelte/Vite        |
+| Tauri CLI | 2.10.1  | `cargo install tauri-cli`       |
+| vcpkg     | latest  | Required for cfitsio on Windows |
 
 ### Development Stack
 
@@ -154,6 +156,7 @@ Photyx uses three environments simultaneously:
 Frontend access to OS APIs (filesystem, dialogs, etc.) requires explicit permission entries in `src-tauri/capabilities/default.json`. This file is the single source of truth for what the frontend is allowed to do. If a Tauri plugin API call fails silently with no console error, a missing permission here is the first thing to check.
 
 Current permissions granted:
+
 - `core:default` — core Tauri APIs
 - `opener:default` — open URLs/files externally
 - `dialog:allow-open` — file open dialog
@@ -255,6 +258,7 @@ Full-res frames are JPEG encoded (not lossless) — this is disclosed to the use
 The image viewer uses an HTML5 canvas element (`#viewer-image-canvas`) rather than an `<img>` tag for displaying frames. This eliminates layout shifts caused by image src swaps, which were causing the toolbar and other UI chrome to jitter during blink playback.
 
 Key design points:
+
 - The canvas is always fixed size (matches the viewer viewport exactly) — it never resizes, so no layout reflow occurs
 - `createImageBitmap()` + `drawImage()` handles all zoom and fit math — the compositor manages rendering independently from the DOM layout engine
 - The current `ImageBitmap` is retained in memory (`currentBitmap`) so zoom changes can trigger a redraw without re-fetching from Rust
@@ -268,6 +272,7 @@ Zoom levels are implemented via `drawImage()` math in `Viewer.svelte`. The canva
 - **25% / 50% / 100% / 200%** — `scale = zoomFactor * (sourceWidth / bitmapWidth)`, image centered
 
 The zoom threshold between display cache and full-res cache is computed dynamically:
+
 - At Fit zoom: full-res needed if `viewerWidth > displayCacheWidth`
 - At other zoom levels: full-res needed if `zoomFactor * sourceWidth > displayCacheWidth`
 
@@ -296,15 +301,15 @@ WCS coordinate computation (RA/Dec) is pure TypeScript math in `InfoPanel.svelte
 
 Multiple blink-related fields live in the `ui` store rather than component-local state:
 
-| Field | Purpose |
-|---|---|
-| `blinkCached` | Whether blink cache has been built |
-| `blinkCaching` | Whether blink cache build is in progress |
-| `blinkPlaying` | Whether blink is actively playing |
-| `blinkTabActive` | Whether the Blink tab is selected |
+| Field             | Purpose                                                                                   |
+| ----------------- | ----------------------------------------------------------------------------------------- |
+| `blinkCached`     | Whether blink cache has been built                                                        |
+| `blinkCaching`    | Whether blink cache build is in progress                                                  |
+| `blinkPlaying`    | Whether blink is actively playing                                                         |
+| `blinkTabActive`  | Whether the Blink tab is selected                                                         |
 | `blinkModeActive` | Whether viewer is in blink display mode (true while on Blink tab, including while paused) |
-| `blinkResolution` | Currently selected blink resolution ('12' or '25') |
-| `blinkImageUrl` | Current blink frame data URL |
+| `blinkResolution` | Currently selected blink resolution ('12' or '25')                                        |
+| `blinkImageUrl`   | Current blink frame data URL                                                              |
 
 `blinkModeActive` is distinct from `blinkPlaying` — it remains true while blink is paused so the viewer maintains the blink scale and the last blink frame stays visible. It is only cleared when the user switches away from the Blink tab.
 
@@ -323,6 +328,7 @@ The background cache builder runs immediately after any file load operation. It 
 Build order: display cache first (1200px), then blink 12.5% (376px), then blink 25% (752px). This ensures display cache is ready as early as possible.
 
 Key design decisions:
+
 - **Box-filter downsampling** preserves fine detail better than point sampling
 - **Rayon parallelism** processes all frames simultaneously
 - **display_width is NOT set by the background builder** — only AutoStretch sets it, so `display_width == 0` reliably signals "not yet user-stretched"
@@ -369,6 +375,7 @@ Svelte's accessibility linter warnings are suppressed project-wide via `compiler
 The XISF reader/writer lives in `crates/photyx-xisf/` as a standalone Cargo workspace member, independently licensed MIT OR Apache-2.0. It has no dependency on Photyx internals — all types are self-contained.
 
 **Architecture:**
+
 - `reader.rs` — `XisfReader::open()` parses the XML header only (fast). `read_image(n)` loads and decompresses pixel data on demand.
 - `writer.rs` — `XisfWriter::write()` serializes pixels, optionally compresses, builds XML header with stable data block position computation, writes binary file.
 - `compress.rs` — byte-shuffle, unshuffle, compress, decompress for LZ4, LZ4HC, zstd, zlib codecs.
@@ -376,11 +383,13 @@ The XISF reader/writer lives in `crates/photyx-xisf/` as a standalone Cargo work
 - `error.rs` — `XisfError` with `thiserror`.
 
 **Performance:**
+
 - Reader uses `bytemuck::cast_slice` for zero-copy pixel deserialization (reinterprets `&[u8]` as `&[u16]`/`&[f32]` directly on little-endian systems). 38-second read time reduced to under 1 second.
 - Writer uses `bytemuck::cast_slice` for zero-copy pixel serialization in the same direction.
 - Planar-to-interleaved and interleaved-to-planar conversion uses a generic function for all pixel types.
 
 **What is supported:**
+
 - Monolithic XISF files only
 - Attachment, inline, and embedded data block locations
 - LZ4, LZ4HC, zlib, zstd compression + byte shuffling
@@ -391,6 +400,7 @@ The XISF reader/writer lives in `crates/photyx-xisf/` as a standalone Cargo work
 - Multiple images per file (reader supports index selection)
 
 **What is not yet supported:**
+
 - Vector and Matrix properties (read as placeholder string, skipped on write) — deferred pending test files with astrometric solution matrices
 - Table core elements
 - Resolution, ICCProfile, Thumbnail core elements
@@ -398,6 +408,7 @@ The XISF reader/writer lives in `crates/photyx-xisf/` as a standalone Cargo work
 - Complex pixel formats (C32, C64)
 
 **Reference implementations consulted:**
+
 - `sergio-dr/xisf` (Python, GPL3) — primary algorithm reference for read/write
 - `bcolyn/xisf4j` (Java, Apache 2.0) — secondary reference
 - `wrenby/xisf-rs` (Rust, read-only) — API design reference
@@ -459,10 +470,12 @@ When `SelectDirectory` is called via the pcode console or UI, the frontend now i
 The pcode interpreter lives in `src-tauri/src/pcode/` as a standalone module with no Tauri dependencies. It takes a script string, `&mut AppContext`, and `&PluginRegistry` and returns a `Vec<PcodeResult>`.
 
 **Architecture:**
+
 - `tokenizer.rs` — parses each line into `PcodeLine::Command`, `PcodeLine::Assignment`, or `PcodeLine::Skip`. Handles quoted values, named arguments (key=value), and comment lines (#).
 - `mod.rs` — sequential executor: variable store, `$var` and `${var}` substitution in all argument values, plugin registry dispatch per line, halt-on-error behavior, `Log` command handled internally.
 
 **Key behaviors:**
+
 - Variables are local to the script execution and also written to `AppContext.variables`
 - `Log` writes results since the previous `Log` call (segmented), not all results from the start
 - Nested macros share the same `AppContext` — a called macro executes in the parent's session context
@@ -470,6 +483,7 @@ The pcode interpreter lives in `src-tauri/src/pcode/` as a standalone module wit
 - `chrono` crate used for Log file timestamps
 
 **`run_script` Tauri command** — executes a script string directly from the frontend (macro editor Run button), returns a `ScriptResponse` struct containing:
+
 - `results` — array of `ScriptResult` (line_number, command, success, message)
 - `session_changed` — true if any read, select, clear, or move command succeeded; frontend syncs session state
 - `display_changed` — true if AutoStretch or similar display command succeeded; frontend triggers frame refresh
@@ -477,6 +491,7 @@ The pcode interpreter lives in `src-tauri/src/pcode/` as a standalone module wit
 This eliminates command-name matching on the frontend — components simply react to the flags.
 
 **Flow control** — the interpreter now pre-parses scripts into a block tree before execution, supporting:
+
 - `If <expr> / Else / EndIf` — conditional blocks with `==`, `!=`, `<`, `>`, `<=`, `>=` operators (numeric and string, case-insensitive)
 - `For varname = N to M / EndFor` — numeric loop; loop variable available as `$varname` inside the body
 - `GetKeyword` result auto-stored into `$KEYWORDNAME` (uppercase) for use in conditionals
@@ -484,6 +499,7 @@ This eliminates command-name matching on the frontend — components simply reac
 ### 3.29 Console Expansion
 
 The pcode console expands to a full-width overlay (60vh, 85% opacity) when the header is clicked. Key implementation details:
+
 - Expanded console uses `position: absolute` within `#bottom-panel`, requiring `position: relative` on `#viewer-region` for correct stacking context
 - The `#viewer-placeholder` fades to opacity 0 (not hidden) when console is expanded, using CSS transition matched to the console slide timing
 - Font size increases from 11px to 14px for output lines in expanded state
@@ -498,6 +514,7 @@ The Macro Editor (`MacroEditor.svelte`) is rendered at the `#content-area` level
 The editor uses the backdrop technique for syntax highlighting — a `<div>` with `@html` rendered highlighted content sits behind a transparent `<textarea>`. The textarea handles all input; the backdrop provides colour. Scroll sync between the two is maintained via the `onscroll` event.
 
 **The Macro Editor is now opened exclusively from the Macro Library panel.** It is no longer accessible via a sidebar icon. The sidebar icon for Macro Editor has been removed. Entry points are:
+
 - Clicking **Edit** on a macro entry in the Macro Library
 - Clicking **New** in the Macro Library header
 
@@ -524,6 +541,7 @@ The `stopPropagation()` calls are mandatory — without them, click events bubbl
 ### 3.32 WriteCurrent Atomic Writes
 
 `WriteCurrent` (and `WriteFIT`, `WriteTIFF`, `WriteXISF`, `WriteFrame`) use a write-to-temp-then-rename pattern for all formats. The file is written to `<originalpath>.tmp` first, then atomically renamed over the original. This:
+
 - Ensures deleted keywords are not preserved (full rewrite from buffer, not in-place edit)
 - Eliminates duplicate keyword issues caused by cfitsio's in-place `write_key` adding new records rather than updating existing ones
 - Protects against partial writes leaving a corrupt file
@@ -546,16 +564,16 @@ FITS `BITPIX=16` is signed. When writing u16 pixel data, the correct convention 
 
 Analysis code lives in `src-tauri/src/analysis/` as pure computation modules with no Tauri or plugin dependencies:
 
-| Module | Purpose |
-|---|---|
-| `background.rs` | Sigma-clipped background median, std dev, gradient (8×8 grid) |
-| `stars.rs` | Star detection: local maximum finding, flood fill, centroid, minimum 5-pixel filter |
-| `fwhm.rs` | Moment-based FWHM: `2.355 * sqrt((Mxx + Myy) / 2)` — geometric mean of axes, matches PI |
-| `eccentricity.rs` | Second-order intensity-weighted moments → eccentricity |
-| `metrics.rs` | SNR estimate (signal/noise via star pixels and background std dev) |
-| `profiles.rs` | Camera pixel size lookup table and plate scale formula |
-| `session_stats.rs` | Session mean/stddev per metric, `classify_frame` returning (PxFlag, Vec<triggered>) |
-| `mod.rs` | Shared types: `PxFlag`, `AnalysisResult`, `StarDetectionConfig`, `BackgroundConfig`, `SigmaClipConfig`, `to_luminance()` |
+| Module             | Purpose                                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `background.rs`    | Sigma-clipped background median, std dev, gradient (8×8 grid)                                                            |
+| `stars.rs`         | Star detection: local maximum finding, flood fill, centroid, minimum 5-pixel filter                                      |
+| `fwhm.rs`          | Moment-based FWHM: `2.355 * sqrt((Mxx + Myy) / 2)` — geometric mean of axes, matches PI                                  |
+| `eccentricity.rs`  | Second-order intensity-weighted moments → eccentricity                                                                   |
+| `metrics.rs`       | SNR estimate (signal/noise via star pixels and background std dev)                                                       |
+| `profiles.rs`      | Camera pixel size lookup table and plate scale formula                                                                   |
+| `session_stats.rs` | Session mean/stddev per metric, `classify_frame` returning (PxFlag, Vec<triggered>)                                      |
+| `mod.rs`           | Shared types: `PxFlag`, `AnalysisResult`, `StarDetectionConfig`, `BackgroundConfig`, `SigmaClipConfig`, `to_luminance()` |
 
 **Design rule:** `AnalyzeFrames` calls analysis functions directly in a two-pass Rayon parallel loop. Standalone plugins (`ComputeFWHM`, `CountStars`, `ComputeEccentricity`) are thin wrappers for interactive use on the current frame only.
 
@@ -569,15 +587,15 @@ Analysis code lives in `src-tauri/src/analysis/` as pure computation modules wit
 
 **Current reject thresholds (`session_stats.rs` defaults):**
 
-| Metric | Type | Reject |
-|---|---|---|
-| Background Median | +σ | 2.5σ |
-| Background Std Dev | +σ | 2.5σ |
-| Background Gradient | +σ | 2.5σ |
-| SNR Estimate | -σ | 2.5σ |
-| FWHM | +σ | 2.5σ |
-| Star Count | -σ | 1.5σ |
-| Eccentricity | absolute | 0.85 |
+| Metric              | Type     | Reject |
+| ------------------- | -------- | ------ |
+| Background Median   | +σ       | 2.5σ   |
+| Background Std Dev  | +σ       | 2.5σ   |
+| Background Gradient | +σ       | 2.5σ   |
+| SNR Estimate        | -σ       | 2.5σ   |
+| FWHM                | +σ       | 2.5σ   |
+| Star Count          | -σ       | 1.5σ   |
+| Eccentricity        | absolute | 0.85   |
 
 **triggered_by** — `classify_frame` returns `(PxFlag, Vec<String>)` where the Vec contains the names of metrics that triggered REJECT. Stored in `AnalysisResult.triggered_by` and returned by `get_analysis_results` for tooltip display in the Analysis Graph.
 
@@ -614,6 +632,7 @@ The Analysis Graph is a viewer-region component (`AnalysisGraph.svelte`) that re
 **Critical rule:** `drawStarAnnotations()` (Rust fetch) must NEVER be called from `renderBitmap()` — it runs star detection and will lock up the app during panning. Only `paintStarAnnotations()` (cache-only, synchronous) should be called from `renderBitmap()`.
 
 **Annotation clearing** — star annotations are cleared in three places:
+
 - `commands.ts` `displayFrame()` — cleared at the start of every frame navigation, regardless of trigger
 - `InfoPanel.svelte` — cleared when the Blink tab is activated
 - `Viewer.svelte` — cleared when a new blink frame URL arrives
@@ -643,6 +662,7 @@ export type ViewName = typeof VIEWS[number];
 `UIState` contains `activeView: ViewName | null`. `null` means the image viewer is shown.
 
 **All viewer-region visibility is controlled exclusively via `ui.showView()`:**
+
 - `ui.showView('analysisGraph')` — show Analysis Graph
 - `ui.showView('analysisResults')` — show Analysis Results
 - `ui.showView(null)` — return to image viewer
@@ -706,6 +726,7 @@ The Log Viewer (`LogViewer.svelte`) is a modal overlay following the same patter
 The Macro Library (`MacroLibrary.svelte`) dynamically scans `APPDATA/Photyx/Macros/` for `.phs` files via the `list_macros` Tauri command. The directory is created automatically if it does not exist.
 
 **Per-entry display:**
+
 - Row 1: macro name, Edit button, Rename button, Delete button
 - Row 2: line count, Pin button, Run button
 
@@ -716,6 +737,7 @@ The Macro Library (`MacroLibrary.svelte`) dynamically scans `APPDATA/Photyx/Macr
 **Delete protection:** If a macro is currently pinned, clicking Delete shows a warning bar rather than a confirmation bar: "Remove from Quick Launch first." The macro cannot be deleted while pinned.
 
 **Tauri commands added:**
+
 - `list_macros` — scans Macros directory, returns name, filename, path, line count, tooltip
 - `delete_macro` — removes a `.phs` file from disk
 - `rename_macro` — renames a `.phs` file; validates the new name, returns the new path
@@ -750,12 +772,14 @@ The Plugin Manager panel (`PluginManager.svelte`) displays all registered plugin
 The Keyword Editor (`KeywordEditor.svelte`) is now fully implemented with inline editing.
 
 **Editing model:**
+
 - Keyword name column is **read-only** — renaming a keyword requires delete + add (prevents accidental corruption)
 - Value and comment columns are editable via double-click anywhere in the cell
 - On Enter or blur: dispatches `ModifyKeyword scope=current` to Rust
 - On Escape: cancels the edit
 
 **FITS keyword constraints enforced on the frontend:**
+
 - Keyword name: maximum 8 characters; letters, digits, hyphens, underscores only; forced uppercase
 - Value + comment combined: maximum 68 characters (FITS record limit after name and `= ` prefix)
 - If value + comment exceeds 68 characters, the comment is automatically truncated to fit. A `notifications.warning()` is issued. The reload after commit is called silently (`reload(true)`) so the truncation warning is not immediately overwritten.
@@ -771,6 +795,7 @@ The Keyword Editor (`KeywordEditor.svelte`) is now fully implemented with inline
 `WriteFrame` is a built-in native plugin that writes the currently active frame (as set by `SetFrame` / `ctx.current_frame`) back to its source file in its original format. It supports FITS, XISF, and TIFF. It uses the same atomic temp-rename pattern as `WriteCurrent`. Unsupported formats return a `UNSUPPORTED_FORMAT` error.
 
 `WriteFrame` is distinct from `WriteCurrent`:
+
 - `WriteCurrent` — writes all loaded frames to their source paths
 - `WriteFrame` — writes only the active frame
 
@@ -798,63 +823,68 @@ When the mouse moves over the histogram canvas in the Info Panel, track and disp
 
 ## 4. Tauri Commands (Implemented)
 
-| Command | Description |
-|---|---|
-| `dispatch_command` | Dispatches a pcode command to the plugin registry |
-| `run_script` | Executes a pcode script string; returns ScriptResponse with results, session_changed, display_changed |
-| `debug_buffer_info` | Returns buffer metadata including display_width and color_space |
-| `delete_macro` | Deletes a .phs macro file from the Macros directory |
-| `get_analysis_results` | Returns per-frame analysis metrics, flags, triggered_by, and session stats for Analysis Graph and Analysis Results |
-| `get_blink_cache_status` | Returns blink cache build status: idle / building / ready |
-| `get_blink_frame` | Returns a blink frame as JPEG data URL from blink cache (by index + resolution) |
-| `get_current_frame` | Returns current image as JPEG data URL from display cache |
-| `get_frame_flags` | Returns PXFLAG values for all loaded frames (used by blink overlay) |
-| `get_full_frame` | Returns current image as full-resolution JPEG data URL, with STF stretch applied; cached after first call |
-| `get_histogram` | Computes and returns histogram bins + stats for current frame (per-channel for RGB) |
-| `get_keywords` | Returns all keywords for current frame as a keyed map |
-| `get_macros_dir` | Returns the Macros directory path as a forward-slash string |
-| `get_pixel` | Returns raw pixel value(s) at source coordinates (x, y) from the raw image buffer |
-| `get_session` | Returns current session state (directory, file list, current frame) |
-| `get_star_positions` | Re-runs star detection on current frame, returns {cx, cy, fwhm, r} per star for annotation overlay |
-| `list_log_files` | Lists available log files in the logs directory, sorted newest first |
-| `list_macros` | Lists .phs files in the Macros directory with name, path, line count, and tooltip |
-| `list_plugins` | Returns list of registered plugins with name, version, and type |
-| `read_log_file` | Reads and parses a log file into structured {timestamp, level, module, message} lines |
-| `rename_macro` | Renames a .phs macro file; validates name, returns new path |
-| `start_background_cache` | Spawns background task to build display cache and both blink caches |
+| Command                  | Description                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `dispatch_command`       | Dispatches a pcode command to the plugin registry                                                                  |
+| `run_script`             | Executes a pcode script string; returns ScriptResponse with results, session_changed, display_changed              |
+| `debug_buffer_info`      | Returns buffer metadata including display_width and color_space                                                    |
+| `delete_macro`           | Deletes a .phs macro file from the Macros directory                                                                |
+| `get_analysis_results`   | Returns per-frame analysis metrics, flags, triggered_by, and session stats for Analysis Graph and Analysis Results |
+| `get_blink_cache_status` | Returns blink cache build status: idle / building / ready                                                          |
+| `get_blink_frame`        | Returns a blink frame as JPEG data URL from blink cache (by index + resolution)                                    |
+| `get_autostretch_frame` | Computes Auto-STF stretch on current frame and returns JPEG data URL; does not cache |
+| `get_current_frame` | Returns current image as raw (unstretched) JPEG data URL, rendered on the fly |
+| `get_variable` | Returns a pcode variable value from ctx.variables by name |
+| `load_file` | Reads a single image file from disk, injects into session, returns JPEG data URL |
+| `get_frame_flags`        | Returns PXFLAG values for all loaded frames (used by blink overlay)                                                |
+| `get_full_frame` | Returns current image at full resolution with last STF params applied; cached after first call |
+| `get_histogram`          | Computes and returns histogram bins + stats for current frame (per-channel for RGB)                                |
+| `get_keywords`           | Returns all keywords for current frame as a keyed map                                                              |
+| `get_macros_dir`         | Returns the Macros directory path as a forward-slash string                                                        |
+| `get_pixel`              | Returns raw pixel value(s) at source coordinates (x, y) from the raw image buffer                                  |
+| `get_session`            | Returns current session state (directory, file list, current frame)                                                |
+| `get_star_positions`     | Re-runs star detection on current frame, returns {cx, cy, fwhm, r} per star for annotation overlay                 |
+| `list_log_files`         | Lists available log files in the logs directory, sorted newest first                                               |
+| `list_macros`            | Lists .phs files in the Macros directory with name, path, line count, and tooltip                                  |
+| `list_plugins`           | Returns list of registered plugins with name, version, and type                                                    |
+| `read_log_file`          | Reads and parses a log file into structured {timestamp, level, module, message} lines                              |
+| `rename_macro`           | Renames a .phs macro file; validates name, returns new path                                                        |
+| `start_background_cache` | Spawns background task to build stretched blink cache JPEGs (Pass 1 display cache removed — normal display renders raw pixels on the fly) |
 
 ---
 
 ## 5. Plugins Implemented
 
-| Plugin | Category | Status | Notes |
-|---|---|---|---|
-| AddKeyword | Keyword | ✅ Complete | scope=all\|current parameter |
-| Assert | Scripting | ✅ Complete | Halts on false expression |
-| AutoStretch | Processing | ✅ Complete | Mono and RGB, display-res only, raw buffer preserved; defaults exposed as constants |
-| CacheFrames | Blink | ✅ Complete | Rayon parallel, both resolutions |
-| ClearSession | Session | ✅ Complete | |
-| CopyKeyword | Keyword | ✅ Complete | |
-| CountFiles | Scripting | ✅ Complete | Stores result in $filecount |
-| DeleteKeyword | Keyword | ✅ Complete | scope=all\|current parameter |
-| GetHistogram | Analysis | ✅ Complete | Mono and RGB per-channel, true median |
-| GetKeyword | Scripting | ✅ Complete | Stores result in $KEYWORDNAME |
-| ListKeywords | Keyword | ✅ Complete | |
-| ModifyKeyword | Keyword | ✅ Complete | scope=all\|current parameter |
-| MoveFile | File Management | ✅ Complete | Moves current frame file, removes from session |
-| Print | Scripting | ✅ Complete | Outputs literal message |
-| ReadAll | I/O Reader | ✅ Complete | FITS + XISF + TIFF from same directory (ReadAllFiles alias) |
-| ReadFIT | I/O Reader | ✅ Complete | Sequential only (ReadAllFITFiles alias) |
-| ReadTIFF | I/O Reader | ✅ Complete | U8, U16, U32→U16, F32 (ReadAllTIFFFiles alias) |
-| ReadXISF | I/O Reader | ✅ Complete | (ReadAllXISFFiles alias) |
-| RunMacro | Scripting | ✅ Complete | |
-| SelectDirectory | File Management | ✅ Complete | |
-| SetFrame | Navigation | ✅ Complete | |
-| WriteCurrent | I/O Writer | ✅ Complete | Atomic temp-file writes; writes all loaded frames (WriteCurrentFiles alias) |
-| WriteFIT | I/O Writer | ✅ Complete | Creates proper FITS files from any source format (WriteAllFITFiles alias) |
-| WriteFrame | I/O Writer | ✅ Complete | Writes active frame only to source format; atomic temp-rename |
-| WriteTIFF | I/O Writer | ✅ Complete | AstroTIFF keyword embedding (WriteAllTIFFFiles alias) |
-| WriteXISF | I/O Writer | ✅ Complete | Uncompressed default; compress=true for LZ4HC (WriteAllXISFFiles alias) |
+| Plugin          | Category        | Status     | Notes                                                                               |
+| --------------- | --------------- | ---------- | ----------------------------------------------------------------------------------- |
+| AddKeyword      | Keyword         | ✅ Complete | scope=all\|current parameter                                                        |
+| Assert          | Scripting       | ✅ Complete | Halts on false expression                                                           |
+| AutoStretch     | Processing      | ✅ Complete | Mono and RGB, display-res only, raw buffer preserved; defaults exposed as constants |
+| CacheFrames     | Blink           | ✅ Complete | Rayon parallel, both resolutions                                                    |
+| ClearSession    | Session         | ✅ Complete |                                                                                     |
+| CopyKeyword     | Keyword         | ✅ Complete |                                                                                     |
+| CountFiles      | Scripting       | ✅ Complete | Stores result in $filecount                                                         |
+| DeleteKeyword   | Keyword         | ✅ Complete | scope=all\|current parameter                                                        |
+| GetHistogram    | Analysis        | ✅ Complete | Mono and RGB per-channel, true median                                               |
+| GetKeyword      | Scripting       | ✅ Complete | Stores result in $KEYWORDNAME                                                       |
+| ListKeywords    | Keyword         | ✅ Complete |                                                                                     |
+| ModifyKeyword   | Keyword         | ✅ Complete | scope=all\|current parameter                                                        |
+| ContourHeatmap | Analysis | ✅ Complete | Spatial FWHM heatmap; adaptive grid 5×5–15×15; viridis/plasma/coolwarm palettes; writes XISF to active directory; stores path in `$NEW_FILE` |
+| LoadFile | Scripting | ✅ Complete | Loads single file into session for display; stores path in `$LOAD_FILE_PATH` |
+| MoveFile | File Management | ✅ Complete | Moves current frame file or arbitrary path (source= param); removes from session if present |
+| Print           | Scripting       | ✅ Complete | Outputs literal message                                                             |
+| ReadAll         | I/O Reader      | ✅ Complete | FITS + XISF + TIFF from same directory (ReadAllFiles alias)                         |
+| ReadFIT         | I/O Reader      | ✅ Complete | Sequential only (ReadAllFITFiles alias)                                             |
+| ReadTIFF        | I/O Reader      | ✅ Complete | U8, U16, U32→U16, F32 (ReadAllTIFFFiles alias)                                      |
+| ReadXISF        | I/O Reader      | ✅ Complete | (ReadAllXISFFiles alias)                                                            |
+| RunMacro        | Scripting       | ✅ Complete |                                                                                     |
+| SelectDirectory | File Management | ✅ Complete |                                                                                     |
+| SetFrame        | Navigation      | ✅ Complete |                                                                                     |
+| WriteCurrent    | I/O Writer      | ✅ Complete | Atomic temp-file writes; writes all loaded frames (WriteCurrentFiles alias)         |
+| WriteFIT        | I/O Writer      | ✅ Complete | Creates proper FITS files from any source format (WriteAllFITFiles alias)           |
+| WriteFrame      | I/O Writer      | ✅ Complete | Writes active frame only to source format; atomic temp-rename                       |
+| WriteTIFF       | I/O Writer      | ✅ Complete | AstroTIFF keyword embedding (WriteAllTIFFFiles alias)                               |
+| WriteXISF       | I/O Writer      | ✅ Complete | Uncompressed default; compress=true for LZ4HC (WriteAllXISFFiles alias)             |
 
 **Command naming convention:** Read/Write commands follow the pattern `ReadFIT`, `ReadTIFF`, `ReadXISF`, `ReadAll`, `WriteFIT`, `WriteTIFF`, `WriteXISF`, `WriteCurrent`, `WriteFrame`. Old names retained as backward-compatible aliases but should not be used in new scripts.
 
@@ -866,27 +896,29 @@ When the mouse moves over the histogram canvas in the Info Panel, track and disp
 
 Photyx will use an embedded SQLite database via the rusqlite crate, which statically links SQLite into the binary with no external dependencies. The tauri-plugin-sql plugin exposes the database to the Svelte frontend via invoke. Planned uses include: replacing localStorage for Quick Launch buttons, theme, and user preferences; a macro library table storing name, description, script text, created date, and last run date; a frame analysis results table (one row per file per analysis type — FWHM, star count, eccentricity, median value) so results persist across sessions and can be queried; and a session history log. This is deferred to Phase 9 alongside other persistence work.
 
-| Field | Purpose |
-|---|---|
-| `activePanel` | Currently open sidebar panel |
-| `activeView` | Currently active viewer-region view (`'analysisGraph'`, `'analysisResults'`, or `null` for image viewer) |
-| `aboutOpen` | Whether the About modal is open |
-| `blinkCached` | Whether blink cache has been built |
-| `blinkCaching` | Whether blink cache build is in progress |
-| `blinkImageUrl` | Current blink frame data URL (null when not in blink mode) |
-| `blinkModeActive` | Whether viewer is in blink display mode (true while on Blink tab including paused) |
-| `blinkPlaying` | Whether blink is actively playing |
-| `blinkResolution` | Currently selected blink resolution ('12' = 12.5%, '25' = 25%) |
-| `blinkTabActive` | Whether the Blink tab is currently selected |
-| `consoleExpanded` | Whether console history is expanded |
-| `frameRefreshToken` | Incremented to trigger viewer frame reload |
-| `keywordModalOpen` | Whether the keyword modal dialog is open |
-| `logViewerOpen` | Whether the Log Viewer modal is open |
-| `macroEditorFile` | File currently open in Macro Editor (`{ path, name }` or `null`) |
-| `theme` | Active theme (dark / light / matrix), persisted to localStorage |
-| `viewerClearToken` | Incremented to clear viewer and restore starfield |
-| `zoomLevel` | Current zoom level |
+| Field               | Purpose                                                                                                  |
+| ------------------- | -------------------------------------------------------------------------------------------------------- |
+| `activePanel`       | Currently open sidebar panel                                                                             |
+| `activeView`        | Currently active viewer-region view (`'analysisGraph'`, `'analysisResults'`, or `null` for image viewer) |
+| `aboutOpen`         | Whether the About modal is open                                                                          |
+| `blinkCached`       | Whether blink cache has been built                                                                       |
+| `blinkCaching`      | Whether blink cache build is in progress                                                                 |
+| `blinkImageUrl`     | Current blink frame data URL (null when not in blink mode)                                               |
+| `blinkModeActive`   | Whether viewer is in blink display mode (true while on Blink tab including paused)                       |
+| `blinkPlaying`      | Whether blink is actively playing                                                                        |
+| `blinkResolution`   | Currently selected blink resolution ('12' = 12.5%, '25' = 25%)                                           |
+| `blinkTabActive`    | Whether the Blink tab is currently selected                                                              |
+| `consoleExpanded`   | Whether console history is expanded                                                                      |
+| `frameRefreshToken` | Incremented to trigger viewer frame reload                                                               |
+| `keywordModalOpen`  | Whether the keyword modal dialog is open                                                                 |
+| `logViewerOpen`     | Whether the Log Viewer modal is open                                                                     |
+| `macroEditorFile`   | File currently open in Macro Editor (`{ path, name }` or `null`)                                         |
+| `theme`             | Active theme (dark / light / matrix), persisted to localStorage                                          |
+| `viewerClearToken`  | Incremented to clear viewer and restore starfield                                                        |
+| `zoomLevel`         | Current zoom level                                                                                       |
 | `annotationToken` | Positive = show annotations, negative = clear annotations |
+| `autostretchImageUrl` | Data URL of AutoStretch result for current frame; cleared on frame change |
+| `displayImageUrl` | Data URL of temporary display image (heatmap, single loaded file); cleared on frame change |
 
 **View management:** `activeView` replaces the previous `showAnalysisGraph` and `showAnalysisResults` boolean flags. Always use `ui.showView()` to change the active view — never set `activeView` directly. See §3.40.
 
@@ -894,38 +926,40 @@ Photyx will use an embedded SQLite database via the rusqlite crate, which static
 
 ## 7. Known Issues & Deferred Items
 
-| Issue | Notes |
-|---|---|
-| cfitsio parallel loading crashes | Thread-safety issue — sequential loading used for now |
-| Blink UI jitter | Toolbar/Quick Launch chrome jitters during blink; DevTools CLS = 0.01, culprit undetected after canvas switch; suspected Tauri WebView compositor artifact on Windows; deferred |
-| Full-res frames are JPEG not lossless | Disclosed via disclaimer bar; pixel readout always uses raw buffer |
-| Long-running commands block UI | pcode invoke awaits Rust response, freezing JS; fix requires Tauri event system; deferred |
-| Zoom is approximate at high levels | Full-res cache uses AutoStretch STF params computed on display-res downsample; minor difference possible |
-| XISF Vector/Matrix properties | Read as placeholder string, skipped on write; deferred pending test files |
-| Rayon thread count not user-configurable | Hardcoded to num_cpus-1; §9.7 setting not yet wired |
-| No persistent settings store | tauri-plugin-store not yet implemented (Phase 9) |
-| No crash recovery | Phase 9 item |
-| Last used directory lost on restart | Session state is in-memory only; Phase 9 persistence will restore it |
-| stderr log output in dev mode | Log entries are duplicated to the terminal during `npm run tauri dev`. This is the `fmt::layer().with_writer(std::io::stderr)` layer in `logging.rs`. It can be removed when no longer needed for debugging. |
-| Histogram ADU mouse tracking | Not yet implemented — see §3.50 |
+| Issue                                    | Notes                                                                                                                                                                                                        |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| cfitsio parallel loading crashes         | Thread-safety issue — sequential loading used for now                                                                                                                                                        |
+| Blink UI jitter                          | Toolbar/Quick Launch chrome jitters during blink; DevTools CLS = 0.01, culprit undetected after canvas switch; suspected Tauri WebView compositor artifact on Windows; deferred                              |
+| Full-res frames are JPEG not lossless    | Disclosed via disclaimer bar; pixel readout always uses raw buffer                                                                                                                                           |
+| Long-running commands block UI           | pcode invoke awaits Rust response, freezing JS; fix requires Tauri event system; deferred                                                                                                                    |
+| Zoom is approximate at high levels       | Full-res cache uses AutoStretch STF params computed on display-res downsample; minor difference possible                                                                                                     |
+| XISF Vector/Matrix properties            | Read as placeholder string, skipped on write; deferred pending test files                                                                                                                                    |
+| Rayon thread count not user-configurable | Hardcoded to num_cpus-1; §9.7 setting not yet wired                                                                                                                                                          |
+| No persistent settings store             | tauri-plugin-store not yet implemented (Phase 9)                                                                                                                                                             |
+| No crash recovery                        | Phase 9 item                                                                                                                                                                                                 |
+| Last used directory lost on restart      | Session state is in-memory only; Phase 9 persistence will restore it                                                                                                                                         |
+| stderr log output in dev mode            | Log entries are duplicated to the terminal during `npm run tauri dev`. This is the `fmt::layer().with_writer(std::io::stderr)` layer in `logging.rs`. It can be removed when no longer needed for debugging. |
+| Histogram ADU mouse tracking | Implemented — hover shows normalized value, ADU, and per-channel percentages |
+| Single file load blink isolation | Files loaded via LoadFile/load_file are added to ctx.file_list; scripts that loop the file list will include them until next batch load |
+| AutoStretch performance in dev mode | 3–5 seconds for RGB 9MP images in debug build; expected to be near-instant in release build |
 
 ---
 
 ## 8. Phase Completion Status
 
-| Phase | Status | Notes |
-|---|---|---|
-| Phase 1 | ✅ Complete | Scaffold, plugin host, FITS reader, notification bar, logging |
-| Phase 2 | ✅ Complete | Display cache, AutoStretch, blink engine, histogram, keywords, UI file browser, pixel tracking, WCS, zoom, pan, full-res cache, canvas viewer |
-| Phase 3 | ✅ Complete | photyx-xisf crate (reader + writer), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllTIFFFiles, ReadAllFiles, RGB display/histogram, background display cache |
-| Phase 4 | ✅ Complete | Keyword plugins, WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit, blink cache quality, relative path resolution, window resize fix, pwd command |
-| Phase 5 | ✅ Complete | pcode interpreter with If/Else/EndIf and For/EndFor; Macro Editor UI with syntax highlighting; Quick Launch panel with store persistence and context menu; command rename refactor; scope parameter on keyword commands; WriteCurrent atomic writes; ScriptResponse flags; pcodeCommands.ts single source of truth |
-| Phase 6 | ✅ Complete | UI cleanup complete |
-| Phase 7 | ✅ Complete | AnalyzeFrames with 7 native metrics; PASS/REJECT classification; PXFLAG keyword; Analysis Graph viewer-region component; star annotation overlay; consolePipe store; blink red border overlay; viewer filename overlay; theme-aware chart colors |
-| Phase 8 | ✅ Substantially complete | Moment-based FWHM; 8×8 background gradient grid; 5-pixel minimum star filter; WriteFITS U16 sign conversion fix; histogram canvas width fix; UI audit pass (view registry, keyword editor, macro library/editor redesign, log viewer, analysis results, plugin manager, about modal, notifications.running pulse) |
-| Phase 9 | ⬜ Not started | Embedded SQLite, Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations |
-| Phase 10 | ⬜ Not started | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI |
-| Deferred | ⏸ Parked | Full keyword management UI, PNG/JPEG readers and writers, debayering, async dispatch, REST API (Axum), CLI access, WASM analysis plugins |
+| Phase    | Status                   | Notes                                                                                                                                                                                                                                                                                                              |
+| -------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Phase 1  | ✅ Complete               | Scaffold, plugin host, FITS reader, notification bar, logging                                                                                                                                                                                                                                                      |
+| Phase 2  | ✅ Complete               | Display cache, AutoStretch, blink engine, histogram, keywords, UI file browser, pixel tracking, WCS, zoom, pan, full-res cache, canvas viewer                                                                                                                                                                      |
+| Phase 3  | ✅ Complete               | photyx-xisf crate (reader + writer), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllTIFFFiles, ReadAllFiles, RGB display/histogram, background display cache                                                                                                                                                          |
+| Phase 4  | ✅ Complete               | Keyword plugins, WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit, blink cache quality, relative path resolution, window resize fix, pwd command                                                                                                  |
+| Phase 5  | ✅ Complete               | pcode interpreter with If/Else/EndIf and For/EndFor; Macro Editor UI with syntax highlighting; Quick Launch panel with store persistence and context menu; command rename refactor; scope parameter on keyword commands; WriteCurrent atomic writes; ScriptResponse flags; pcodeCommands.ts single source of truth |
+| Phase 6  | ✅ Complete               | UI cleanup complete                                                                                                                                                                                                                                                                                                |
+| Phase 7  | ✅ Complete               | AnalyzeFrames with 7 native metrics; PASS/REJECT classification; PXFLAG keyword; Analysis Graph viewer-region component; star annotation overlay; consolePipe store; blink red border overlay; viewer filename overlay; theme-aware chart colors                                                                   |
+| Phase 8 | ✅ Substantially complete | Moment-based FWHM; 8×8 background gradient grid; 5-pixel minimum star filter; WriteFITS U16 sign conversion fix; histogram canvas width fix; UI audit pass; ContourHeatmap plugin (spatial FWHM heatmap, adaptive grid, 3 palettes, XISF output, `$NEW_FILE` convention); display pipeline refactor (raw display, explicit AutoStretch, blink-only cache); `image_reader.rs` format-agnostic reader; load_file Tauri command; File > Load Single Image menu item; LoadFile pcode command; DispatchResponse.data field; histogram hover readout |
+| Phase 9  | ⬜ Not started            | Embedded SQLite, Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations                                                                                                                                                                                                   |
+| Phase 10 | ⬜ Not started            | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI                                                                                                                                                                                                                    |
+| Deferred | ⏸ Parked                 | Full keyword management UI, PNG/JPEG readers and writers, debayering, async dispatch, REST API (Axum), CLI access, WASM analysis plugins                                                                                                                                                                           |
 
 ## 9. Settings Persistence Batch (Phase 9)
 

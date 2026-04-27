@@ -264,45 +264,46 @@ The following table explicitly designates the loading mechanism for each plugin 
 
 | Plugin              | Category        | Type            |
 | ------------------- | --------------- | --------------- |
-| ReadFITS            | I/O Reader      | Built-in Native |
-| ReadXISF            | I/O Reader      | Built-in Native |
-| ReadTIFF            | I/O Reader      | Built-in Native |
-| ReadPNG             | I/O Reader      | Built-in Native |
-| ReadJPEG            | I/O Reader      | Built-in Native |
-| WriteFITS           | I/O Writer      | Built-in Native |
-| WriteXISF           | I/O Writer      | Built-in Native |
-| WriteTIFF           | I/O Writer      | Built-in Native |
-| WritePNG            | I/O Writer      | Built-in Native |
-| WriteJPEG           | I/O Writer      | Built-in Native |
 | AddKeyword          | Keyword         | Built-in Native |
-| DeleteKeyword       | Keyword         | Built-in Native |
-| ModifyKeyword       | Keyword         | Built-in Native |
-| CopyKeyword         | Keyword         | Built-in Native |
-| ListKeywords        | Keyword         | Built-in Native |
-| SelectDirectory     | File Management | Built-in Native |
-| ListFiles           | File Management | Built-in Native |
-| FilterByKeyword     | File Management | Built-in Native |
+| AnalyzeFrames       | Frame Analysis  | Built-in Native |
+| AutoStretch         | Processing      | Built-in Native |
+| BinImage            | Processing      | Built-in Native |
 | BlinkSequence       | Blink & View    | Built-in Native |
 | CacheFrames         | Blink & View    | Built-in Native |
-| SetZoom             | Blink & View    | Built-in Native |
-| AutoStretch         | Processing      | Built-in Native |
-| GetHistogram        | Processing      | Built-in Native |
+| ComputeEccentricity | Analysis        | Built-in Native |
+| ComputeFWHM         | Analysis        | Built-in Native |
+| ContourHeatmap      | Analysis        | Built-in Native |
+| CopyKeyword         | Keyword         | Built-in Native |
+| CountStars          | Analysis        | Built-in Native |
 | CropImage           | Processing      | Built-in Native |
-| BinImage            | Processing      | Built-in Native |
 | DebayerImage        | Processing      | Built-in Native |
-| AnalyzeFrames       | Frame Analysis  | Built-in Native |
+| DefineMacro         | Scripting       | Built-in Native |
+| DeleteKeyword       | Keyword         | Built-in Native |
+| FilterByKeyword     | File Management | Built-in Native |
+| GetHistogram        | Processing      | Built-in Native |
 | GetImageProperty    | Interrogation   | Built-in Native |
 | GetKeyword          | Interrogation   | Built-in Native |
 | GetSessionProperty  | Interrogation   | Built-in Native |
-| Test                | Interrogation   | Built-in Native |
-| pcode Interpreter   | Scripting       | Built-in Native |
-| RunMacro            | Scripting       | Built-in Native |
-| DefineMacro         | Scripting       | Built-in Native |
-| ComputeFWHM         | Analysis        | Built-in Native |
-| CountStars          | Analysis        | Built-in Native |
-| ComputeEccentricity | Analysis        | Built-in Native |
+| ListFiles           | File Management | Built-in Native |
+| ListKeywords        | Keyword         | Built-in Native |
+| LoadFile            | File Management | Built-in Native |
 | MedianValue         | Analysis        | Built-in Native |
-| ContourPlot (FWHM)  | Analysis        | Deferred        |
+| ModifyKeyword       | Keyword         | Built-in Native |
+| ReadFITS            | I/O Reader      | Built-in Native |
+| ReadJPEG            | I/O Reader      | Built-in Native |
+| ReadPNG             | I/O Reader      | Built-in Native |
+| ReadTIFF            | I/O Reader      | Built-in Native |
+| ReadXISF            | I/O Reader      | Built-in Native |
+| RunMacro            | Scripting       | Built-in Native |
+| SelectDirectory     | File Management | Built-in Native |
+| SetZoom             | Blink & View    | Built-in Native |
+| Test                | Interrogation   | Built-in Native |
+| WriteFITS           | I/O Writer      | Built-in Native |
+| WriteJPEG           | I/O Writer      | Built-in Native |
+| WritePNG            | I/O Writer      | Built-in Native |
+| WriteTIFF           | I/O Writer      | Built-in Native |
+| WriteXISF           | I/O Writer      | Built-in Native |
+| pcode Interpreter   | Scripting       | Built-in Native |
 
 Analysis plugins are implemented as built-in native Rust plugins. The WASM
 plugin path remains available for user-authored analysis extensions. WASM
@@ -375,6 +376,7 @@ WriteAllFITFiles destination=$output overwrite=false
 - Conditional logic: If / ElseIf / Else / EndIf
 - Loops: For / EndFor and ForEach / EndForEach
 - Error handling: commands return success/failure; macros can halt on error or continue
+- Output file convention: plugins that create new files store the output path in `$NEW_FILE` for use in subsequent commands (e.g. `MoveFile source="$NEW_FILE"`)
 
 ### 7.4 Control Flow Syntax
 
@@ -472,50 +474,53 @@ The following table defines all pcode commands in the initial release. Arguments
 
 | Command             | Category        | Description                                                                                                                     | Key Arguments                              |
 | ------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| SelectDirectory     | File Management | Sets the active working directory                                                                                               | path                                       |
-| ReadFIT             | I/O             | Reads all FITS files in the active directory into the buffer pool                                                               | —                                          |
-| ReadXISF            | I/O             | Reads all XISF files in the active directory                                                                                    | —                                          |
-| ReadTIFF            | I/O             | Reads all TIFF files in the active directory                                                                                    | —                                          |
-| ReadAll             | I/O             | Reads all supported image files (FITS + XISF + TIFF) in the active directory                                                    | —                                          |
-| WriteFIT            | I/O             | Writes all buffered images as FITS files                                                                                        | destination, [overwrite]                   |
-| WriteXISF           | I/O             | Writes all buffered images as XISF files                                                                                        | destination, [overwrite], [compress]       |
-| WriteTIFF           | I/O             | Writes all buffered images as TIFF files                                                                                        | destination, [overwrite]                   |
-| WriteCurrent        | I/O             | Writes all buffered images back to their source paths in their original format                                                  | —                                          |
-| WritePNG            | I/O             | Writes a single image as PNG                                                                                                    | filename, destination                      |
-| WriteJPEG           | I/O             | Writes a single image as JPEG                                                                                                   | filename, destination, [quality]           |
-| ListFiles           | File Management | Lists files in the active directory                                                                                             | [filter]                                   |
-| FilterByKeyword     | File Management | Filters the active file list by keyword value                                                                                   | name, value                                |
 | AddKeyword          | Keyword         | Adds or replaces a keyword on loaded images                                                                                     | name, value, [comment], [scope]            |
-| DeleteKeyword       | Keyword         | Removes a keyword from loaded images                                                                                            | name, [scope]                              |
-| ModifyKeyword       | Keyword         | Changes the value of an existing keyword                                                                                        | name, value, [comment], [scope]            |
-| CopyKeyword         | Keyword         | Copies a keyword value to a new keyword name                                                                                    | from, to                                   |
-| ListKeywords        | Keyword         | Lists all keywords for the current image                                                                                        | —                                          |
-| GetKeyword          | Interrogation   | Retrieves a keyword value into a variable; see Section 7.12 for full keyword list                                               | name                                       |
-| GetImageProperty    | Interrogation   | Retrieves an image property into a variable; see Section 7.12 for full property list                                            | property                                   |
-| GetSessionProperty  | Interrogation   | Retrieves a session state value into a variable; see Section 7.12 for full property list                                        | property                                   |
-| Test                | Interrogation   | Performs a boolean test and stores result in $Result; see Section 7.12 for full test list                                       | expression                                 |
-| AutoStretch         | Processing      | Applies automatic screen transfer function stretch (display only — raw buffer unchanged)                                        | [method], [shadowClip], [targetBackground] |
-| GetHistogram        | Processing      | Computes histogram statistics for the current frame (median, std dev, clipping %)                                               | —                                          |
-| CropImage           | Processing      | Crops the image to a specified region                                                                                           | x, y, width, height                        |
-| BinImage            | Processing      | Bins the image by an integer factor                                                                                             | factor                                     |
-| DebayerImage        | Processing      | Debayers a Bayer CFA image on demand                                                                                            | [pattern], [method]                        |
 | AnalyzeFrames       | Frame Analysis  | Computes seven quality metrics for all loaded frames, classifies each as PASS or REJECT, and writes PXFLAG keyword to each file | —                                          |
+| Assert              | Scripting       | Halts execution with an error if expression is false                                                                            | expression                                 |
+| AutoStretch         | Processing      | Applies explicit screen transfer function stretch to current frame (display only — raw buffer unchanged); no longer applied automatically on frame load | [shadowClip], [targetBackground] |
+| BinImage            | Processing      | Bins the image by an integer factor                                                                                             | factor                                     |
 | BlinkSequence       | Blink & View    | Starts blinking the loaded image set                                                                                            | [fps]                                      |
 | CacheFrames         | Blink & View    | Pre-decodes and caches all frames for blinking                                                                                  | —                                          |
-| SetZoom             | Blink & View    | Sets the viewer zoom level                                                                                                      | level (fit, 25, 50, 100, 200)              |
-| ComputeFWHM         | Analysis        | Calculates Full Width at Half Maximum for detected stars; displays per-star circle annotations on viewer overlay                | —                                          |
-| CountStars          | Analysis        | Counts detected stars in the image                                                                                              | —                                          |
 | ComputeEccentricity | Analysis        | Calculates eccentricity for detected stars                                                                                      | —                                          |
-| MedianValue         | Analysis        | Returns the median pixel value per channel                                                                                      | —                                          |
+| ComputeFWHM         | Analysis        | Calculates Full Width at Half Maximum for detected stars; displays per-star circle annotations on viewer overlay                | —                                          |
+| ContourHeatmap      | Analysis        | Generates a spatial FWHM heatmap for the current frame; writes XISF to active directory; stores output path in `$NEW_FILE` | [palette], [contour_levels], [threshold], [saturation] |
 | ContourPlot (FWHM)  | Analysis        | Generates a 2D contour map for FWHM star analysis output                                                                        | [x], [y], [radius]                         |
-| Set                 | Scripting       | Assigns a value to a variable                                                                                                   | varname, value                             |
-| Print               | Scripting       | Outputs a message to the pcode console                                                                                          | message                                    |
-| Echo                | Scripting       | Prints the current value of a variable                                                                                          | varname                                    |
-| Assert              | Scripting       | Halts execution with an error if expression is false                                                                            | expression                                 |
+| CopyKeyword         | Keyword         | Copies a keyword value to a new keyword name                                                                                    | from, to                                   |
 | CountFiles          | Scripting       | Returns the number of files in the current list                                                                                 | —                                          |
-| RunMacro            | Scripting       | Executes a saved .phs macro file                                                                                                | filename                                   |
+| CountStars          | Analysis        | Counts detected stars in the image                                                                                              | —                                          |
+| CropImage           | Processing      | Crops the image to a specified region                                                                                           | x, y, width, height                        |
+| DebayerImage        | Processing      | Debayers a Bayer CFA image on demand                                                                                            | [pattern], [method]                        |
 | DefineMacro         | Scripting       | Begins the definition of a named reusable macro; supports positional ($1, $2) and named arguments                               | name                                       |
+| DeleteKeyword       | Keyword         | Removes a keyword from loaded images                                                                                            | name, [scope]                              |
+| Echo                | Scripting       | Prints the current value of a variable                                                                                          | varname                                    |
+| FilterByKeyword     | File Management | Filters the active file list by keyword value                                                                                   | name, value                                |
+| GetHistogram        | Processing      | Computes histogram statistics for the current frame (median, std dev, clipping %)                                               | —                                          |
+| GetImageProperty    | Interrogation   | Retrieves an image property into a variable; see Section 7.12 for full property list                                            | property                                   |
+| GetKeyword          | Interrogation   | Retrieves a keyword value into a variable; see Section 7.12 for full keyword list                                               | name                                       |
+| GetSessionProperty  | Interrogation   | Retrieves a session state value into a variable; see Section 7.12 for full property list                                        | property                                   |
+| ListFiles           | File Management | Lists files in the active directory                                                                                             | [filter]                                   |
+| ListKeywords        | Keyword         | Lists all keywords for the current image                                                                                        | —                                          |
+| LoadFile            | File Management | Loads a single image file from disk into the session for display and analysis without clearing the existing session | path |
 | Log                 | Scripting       | Writes collected macro output to a file                                                                                         | path, [append]                             |
+| MedianValue         | Analysis        | Returns the median pixel value per channel                                                                                      | —                                          |
+| ModifyKeyword       | Keyword         | Changes the value of an existing keyword                                                                                        | name, value, [comment], [scope]            |
+| MoveFile            | File Management | Moves a file to a destination directory; defaults to current frame if source= not specified; stores path in `$NEW_FILE` convention     | name, value, [comment], [scope]     |
+| Print               | Scripting       | Outputs a message to the pcode console                                                                                          | message                                    |
+| ReadAll             | I/O             | Reads all supported image files (FITS + XISF + TIFF) in the active directory                                                    | —                                          |
+| ReadFIT             | I/O             | Reads all FITS files in the active directory into the buffer pool                                                               | —                                          |
+| ReadTIFF            | I/O             | Reads all TIFF files in the active directory                                                                                    | —                                          |
+| ReadXISF            | I/O             | Reads all XISF files in the active directory                                                                                    | —                                          |
+| RunMacro            | Scripting       | Executes a saved .phs macro file                                                                                                | filename                                   |
+| SelectDirectory     | File Management | Sets the active working directory                                                                                               | path                                       |
+| Set                 | Scripting       | Assigns a value to a variable                                                                                                   | varname, value                             |
+| SetZoom             | Blink & View    | Sets the viewer zoom level                                                                                                      | level (fit, 25, 50, 100, 200)              |
+| Test                | Interrogation   | Performs a boolean test and stores result in $Result; see Section 7.12 for full test list                                       | expression                                 |
+| WriteCurrent        | I/O             | Writes all buffered images back to their source paths in their original format                                                  | —                                          |
+| WriteFIT            | I/O             | Writes all buffered images as FITS files                                                                                        | destination, [overwrite]                   |
+| WriteJPEG           | I/O             | Writes a single image as JPEG                                                                                                   | filename, destination, [quality]           |
+| WritePNG            | I/O             | Writes a single image as PNG                                                                                                    | filename, destination                      |
+| WriteTIFF           | I/O             | Writes all buffered images as TIFF files                                                                                        | destination, [overwrite]                   |
+| WriteXISF           | I/O             | Writes all buffered images as XISF files                                                                                        | destination, [overwrite], [compress]       |
 | pwd                 | Console         | Prints the current active directory to the console (client-side only)                                                           | —                                          |
 
 ### 7.9 Interactive Console
@@ -687,11 +692,11 @@ The layout from top to bottom:
 
 | Menu    | Items                                                                      |
 | ------- | -------------------------------------------------------------------------- |
-| File    | Select Directory, Clear Session, Exit                                      |
+| File    | Select Directory, Load Single Image, Clear Session, Exit                   |
 | Edit    | Preferences                                                                |
 | View    | Dark, Light, Matrix                                                        |
 | Process | Auto Stretch                                                               |
-| Analyze | FWHM, Star Count, Eccentricity, Median Value, Contour Plot, Analysis Graph |
+| Analyze | FWHM, Star Count, Eccentricity, Median Value, Contour Plot (Heatmap), Analysis Graph |
 | Tools   | Settings, Log Viewer                                                       |
 | Help    | About, Documentation, Check for Updates                                    |
 
@@ -1450,10 +1455,10 @@ curl -X POST http://localhost:7171/api/macro/run \
 | **Phase 2**  | ✅Blink engine, stretch pipeline (Auto-STF), pyramid cache, zoom, keyboard shortcuts, Info Panel, pixel tracking                                                                                                                                                                                                                                                                                                                                                                                      |
 | **Phase 3**  | ✅`photyx-xisf` crate (reader + writer, optimized), ReadAllXISFFiles, WriteAllXISFFiles, ReadAllFiles, ReadAllTIFFFiles, RGB display/histogram, background display cache, true median histogram                                                                                                                                                                                                                                                                                                       |
 | **Phase 4**  | ✅keyword plugins (Add/Delete/Modify/Copy), WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit handling, blink cache quality improvement, relative path resolution, window resize fix, pwd console command                                                                                                                                                                                                                             |
-| **Phase 5**  | ✅pcode interpreter with variable substitution, Log, RunMacro, If/Else/EndIf, For/EndFor; Macro Editor UI with syntax highlighting, save/load .phs files, Copy from Console; Quick Launch panel with persistent store, Pin to Quick Launch, right-click remove; GetKeyword, MoveFile, Print, Assert, CountFiles plugins; scope=all\|current on keyword commands; command rename refactor (ReadFIT, WriteTIFF, etc.); WriteCurrent atomic writes; ScriptResponse session_changed/display_changed flags |
+| **Phase 5**  | ✅pcode interpreter with variable substitution, Log, RunMacro, If/Else/EndIf, For/EndFor; Macro Editor UI with syntax highlighting, save/load .phs files, Copy from Console; Quick Launch panel with persistent store, Pin to Quick Launch, right-click remove; GetKeyword, MoveFile, Print, Assert, CountFiles plugins; scope=all\|current on keyword commands; command rename refactor (ReadFIT, WriteTIFF, etc.); WriteCurrent atomic writes; ScriptResponse `session_changed/display_changed` flags |
 | **Phase 6**  | ✅UI cleanup complete                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | **Phase 7**  | ✅ Complete — AnalyzeFrames with 7 native metrics (background median/stddev/gradient, SNR, FWHM, eccentricity, star count); PASS/REJECT classification; PXFLAG keyword; Analysis Graph viewer-region component with sigma bands, reject threshold line, two-line tooltip, triggered_by; star annotation overlay for ComputeFWHM; consolePipe store; blink red border overlay; viewer filename overlay; theme-aware chart colors                                                                       |
-| **Phase 8**  | Substantially complete — moment-based FWHM (geometric mean of intensity-weighted second-order moments); 8×8 background gradient grid; 5-pixel minimum star filter; WriteFITS U16 sign conversion fix; histogram canvas width fix, GUI tweaks                                                                                                                                                                                                                                                         |
+| **Phase 8**  | Substantially complete — moment-based FWHM; 8×8 background gradient grid; 5-pixel minimum star filter; WriteFITS U16 sign conversion fix; histogram canvas width fix; ContourHeatmap plugin (spatial FWHM heatmap, adaptive grid 5×5–15×15, viridis/plasma/coolwarm palettes, XISF output, `$NEW_FILE` convention); display pipeline refactor (explicit AutoStretch, raw display, blink-only cache); image_reader.rs format-agnostic reader; LoadFile pcode command; File > Load Single Image; DispatchResponse.data; histogram hover readout |
 | **Phase 9**  | Embedded SQLite, Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations                                                                                                                                                                                                                                                                                                                                                                                     |
 | **Phase 10** | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI                                                                                                                                                                                                                                                                                                                                                                                                      |
 | **Deferred** | ⏸Full keyword management UI, PNG/JPEG readers and writers, debayering, Auto-STF toolbar toggle, async dispatch,                                                                                                                                                                                                                                                                                                                                                                                      |
