@@ -89,6 +89,7 @@ pub struct ScriptResult {
     pub command:     String,
     pub success:     bool,
     pub message:     Option<String>,
+    pub data:        Option<serde_json::Value>,
 }
 
 const SESSION_COMMANDS: &[&str] = &[
@@ -127,6 +128,7 @@ fn run_script(
             command:     r.command.clone(),
             success:     r.success,
             message:     r.message.clone(),
+            data:        r.data.clone(),
         }).collect(),
         session_changed,
         display_changed,

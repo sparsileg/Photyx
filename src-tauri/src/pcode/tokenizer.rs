@@ -88,6 +88,19 @@ pub fn tokenize_line(line: &str) -> PcodeLine {
         "endfor" => {
             return PcodeLine::EndFor;
         }
+        "print" => {
+            // Accept both bare argument and message= form
+            let message = if rest.contains("message=") {
+                parse_args(&rest)
+                    .remove("message")
+                    .unwrap_or_default()
+            } else {
+                strip_quotes(rest.trim())
+            };
+            let mut args = std::collections::HashMap::new();
+            args.insert("message".to_string(), message);
+            return PcodeLine::Command { command, args };
+        }
         _ => {}
     }
 

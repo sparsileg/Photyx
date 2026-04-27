@@ -204,65 +204,14 @@ impl PhotonPlugin for Assert {
     }
 
     fn execute(&self, _ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        let expr = args.get("expression")
+        let expression = args.get("expression")
             .ok_or_else(|| PluginError::missing_arg("expression"))?;
 
-        if evaluate_truth(expr) {
-            Ok(PluginOutput::Message(format!("Assert passed: {}", expr)))
-        } else {
-            Err(PluginError::new("ASSERT_FAILED", &format!("Assertion failed: {}", expr)))
+        match crate::pcode::expr::evaluate_condition(expression) {
+            Ok(true)  => Ok(PluginOutput::Message(format!("Assert passed: {}", expression))),
+            Ok(false) => Err(PluginError::new("ASSERT_FAILED", &format!("Assertion failed: {}", expression))),
+            Err(e)    => Err(PluginError::new("EXPR_ERROR", &format!("Assert expression error: {}", e))),
         }
-    }
-}
-
-fn evaluate_truth(expr: &str) -> bool {
-    let expr = expr.trim();
-    if expr.is_empty() || expr == "false" || expr == "0" {
-        return false;
-    }
-    for op in &["==", "!=", "<=", ">=", "<", ">"] {
-        if let Some(op_pos) = expr.find(op) {
-            let lhs = expr[..op_pos].trim();
-            let rhs = strip_quotes(expr[op_pos + op.len()..].trim());
-            return compare_values(lhs, op, &rhs);
-        }
-    }
-    true
-}
-
-fn compare_values(lhs: &str, op: &str, rhs: &str) -> bool {
-    if let (Ok(l), Ok(r)) = (lhs.parse::<f64>(), rhs.parse::<f64>()) {
-        return match op {
-            "==" => (l - r).abs() < f64::EPSILON,
-            "!=" => (l - r).abs() >= f64::EPSILON,
-            "<"  => l < r,
-            ">"  => l > r,
-            "<=" => l <= r,
-            ">=" => l >= r,
-            _    => false,
-        };
-    }
-    let l = lhs.to_uppercase();
-    let r = rhs.to_uppercase();
-    match op {
-        "==" => l == r,
-        "!=" => l != r,
-        "<"  => l <  r,
-        ">"  => l >  r,
-        "<=" => l <= r,
-        ">=" => l >= r,
-        _    => false,
-    }
-}
-
-fn strip_quotes(s: &str) -> String {
-    let s = s.trim();
-    if (s.starts_with('"') && s.ends_with('"'))
-        || (s.starts_with('\'') && s.ends_with('\''))
-    {
-        s[1..s.len() - 1].to_string()
-    } else {
-        s.to_string()
     }
 }
 

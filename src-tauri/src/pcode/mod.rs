@@ -1,6 +1,7 @@
 // pcode/mod.rs — pcode interpreter
 // Spec §7.6, §7.3
 
+pub mod expr;
 pub mod tokenizer;
 
 use std::collections::HashMap;
@@ -18,6 +19,7 @@ pub struct PcodeResult {
     pub command:     String,
     pub success:     bool,
     pub message:     Option<String>,
+    pub data:        Option<serde_json::Value>,
 }
 
 impl PcodeResult {
@@ -178,11 +180,12 @@ pub fn execute_script(
             command:     "Parse".to_string(),
             success:     false,
             message:     Some(e),
+            data:        None,
         }],
     };
 
     let mut results         = Vec::new();
-    let mut variables       = HashMap::new();
+    let mut variables: HashMap<String, String> = ctx.variables.clone();
     let mut last_log_index  = 0usize;
     let mut halted          = false;
 
@@ -241,6 +244,7 @@ fn execute_blocks(
                             command: "For".to_string(),
                             success: false,
                             message: Some(format!("For: cannot parse 'from' value '{}'", from_str)),
+                            data:    None,
                         });
                         if halt_on_error { *halted = true; }
                         return;
@@ -254,6 +258,7 @@ fn execute_blocks(
                             command: "For".to_string(),
                             success: false,
                             message: Some(format!("For: cannot parse 'to' value '{}'", to_str)),
+                            data:    None,
                         });
                         if halt_on_error { *halted = true; }
                         return;
@@ -293,7 +298,21 @@ fn execute_line(
     match parsed {
         PcodeLine::Skip => {}
         PcodeLine::Assignment { name, value } => {
-            let resolved = substitute_vars(value, variables);
+            let substituted = substitute_vars(value, variables);
+            let resolved = match expr::evaluate_expr(&substituted) {
+                Ok(v)  => v,
+                Err(e) => {
+                    results.push(PcodeResult {
+                        line_number,
+                        command: format!("Set {}", name),
+                        success: false,
+                        message: Some(format!("Expression error: {}", e)),
+                        data:    None,
+                    });
+                    if halt_on_error { *halted = true; }
+                    return;
+                }
+            };
             variables.insert(name.clone(), resolved.clone());
             ctx.variables.insert(name.clone(), resolved.clone());
             info!("pcode: Set {} = {}", name, resolved);
@@ -302,6 +321,7 @@ fn execute_line(
                 command: format!("Set {}", name),
                 success: true,
                 message: Some(format!("{} = {}", name, resolved)),
+                data:    None,
             });
         }
         PcodeLine::Command { command, args } => {
@@ -318,6 +338,7 @@ fn execute_line(
                     command: "Log".to_string(),
                     success: result.is_ok(),
                     message: Some(result.unwrap_or_else(|e| e)),
+                    data:    None,
                 });
                 return;
             }
@@ -327,9 +348,9 @@ fn execute_line(
                     for (k, v) in &ctx.variables {
                         variables.insert(k.clone(), v.clone());
                     }
-                    let msg = match output {
-                        PluginOutput::Success      => None,
-                        PluginOutput::Message(m)   => Some(m),
+                    let (msg, data) = match output {
+                        PluginOutput::Success      => (None, None),
+                        PluginOutput::Message(m)   => (Some(m), None),
                         PluginOutput::Value(v)     => {
                             // Auto-store single values into a variable named after the name arg
                             if let Some(varname) = resolved_args.get("name")
@@ -339,15 +360,16 @@ fn execute_line(
                                 variables.insert(key.clone(), v.clone());
                                 ctx.variables.insert(key, v.clone());
                             }
-                            Some(v)
+                            (Some(v), None)
                         }
-                        PluginOutput::Values(vs)   => Some(vs.join("\n")),
-                        PluginOutput::Data(d)       => Some(
-                            d.get("message")
+                        PluginOutput::Values(vs)   => (Some(vs.join("\n")), None),
+                        PluginOutput::Data(d)       => {
+                            let msg = d.get("message")
                                 .and_then(|m| m.as_str())
                                 .unwrap_or("Done")
-                                .to_string()
-                        ),
+                                .to_string();
+                            (Some(msg), Some(d))
+                        }
                     };
                     info!("pcode line {}: {} -> OK", line_number, command);
                     results.push(PcodeResult {
@@ -355,6 +377,7 @@ fn execute_line(
                         command: command.clone(),
                         success: true,
                         message: msg,
+                        data,
                     });
                 }
                 Err(e) => {
@@ -364,6 +387,7 @@ fn execute_line(
                         command: command.clone(),
                         success: false,
                         message: Some(e.message.clone()),
+                        data:    None,
                     });
                     if halt_on_error {
                         *halted = true;
@@ -378,55 +402,16 @@ fn execute_line(
 
 // ── Condition evaluator ───────────────────────────────────────────────────────
 
-fn evaluate_condition(expr: &str) -> bool {
-    // Variables already substituted before this call
-    for op in &["==", "!=", "<=", ">=", "<", ">"] {
-        if let Some(op_pos) = expr.find(op) {
-            let lhs = expr[..op_pos].trim();
-            let rhs = strip_quotes_str(expr[op_pos + op.len()..].trim());
-            return compare_values(lhs, op, &rhs);
+fn evaluate_condition(expression: &str) -> bool {
+    match expr::evaluate_condition(expression) {
+        Ok(b)  => b,
+        Err(e) => {
+            tracing::warn!("pcode condition error: {}", e);
+            false
         }
     }
-    // No operator — treat non-empty, non-"false", non-"0" as true
-    let t = expr.trim();
-    !t.is_empty() && t != "false" && t != "0"
 }
 
-fn compare_values(lhs: &str, op: &str, rhs: &str) -> bool {
-    if let (Ok(l), Ok(r)) = (lhs.parse::<f64>(), rhs.parse::<f64>()) {
-        return match op {
-            "==" => (l - r).abs() < f64::EPSILON,
-            "!=" => (l - r).abs() >= f64::EPSILON,
-            "<"  => l < r,
-            ">"  => l > r,
-            "<=" => l <= r,
-            ">=" => l >= r,
-            _    => false,
-        };
-    }
-    let l = lhs.to_uppercase();
-    let r = rhs.to_uppercase();
-    match op {
-        "==" => l == r,
-        "!=" => l != r,
-        "<"  => l <  r,
-        ">"  => l >  r,
-        "<=" => l <= r,
-        ">=" => l >= r,
-        _    => false,
-    }
-}
-
-fn strip_quotes_str(s: &str) -> String {
-    let s = s.trim();
-    if (s.starts_with('"') && s.ends_with('"'))
-        || (s.starts_with('\'') && s.ends_with('\''))
-    {
-        s[1..s.len() - 1].to_string()
-    } else {
-        s.to_string()
-    }
-}
 
 // ── Variable substitution ─────────────────────────────────────────────────────
 

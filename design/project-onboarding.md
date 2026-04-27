@@ -30,6 +30,10 @@ Once I say proceed, deliver **one change at a time** using BEFORE/AFTER blocks:
 - **Always state the full file path** before each BEFORE/AFTER pair.
 - For large multi-file changes, recommend (or I will ask for) a **complete file replacement** that I can download.
 - Never combine multiple file changes into a single BEFORE/AFTER block.
+- Always deliver one BEFORE/AFTER block at a time. Don't proceed until I
+  explictly tell you to do so.
+- After a significant change or module has been done, pause and give me a
+  test that I can do to verify that everything is working as expected.
 
 #### When a Complete File Replacement Is Appropriate
 

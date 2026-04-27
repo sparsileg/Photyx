@@ -148,39 +148,45 @@
     };
 
     async function dispatch(raw: string) {
-        const parsed = tokenize(raw);
-        if (!parsed) return;
-
-        const cmdLower = parsed.command.toLowerCase();
+        const cmdLower = raw.trim().split(/\s/)[0].toLowerCase();
 
         if (CLIENT_COMMANDS[cmdLower]) {
-            CLIENT_COMMANDS[cmdLower](parsed.args);
+            const parsed = tokenize(raw);
+            if (parsed) CLIENT_COMMANDS[cmdLower](parsed.args);
             return;
         }
 
         try {
             const response = await invoke<{
-            success: boolean;
-            output: string | null;
-            error: string | null;
-            data: Record<string, unknown> | null;
-        }>('dispatch_command', {
-                request: {
-                    command: parsed.command,
-                    args: parsed.args,
-                }
-            });
+                results: Array<{
+                    line_number: number;
+                    command: string;
+                    success: boolean;
+                    message: string | null;
+                    data: Record<string, unknown> | null;
+                }>;
+                session_changed: boolean;
+                display_changed: boolean;
+            }>('run_script', { script: raw });
 
-            if (response.success) {
-                if (response.output) {
-                    response.output.split('\n').forEach(line => {
-                        if (line) append(line, 'success');
-                    });
+            for (const result of response.results) {
+                if (result.success) {
+                    if (result.message) {
+                        result.message.split('\n').forEach(line => {
+                            if (line) append(line, 'success');
+                        });
+                    }
+                    await syncSessionState(
+                        result.command.toLowerCase(),
+                        {},
+                        result.message,
+                        result.data,
+                    );
+                } else {
+                    const msg = result.message ?? 'Unknown error';
+                    append(msg, 'error');
+                    notifications.error(msg);
                 }
-                await syncSessionState(cmdLower, parsed.args, response.output, response.data);
-            } else {
-                append(response.error ?? 'Unknown error', 'error');
-                notifications.error(response.error ?? 'Unknown error');
             }
         } catch (err) {
             const msg = `Invoke error: ${err}`;
