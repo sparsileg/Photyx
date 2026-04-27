@@ -4,6 +4,7 @@
     import { notifications } from '../stores/notifications';
     import { selectDirectory, closeSession, applyAutoStretch, loadFile } from '../commands';
     import { getCurrentWindow } from '@tauri-apps/api/window';
+    import { open } from '@tauri-apps/plugin-dialog';
     import { invoke } from '@tauri-apps/api/core';
     import { consolePipe } from '../stores/consoleHistory';
 
@@ -32,6 +33,7 @@
             case 'plugin-manager':    ui.togglePanel('plugins'); break;
             case 'run-macro':         ui.togglePanel('macro-editor'); break;
             case 'select-directory':  selectDirectory(); break;
+            case 'load-single-image': loadSingleImage(); break;
             case 'theme-dark':        ui.setTheme('dark'); break;
             case 'theme-light':       ui.setTheme('light'); break;
             case 'theme-matrix':      ui.setTheme('matrix'); break;
@@ -92,7 +94,24 @@
         }
     }
 
-async function runContourHeatmap() {
+    async function loadSingleImage() {
+        let selected;
+        try {
+            selected = await open({
+                multiple: false,
+                filters: [{ name: 'Image Files', extensions: ['xisf', 'fit', 'fits', 'tiff', 'tif'] }]
+            });
+        } catch (e) {
+            notifications.error(`Failed to open file picker: ${e}`);
+            return;
+        }
+        if (!selected) return;
+        const path = typeof selected === 'string' ? selected : selected[0];
+        if (!path) return;
+        await loadFile(path);
+    }
+
+    async function runContourHeatmap() {
         notifications.running('ContourHeatmap running…');
         try {
             const response = await invoke<{
@@ -128,6 +147,7 @@ async function runContourHeatmap() {
     {#each [
         { name: 'File', items: [
             { label: 'Select Directory…',    action: 'select-directory',     shortcut: 'Ctrl+O' },
+            { label: 'Load Single Image…',   action: 'load-single-image' },
             { label: 'Close Session',        action: 'close-session' },
             { sep: true },
             { label: 'Exit',         action: 'exit' },

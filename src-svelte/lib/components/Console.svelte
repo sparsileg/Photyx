@@ -46,20 +46,19 @@
         autostretch:        'shadowClip=  targetBackground=',
         binimage:           'factor=',
         blinksequence:      'fps=',
-        contourheatmap:     'palette=  contour_levels=  threshold=  saturation=',
+        contourheatmap:     'palette=[viridis|plasma|coolwarm]  contour_levels=#  threshold=  saturation=',
         copykeyword:        'from=  to=',
         countfiles:         '',
         cropimage:          'x=  y=  width=  height=',
         debayerimage:       'method=  pattern=',
         deletekeyword:      'name=  scope=',
-        deletekeyword:      'name=',
         filterbykeyword:    'name=  value=',
         gethistogram:       '',
         getimageproperty:   'property=',
         getsessionproperty: 'property=',
+        loadfile:           'path=',
         log:                'path=  append=',
         modifykeyword:      'name=  value=  comment=  scope=',
-        modifykeyword:      'name=  value= comment=',
         movefile:           'destination=',
         print:              'message=',
         readall:            '',
@@ -72,11 +71,7 @@
         set:                '<varname> = <value>',
         setframe:           'index=',
         setzoom:            'level=',
-        writeallfitfiles:   'destination=  overwrite=',
-        writealltifffiles:  'destination=  overwrite=',
-        writeallxisffiles:  'destination=  overwrite=',
         writecurrent:       '',
-        writecurrentfiles:  '',
         writefit:           'destination=  overwrite=',
         writejpeg:          'filename=  destination=  quality=',
         writepng:           'filename=  destination=',
@@ -233,6 +228,10 @@
         if (cmd === 'contourheatmap') {
             if (output) notifications.success(output);
             const filePath = data?.output as string | null;
+            if (filePath) await loadFile(filePath);
+        }
+        if (cmd === 'loadfile') {
+            const filePath = data?.path as string | null;
             if (filePath) await loadFile(filePath);
         }
         if (cmd === 'setframe' || cmd === 'autostretch') {

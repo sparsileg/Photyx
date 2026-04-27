@@ -289,12 +289,62 @@ impl PhotonPlugin for CountFiles {
 
 // ── Registration ──────────────────────────────────────────────────────────────
 
+// ── LoadFile ──────────────────────────────────────────────────────────────────
+
+/// Loads a single file from disk and displays it in the viewer without
+/// adding it to the session file list.
+/// Usage: LoadFile path="D:/images/my_heatmap.xisf"
+pub struct LoadFile;
+
+impl PhotonPlugin for LoadFile {
+    fn name(&self)        -> &str { "LoadFile" }
+    fn version(&self)     -> &str { "1.0.0" }
+    fn description(&self) -> &str { "Loads a single file for display without adding it to the session" }
+
+    fn parameters(&self) -> Vec<ParamSpec> {
+        vec![
+            ParamSpec {
+                name:        "path".to_string(),
+                param_type:  ParamType::Path,
+                required:    true,
+                description: "Path to the file to load".to_string(),
+                default:     None,
+            },
+        ]
+    }
+
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+        let path = args.get("path")
+            .ok_or_else(|| PluginError::missing_arg("path"))?;
+
+        let resolved = crate::utils::resolve_path(path, ctx.active_directory.as_deref());
+
+        if !std::path::Path::new(&resolved).exists() {
+            return Err(PluginError::new(
+                "FILE_NOT_FOUND",
+                &format!("File not found: '{}'", resolved),
+            ));
+        }
+
+        // Store path for frontend to retrieve via get_variable
+        ctx.variables.insert("LOAD_FILE_PATH".to_string(), resolved.clone());
+
+        Ok(PluginOutput::Data(serde_json::json!({
+            "plugin":  "LoadFile",
+            "path":    resolved,
+            "message": format!("LoadFile: {}", resolved),
+        })))
+    }
+}
+
+// ── Registration ──────────────────────────────────────────────────────────────
+
 pub fn register_all(registry: &crate::plugin::registry::PluginRegistry) {
     registry.register(Arc::new(Assert));
     registry.register(Arc::new(CountFiles));
     registry.register(Arc::new(GetKeyword));
+    registry.register(Arc::new(LoadFile));
     registry.register(Arc::new(MoveFile));
     registry.register(Arc::new(Print));
 }
-
 // ----------------------------------------------------------------------

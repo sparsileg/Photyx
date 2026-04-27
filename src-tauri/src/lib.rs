@@ -1355,33 +1355,47 @@ fn parse_log_line(line: &str) -> serde_json::Value {
     }
 }
 
-/// Load a file from disk and return it as a base64 JPEG data URL for preview.
-/// Does NOT add the file to the session file list or image buffers.
+/// Load a single file from disk into the session and return a base64 JPEG data URL for display.
+/// Adds the file to ctx.file_list and ctx.image_buffers as a single-frame session.
+/// Cleared automatically when the user loads a new batch with ReadAll/ReadFIT/etc.
 #[tauri::command]
-fn load_file(path: String) -> Result<String, String> {
-    use photyx_xisf::XisfReader;
-    use photyx_xisf::PixelData as XisfPixelData;
+fn load_file(path: String, state: State<PhotoxState>) -> Result<String, String> {
+    use crate::plugins::image_reader::read_image_file;
     use crate::context::PixelData;
-    // Read the XISF file
-    let xisf_image = XisfReader::open(&path)
-        .map_err(|e| format!("Failed to read '{}': {}", path, e))?
-        .read_image(0)
-        .map_err(|e| format!("Failed to decode '{}': {}", path, e))?;
 
-    let width    = xisf_image.width as usize;
-    let height   = xisf_image.height as usize;
-    let channels = xisf_image.channels as usize;
+    let buffer = read_image_file(&path)
+        .map_err(|e| format!("Failed to load '{}': {}", path, e))?;
 
-    // Check if prerendered (PXTYPE=HEATMAP)
-    let is_prerendered = xisf_image.fits_keywords.iter()
-        .any(|kw| kw.name == "PXTYPE" && kw.value == "HEATMAP");
+    // Inject into session so AutoStretch, ContourHeatmap, etc. can operate on it
+    {
+        let mut ctx = state.context.lock().expect("context lock poisoned");
+        // Remove any previously single-loaded file if it's not part of a batch
+        if ctx.file_list.len() == 1 && ctx.file_list[0] == path {
+            // Same file — just update
+        } else if ctx.file_list.len() == 1 {
+            // Single file loaded previously — replace it
+            let old = ctx.file_list[0].clone();
+            ctx.file_list.clear();
+            ctx.image_buffers.remove(&old);
+        }
+        if !ctx.file_list.contains(&path) {
+            ctx.file_list.push(path.clone());
+            ctx.image_buffers.insert(path.clone(), buffer.clone());
+        }
+        ctx.current_frame = ctx.file_list.iter().position(|p| p == &path).unwrap_or(0);
+    }
 
-    // Convert pixels
-    let pixels = match &xisf_image.pixels {
-        XisfPixelData::U8(v)  => PixelData::U8(v.clone()),
-        XisfPixelData::U16(v) => PixelData::U16(v.clone()),
-        XisfPixelData::F32(v) => PixelData::F32(v.clone()),
-        _ => return Err("Unsupported pixel format in preview file".to_string()),
+    let width    = buffer.width as usize;
+    let height   = buffer.height as usize;
+    let channels = buffer.channels as usize;
+
+    let is_prerendered = buffer.keywords.get("PXTYPE")
+        .map(|kw| kw.value == "HEATMAP")
+        .unwrap_or(false);
+
+    let pixels = match &buffer.pixels {
+        Some(p) => p,
+        None => return Err("No pixel data in file".to_string()),
     };
 
     const MAX_DISPLAY_W: usize = 1200;
@@ -1412,57 +1426,122 @@ fn load_file(path: String) -> Result<String, String> {
             PixelData::U16(v) => {
                 for oy in 0..disp_h {
                     for ox in 0..disp_w {
-                        let mut sum = 0u32; let mut count = 0u32;
-                        for dy in 0..step {
-                            let sy = oy * step + dy;
-                            if sy >= height { continue; }
-                            for dx in 0..step {
-                                let sx = ox * step + dx;
-                                if sx >= width { continue; }
-                                sum += v[sy * width + sx] as u32;
-                                count += 1;
+                        if channels == 3 {
+                            let mut sr = 0u32; let mut sg = 0u32; let mut sb = 0u32; let mut sc = 0u32;
+                            for dy in 0..step {
+                                let sy = oy * step + dy;
+                                if sy >= height { continue; }
+                                for dx in 0..step {
+                                    let sx = ox * step + dx;
+                                    if sx >= width { continue; }
+                                    let idx = (sy * width + sx) * 3;
+                                    sr += v[idx] as u32;
+                                    sg += v[idx + 1] as u32;
+                                    sb += v[idx + 2] as u32;
+                                    sc += 1;
+                                }
                             }
+                            let scale = sc as f32 * 65535.0;
+                            rgb.push((sr as f32 / scale * 255.0) as u8);
+                            rgb.push((sg as f32 / scale * 255.0) as u8);
+                            rgb.push((sb as f32 / scale * 255.0) as u8);
+                        } else {
+                            let mut sum = 0u32; let mut count = 0u32;
+                            for dy in 0..step {
+                                let sy = oy * step + dy;
+                                if sy >= height { continue; }
+                                for dx in 0..step {
+                                    let sx = ox * step + dx;
+                                    if sx >= width { continue; }
+                                    sum += v[sy * width + sx] as u32;
+                                    count += 1;
+                                }
+                            }
+                            let val = (sum as f32 / (count as f32 * 65535.0) * 255.0) as u8;
+                            rgb.push(val); rgb.push(val); rgb.push(val);
                         }
-                        let val = (sum as f32 / (count as f32 * 65535.0) * 255.0) as u8;
-                        rgb.push(val); rgb.push(val); rgb.push(val);
                     }
                 }
             }
             PixelData::F32(v) => {
                 for oy in 0..disp_h {
                     for ox in 0..disp_w {
-                        let mut sum = 0.0f32; let mut count = 0u32;
-                        for dy in 0..step {
-                            let sy = oy * step + dy;
-                            if sy >= height { continue; }
-                            for dx in 0..step {
-                                let sx = ox * step + dx;
-                                if sx >= width { continue; }
-                                let val = v[sy * width + sx];
-                                if val.is_finite() { sum += val; count += 1; }
+                        if channels == 3 {
+                            let mut sr = 0.0f32; let mut sg = 0.0f32; let mut sb = 0.0f32; let mut sc = 0u32;
+                            for dy in 0..step {
+                                let sy = oy * step + dy;
+                                if sy >= height { continue; }
+                                for dx in 0..step {
+                                    let sx = ox * step + dx;
+                                    if sx >= width { continue; }
+                                    let idx = (sy * width + sx) * 3;
+                                    if v[idx].is_finite() {
+                                        sr += v[idx];
+                                        sg += v[idx + 1];
+                                        sb += v[idx + 2];
+                                        sc += 1;
+                                    }
+                                }
                             }
+                            let sc = sc as f32;
+                            rgb.push((sr / sc * 255.0).clamp(0.0, 255.0) as u8);
+                            rgb.push((sg / sc * 255.0).clamp(0.0, 255.0) as u8);
+                            rgb.push((sb / sc * 255.0).clamp(0.0, 255.0) as u8);
+                        } else {
+                            let mut sum = 0.0f32; let mut count = 0u32;
+                            for dy in 0..step {
+                                let sy = oy * step + dy;
+                                if sy >= height { continue; }
+                                for dx in 0..step {
+                                    let sx = ox * step + dx;
+                                    if sx >= width { continue; }
+                                    let val = v[sy * width + sx];
+                                    if val.is_finite() { sum += val; count += 1; }
+                                }
+                            }
+                            let val = (sum / count as f32 * 255.0).clamp(0.0, 255.0) as u8;
+                            rgb.push(val); rgb.push(val); rgb.push(val);
                         }
-                        let val = (sum / count as f32 * 255.0).clamp(0.0, 255.0) as u8;
-                        rgb.push(val); rgb.push(val); rgb.push(val);
                     }
                 }
             }
             PixelData::U8(v) => {
                 for oy in 0..disp_h {
                     for ox in 0..disp_w {
-                        let mut sum = 0u32; let mut count = 0u32;
-                        for dy in 0..step {
-                            let sy = oy * step + dy;
-                            if sy >= height { continue; }
-                            for dx in 0..step {
-                                let sx = ox * step + dx;
-                                if sx >= width { continue; }
-                                sum += v[sy * width + sx] as u32;
-                                count += 1;
+                        if channels == 3 {
+                            let mut sr = 0u32; let mut sg = 0u32; let mut sb = 0u32; let mut sc = 0u32;
+                            for dy in 0..step {
+                                let sy = oy * step + dy;
+                                if sy >= height { continue; }
+                                for dx in 0..step {
+                                    let sx = ox * step + dx;
+                                    if sx >= width { continue; }
+                                    let idx = (sy * width + sx) * 3;
+                                    sr += v[idx] as u32;
+                                    sg += v[idx + 1] as u32;
+                                    sb += v[idx + 2] as u32;
+                                    sc += 1;
+                                }
                             }
+                            let scale = sc as f32 * 255.0;
+                            rgb.push((sr as f32 / scale * 255.0) as u8);
+                            rgb.push((sg as f32 / scale * 255.0) as u8);
+                            rgb.push((sb as f32 / scale * 255.0) as u8);
+                        } else {
+                            let mut sum = 0u32; let mut count = 0u32;
+                            for dy in 0..step {
+                                let sy = oy * step + dy;
+                                if sy >= height { continue; }
+                                for dx in 0..step {
+                                    let sx = ox * step + dx;
+                                    if sx >= width { continue; }
+                                    sum += v[sy * width + sx] as u32;
+                                    count += 1;
+                                }
+                            }
+                            let val = (sum as f32 / (count as f32 * 255.0) * 255.0) as u8;
+                            rgb.push(val); rgb.push(val); rgb.push(val);
                         }
-                        let val = (sum as f32 / (count as f32 * 255.0) * 255.0) as u8;
-                        rgb.push(val); rgb.push(val); rgb.push(val);
                     }
                 }
             }

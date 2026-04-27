@@ -5,11 +5,13 @@ export const PCODE_COMMANDS = new Set([
     // ── Directory & session ──────────────────────────────────────────────────
     'ClearSession',
     'SelectDirectory',
+
     // ── Read commands ────────────────────────────────────────────────────────
     'ReadAll',
     'ReadFIT',
     'ReadTIFF',
     'ReadXISF',
+
     // ── Write commands ───────────────────────────────────────────────────────
     'WriteCurrent',
     'WriteFIT',
@@ -18,6 +20,7 @@ export const PCODE_COMMANDS = new Set([
     'WritePNG',
     'WriteTIFF',
     'WriteXISF',
+
     // ── Keyword commands ─────────────────────────────────────────────────────
     'AddKeyword',
     'CopyKeyword',
@@ -25,6 +28,7 @@ export const PCODE_COMMANDS = new Set([
     'GetKeyword',
     'ListKeywords',
     'ModifyKeyword',
+
     // ── Image analysis ───────────────────────────────────────────────────────
     'AnalyzeFrames',
     'ClearAnnotations',
@@ -38,16 +42,19 @@ export const PCODE_COMMANDS = new Set([
     'MedianValue',
     'ShowAnalysisGraph',
     'ShowAnalysisResults',
+
     // ── Image processing ─────────────────────────────────────────────────────
     'AutoStretch',
     'BinImage',
     'CropImage',
     'DebayerImage',
+
     // ── Display & navigation ─────────────────────────────────────────────────
     'BlinkSequence',
     'CacheFrames',
     'SetFrame',
     'SetZoom',
+
     // ── Scripting ────────────────────────────────────────────────────────────
     'Assert',
     'CountFiles',
@@ -58,16 +65,19 @@ export const PCODE_COMMANDS = new Set([
     'EndIf',
     'For',
     'If',
+    'LoadFile',
     'Log',
     'MoveFile',
     'Print',
     'RunMacro',
     'Set',
     'Test',
+
     // ── File management ──────────────────────────────────────────────────────
     'FilterByKeyword',
     'ListFiles',
     'MoveFile',
+
     // ── Console built-ins ────────────────────────────────────────────────────
     'Clear',
     'Help',

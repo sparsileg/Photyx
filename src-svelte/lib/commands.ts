@@ -89,6 +89,9 @@ export async function loadFiles(filter: FormatFilter) {
     invoke('start_background_cache').catch(e => {
         console.warn('Background cache failed to start:', e);
     });
+
+    // Ensure current frame metadata is populated for correct zoom scaling in blink
+    await displayFrame(0);
 }
 
 /** Clear all loaded images and reset session. Active directory is preserved. */
@@ -114,6 +117,42 @@ export async function loadFile(path: string) {
     try {
         const dataUrl = await invoke<string>('load_file', { path });
         ui.setDisplayImage(dataUrl);
+        // Sync session so viewer has correct metadata for zoom calculations
+        const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
+        session.setFileList(s.fileList);
+        session.setCurrentFrame(s.currentFrame);
+        const info = await invoke<{
+            current_frame: number;
+            file_count: number;
+            buffer: {
+                filename: string;
+                width: number;
+                height: number;
+                display_width: number;
+                bit_depth: string;
+                channels: number;
+                has_pixels: boolean;
+            } | null;
+        }>('debug_buffer_info');
+        if (info.buffer) {
+            const keywords = await invoke<Record<string, { name: string; value: string; comment: string | null }>>('get_keywords');
+            session.update(st => ({
+                ...st,
+                loadedImages: {
+                    ...st.loadedImages,
+                    [path]: {
+                        filename: info.buffer!.filename,
+                        width: info.buffer!.width,
+                        height: info.buffer!.height,
+                        displayWidth: info.buffer!.display_width,
+                        bitDepth: info.buffer!.bit_depth,
+                        colorSpace: info.buffer!.channels === 3 ? 'RGB' : 'Mono',
+                        channels: info.buffer!.channels,
+                        keywords,
+                    }
+                }
+            }));
+        }
     } catch (e) {
         notifications.error(`Failed to load file: ${e}`);
     }

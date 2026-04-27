@@ -89,7 +89,7 @@ impl PhotonPlugin for ReadTIFF {
     }
 }
 
-pub(crate) fn read_tiff_file(path: &str) -> Result<ImageBuffer, String> {
+pub fn read_tiff_file(path: &str) -> Result<ImageBuffer, String> {
     let file = std::fs::File::open(path)
         .map_err(|e| format!("Cannot open file: {e}"))?;
 
