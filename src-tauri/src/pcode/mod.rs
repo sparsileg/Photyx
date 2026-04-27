@@ -323,6 +323,10 @@ fn execute_line(
             }
             match registry.dispatch(ctx, command, &resolved_args) {
                 Ok(output) => {
+                    // Sync any variables the plugin wrote to ctx.variables
+                    for (k, v) in &ctx.variables {
+                        variables.insert(k.clone(), v.clone());
+                    }
                     let msg = match output {
                         PluginOutput::Success      => None,
                         PluginOutput::Message(m)   => Some(m),

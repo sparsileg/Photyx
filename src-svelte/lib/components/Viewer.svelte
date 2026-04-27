@@ -4,6 +4,7 @@
     import { invoke } from '@tauri-apps/api/core';
     import { ui } from '../stores/ui';
     import { session, currentImage } from '../stores/session';
+    import { applyAutoStretch } from '../commands';
 
     const { onMousePixel }: {
         onMousePixel: (px: { x: number; y: number } | null) => void;
@@ -449,6 +450,18 @@
         }
     });
 
+    // ── AutoStretch frame drawing ─────────────────────────────────────────────
+    let lastAutostretchUrl: string | null = null;
+    $effect(() => {
+        const url = $ui.autostretchImageUrl;
+        if (url && url !== lastAutostretchUrl) {
+            lastAutostretchUrl = url;
+            drawImageFromUrl(url);
+        } else if (!url) {
+            lastAutostretchUrl = null;
+        }
+    });
+
     // ── Frame refresh effects ─────────────────────────────────────────────────
     let lastToken = 0;
     let lastNeedsFullRes = false;
@@ -468,7 +481,9 @@
         if (full === lastNeedsFullRes) return;
         lastNeedsFullRes = full;
         if (!hasImage) return;
-        if (full) {
+        if ($ui.autostretchImageUrl) {
+            applyAutoStretch();
+        } else if (full) {
             loadFullFrame();
         } else {
             loadCurrentFrame();

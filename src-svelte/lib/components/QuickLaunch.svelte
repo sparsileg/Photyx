@@ -5,6 +5,7 @@
     import { ui } from '../stores/ui';
     import { quickLaunch } from '../stores/quickLaunch';
     import { session } from '../stores/session';
+    import { applyAutoStretch } from '../commands';
 
     // ── Context menu state ───────────────────────────────────────────────────
     let contextMenu = $state<{ x: number; y: number; id: string } | null>(null);
@@ -53,6 +54,9 @@
             for (const r of response.results) {
                 if (r.command.toLowerCase() === 'computefwhm' && r.success) {
                     ui.refreshAnnotations();
+                }
+                if (r.command.toLowerCase() === 'autostretch' && r.success) {
+                    await applyAutoStretch();
                 }
             }
             if (response.session_changed) {

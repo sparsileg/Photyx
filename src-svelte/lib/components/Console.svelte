@@ -27,6 +27,7 @@
     let nextId = 2;
 
     import { PCODE_COMMANDS } from '../pcodeCommands';
+    import { applyAutoStretch } from '../commands';
 
     // Watch for external console output
     $effect(() => {
@@ -219,7 +220,10 @@
                 notifications.error(`Session sync failed: ${e}`);
             }
         }
-        if (cmd === 'autostretch' || cmd === 'linearstretch' || cmd === 'histogramequalization') {
+        if (cmd === 'autostretch') {
+            await applyAutoStretch();
+        }
+        if (cmd === 'linearstretch' || cmd === 'histogramequalization') {
             ui.requestFrameRefresh();
         }
         if (cmd === 'computefwhm') {

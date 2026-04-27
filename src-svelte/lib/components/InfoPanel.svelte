@@ -322,13 +322,9 @@
         ctx.fillRect(0, 0, w, h);
 
         const barW = w / 256;
-
         if (isRGB) {
-            // Draw R, G, B channels with additive blending
             const allBins = [data.bins, data.bins_g!, data.bins_b!];
-            const allMax = Math.max(
-                ...allBins.flatMap(b => b)
-            );
+            const allMax = Math.max(...allBins.flatMap(b => b));
             if (allMax === 0) return;
 
             const colors = ['rgba(255,60,60,0.7)', 'rgba(60,255,60,0.7)', 'rgba(60,120,255,0.7)'];
@@ -345,15 +341,9 @@
             }
             ctx.globalCompositeOperation = 'source-over';
 
-            // Stats overlay
-            const statsLines = [
-                `Med R/G/B: ${(data.median * 65535).toFixed(0)}/${(data.median_g! * 65535).toFixed(0)}/${(data.median_b! * 65535).toFixed(0)}`,
-                `σ R/G/B: ${(data.std_dev * 65535).toFixed(0)}/${(data.std_dev_g! * 65535).toFixed(0)}/${(data.std_dev_b! * 65535).toFixed(0)}`,
-                `Clip: ${data.clipping_pct.toFixed(3)}%`,
-            ];
-            drawStatsOverlay(ctx, statsLines, w);
+            const statsLine = `Med R/G/B: ${(data.median * 65535).toFixed(0)}/${(data.median_g! * 65535).toFixed(0)}/${(data.median_b! * 65535).toFixed(0)}  σ: ${(data.std_dev * 65535).toFixed(0)}/${(data.std_dev_g! * 65535).toFixed(0)}/${(data.std_dev_b! * 65535).toFixed(0)}  Clip: ${data.clipping_pct.toFixed(3)}%`;
+            drawStatsOverlay(ctx, statsLine, w, h);
         } else {
-            // Mono
             const max = Math.max(...data.bins);
             if (max === 0) return;
 
@@ -365,39 +355,89 @@
                 ctx.fillRect(i * barW, h - barH, Math.ceil(barW), barH);
             }
 
-            const statsLines = [
-                `Med: ${(data.median * 65535).toFixed(0)}`,
-                `σ: ${(data.std_dev * 65535).toFixed(0)}`,
-                `Clip: ${data.clipping_pct.toFixed(3)}%`,
-            ];
-            drawStatsOverlay(ctx, statsLines, w);
+            const statsLine = `Med: ${(data.median * 65535).toFixed(0)}  σ: ${(data.std_dev * 65535).toFixed(0)}  Clip: ${data.clipping_pct.toFixed(3)}%`;
+            drawStatsOverlay(ctx, statsLine, w, h);
         }
     }
 
-    function drawStatsOverlay(ctx: CanvasRenderingContext2D, lines: string[], w: number) {
-        const fontSize = 12.5;
+    function drawStatsOverlay(ctx: CanvasRenderingContext2D, statsLine: string, w: number, h: number) {
+        const fontSize = 11;
         ctx.font = `${fontSize}px monospace`;
         const padding = 4;
-        const lineH = fontSize + 3;
-        const textW = Math.max(...lines.map(s => ctx.measureText(s).width));
-        const boxX = w * 0.30;
+        const textW = ctx.measureText(statsLine).width;
+        const boxX = w * 0.25;
         const boxY = 4;
         const boxW = textW + padding * 2;
-        const boxH = lines.length * lineH + padding;
+        const boxH = fontSize + padding * 2;
 
         ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
         ctx.fillRect(boxX, boxY, boxW, boxH);
-
         ctx.fillStyle = '#ffffff';
-        lines.forEach((s, i) => {
-            ctx.fillText(s, boxX + padding, boxY + padding + fontSize + i * lineH);
-        });
+        ctx.fillText(statsLine, boxX + padding, boxY + padding + fontSize);
+    }
+
+    function drawHoverOverlay(ctx: CanvasRenderingContext2D, hoverLine: string, w: number, h: number) {
+        const fontSize = 11;
+        ctx.font = `${fontSize}px monospace`;
+        const padding = 4;
+        const statsRowH = fontSize + padding * 2;  // matches drawStatsOverlay box height
+        const textW = ctx.measureText(hoverLine).width;
+        const boxX = w * 0.25;
+        const boxY = 4 + statsRowH + 2;  // just below the stats row
+        const boxW = textW + padding * 2;
+        const boxH = fontSize + padding * 2;
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        ctx.fillRect(boxX, boxY, boxW, boxH);
+        ctx.fillStyle = '#00ff88';
+        ctx.fillText(hoverLine, boxX + padding, boxY + padding + fontSize);
+    }
+
+    function redrawWithHover(hoverLine: string | null) {
+        if (!histStats || !histogramCanvas) return;
+        drawHistogram(histStats);
+        if (hoverLine) {
+            const ctx = histogramCanvas.getContext('2d');
+            if (ctx) drawHoverOverlay(ctx, hoverLine, histogramCanvas.width, histogramCanvas.height);
+        }
+    }
+
+    function onHistogramMouseMove(e: MouseEvent) {
+        if (!histStats || !histogramCanvas || !$currentImage) return;
+        const rect = histogramCanvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const bin = Math.max(0, Math.min(255, Math.floor((x / rect.width) * 256)));
+        const normalized = (bin / 255).toFixed(3);
+        const aduScale = $currentImage.bitDepth === 'U8' ? 255 : 65535;
+        const adu = Math.round((bin / 255) * aduScale);
+        const totalPixels = $currentImage.width * $currentImage.height;
+
+        let hoverLine: string;
+        if (histStats.bins_g !== null && histStats.bins_b !== null) {
+            const pctR = (histStats.bins[bin] / totalPixels * 100).toFixed(2);
+            const pctG = (histStats.bins_g[bin] / totalPixels * 100).toFixed(2);
+            const pctB = (histStats.bins_b[bin] / totalPixels * 100).toFixed(2);
+            hoverLine = `Val: ${normalized} / ${adu}  R: ${pctR}%  G: ${pctG}%  B: ${pctB}%`;
+        } else {
+            const pct = (histStats.bins[bin] / totalPixels * 100).toFixed(2);
+            hoverLine = `Val: ${normalized} / ${adu}  Count: ${pct}%`;
+        }
+        redrawWithHover(hoverLine);
+    }
+
+    function onHistogramMouseLeave() {
+        redrawWithHover(null);
     }
 
     // Update histogram when tab changes or frame changes
+    let lastFrameToken = 0;
     $effect(() => {
         const tab = activeTab;
         const frame = $ui.frameRefreshToken;
+        if (frame !== lastFrameToken && frame > 0) {
+            lastFrameToken = frame;
+            if (activeTab !== 'pixels') activeTab = 'pixels';
+        }
         if (tab === 'histogram') {
             updateHistogram();
         }
@@ -513,6 +553,8 @@
                         bind:this={histogramCanvas}
                         width="400"
                         height="80"
+                        onmousemove={onHistogramMouseMove}
+                        onmouseleave={onHistogramMouseLeave}
                     ></canvas>
                 {/if}
             {:else}

@@ -2,8 +2,10 @@
 // Spec §12.2 — Auto-STF (PixInsight-compatible algorithm)
 //
 // Design: operates entirely on a display-resolution copy of the image.
-// The raw image_buffer is never modified. The result is stored as JPEG
-// bytes in AppContext::display_cache, keyed by file path.
+// The raw image_buffer is never modified. The result is returned as JPEG
+// bytes directly to the caller — no caching. The get_autostretch_frame
+// Tauri command calls compute_autostretch_jpeg() and returns a base64
+// data URL to the frontend for immediate display.
 
 use tracing::info;
 use image::{RgbImage, ImageFormat};
@@ -13,9 +15,6 @@ use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, Pl
 use crate::context::{AppContext, ColorSpace, PixelData};
 
 // ── AutoStretch defaults ──────────────────────────────────────────────────
-// Adjust these constants to tune the default stretch behaviour.
-// shadowClip:       PixInsight default is -2.8. Less negative = brighter shadows.
-// targetBackground: PixInsight default is 0.25. Lower = darker background / less stretch.
 const DEFAULT_SHADOW_CLIP:       f32 = -2.8;
 const DEFAULT_TARGET_BACKGROUND: f32 = 0.15;
 
@@ -54,185 +53,165 @@ impl PhotonPlugin for AutoStretch {
             .and_then(|v| v.parse::<f32>().ok())
             .unwrap_or(DEFAULT_SHADOW_CLIP);
 
-        let path = ctx.file_list.get(ctx.current_frame).cloned().ok_or_else(|| {
-            PluginError::new("NO_IMAGE", "No image loaded. Use ReadAll first.")
-        })?;
+        let jpeg_bytes = compute_autostretch_jpeg(ctx, shadow_clip, target_bg)
+            .map_err(|e| PluginError::new("AUTOSTRETCH_ERROR", &e))?;
 
-        let buffer = ctx.image_buffers.get(&path).ok_or_else(|| {
-            PluginError::new("NO_IMAGE", "Current image buffer not found.")
-        })?;
-
-        let pixels = buffer.pixels.as_ref().ok_or_else(|| {
-            PluginError::new("NO_PIXELS", "Image has no pixel data.")
-        })?;
-
-        let src_w    = buffer.width as usize;
-        let src_h    = buffer.height as usize;
-        let channels = buffer.channels as usize;
-        let is_rgb   = channels == 3 && buffer.color_space == ColorSpace::RGB;
-
-        // ── Step 1: Downsample to display resolution ──────────────────────────
-        const MAX_DISPLAY_W: usize = 1200;
-        let (disp_w, disp_h, step) = if src_w > MAX_DISPLAY_W {
-            let step = (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W;
-            (src_w / step, src_h / step, step)
-        } else {
-            (src_w, src_h, 1)
-        };
-
-        let pixel_count = disp_w * disp_h;
-
-        // Build one display channel per image channel
-        // For mono/bayer: 1 channel. For RGB: 3 channels.
-        let num_display_channels = if is_rgb { 3 } else { 1 };
-        let mut display_channels: Vec<Vec<f32>> = (0..num_display_channels)
-            .map(|_| Vec::with_capacity(pixel_count))
-            .collect();
-
-        match pixels {
-            PixelData::U16(v) => {
-                for oy in 0..disp_h {
-                    for ox in 0..disp_w {
-                        for ch in 0..num_display_channels {
-                            let mut sum = 0u32;
-                            let mut count = 0u32;
-                            for dy in 0..step {
-                                let sy = oy * step + dy;
-                                if sy >= src_h { continue; }
-                                for dx in 0..step {
-                                    let sx = ox * step + dx;
-                                    if sx >= src_w { continue; }
-                                    let idx = (sy * src_w + sx) * channels + ch;
-                                    sum += v[idx] as u32;
-                                    count += 1;
-                                }
-                            }
-                            display_channels[ch].push(sum as f32 / (count as f32 * 65535.0));
-                        }
-                    }
-                }
-            }
-            PixelData::F32(v) => {
-                for oy in 0..disp_h {
-                    for ox in 0..disp_w {
-                        for ch in 0..num_display_channels {
-                            let mut sum = 0.0f32;
-                            let mut count = 0u32;
-                            for dy in 0..step {
-                                let sy = oy * step + dy;
-                                if sy >= src_h { continue; }
-                                for dx in 0..step {
-                                    let sx = ox * step + dx;
-                                    if sx >= src_w { continue; }
-                                    let idx = (sy * src_w + sx) * channels + ch;
-                                    let val = v[idx];
-                                    if val.is_finite() {
-                                        sum += val;
-                                        count += 1;
-                                    }
-                                }
-                            }
-                            display_channels[ch].push(
-                                if count > 0 { sum / count as f32 } else { 0.0 }
-                            );
-                        }
-                    }
-                }
-            }
-            PixelData::U8(v) => {
-                for oy in 0..disp_h {
-                    for ox in 0..disp_w {
-                        for ch in 0..num_display_channels {
-                            let mut sum = 0u32;
-                            let mut count = 0u32;
-                            for dy in 0..step {
-                                let sy = oy * step + dy;
-                                if sy >= src_h { continue; }
-                                for dx in 0..step {
-                                    let sx = ox * step + dx;
-                                    if sx >= src_w { continue; }
-                                    let idx = (sy * src_w + sx) * channels + ch;
-                                    sum += v[idx] as u32;
-                                    count += 1;
-                                }
-                            }
-                            display_channels[ch].push(sum as f32 / (count as f32 * 255.0));
-                        }
-                    }
-                }
-            }
-        }
-
-        // ── Step 2: Compute Auto-STF parameters per channel ───────────────────
-        // For RGB: independent STF per channel (PixInsight behaviour)
-        // For mono: single STF
-        let stf_params: Vec<(f32, f32)> = display_channels.iter()
-            .map(|ch| compute_stf_params(ch, shadow_clip, target_bg))
-            .collect();
-
-        // Store first channel's params for get_full_frame reuse
-        ctx.last_stf_params = Some(stf_params[0]);
-
-        // ── Step 3: Apply MTF stretch per channel ─────────────────────────────
-        for (ch_data, &(c0, m)) in display_channels.iter_mut().zip(stf_params.iter()) {
-            let c0_range = 1.0 - c0;
-            for p in ch_data.iter_mut() {
-                let clipped = ((*p - c0) / c0_range).clamp(0.0, 1.0);
-                *p = mtf(m, clipped);
-            }
-        }
-
-        // ── Step 4: Encode to JPEG and store in display cache ─────────────────
-        let mut rgb = Vec::with_capacity(pixel_count * 3);
-
-        if is_rgb {
-            // Interleave R, G, B channels into RGB bytes
-            for i in 0..pixel_count {
-                let r = (display_channels[0][i].clamp(0.0, 1.0) * 255.0) as u8;
-                let g = (display_channels[1][i].clamp(0.0, 1.0) * 255.0) as u8;
-                let b = (display_channels[2][i].clamp(0.0, 1.0) * 255.0) as u8;
-                rgb.push(r);
-                rgb.push(g);
-                rgb.push(b);
-            }
-        } else {
-            // Mono — replicate single channel to RGB
-            for &p in &display_channels[0] {
-                let val = (p.clamp(0.0, 1.0) * 255.0) as u8;
-                rgb.push(val);
-                rgb.push(val);
-                rgb.push(val);
-            }
-        }
-
-        let img = RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
-            .ok_or_else(|| PluginError::new("ENCODE_ERROR", "Failed to create display image"))?;
-
-        let mut buf = Cursor::new(Vec::new());
-        img.write_to(&mut buf, ImageFormat::Jpeg)
-            .map_err(|e| PluginError::new("ENCODE_ERROR", &e.to_string()))?;
-
-        let jpeg_bytes = buf.into_inner();
         let byte_count = jpeg_bytes.len();
-        ctx.display_cache.insert(path.clone(), jpeg_bytes);
-        ctx.full_res_cache.remove(&path);
 
-        if let Some(buf) = ctx.image_buffers.get_mut(&path) {
-            buf.display_width = disp_w as u32;
-        }
+        info!("AutoStretch: {} JPEG bytes", byte_count);
 
-        info!("AutoStretch: {} → {}×{} display ({} ch), {} JPEG bytes",
-            path, disp_w, disp_h, num_display_channels, byte_count);
         Ok(PluginOutput::Message(format!(
-            "AutoStretch applied ({}×{} display, {} channel{})",
-            disp_w, disp_h, num_display_channels,
-            if num_display_channels == 1 { "" } else { "s" }
+            "AutoStretch applied ({} bytes)", byte_count
         )))
     }
 }
 
-/// Compute PixInsight-compatible Auto-STF parameters.
-/// Returns (c0, m) — shadow clip point and MTF midpoint.
+// ── Public computation function ───────────────────────────────────────────────
+// Called by both the plugin execute() and the get_autostretch_frame Tauri command.
+// Returns raw JPEG bytes — no caching, no side effects on AppContext.
+
+pub fn compute_autostretch_jpeg(
+    ctx: &AppContext,
+    shadow_clip: f32,
+    target_bg: f32,
+) -> Result<Vec<u8>, String> {
+    let path = ctx.file_list.get(ctx.current_frame)
+        .ok_or_else(|| "No image loaded".to_string())?;
+
+    let buffer = ctx.image_buffers.get(path)
+        .ok_or_else(|| "Image buffer not found".to_string())?;
+
+    let pixels = buffer.pixels.as_ref()
+        .ok_or_else(|| "No pixel data".to_string())?;
+
+    let src_w    = buffer.width as usize;
+    let src_h    = buffer.height as usize;
+    let channels = buffer.channels as usize;
+    let is_rgb   = channels == 3 && buffer.color_space == ColorSpace::RGB;
+
+    // ── Downsample to display resolution ─────────────────────────────────────
+    const MAX_DISPLAY_W: usize = 1200;
+    let (disp_w, disp_h, step) = if src_w > MAX_DISPLAY_W {
+        let step = (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W;
+        (src_w / step, src_h / step, step)
+    } else {
+        (src_w, src_h, 1)
+    };
+
+    let pixel_count = disp_w * disp_h;
+    let num_display_channels = if is_rgb { 3 } else { 1 };
+
+    let mut display_channels: Vec<Vec<f32>> = (0..num_display_channels)
+        .map(|_| Vec::with_capacity(pixel_count))
+        .collect();
+
+    match pixels {
+        PixelData::U16(v) => {
+            for oy in 0..disp_h {
+                for ox in 0..disp_w {
+                    for ch in 0..num_display_channels {
+                        let mut sum = 0u32; let mut count = 0u32;
+                        for dy in 0..step {
+                            let sy = oy * step + dy;
+                            if sy >= src_h { continue; }
+                            for dx in 0..step {
+                                let sx = ox * step + dx;
+                                if sx >= src_w { continue; }
+                                let idx = (sy * src_w + sx) * channels + ch;
+                                sum += v[idx] as u32;
+                                count += 1;
+                            }
+                        }
+                        display_channels[ch].push(sum as f32 / (count as f32 * 65535.0));
+                    }
+                }
+            }
+        }
+        PixelData::F32(v) => {
+            for oy in 0..disp_h {
+                for ox in 0..disp_w {
+                    for ch in 0..num_display_channels {
+                        let mut sum = 0.0f32; let mut count = 0u32;
+                        for dy in 0..step {
+                            let sy = oy * step + dy;
+                            if sy >= src_h { continue; }
+                            for dx in 0..step {
+                                let sx = ox * step + dx;
+                                if sx >= src_w { continue; }
+                                let idx = (sy * src_w + sx) * channels + ch;
+                                let val = v[idx];
+                                if val.is_finite() { sum += val; count += 1; }
+                            }
+                        }
+                        display_channels[ch].push(if count > 0 { sum / count as f32 } else { 0.0 });
+                    }
+                }
+            }
+        }
+        PixelData::U8(v) => {
+            for oy in 0..disp_h {
+                for ox in 0..disp_w {
+                    for ch in 0..num_display_channels {
+                        let mut sum = 0u32; let mut count = 0u32;
+                        for dy in 0..step {
+                            let sy = oy * step + dy;
+                            if sy >= src_h { continue; }
+                            for dx in 0..step {
+                                let sx = ox * step + dx;
+                                if sx >= src_w { continue; }
+                                let idx = (sy * src_w + sx) * channels + ch;
+                                sum += v[idx] as u32;
+                                count += 1;
+                            }
+                        }
+                        display_channels[ch].push(sum as f32 / (count as f32 * 255.0));
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Compute Auto-STF parameters per channel ───────────────────────────────
+    let stf_params: Vec<(f32, f32)> = display_channels.iter()
+        .map(|ch| compute_stf_params(ch, shadow_clip, target_bg))
+        .collect();
+
+    // ── Apply MTF stretch per channel ─────────────────────────────────────────
+    for (ch_data, &(c0, m)) in display_channels.iter_mut().zip(stf_params.iter()) {
+        let c0_range = 1.0 - c0;
+        for p in ch_data.iter_mut() {
+            let clipped = ((*p - c0) / c0_range).clamp(0.0, 1.0);
+            *p = mtf(m, clipped);
+        }
+    }
+
+    // ── Interleave channels to RGB ────────────────────────────────────────────
+    let mut rgb = Vec::with_capacity(pixel_count * 3);
+    if is_rgb {
+        for i in 0..pixel_count {
+            rgb.push((display_channels[0][i].clamp(0.0, 1.0) * 255.0) as u8);
+            rgb.push((display_channels[1][i].clamp(0.0, 1.0) * 255.0) as u8);
+            rgb.push((display_channels[2][i].clamp(0.0, 1.0) * 255.0) as u8);
+        }
+    } else {
+        for &p in &display_channels[0] {
+            let val = (p.clamp(0.0, 1.0) * 255.0) as u8;
+            rgb.push(val); rgb.push(val); rgb.push(val);
+        }
+    }
+
+    // ── Encode to JPEG ────────────────────────────────────────────────────────
+    let img = RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
+        .ok_or_else(|| "Failed to create display image".to_string())?;
+    let mut buf = Cursor::new(Vec::new());
+    img.write_to(&mut buf, ImageFormat::Jpeg)
+        .map_err(|e| e.to_string())?;
+
+    Ok(buf.into_inner())
+}
+
+// ── STF parameter computation ─────────────────────────────────────────────────
+
 fn compute_stf_params(pixels: &[f32], shadow_clip: f32, target_bg: f32) -> (f32, f32) {
     let mut valid: Vec<f32> = pixels.iter().cloned().filter(|p| p.is_finite()).collect();
     if valid.is_empty() {

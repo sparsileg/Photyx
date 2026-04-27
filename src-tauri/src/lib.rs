@@ -94,7 +94,7 @@ const SESSION_COMMANDS: &[&str] = &[
 ];
 
 const DISPLAY_COMMANDS: &[&str] = &[
-    "autostretch", "linearstretch", "histogramequalization",
+    "linearstretch", "histogramequalization",
 ];
 
 /// Execute a pcode script string — used by the macro editor and Quick Launch
@@ -185,14 +185,203 @@ fn get_current_frame(state: State<PhotoxState>) -> Result<String, String> {
     let path = ctx.file_list.get(ctx.current_frame)
         .ok_or_else(|| "No image loaded".to_string())?;
 
-    let jpeg_bytes = ctx.display_cache.get(path)
-        .ok_or_else(|| "No display cache entry for current frame. Run AutoStretch first.".to_string())?;
+    let buffer = ctx.image_buffers.get(path)
+        .ok_or_else(|| "Image buffer not found".to_string())?;
 
+    let pixels = buffer.pixels.as_ref()
+        .ok_or_else(|| "No pixel data".to_string())?;
+
+    let src_w    = buffer.width as usize;
+    let src_h    = buffer.height as usize;
+    let channels = buffer.channels as usize;
+    let is_rgb   = channels == 3 && buffer.color_space == crate::context::ColorSpace::RGB;
+    let is_prerendered = buffer.keywords.get("PXTYPE")
+        .map(|kw| kw.value == "HEATMAP")
+        .unwrap_or(false);
+
+    const MAX_DISPLAY_W: usize = 1200;
+    let step = if src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
+    let disp_w = src_w / step;
+    let disp_h = src_h / step;
+    let pixel_count = disp_w * disp_h;
+
+    use crate::context::PixelData;
+
+    // Prerendered RGB (e.g. heatmap): downsample directly, no stretch
+    if is_prerendered && is_rgb {
+        if let PixelData::U8(v) = pixels {
+            let mut rgb = Vec::with_capacity(pixel_count * 3);
+            for oy in 0..disp_h {
+                for ox in 0..disp_w {
+                    let sy = oy * step;
+                    let sx = ox * step;
+                    let idx = (sy * src_w + sx) * 3;
+                    rgb.push(v[idx]);
+                    rgb.push(v[idx + 1]);
+                    rgb.push(v[idx + 2]);
+                }
+            }
+            let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
+                .ok_or_else(|| "Failed to create display image".to_string())?;
+            let mut buf = std::io::Cursor::new(Vec::new());
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 90)
+                .encode_image(&img)
+                .map_err(|e| e.to_string())?;
+            use base64::Engine as _;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+            return Ok(format!("data:image/jpeg;base64,{}", b64));
+        }
+    }
+
+    // Normal path: render raw pixels without stretch
+    let mut rgb = Vec::with_capacity(pixel_count * 3);
+
+    match pixels {
+        PixelData::U16(v) => {
+            for oy in 0..disp_h {
+                for ox in 0..disp_w {
+                    let mut sum = 0u32; let mut count = 0u32;
+                    for dy in 0..step {
+                        let sy = oy * step + dy;
+                        if sy >= src_h { continue; }
+                        for dx in 0..step {
+                            let sx = ox * step + dx;
+                            if sx >= src_w { continue; }
+                            let idx = if is_rgb { (sy * src_w + sx) * channels } else { sy * src_w + sx };
+                            sum += v[idx] as u32;
+                            count += 1;
+                        }
+                    }
+                    let val = (sum as f32 / (count as f32 * 65535.0) * 255.0) as u8;
+                    if is_rgb {
+                        let mut sr = 0u32; let mut sg = 0u32; let mut sb = 0u32; let mut sc = 0u32;
+                        for dy in 0..step {
+                            let sy = oy * step + dy;
+                            if sy >= src_h { continue; }
+                            for dx in 0..step {
+                                let sx = ox * step + dx;
+                                if sx >= src_w { continue; }
+                                let idx = (sy * src_w + sx) * 3;
+                                sr += v[idx] as u32;
+                                sg += v[idx + 1] as u32;
+                                sb += v[idx + 2] as u32;
+                                sc += 1;
+                            }
+                        }
+                        let scale = sc as f32 * 65535.0;
+                        rgb.push((sr as f32 / scale * 255.0) as u8);
+                        rgb.push((sg as f32 / scale * 255.0) as u8);
+                        rgb.push((sb as f32 / scale * 255.0) as u8);
+                    } else {
+                        rgb.push(val); rgb.push(val); rgb.push(val);
+                    }
+                }
+            }
+        }
+        PixelData::F32(v) => {
+            for oy in 0..disp_h {
+                for ox in 0..disp_w {
+                    if is_rgb {
+                        let mut sr = 0.0f32; let mut sg = 0.0f32; let mut sb = 0.0f32; let mut sc = 0u32;
+                        for dy in 0..step {
+                            let sy = oy * step + dy;
+                            if sy >= src_h { continue; }
+                            for dx in 0..step {
+                                let sx = ox * step + dx;
+                                if sx >= src_w { continue; }
+                                let idx = (sy * src_w + sx) * 3;
+                                if v[idx].is_finite() { sr += v[idx]; sg += v[idx+1]; sb += v[idx+2]; sc += 1; }
+                            }
+                        }
+                        let sc = sc as f32;
+                        rgb.push((sr / sc * 255.0).clamp(0.0, 255.0) as u8);
+                        rgb.push((sg / sc * 255.0).clamp(0.0, 255.0) as u8);
+                        rgb.push((sb / sc * 255.0).clamp(0.0, 255.0) as u8);
+                    } else {
+                        let mut sum = 0.0f32; let mut count = 0u32;
+                        for dy in 0..step {
+                            let sy = oy * step + dy;
+                            if sy >= src_h { continue; }
+                            for dx in 0..step {
+                                let sx = ox * step + dx;
+                                if sx >= src_w { continue; }
+                                let val = v[sy * src_w + sx];
+                                if val.is_finite() { sum += val; count += 1; }
+                            }
+                        }
+                        let val = (sum / count as f32 * 255.0).clamp(0.0, 255.0) as u8;
+                        rgb.push(val); rgb.push(val); rgb.push(val);
+                    }
+                }
+            }
+        }
+        PixelData::U8(v) => {
+            for oy in 0..disp_h {
+                for ox in 0..disp_w {
+                    if is_rgb {
+                        let mut sr = 0u32; let mut sg = 0u32; let mut sb = 0u32; let mut sc = 0u32;
+                        for dy in 0..step {
+                            let sy = oy * step + dy;
+                            if sy >= src_h { continue; }
+                            for dx in 0..step {
+                                let sx = ox * step + dx;
+                                if sx >= src_w { continue; }
+                                let idx = (sy * src_w + sx) * 3;
+                                sr += v[idx] as u32; sg += v[idx+1] as u32; sb += v[idx+2] as u32; sc += 1;
+                            }
+                        }
+                        let scale = sc as f32 * 255.0;
+                        rgb.push((sr as f32 / scale * 255.0) as u8);
+                        rgb.push((sg as f32 / scale * 255.0) as u8);
+                        rgb.push((sb as f32 / scale * 255.0) as u8);
+                    } else {
+                        let mut sum = 0u32; let mut count = 0u32;
+                        for dy in 0..step {
+                            let sy = oy * step + dy;
+                            if sy >= src_h { continue; }
+                            for dx in 0..step {
+                                let sx = ox * step + dx;
+                                if sx >= src_w { continue; }
+                                sum += v[sy * src_w + sx] as u32; count += 1;
+                            }
+                        }
+                        let val = (sum as f32 / (count as f32 * 255.0) * 255.0) as u8;
+                        rgb.push(val); rgb.push(val); rgb.push(val);
+                    }
+                }
+            }
+        }
+    }
+
+    let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
+        .ok_or_else(|| "Failed to create display image".to_string())?;
+    let mut buf = std::io::Cursor::new(Vec::new());
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 85)
+        .encode_image(&img)
+        .map_err(|e| e.to_string())?;
     use base64::Engine as _;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(jpeg_bytes);
+    let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
     Ok(format!("data:image/jpeg;base64,{}", b64))
 }
 
+
+#[tauri::command]
+fn get_autostretch_frame(
+    shadow_clip: Option<f32>,
+    target_background: Option<f32>,
+    state: State<PhotoxState>,
+) -> Result<String, String> {
+    use crate::plugins::auto_stretch::compute_autostretch_jpeg;
+    let ctx = state.context.lock().expect("context lock poisoned");
+    let jpeg_bytes = compute_autostretch_jpeg(
+        &ctx,
+        shadow_clip.unwrap_or(-2.8),
+        target_background.unwrap_or(0.15),
+    )?;
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes);
+    Ok(format!("data:image/jpeg;base64,{}", b64))
+}
 
 // ── Logging init ──────────────────────────────────────────────────────────────
 
@@ -257,6 +446,7 @@ pub fn run() {
             debug_buffer_info,
             dispatch_command,
             get_analysis_results,
+            get_autostretch_frame,
             get_blink_cache_status,
             get_blink_frame,
             get_current_frame,
@@ -416,7 +606,6 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
     }
 
     let app = app.clone();
-    // Build a dedicated thread pool using num_cpus - 1 threads
     let num_threads = (num_cpus::get()).saturating_sub(1).max(1);
     tauri::async_runtime::spawn(async move {
         let state_arc = app.state::<PhotoxState>();
@@ -425,208 +614,190 @@ fn start_background_cache(state: State<PhotoxState>, app: tauri::AppHandle) -> R
             .build()
             .expect("Failed to build thread pool");
 
-        // ── Pass 1: Display cache (raw pixels → STF → 1200px JPEG) ──────────
-        {
-            let snapshots = {
-                let ctx = state_arc.context.lock().expect("context lock poisoned");
-                let snaps: Vec<_> = ctx.file_list.iter().filter_map(|path| {
-                    let buf = ctx.image_buffers.get(path)?;
-                    let pixels = buf.pixels.as_ref()?;
-                    let is_prerendered = buf.keywords.get("PXTYPE")
-                        .map(|kw| kw.value == "HEATMAP")
-                        .unwrap_or(false);
-                    use crate::context::PixelData;
-                    let snap = match pixels {
-                        PixelData::U8(v)  => PixelData::U8(v.clone()),
-                        PixelData::U16(v) => PixelData::U16(v.clone()),
-                        PixelData::F32(v) => PixelData::F32(v.clone()),
-                    };
-                    Some((path.clone(), buf.width as usize, buf.height as usize, buf.channels as usize, is_prerendered, snap))
-                }).collect();
-                snaps
-            };
+        // ── Build per-frame stretched JPEGs for blink cache ───────────────────
+        // Each frame is stretched independently using Auto-STF, then downsampled
+        // to blink resolution. This is the only cache we maintain; normal display
+        // renders raw pixels on the fly via get_current_frame.
 
-            const MAX_DISPLAY_W: usize = 1200;
-            let results: Vec<(String, Vec<u8>)> = pool.install(|| {
-                use rayon::prelude::*;
-                snapshots.par_iter().filter_map(|(path, src_w, src_h, channels, is_prerendered, pixels)| {
-                    let step = if *src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
-                    let disp_w = src_w / step;
-                    let disp_h = src_h / step;
-                    let pixel_count = disp_w * disp_h;
-                    let is_rgb = *channels == 3;
+        let snapshots = {
+            let ctx = state_arc.context.lock().expect("context lock poisoned");
+            let snaps: Vec<_> = ctx.file_list.iter().filter_map(|path| {
+                let buf = ctx.image_buffers.get(path)?;
+                let pixels = buf.pixels.as_ref()?;
+                let is_prerendered = buf.keywords.get("PXTYPE")
+                    .map(|kw| kw.value == "HEATMAP")
+                    .unwrap_or(false);
+                let channels = buf.channels as usize;
+                use crate::context::PixelData;
+                let snap = match pixels {
+                    PixelData::U8(v)  => PixelData::U8(v.clone()),
+                    PixelData::U16(v) => PixelData::U16(v.clone()),
+                    PixelData::F32(v) => PixelData::F32(v.clone()),
+                };
+                Some((path.clone(), buf.width as usize, buf.height as usize, channels, is_prerendered, snap))
+            }).collect();
+            snaps
+        };
 
-                    use crate::context::PixelData;
+        // Build full-resolution stretched JPEGs first, then downsample for blink
+        const MAX_DISPLAY_W: usize = 1200;
 
-                    // ── Prerendered RGB (e.g. heatmap): downsample directly, no stretch ──
-                    if *is_prerendered && is_rgb {
-                        if let PixelData::U8(v) = pixels {
-                            let mut rgb = Vec::with_capacity(pixel_count * 3);
-                            for oy in 0..disp_h {
-                                for ox in 0..disp_w {
-                                    let sy = oy * step;
-                                    let sx = ox * step;
-                                    let idx = (sy * src_w + sx) * 3;
-                                    rgb.push(v[idx]);
-                                    rgb.push(v[idx + 1]);
-                                    rgb.push(v[idx + 2]);
-                                }
+        let display_results: Vec<(String, Vec<u8>)> = pool.install(|| {
+            use rayon::prelude::*;
+            snapshots.par_iter().filter_map(|(path, src_w, src_h, channels, is_prerendered, pixels)| {
+                let step = if *src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
+                let disp_w = src_w / step;
+                let disp_h = src_h / step;
+                let pixel_count = disp_w * disp_h;
+                let is_rgb = *channels == 3;
+
+                use crate::context::PixelData;
+
+                // Prerendered RGB (e.g. heatmap): downsample directly, no stretch
+                if *is_prerendered && is_rgb {
+                    if let PixelData::U8(v) = pixels {
+                        let mut rgb = Vec::with_capacity(pixel_count * 3);
+                        for oy in 0..disp_h {
+                            for ox in 0..disp_w {
+                                let sy = oy * step;
+                                let sx = ox * step;
+                                let idx = (sy * src_w + sx) * 3;
+                                rgb.push(v[idx]);
+                                rgb.push(v[idx + 1]);
+                                rgb.push(v[idx + 2]);
                             }
-                            let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
-                            let mut buf = std::io::Cursor::new(Vec::new());
-                            use image::codecs::jpeg::JpegEncoder;
-                            JpegEncoder::new_with_quality(&mut buf, 90).encode_image(&img).ok()?;
-                            return Some((path.clone(), buf.into_inner()));
                         }
+                        let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
+                        let mut buf = std::io::Cursor::new(Vec::new());
+                        use image::codecs::jpeg::JpegEncoder;
+                        JpegEncoder::new_with_quality(&mut buf, 90).encode_image(&img).ok()?;
+                        return Some((path.clone(), buf.into_inner()));
                     }
+                }
 
-                    // ── Normal path: extract luminance, apply STF stretch, encode ──
-                    let mut display: Vec<f32> = Vec::with_capacity(pixel_count);
+                // Normal path: extract per-channel display data
+                let num_ch = if is_rgb { 3 } else { 1 };
+                let mut display_channels: Vec<Vec<f32>> = (0..num_ch)
+                    .map(|_| Vec::with_capacity(pixel_count))
+                    .collect();
 
-                    match pixels {
-                        PixelData::U16(v) => {
-                            for oy in 0..disp_h {
-                                for ox in 0..disp_w {
-                                    let mut sum = 0.0f32; let mut count = 0u32;
+                match pixels {
+                    PixelData::U16(v) => {
+                        for oy in 0..disp_h {
+                            for ox in 0..disp_w {
+                                for ch in 0..num_ch {
+                                    let mut sum = 0u32; let mut count = 0u32;
                                     for dy in 0..step {
                                         let sy = oy * step + dy;
                                         if sy >= *src_h { continue; }
                                         for dx in 0..step {
                                             let sx = ox * step + dx;
                                             if sx >= *src_w { continue; }
-                                            let luma = if is_rgb {
-                                                let idx = (sy * src_w + sx) * 3;
-                                                let r = v[idx]     as f32 / 65535.0;
-                                                let g = v[idx + 1] as f32 / 65535.0;
-                                                let b = v[idx + 2] as f32 / 65535.0;
-                                                0.2126 * r + 0.7152 * g + 0.0722 * b
-                                            } else {
-                                                v[sy * src_w + sx] as f32 / 65535.0
-                                            };
-                                            sum += luma; count += 1;
+                                            let idx = (sy * src_w + sx) * num_ch + ch;
+                                            sum += v[idx] as u32;
+                                            count += 1;
                                         }
                                     }
-                                    display.push(if count > 0 { sum / count as f32 } else { 0.0 });
-                                }
-                            }
-                        }
-                        PixelData::F32(v) => {
-                            for oy in 0..disp_h {
-                                for ox in 0..disp_w {
-                                    let mut sum = 0.0f32; let mut count = 0u32;
-                                    for dy in 0..step {
-                                        let sy = oy * step + dy;
-                                        if sy >= *src_h { continue; }
-                                        for dx in 0..step {
-                                            let sx = ox * step + dx;
-                                            if sx >= *src_w { continue; }
-                                            let luma = if is_rgb {
-                                                let idx = (sy * src_w + sx) * 3;
-                                                let r = v[idx];
-                                                let g = v[idx + 1];
-                                                let b = v[idx + 2];
-                                                if r.is_finite() && g.is_finite() && b.is_finite() {
-                                                    0.2126 * r + 0.7152 * g + 0.0722 * b
-                                                } else { continue; }
-                                            } else {
-                                                let val = v[sy * src_w + sx];
-                                                if val.is_finite() { val } else { continue; }
-                                            };
-                                            sum += luma; count += 1;
-                                        }
-                                    }
-                                    display.push(if count > 0 { sum / count as f32 } else { 0.0 });
-                                }
-                            }
-                        }
-                        PixelData::U8(v) => {
-                            for oy in 0..disp_h {
-                                for ox in 0..disp_w {
-                                    let mut sum = 0.0f32; let mut count = 0u32;
-                                    for dy in 0..step {
-                                        let sy = oy * step + dy;
-                                        if sy >= *src_h { continue; }
-                                        for dx in 0..step {
-                                            let sx = ox * step + dx;
-                                            if sx >= *src_w { continue; }
-                                            let luma = if is_rgb {
-                                                let idx = (sy * src_w + sx) * 3;
-                                                let r = v[idx]     as f32 / 255.0;
-                                                let g = v[idx + 1] as f32 / 255.0;
-                                                let b = v[idx + 2] as f32 / 255.0;
-                                                0.2126 * r + 0.7152 * g + 0.0722 * b
-                                            } else {
-                                                v[sy * src_w + sx] as f32 / 255.0
-                                            };
-                                            sum += luma; count += 1;
-                                        }
-                                    }
-                                    display.push(if count > 0 { sum / count as f32 } else { 0.0 });
+                                    display_channels[ch].push(sum as f32 / (count as f32 * 65535.0));
                                 }
                             }
                         }
                     }
+                    PixelData::F32(v) => {
+                        for oy in 0..disp_h {
+                            for ox in 0..disp_w {
+                                for ch in 0..num_ch {
+                                    let mut sum = 0.0f32; let mut count = 0u32;
+                                    for dy in 0..step {
+                                        let sy = oy * step + dy;
+                                        if sy >= *src_h { continue; }
+                                        for dx in 0..step {
+                                            let sx = ox * step + dx;
+                                            if sx >= *src_w { continue; }
+                                            let idx = (sy * src_w + sx) * num_ch + ch;
+                                            let val = v[idx];
+                                            if val.is_finite() { sum += val; count += 1; }
+                                        }
+                                    }
+                                    display_channels[ch].push(if count > 0 { sum / count as f32 } else { 0.0 });
+                                }
+                            }
+                        }
+                    }
+                    PixelData::U8(v) => {
+                        for oy in 0..disp_h {
+                            for ox in 0..disp_w {
+                                for ch in 0..num_ch {
+                                    let mut sum = 0u32; let mut count = 0u32;
+                                    for dy in 0..step {
+                                        let sy = oy * step + dy;
+                                        if sy >= *src_h { continue; }
+                                        for dx in 0..step {
+                                            let sx = ox * step + dx;
+                                            if sx >= *src_w { continue; }
+                                            let idx = (sy * src_w + sx) * num_ch + ch;
+                                            sum += v[idx] as u32;
+                                            count += 1;
+                                        }
+                                    }
+                                    display_channels[ch].push(sum as f32 / (count as f32 * 255.0));
+                                }
+                            }
+                        }
+                    }
+                }
 
-                    let (c0, m) = crate::plugins::cache_frames::compute_stf_params_pub(&display);
+                // Apply Auto-STF per channel
+                let stf_params: Vec<(f32, f32)> = display_channels.iter()
+                    .map(|ch| crate::plugins::cache_frames::compute_stf_params_pub(ch))
+                    .collect();
+
+                for (ch_data, &(c0, m)) in display_channels.iter_mut().zip(stf_params.iter()) {
                     let c0_range = (1.0 - c0).max(f32::EPSILON);
-                    let mut stretched = display;
-                    for p in stretched.iter_mut() {
+                    for p in ch_data.iter_mut() {
                         let clipped = ((*p - c0) / c0_range).clamp(0.0, 1.0);
                         *p = crate::plugins::cache_frames::mtf_pub(m, clipped);
                     }
+                }
 
-                    let mut rgb = Vec::with_capacity(pixel_count * 3);
-                    for &p in &stretched {
+                // Interleave channels to RGB
+                let mut rgb = Vec::with_capacity(pixel_count * 3);
+                if is_rgb {
+                    for i in 0..pixel_count {
+                        rgb.push((display_channels[0][i].clamp(0.0, 1.0) * 255.0) as u8);
+                        rgb.push((display_channels[1][i].clamp(0.0, 1.0) * 255.0) as u8);
+                        rgb.push((display_channels[2][i].clamp(0.0, 1.0) * 255.0) as u8);
+                    }
+                } else {
+                    for &p in &display_channels[0] {
                         let val = (p.clamp(0.0, 1.0) * 255.0) as u8;
                         rgb.push(val); rgb.push(val); rgb.push(val);
                     }
-
-                    let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
-                    let mut buf = std::io::Cursor::new(Vec::new());
-                    use image::codecs::jpeg::JpegEncoder;
-                    JpegEncoder::new_with_quality(&mut buf, 75).encode_image(&img).ok()?;
-                    Some((path.clone(), buf.into_inner()))
-                }).collect()
-            });
-
-            {
-                let mut ctx = state_arc.context.lock().expect("context lock poisoned");
-                for (p, j) in &results {
-                    // Only insert if not already in display cache (don't overwrite user-triggered AutoStretch)
-                    ctx.display_cache.entry(p.clone()).or_insert_with(|| j.clone());
                 }
-                // Note: display_width is intentionally NOT set here.
-                // It is set exclusively by AutoStretch so commands.ts
-                // can use display_width == 0 to detect uncached frames.
-            }
-            info!("Background cache: display complete");
-        }
 
-        // ── Passes 2 & 3: Blink caches — downsample from display cache JPEG ──
+                let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
+                let mut buf = std::io::Cursor::new(Vec::new());
+                use image::codecs::jpeg::JpegEncoder;
+                JpegEncoder::new_with_quality(&mut buf, 85).encode_image(&img).ok()?;
+                Some((path.clone(), buf.into_inner()))
+            }).collect()
+        });
+
+        info!("Background cache: display-resolution stretched JPEGs complete");
+
+        // ── Blink caches — downsample from stretched display JPEGs ────────────
         for &(res_name, target_w) in &[("12", 376u32), ("25", 752u32)] {
-            let display_snapshots: Vec<(String, Vec<u8>)> = {
-                let ctx = state_arc.context.lock().expect("context lock poisoned");
-                ctx.file_list.iter().filter_map(|path| {
-                    let jpeg = ctx.display_cache.get(path)?.clone();
-                    Some((path.clone(), jpeg))
-                }).collect()
-            };
-
             let results: Vec<(String, Vec<u8>)> = pool.install(|| {
                 use rayon::prelude::*;
-                display_snapshots.par_iter().filter_map(|(path, jpeg_bytes)| {
-                    // Decode the display cache JPEG
+                display_results.par_iter().filter_map(|(path, jpeg_bytes)| {
                     let img = image::load_from_memory(jpeg_bytes).ok()?;
-                    // Resize to target width maintaining aspect ratio
                     let src_w = img.width();
                     let src_h = img.height();
                     let target_h = (src_h as f32 * target_w as f32 / src_w as f32).round() as u32;
                     let resized = img.resize(target_w, target_h, image::imageops::FilterType::Triangle);
-                    // Encode to JPEG
                     let mut buf = std::io::Cursor::new(Vec::new());
                     use image::codecs::jpeg::JpegEncoder;
-                    JpegEncoder::new_with_quality(&mut buf, 75)
-                        .encode_image(&resized).ok()?;
+                    JpegEncoder::new_with_quality(&mut buf, 75).encode_image(&resized).ok()?;
                     Some((path.clone(), buf.into_inner()))
                 }).collect()
             });

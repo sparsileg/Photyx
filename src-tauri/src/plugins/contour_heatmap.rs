@@ -498,6 +498,7 @@ impl PhotonPlugin for ContourHeatmap {
                 .map_err(|e| PluginError::new("XISF_WRITE", &format!("Failed to write heatmap: {}", e)))?;
 
             info!("ContourHeatmap: wrote {}", out_path);
+            ctx.variables.insert("NEW_FILE".to_string(), out_path.clone());
         }
 
         // ── Build response ────────────────────────────────────────────────────

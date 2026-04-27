@@ -2,7 +2,7 @@
 <script lang="ts">
     import { ui } from '../stores/ui';
     import { notifications } from '../stores/notifications';
-    import { selectDirectory, closeSession } from '../commands';
+    import { selectDirectory, closeSession, applyAutoStretch } from '../commands';
     import { getCurrentWindow } from '@tauri-apps/api/window';
     import { invoke } from '@tauri-apps/api/core';
     import { consolePipe } from '../stores/consoleHistory';
@@ -24,7 +24,7 @@
             case 'analysis-results':  ui.showView('analysisResults'); break;
             case 'analysis-graph':    ui.showView('analysisGraph'); break;
             case 'close-session':     closeSession(); break;
-            case 'contour-plot':      notifications.info('Contour Plot — not yet implemented'); break;
+            case 'contour-plot':      runContourHeatmap(); break;
             case 'exit':              getCurrentWindow().close(); break;
             case 'keywords':          ui.togglePanel('keywords'); break;
             case 'log-viewer':        ui.openLogViewer(); break;
@@ -79,7 +79,7 @@
                 const msg = response.output ?? 'AutoStretch applied';
                 consolePipe.set({ id: Date.now(), text: msg, type: 'success' });
                 notifications.success(msg);
-                ui.requestFrameRefresh();
+                await applyAutoStretch();
             } else {
                 const err = response.error ?? 'AutoStretch failed';
                 consolePipe.set({ id: Date.now(), text: err, type: 'error' });
@@ -87,6 +87,32 @@
             }
         } catch (err) {
             const msg = `AutoStretch error: ${err}`;
+            consolePipe.set({ id: Date.now(), text: msg, type: 'error' });
+            notifications.error(msg);
+        }
+    }
+
+async function runContourHeatmap() {
+        notifications.running('ContourHeatmap running…');
+        try {
+            const response = await invoke<{
+                success: boolean;
+                output: string | null;
+                error: string | null;
+            }>('dispatch_command', {
+                request: { command: 'ContourHeatmap', args: {} }
+            });
+            if (response.success) {
+                const msg = response.output ?? 'ContourHeatmap complete';
+                consolePipe.set({ id: Date.now(), text: msg, type: 'success' });
+                notifications.success(msg);
+            } else {
+                const err = response.error ?? 'ContourHeatmap failed';
+                consolePipe.set({ id: Date.now(), text: err, type: 'error' });
+                notifications.error(err);
+            }
+        } catch (err) {
+            const msg = `ContourHeatmap error: ${err}`;
             consolePipe.set({ id: Date.now(), text: msg, type: 'error' });
             notifications.error(msg);
         }

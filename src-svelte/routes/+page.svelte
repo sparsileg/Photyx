@@ -89,7 +89,7 @@
             {/if}
             {#if $ui.blinkTabActive && blinkFilename}
                 <div id="blink-filename-overlay">{blinkFilename}</div>
-                {:else if !$ui.blinkTabActive && $ui.activeView === null && $session.fileList.length > 0 && $session.loadedImages[$session.fileList[$session.currentFrame]]?.displayWidth > 0}
+                {:else if !$ui.blinkTabActive && $ui.activeView === null && $session.fileList.length > 0 && $session.fileList[$session.currentFrame]}
                 <div id="blink-filename-overlay">{$session.fileList[$session.currentFrame]?.split(/[\\/]/).pop() ?? ''}</div>
             {/if}
             <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded}>

@@ -46,7 +46,6 @@ impl PhotonPlugin for GetKeyword {
         let buffer = ctx.image_buffers.get(&file_path)
             .ok_or_else(|| PluginError::new("NO_BUFFER", "GetKeyword: no image buffer for current frame"))?;
 
-        // Keywords stored as HashMap<String, KeywordEntry> — match on key
         let entry = buffer.keywords.iter()
             .find(|(k, _)| k.to_uppercase() == name)
             .map(|(_, v)| v)
@@ -57,7 +56,6 @@ impl PhotonPlugin for GetKeyword {
 
         let value = entry.value.trim().to_string();
 
-        // Store in AppContext variables so the interpreter can read it
         ctx.variables.insert(name.clone(), value.clone());
 
         Ok(PluginOutput::Value(value))
@@ -66,17 +64,25 @@ impl PhotonPlugin for GetKeyword {
 
 // ── MoveFile ──────────────────────────────────────────────────────────────────
 
-/// Moves the current frame's source file to a destination directory.
+/// Moves a file to a destination directory.
 /// Usage: MoveFile destination="D:/Rejects"
+///        MoveFile source="$NEW_FILE" destination="D:/Heatmaps"
 pub struct MoveFile;
 
 impl PhotonPlugin for MoveFile {
     fn name(&self)        -> &str { "MoveFile" }
     fn version(&self)     -> &str { "1.0.0" }
-    fn description(&self) -> &str { "Moves the current frame's file to a destination directory" }
+    fn description(&self) -> &str { "Moves a file to a destination directory. Uses current frame if source= is not specified." }
 
     fn parameters(&self) -> Vec<ParamSpec> {
         vec![
+            ParamSpec {
+                name:        "source".to_string(),
+                param_type:  ParamType::Path,
+                required:    false,
+                description: "Source file path (default: current frame)".to_string(),
+                default:     None,
+            },
             ParamSpec {
                 name:        "destination".to_string(),
                 param_type:  ParamType::Path,
@@ -96,10 +102,15 @@ impl PhotonPlugin for MoveFile {
             ctx.active_directory.as_deref(),
         );
 
-        let src_path = ctx.file_list
-            .get(ctx.current_frame)
-            .cloned()
-            .ok_or_else(|| PluginError::new("NO_FRAME", "MoveFile: no current frame"))?;
+        // Use explicit source if provided, otherwise use current frame
+        let src_path = if let Some(source) = args.get("source") {
+            crate::utils::resolve_path(source, ctx.active_directory.as_deref())
+        } else {
+            ctx.file_list
+                .get(ctx.current_frame)
+                .cloned()
+                .ok_or_else(|| PluginError::new("NO_FRAME", "MoveFile: no current frame"))?
+        };
 
         let src = Path::new(&src_path);
         let filename = src.file_name()
@@ -121,7 +132,7 @@ impl PhotonPlugin for MoveFile {
 
         let dest_str = dest_path.display().to_string();
 
-        // Remove from all session caches
+        // Only remove from session caches if it was a session file
         ctx.file_list.retain(|f| f != &src_path);
         ctx.image_buffers.remove(&src_path);
         ctx.display_cache.remove(&src_path);

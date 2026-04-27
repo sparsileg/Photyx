@@ -109,7 +109,20 @@ export async function closeSession() {
     notifications.info('Session cleared.');
 }
 
-/** Set current frame, run AutoStretch, refresh viewer */
+/** Apply AutoStretch to the current frame and display the result */
+export async function applyAutoStretch(shadowClip?: number, targetBackground?: number) {
+    try {
+        const dataUrl = await invoke<string>('get_autostretch_frame', {
+            shadowClip: shadowClip ?? null,
+            targetBackground: targetBackground ?? null,
+        });
+        ui.setAutostretchFrame(dataUrl);
+    } catch (e) {
+        notifications.error(`AutoStretch failed: ${e}`);
+    }
+}
+
+/** Set current frame and refresh viewer with raw (unstretched) pixels */
 export async function displayFrame(index: number) {
     console.trace('displayFrame called with index:', index);
     try {
