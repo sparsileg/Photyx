@@ -11,7 +11,7 @@
     height: 120px;
     z-index: 50;
     position: relative;
-    transition: width 0.25s ease, height 0.25s ease, font-size 0.25s ease;
+    transition: width 0.25s ease, height 0.25s ease;
 }
 
 #console-panel.expanded {
@@ -19,13 +19,15 @@
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 60vh;
+    height: 80vh;
     border-top: 2px solid var(--primary-color);
     z-index: 300;
-    background: color-mix(in srgb, var(--bg-color) 85%, transparent);
+    background: color-mix(in srgb, var(--bg-color) 92%, transparent);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
 }
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
 
 .console-header {
     flex: 0 0 auto;
@@ -51,6 +53,10 @@
     color: var(--primary-color);
 }
 
+#console-panel.expanded .console-title {
+    font-size: 12px;
+}
+
 .console-actions {
     display: flex;
     gap: 6px;
@@ -72,24 +78,36 @@
     border-color: var(--border-color);
 }
 
-/* Output area */
+#console-panel.expanded .console-action-btn {
+    font-size: 12px;
+}
+
+/* ── Collapsed: output area ──────────────────────────────────────────────── */
+
 #console-output {
     flex: 1 1 auto;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 6px 8px;
+    padding: 4px 8px;
     font-size: 11px;
     line-height: 1.6;
-    max-height: 48px;
-    transition: font-size 0.25s ease;
 }
 
-#console-panel.expanded #console-output {
-    max-height: none;
+/* ── Expanded: merged terminal buffer ────────────────────────────────────── */
+
+#console-terminal {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 10px 14px;
     font-size: 14px;
     line-height: 1.7;
-    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
 }
+
+/* ── Console lines ───────────────────────────────────────────────────────── */
 
 .console-line {
     display: flex;
@@ -105,6 +123,16 @@
 .console-line.input-echo .line-prompt {
     color: var(--primary-color);
     flex: 0 0 auto;
+}
+
+.console-line.trace-echo {
+    color: var(--text-secondary);
+}
+
+.line-prompt-trace {
+    color: var(--warning-color);
+    flex: 0 0 auto;
+    font-weight: 700;
 }
 
 .console-line.output {
@@ -133,11 +161,34 @@
     font-size: 10px;
 }
 
-/* Input row */
+#console-panel.expanded .console-line {
+    font-size: 15px;
+}
+
+#console-panel.expanded .console-line.info {
+    font-size: 12px;
+}
+
+/* Inline input line in expanded terminal */
+.console-input-inline {
+    align-items: flex-start;
+    margin-top: 2px;
+}
+
+.console-input-inline .line-prompt {
+    color: var(--primary-color);
+    font-weight: 700;
+    flex: 0 0 auto;
+    padding-top: 1px;
+    user-select: none;
+}
+
+/* ── Collapsed: input row ────────────────────────────────────────────────── */
+
 .console-input-row {
     flex: 0 0 auto;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     border-top: 1px solid var(--border-color);
     padding: 4px 8px;
     gap: 6px;
@@ -149,14 +200,12 @@
     font-weight: 700;
     flex: 0 0 auto;
     user-select: none;
-    transition: font-size 0.25s ease;
+    padding-top: 2px;
 }
 
-#console-panel.expanded .console-prompt {
-    font-size: 14px;
-}
+/* ── Textarea (both modes) ───────────────────────────────────────────────── */
 
-#console-input {
+#console-textarea {
     flex: 1;
     background: none;
     border: none;
@@ -165,44 +214,39 @@
     font-size: 12px;
     color: var(--text-color);
     caret-color: var(--primary-color);
-    transition: font-size 0.25s ease;
+    resize: none;
+    overflow-y: hidden;
+    line-height: 1.6;
+    padding: 0;
+    min-height: 20px;
 }
 
-#console-panel.expanded #console-input {
-    font-size: 16px;
+#console-panel.expanded #console-textarea {
+    font-size: 15px;
+    line-height: 1.7;
 }
 
-#console-panel.expanded .console-line {
-    font-size: 16px;
-}
-
-#console-panel.expanded .console-line.info {
-    font-size: 12px;
-}
-
-#console-panel.expanded #tab-hint {
-    font-size: 14px;
-}
-
-#console-panel.expanded .console-title {
-    font-size: 12px;
-}
-
-#console-panel.expanded .console-action-btn {
-    font-size: 12px;
-}
-
-#console-input::placeholder {
+#console-textarea::placeholder {
     color: var(--text-secondary);
     font-size: 11px;
 }
 
-/* Tab completion hint */
+#console-panel.expanded #console-textarea::placeholder {
+    font-size: 12px;
+}
+
+/* ── Tab hint ────────────────────────────────────────────────────────────── */
+
 #tab-hint {
+    flex: 0 0 auto;
     font-size: 10px;
     color: var(--text-secondary);
     padding: 2px 8px;
-    border-top: 1px solid var(--border-color-light);
+    border-top: 1px solid var(--border-color);
     min-height: 18px;
     font-style: italic;
+}
+
+#console-panel.expanded #tab-hint {
+    font-size: 13px;
 }

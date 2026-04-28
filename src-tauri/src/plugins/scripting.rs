@@ -172,11 +172,13 @@ impl PhotonPlugin for Print {
         ]
     }
 
-    fn execute(&self, _ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
         let message = args.get("message")
             .cloned()
             .unwrap_or_default();
-        Ok(PluginOutput::Message(message))
+        let evaluated = crate::pcode::expr::evaluate_expr(&message, &ctx.variables)
+            .unwrap_or(message);
+        Ok(PluginOutput::Message(evaluated))
     }
 }
 
@@ -207,8 +209,9 @@ impl PhotonPlugin for Assert {
         let expression = args.get("expression")
             .ok_or_else(|| PluginError::missing_arg("expression"))?;
 
-        match crate::pcode::expr::evaluate_condition(expression) {
-            Ok(true)  => Ok(PluginOutput::Message(format!("Assert passed: {}", expression))),
+        let empty = std::collections::HashMap::new();
+        match crate::pcode::expr::evaluate_condition(expression, &empty) {
+            Ok(true)  => Ok(PluginOutput::Success),
             Ok(false) => Err(PluginError::new("ASSERT_FAILED", &format!("Assertion failed: {}", expression))),
             Err(e)    => Err(PluginError::new("EXPR_ERROR", &format!("Assert expression error: {}", e))),
         }

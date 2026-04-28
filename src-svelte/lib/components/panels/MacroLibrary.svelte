@@ -69,7 +69,7 @@
     function pinMacro(macro: MacroEntry) {
         quickLaunch.pin({
             name:   macro.name,
-            script: `RunMacro path="${macro.path}"`,
+            script: `RunMacro filename="${macro.path}"`,
             icon:   '📜',
         });
         notifications.success(`Pinned: ${macro.name}`);
@@ -110,7 +110,7 @@
                 results: Array<{ line_number: number; command: string; success: boolean; message: string | null }>;
                 session_changed: boolean;
                 display_changed: boolean;
-            }>('run_script', { script: `RunMacro path="${macro.path}"` });
+            }>('run_script', { script: `RunMacro filename="${macro.path}"` });
 
             let anyError = false;
             for (const r of response.results) {
@@ -149,7 +149,7 @@
         const ql = $quickLaunch;
         const pinnedPaths = new Set<string>();
         for (const entry of ql) {
-            const match = entry.script.match(/RunMacro path="([^"]+)"/);
+            const match = entry.script.match(/RunMacro filename="([^"]+)"/);
             if (match) {
                 pinnedPaths.add(match[1].replace(/\\/g, '/'));
             }

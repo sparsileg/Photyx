@@ -60,7 +60,7 @@ pub fn tokenize_line(line: &str) -> PcodeLine {
         "set" => {
             if let Some(eq_pos) = rest.find('=') {
                 let name  = rest[..eq_pos].trim().to_string();
-                let value = strip_quotes(rest[eq_pos + 1..].trim());
+                let value = rest[eq_pos + 1..].trim().to_string();
                 return PcodeLine::Assignment { name, value };
             }
         }
@@ -89,16 +89,10 @@ pub fn tokenize_line(line: &str) -> PcodeLine {
             return PcodeLine::EndFor;
         }
         "print" => {
-            // Accept both bare argument and message= form
-            let message = if rest.contains("message=") {
-                parse_args(&rest)
-                    .remove("message")
-                    .unwrap_or_default()
-            } else {
-                strip_quotes(rest.trim())
-            };
+            // Store the raw expression so the evaluator can handle
+            // variables, operators, and quoted strings correctly
             let mut args = std::collections::HashMap::new();
-            args.insert("message".to_string(), message);
+            args.insert("message".to_string(), rest.trim().to_string());
             return PcodeLine::Command { command, args };
         }
         _ => {}
@@ -175,16 +169,5 @@ pub fn parse_args(rest: &str) -> std::collections::HashMap<String, String> {
     args
 }
 
-/// Strip surrounding single or double quotes from a string.
-pub fn strip_quotes(s: &str) -> String {
-    let s = s.trim();
-    if (s.starts_with('"') && s.ends_with('"'))
-        || (s.starts_with('\'') && s.ends_with('\''))
-    {
-        s[1..s.len() - 1].to_string()
-    } else {
-        s.to_string()
-    }
-}
 
 // ----------------------------------------------------------------------

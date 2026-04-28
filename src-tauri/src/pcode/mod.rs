@@ -20,6 +20,7 @@ pub struct PcodeResult {
     pub success:     bool,
     pub message:     Option<String>,
     pub data:        Option<serde_json::Value>,
+    pub trace_line:  Option<String>,
 }
 
 impl PcodeResult {
@@ -181,13 +182,14 @@ pub fn execute_script(
             success:     false,
             message:     Some(e),
             data:        None,
+            trace_line:  None,
         }],
     };
 
-    let mut results         = Vec::new();
+    let mut results        = Vec::new();
     let mut variables: HashMap<String, String> = ctx.variables.clone();
-    let mut last_log_index  = 0usize;
-    let mut halted          = false;
+    let mut last_log_index = 0usize;
+    let mut halted         = false;
 
     execute_blocks(
         &blocks, ctx, registry, halt_on_error,
@@ -222,9 +224,8 @@ fn execute_blocks(
             }
 
             Block::If { line_number, expr, then_blocks, else_blocks } => {
-                let resolved = substitute_vars(expr, variables);
-                let condition = evaluate_condition(&resolved);
-                info!("pcode line {}: If [{}] -> {}", line_number, resolved, condition);
+                let condition = evaluate_condition(expr, variables);
+                info!("pcode line {}: If [{}] -> {}", line_number, expr, condition);
                 let branch = if condition { then_blocks } else { else_blocks };
                 execute_blocks(
                     branch, ctx, registry, halt_on_error,
@@ -241,10 +242,11 @@ fn execute_blocks(
                     Err(_) => {
                         results.push(PcodeResult {
                             line_number: *line_number,
-                            command: "For".to_string(),
-                            success: false,
-                            message: Some(format!("For: cannot parse 'from' value '{}'", from_str)),
-                            data:    None,
+                            command:    "For".to_string(),
+                            success:    false,
+                            message:    Some(format!("For: cannot parse 'from' value '{}'", from_str)),
+                            data:       None,
+                            trace_line: None,
                         });
                         if halt_on_error { *halted = true; }
                         return;
@@ -255,10 +257,11 @@ fn execute_blocks(
                     Err(_) => {
                         results.push(PcodeResult {
                             line_number: *line_number,
-                            command: "For".to_string(),
-                            success: false,
-                            message: Some(format!("For: cannot parse 'to' value '{}'", to_str)),
-                            data:    None,
+                            command:    "For".to_string(),
+                            success:    false,
+                            message:    Some(format!("For: cannot parse 'to' value '{}'", to_str)),
+                            data:       None,
+                            trace_line: None,
                         });
                         if halt_on_error { *halted = true; }
                         return;
@@ -297,17 +300,18 @@ fn execute_line(
 ) {
     match parsed {
         PcodeLine::Skip => {}
+
         PcodeLine::Assignment { name, value } => {
-            let substituted = substitute_vars(value, variables);
-            let resolved = match expr::evaluate_expr(&substituted) {
+            let resolved = match expr::evaluate_expr(value, variables) {
                 Ok(v)  => v,
                 Err(e) => {
                     results.push(PcodeResult {
                         line_number,
-                        command: format!("Set {}", name),
-                        success: false,
-                        message: Some(format!("Expression error: {}", e)),
-                        data:    None,
+                        command:    format!("Set {}", name),
+                        success:    false,
+                        message:    Some(format!("Expression error: {}", e)),
+                        data:       None,
+                        trace_line: None,
                     });
                     if halt_on_error { *halted = true; }
                     return;
@@ -318,30 +322,90 @@ fn execute_line(
             info!("pcode: Set {} = {}", name, resolved);
             results.push(PcodeResult {
                 line_number,
-                command: format!("Set {}", name),
-                success: true,
-                message: Some(format!("{} = {}", name, resolved)),
-                data:    None,
+                command:    format!("Set {}", name),
+                success:    true,
+                message:    Some(format!("{} = {}", name, resolved)),
+                data:       None,
+                trace_line: Some(format!("Set {} = {}", name, resolved)),
             });
         }
+
         PcodeLine::Command { command, args } => {
             let mut resolved_args = args.clone();
             for val in resolved_args.values_mut() {
                 *val = substitute_vars(val, variables);
             }
+
+            // Handle Assert internally so variable references evaluate correctly
+            if command.to_lowercase() == "assert" {
+                let raw_expr = args.get("expression").cloned().unwrap_or_default();
+                match crate::pcode::expr::evaluate_condition(&raw_expr, variables) {
+                    Ok(true) => {
+                        results.push(PcodeResult {
+                            line_number,
+                            command:    "Assert".to_string(),
+                            success:    true,
+                            message:    None,
+                            data:       None,
+                            trace_line: Some(format!("Assert {}", raw_expr)),
+                        });
+                    }
+                    Ok(false) => {
+                        results.push(PcodeResult {
+                            line_number,
+                            command:    "Assert".to_string(),
+                            success:    false,
+                            message:    Some(format!("Assertion failed: {}", raw_expr)),
+                            data:       None,
+                            trace_line: None,
+                        });
+                        if halt_on_error { *halted = true; }
+                    }
+                    Err(e) => {
+                        results.push(PcodeResult {
+                            line_number,
+                            command:    "Assert".to_string(),
+                            success:    false,
+                            message:    Some(format!("Assert expression error: {}", e)),
+                            data:       None,
+                            trace_line: None,
+                        });
+                        if halt_on_error { *halted = true; }
+                    }
+                }
+                return;
+            }
+            // Handle Print internally so expressions with variables evaluate correctly
+            if command.to_lowercase() == "print" {
+                let raw_message = args.get("message").cloned().unwrap_or_default();
+                let evaluated = crate::pcode::expr::evaluate_expr(&raw_message, variables)
+                    .unwrap_or_else(|_| substitute_vars(&raw_message, variables));
+                results.push(PcodeResult {
+                    line_number,
+                    command:    "Print".to_string(),
+                    success:    true,
+                    message:    Some(evaluated),
+                    data:       None,
+                    trace_line: Some(format!("Print {}", raw_message)),
+                });
+                return;
+            }
+
             // Handle Log internally
             if command.to_lowercase() == "log" {
                 let result = handle_log(&resolved_args, &results[*last_log_index..]);
                 *last_log_index = results.len();
                 results.push(PcodeResult {
                     line_number,
-                    command: "Log".to_string(),
-                    success: result.is_ok(),
-                    message: Some(result.unwrap_or_else(|e| e)),
-                    data:    None,
+                    command:    "Log".to_string(),
+                    success:    result.is_ok(),
+                    message:    Some(result.unwrap_or_else(|e| e)),
+                    data:       None,
+                    trace_line: None,
                 });
                 return;
             }
+
             match registry.dispatch(ctx, command, &resolved_args) {
                 Ok(output) => {
                     // Sync any variables the plugin wrote to ctx.variables
@@ -352,7 +416,6 @@ fn execute_line(
                         PluginOutput::Success      => (None, None),
                         PluginOutput::Message(m)   => (Some(m), None),
                         PluginOutput::Value(v)     => {
-                            // Auto-store single values into a variable named after the name arg
                             if let Some(varname) = resolved_args.get("name")
                                 .or_else(|| resolved_args.get("varname"))
                             {
@@ -374,20 +437,28 @@ fn execute_line(
                     info!("pcode line {}: {} -> OK", line_number, command);
                     results.push(PcodeResult {
                         line_number,
-                        command: command.clone(),
-                        success: true,
-                        message: msg,
+                        command:    command.clone(),
+                        success:    true,
+                        message:    msg,
                         data,
+                        trace_line: Some(format!("{} {}",
+                            command,
+                            resolved_args.iter()
+                                .map(|(k, v)| format!("{}={}", k, v))
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        )),
                     });
                 }
                 Err(e) => {
                     warn!("pcode line {}: {} -> ERR: {}", line_number, command, e.message);
                     results.push(PcodeResult {
                         line_number,
-                        command: command.clone(),
-                        success: false,
-                        message: Some(e.message.clone()),
-                        data:    None,
+                        command:    command.clone(),
+                        success:    false,
+                        message:    Some(e.message.clone()),
+                        data:       None,
+                        trace_line: None,
                     });
                     if halt_on_error {
                         *halted = true;
@@ -395,6 +466,7 @@ fn execute_line(
                 }
             }
         }
+
         // Flow control variants are never stored as bare Lines — handled by parse_blocks
         _ => {}
     }
@@ -402,8 +474,8 @@ fn execute_line(
 
 // ── Condition evaluator ───────────────────────────────────────────────────────
 
-fn evaluate_condition(expression: &str) -> bool {
-    match expr::evaluate_condition(expression) {
+fn evaluate_condition(expression: &str, variables: &HashMap<String, String>) -> bool {
+    match expr::evaluate_condition(expression, variables) {
         Ok(b)  => b,
         Err(e) => {
             tracing::warn!("pcode condition error: {}", e);
@@ -411,7 +483,6 @@ fn evaluate_condition(expression: &str) -> bool {
         }
     }
 }
-
 
 // ── Variable substitution ─────────────────────────────────────────────────────
 

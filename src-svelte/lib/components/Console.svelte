@@ -1,4 +1,5 @@
 <!-- Console.svelte — pcode interactive console. Spec §8.9, §7.9 -->
+
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
     import { session } from '../stores/session';
@@ -9,7 +10,7 @@
     interface ConsoleLine {
         id: number;
         text: string;
-        type: 'input-echo' | 'output' | 'error' | 'warning' | 'success' | 'info';
+        type: 'input-echo' | 'trace-echo' | 'output' | 'error' | 'warning' | 'success' | 'info';
     }
 
     let lines = $state<ConsoleLine[]>([
@@ -18,13 +19,15 @@
     ]);
     let inputValue = $state('');
     let tabHint = $state('');
-    let outputEl = $state<HTMLDivElement>();
-    let inputEl = $state<HTMLInputElement>();
+    let terminalEl = $state<HTMLDivElement>();  // merged buffer (expanded)
+    let outputEl   = $state<HTMLDivElement>();  // output only (collapsed)
+    let textareaEl = $state<HTMLTextAreaElement>();
 
     let history: string[] = [];
     let historyIdx = -1;
     let pendingInput = '';
     let nextId = 2;
+    let trace = $state(false);
 
     import { PCODE_COMMANDS } from '../pcodeCommands';
     import { applyAutoStretch, loadFile } from '../commands';
@@ -37,10 +40,10 @@
             consolePipe.set(null);
         }
     });
+
     const ALL_COMMANDS = [...PCODE_COMMANDS].sort();
 
     const ARG_HINTS: Record<string, string> = {
-        addkeyword:         'name=  value=  comment=  scope=',
         addkeyword:         'name=  value=  comment=',
         assert:             'expression=',
         autostretch:        'shadowClip=  targetBackground=',
@@ -60,7 +63,7 @@
         log:                'path=  append=',
         modifykeyword:      'name=  value=  comment=  scope=',
         movefile:           'destination=',
-        print:              'message=',
+        print:              'message (or bare: Print "hello")',
         readall:            '',
         readallfiles:       '',
         readfit:            '',
@@ -79,37 +82,39 @@
         writexisf:          'destination=  overwrite=  compress=',
     };
 
-    function append(text: string, type: ConsoleLine['type']) {
-        lines = [...lines, { id: nextId++, text, type }];
-        consoleHistory.set(lines);
+    function scrollToBottom() {
         setTimeout(() => {
-            if (outputEl) outputEl.scrollTop = outputEl.scrollHeight;
+            const el = $ui.consoleExpanded ? terminalEl : outputEl;
+            if (el) el.scrollTop = el.scrollHeight;
         }, 0);
     }
 
-    function tokenize(line: string): { command: string; args: Record<string, string> } | null {
-        line = line.trim();
-        if (!line || line.startsWith('#')) return null;
-
-        const firstSpace = line.search(/\s/);
-        const command = firstSpace === -1 ? line : line.slice(0, firstSpace);
-        const rest = firstSpace === -1 ? '' : line.slice(firstSpace + 1).trim();
-
-        const args: Record<string, string> = {};
-        const argRe = /([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|(\S+))/g;
-        let match;
-        while ((match = argRe.exec(rest)) !== null) {
-            args[match[1].toLowerCase()] = match[2] !== undefined ? match[2] : match[3];
-        }
-
-        return { command, args };
+    function append(text: string, type: ConsoleLine['type']) {
+        lines = [...lines, { id: nextId++, text, type }];
+        consoleHistory.set(lines);
+        scrollToBottom();
     }
 
-    const CLIENT_COMMANDS: Record<string, (args: Record<string, string>) => boolean> = {
+    function autoResize() {
+        if (!textareaEl) return;
+        textareaEl.style.height = 'auto';
+        if ($ui.consoleExpanded && terminalEl) {
+            // In expanded terminal mode, grow to fill available space
+            const maxHeight = terminalEl.clientHeight - textareaEl.offsetTop - 24;
+            textareaEl.style.height = Math.min(textareaEl.scrollHeight, Math.max(maxHeight, 20)) + 'px';
+            textareaEl.style.overflowY = textareaEl.scrollHeight > maxHeight ? 'auto' : 'hidden';
+        } else {
+            // Collapsed: cap at 6 lines
+            const maxHeight = 20 * 6;
+            textareaEl.style.height = Math.min(textareaEl.scrollHeight, maxHeight) + 'px';
+            textareaEl.style.overflowY = textareaEl.scrollHeight > maxHeight ? 'auto' : 'hidden';
+        }
+    }
+
+    const CLIENT_COMMANDS: Record<string, () => void> = {
         pwd: () => {
             const dir = $session.activeDirectory ?? '(no directory selected)';
             append(dir, 'output');
-            return true;
         },
         help: () => {
             append('Photyx pcode v1.0  —  commands:', 'output');
@@ -123,36 +128,25 @@
             append('  Analysis: ComputeFWHM CountStars ComputeEccentricity MedianValue ContourHeatmap', 'output');
             append('  Script:   Set Print Echo CountFiles RunMacro', 'output');
             append('  Console:  pwd Help Clear Version', 'output');
-            return true;
         },
-        clear: () => {
-            lines = [];
-            return true;
-        },
+        clear: () => { lines = []; },
         version: () => {
             append('Photyx 1.0.0-dev  |  pcode v1.0  |  Tauri + Svelte + Rust', 'output');
-            return true;
         },
-        showanalysisgraph: () => {
-            ui.showView('analysisGraph');
-            return true;
-        },
-        showanalysisresults: () => {
-            ui.showView('analysisResults');
-            return true;
-        },
-        clearannotations: () => {
-            ui.clearAnnotations();
-            return true;
-        },
+        showanalysisgraph: () => { ui.showView('analysisGraph'); },
+        showanalysisresults: () => { ui.showView('analysisResults'); },
+        clearannotations: () => { ui.clearAnnotations(); },
     };
 
     async function dispatch(raw: string) {
-        const cmdLower = raw.trim().split(/\s/)[0].toLowerCase();
+        const trimmed = raw.trim();
+        if (!trimmed) return;
+
+        const firstLine = trimmed.split('\n')[0].trim();
+        const cmdLower = firstLine.split(/\s/)[0].toLowerCase();
 
         if (CLIENT_COMMANDS[cmdLower]) {
-            const parsed = tokenize(raw);
-            if (parsed) CLIENT_COMMANDS[cmdLower](parsed.args);
+            CLIENT_COMMANDS[cmdLower]();
             return;
         }
 
@@ -167,15 +161,24 @@
                 }>;
                 session_changed: boolean;
                 display_changed: boolean;
-            }>('run_script', { script: raw });
+            }>('run_script', { script: trimmed });
 
             for (const result of response.results) {
                 if (result.success) {
-                    if (result.message) {
+                    const isAssignment = result.command.toLowerCase().startsWith('set ');
+
+                    // Trace line — show before output if trace is on
+                    if (trace && result.trace_line) {
+                        append(result.trace_line, 'trace-echo');
+                    }
+
+                    // Output — never show assignment results, only trace line
+                    if (result.message && !isAssignment) {
                         result.message.split('\n').forEach(line => {
                             if (line) append(line, 'success');
                         });
                     }
+
                     await syncSessionState(
                         result.command.toLowerCase(),
                         {},
@@ -195,7 +198,12 @@
         }
     }
 
-    async function syncSessionState(cmd: string, args: Record<string, string>, output: string | null, data: Record<string, unknown> | null = null) {
+    async function syncSessionState(
+        cmd: string,
+        args: Record<string, string>,
+        output: string | null,
+        data: Record<string, unknown> | null = null
+    ) {
         if (cmd === 'selectdirectory' && args.path) {
             session.setDirectory(args.path);
             session.setFileList([]);
@@ -210,9 +218,8 @@
             session.update(s => ({ ...s, loadedImages: {} }));
             ui.clearViewer();
         }
-        if (cmd === 'readallfitfiles' || cmd === 'readallxisffiles' || cmd === 'readalltifffiles'
-            || cmd === 'readallfiles' || cmd === 'readfit' || cmd === 'readtiff'
-            || cmd === 'readxisf' || cmd === 'readall' || cmd === 'runmacro') {
+        if (['readallfitfiles','readallxisffiles','readalltifffiles',
+             'readallfiles','readfit','readtiff','readxisf','readall','runmacro'].includes(cmd)) {
             if (output) notifications.success(output);
             try {
                 const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
@@ -222,15 +229,9 @@
                 notifications.error(`Session sync failed: ${e}`);
             }
         }
-        if (cmd === 'autostretch') {
-            await applyAutoStretch();
-        }
-        if (cmd === 'linearstretch' || cmd === 'histogramequalization') {
-            ui.requestFrameRefresh();
-        }
-        if (cmd === 'computefwhm') {
-            ui.refreshAnnotations();
-        }
+        if (cmd === 'autostretch') await applyAutoStretch();
+        if (cmd === 'linearstretch' || cmd === 'histogramequalization') ui.requestFrameRefresh();
+        if (cmd === 'computefwhm') ui.refreshAnnotations();
         if (cmd === 'contourheatmap') {
             if (output) notifications.success(output);
             const filePath = data?.output as string | null;
@@ -240,16 +241,17 @@
             const filePath = data?.path as string | null;
             if (filePath) await loadFile(filePath);
         }
-        if (cmd === 'setframe' || cmd === 'autostretch') {
-            ui.clearAnnotations();
-        }
+        if (cmd === 'setframe' || cmd === 'autostretch') ui.clearAnnotations();
     }
 
     function submit() {
         const raw = inputValue.trim();
         if (!raw) return;
 
-        append(raw, 'input-echo');
+        // Always echo input lines
+        raw.split('\n').forEach(line => {
+            if (line.trim()) append(line, 'input-echo');
+        });
 
         if (history[0] !== raw) history.unshift(raw);
         if (history.length > 500) history.length = 500;
@@ -258,23 +260,35 @@
         inputValue = '';
         tabHint = '';
 
-        // Fire and forget — don't await so UI stays responsive during execution
+        if (textareaEl) {
+            textareaEl.style.height = 'auto';
+            textareaEl.style.overflowY = 'hidden';
+        }
+
         dispatch(raw).catch(err => append(`Error: ${err}`, 'error'));
     }
 
     function onKeyDown(e: KeyboardEvent) {
         switch (e.key) {
             case 'Enter':
+                if (e.shiftKey) {
+                    setTimeout(autoResize, 0);
+                    return;
+                }
                 e.preventDefault();
                 submit();
                 break;
             case 'ArrowUp':
-                e.preventDefault();
-                navigateHistory(1);
+                if (!inputValue.includes('\n')) {
+                    e.preventDefault();
+                    navigateHistory(1);
+                }
                 break;
             case 'ArrowDown':
-                e.preventDefault();
-                navigateHistory(-1);
+                if (!inputValue.includes('\n')) {
+                    e.preventDefault();
+                    navigateHistory(-1);
+                }
                 break;
             case 'Tab':
                 e.preventDefault();
@@ -284,6 +298,10 @@
                 inputValue = '';
                 historyIdx = -1;
                 tabHint = '';
+                if (textareaEl) {
+                    textareaEl.style.height = 'auto';
+                    textareaEl.style.overflowY = 'hidden';
+                }
                 break;
         }
     }
@@ -293,6 +311,7 @@
         if (historyIdx === -1 && dir === 1) pendingInput = inputValue;
         historyIdx = Math.max(-1, Math.min(history.length - 1, historyIdx + dir));
         inputValue = historyIdx === -1 ? pendingInput : history[historyIdx];
+        setTimeout(autoResize, 0);
     }
 
     function doTabComplete() {
@@ -313,45 +332,90 @@
     }
 
     export function focus() {
-        inputEl?.focus();
+        textareaEl?.focus();
     }
 </script>
 
+<!-- ── Collapsed layout (separate output + input) ─────────────────────── -->
 <div id="console-panel" class:expanded={$ui.consoleExpanded}>
     <div class="console-header" onclick={() => ui.toggleConsole()}>
-        <span class="console-title">pcode console {$ui.consoleExpanded ? '▾ expanded' : '▴'}</span>
+        <span class="console-title">pcode console {$ui.consoleExpanded ? '▾' : '▴'}</span>
         <div class="console-actions">
-            <button class="console-action-btn" onclick={(e) => { e.stopPropagation(); lines = []; }}>Clear</button>
+        <button class="console-action-btn" onclick={(e) => { e.stopPropagation(); trace = !trace; }}>{trace ? 'Trace' : 'No Trace'}</button>
+        <button class="console-action-btn" onclick={(e) => { e.stopPropagation(); lines = []; }}>Clear</button>
+    </div>
+    </div>
+
+    {#if !$ui.consoleExpanded}
+        <!-- Collapsed: separate output area + input row -->
+        <div id="console-output" bind:this={outputEl}>
+            {#each lines as line (line.id)}
+                <div class="console-line {line.type}">
+                    {#if line.type === 'input-echo'}
+                        <span class="line-prompt">&gt;</span>
+                        <span>{line.text}</span>
+                    {:else if line.type === 'trace-echo'}
+                        <span class="line-prompt-trace">+</span>
+                        <span>{line.text}</span>
+                    {:else}
+                        {line.text}
+                    {/if}
+                </div>
+            {/each}
         </div>
-    </div>
-    <div id="console-output" bind:this={outputEl}>
-        {#each lines as line (line.id)}
-            <div class="console-line {line.type}">
-                {#if line.type === 'input-echo'}
-                    <span class="line-prompt">&gt;</span>
-                    <span> {line.text}</span>
-                {:else}
-                    {line.text}
-                {/if}
+        <div class="console-input-row">
+            <span class="console-prompt">&gt;</span>
+            <textarea
+                id="console-textarea"
+                bind:this={textareaEl}
+                bind:value={inputValue}
+                onkeydown={onKeyDown}
+                oninput={() => { tabHint = ''; autoResize(); }}
+                rows={1}
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck={false}
+                placeholder="Type a pcode command…"
+            ></textarea>
+        </div>
+    {:else}
+        <!-- Expanded: single merged terminal buffer -->
+        <div id="console-terminal" bind:this={terminalEl} onclick={() => textareaEl?.focus()}>
+            {#each lines as line (line.id)}
+                <div class="console-line {line.type}">
+                    {#if line.type === 'input-echo'}
+                        <span class="line-prompt">&gt;</span>
+                        <span>{line.text}</span>
+                    {:else if line.type === 'trace-echo'}
+                        <span class="line-prompt-trace">+</span>
+                        <span>{line.text}</span>
+                    {:else}
+                        {line.text}
+                    {/if}
+                </div>
+            {/each}
+
+            <!-- Input line inline with output -->
+            <div class="console-line console-input-inline">
+                <span class="line-prompt">&gt;</span>
+                <textarea
+                    id="console-textarea"
+                    bind:this={textareaEl}
+                    bind:value={inputValue}
+                    onkeydown={onKeyDown}
+                    oninput={() => { tabHint = ''; autoResize(); }}
+                    rows={1}
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    spellcheck={false}
+                    placeholder="Type a pcode command… (Shift+Enter for newline)"
+                ></textarea>
             </div>
-        {/each}
-    </div>
-    <div class="console-input-row">
-        <span class="console-prompt">&gt;</span>
-        <input
-            type="text"
-            id="console-input"
-            bind:this={inputEl}
-            bind:value={inputValue}
-            onkeydown={onKeyDown}
-            oninput={() => tabHint = ''}
-            autocomplete="off"
-            autocorrect="off"
-            autocapitalize="off"
-            spellcheck={false}
-            placeholder="Type a pcode command… (Tab to complete)"
-        />
-    </div>
+        </div>
+    {/if}
+
     {#if tabHint}
         <div id="tab-hint">{tabHint}</div>
     {/if}
