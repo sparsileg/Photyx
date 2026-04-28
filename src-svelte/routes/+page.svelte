@@ -4,6 +4,8 @@
     import { onMount } from 'svelte';
     import { ui } from '../lib/stores/ui';
     import { session } from '../lib/stores/session';
+    import { quickLaunch } from '../lib/stores/quickLaunch';
+    import { db } from '../lib/db';
     import HelpModal from '../lib/components/HelpModal.svelte';
     import type { HelpEntry } from '../lib/pcodeHelp';
     import AnalysisGraph from '../lib/components/AnalysisGraph.svelte';
@@ -48,6 +50,19 @@
     function onMousePixel(px: { x: number; y: number } | null) {
         mousePixel = px;
     }
+
+    // DB hydration — runs once on startup before UI renders
+    onMount(async () => {
+        try {
+            await db.migrateLocalStorage();
+            const prefs = await db.getAllPreferences();
+            ui.hydrateFromDb(prefs);
+            const buttons = await db.getQuickLaunchButtons();
+            quickLaunch.hydrate(buttons);
+        } catch (e) {
+            console.error('DB hydration failed:', e);
+        }
+    });
 
     // Keyboard shortcuts per spec §8.13
     function onKeyDown(e: KeyboardEvent) {
