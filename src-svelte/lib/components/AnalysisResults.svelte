@@ -30,7 +30,9 @@
     let sortAsc = $state(true);
 
     function fmt(v: number | undefined, decimals = 3): string {
-        return v !== undefined ? v.toFixed(decimals) : '—';
+        if (v === undefined) return '—';
+        if (v !== 0 && Math.abs(v) < 0.001) return v.toExponential(3);
+        return v.toFixed(decimals);
     }
 
     function fmtFilename(name: string): string {

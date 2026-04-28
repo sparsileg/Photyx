@@ -3,9 +3,7 @@
     import { invoke } from '@tauri-apps/api/core';
     import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
     import { ui } from '../../stores/ui';
-    import { session } from '../../stores/session';
     import { notifications } from '../../stores/notifications';
-    import { consoleHistory } from '../../stores/consoleHistory';
     import { PCODE_COMMANDS } from '../../pcodeCommands';
 
     // ── Props ────────────────────────────────────────────────────────────────────
@@ -16,7 +14,6 @@
     // ── Editor state ────────────────────────────────────────────────────────────
     let macroText  = $state('');
     let fontSize   = $state(16);
-    let running    = $state(false);
     let dirty      = $state(false);
     let confirmingLeave = $state(false);
     let savedPath  = $state<string | null>(null);
@@ -122,44 +119,6 @@
         onTextareaScroll();
     }
 
-    // ── Run macro ────────────────────────────────────────────────────────────────
-    async function runMacro() {
-        if (running) return;
-        const script = macroText.trim();
-        if (!script) { notifications.warning('Macro editor is empty.'); return; }
-        running = true;
-        notifications.running('Running macro…');
-        try {
-            const response = await invoke<{
-                results: Array<{ line_number: number; command: string; success: boolean; message: string | null }>;
-                session_changed: boolean;
-                display_changed: boolean;
-            }>('run_script', { script });
-            let anyError = false;
-            for (const r of response.results) {
-                if (!r.success) {
-                    notifications.error(`${r.command}: ${r.message ?? 'error'}`);
-                    anyError = true;
-                }
-            }
-            if (!anyError) notifications.success('Macro complete.');
-            if (response.session_changed) {
-                try {
-                    const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
-                    session.setDirectory(s.activeDirectory ?? '');
-                    session.setFileList(s.fileList);
-                } catch (e) {
-                    notifications.error(`Session sync failed: ${e}`);
-                }
-            }
-            if (response.display_changed) ui.requestFrameRefresh();
-        } catch (err) {
-            notifications.error(`Macro failed: ${err}`);
-        } finally {
-            running = false;
-        }
-    }
-
     // ── Save ─────────────────────────────────────────────────────────────────────
     async function saveMacro() {
         try {
@@ -186,20 +145,6 @@
         macroName = newName.trim();
         savedPath = null; // force new path
         await saveMacro();
-    }
-
-    // ── Copy from Console ────────────────────────────────────────────────────────
-    function copyFromConsole() {
-        const lines = $consoleHistory;
-        if (!lines.length) { notifications.warning('Console history is empty.'); return; }
-        const commands = lines
-            .filter(l => l.type === 'input-echo')
-            .map(l => l.text)
-            .join('\n');
-        if (!commands) { notifications.warning('No commands in console history.'); return; }
-        macroText = (macroText ? macroText + '\n' : '') + commands;
-        dirty = true;
-        notifications.info('Console history copied to editor.');
     }
 
     // ── Back to Library ───────────────────────────────────────────────────────────
@@ -237,14 +182,8 @@
     </div>
 
     <div class="me-toolbar">
-        <button class="me-btn me-btn-run" onclick={runMacro} disabled={running}>
-            {running ? '◌ Running…' : '▶ Run'}
-        </button>
-        <div class="me-sep"></div>
         <button class="me-btn" onclick={saveMacro}>Save</button>
         <button class="me-btn" onclick={saveAs}>Save As…</button>
-        <div class="me-sep"></div>
-        <button class="me-btn" onclick={copyFromConsole}>Copy from Console</button>
         <span class="me-font-label">A</span>
         <button class="me-btn me-btn-font" onclick={decreaseFontSize} disabled={fontSize <= FONT_MIN}>−</button>
         <span class="me-font-size">{fontSize}px</span>
@@ -289,10 +228,7 @@
         <span>{macroText.split('\n').length} lines</span>
         <span class="me-status-sep">·</span>
         <span>{macroText.split('\n').filter(l => l.trim() && !l.trim().startsWith('#')).length} commands</span>
-        {#if running}
-            <span class="me-status-sep">·</span>
-            <span class="me-running-indicator">● running</span>
-        {/if}
+
         {#if dirty}
             <span class="me-status-sep">·</span>
             <span class="me-dirty-indicator">unsaved</span>

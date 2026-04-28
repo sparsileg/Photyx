@@ -4,7 +4,6 @@
     import type { PanelId } from '../stores/ui';
     import FileBrowser from './panels/FileBrowser.svelte';
     import KeywordEditor from './panels/KeywordEditor.svelte';
-    import MacroEditor from './panels/MacroEditor.svelte';
     import MacroLibrary from './panels/MacroLibrary.svelte';
     import PluginManager from './panels/PluginManager.svelte';
 

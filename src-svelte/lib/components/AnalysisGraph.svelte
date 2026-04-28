@@ -163,7 +163,6 @@
             threshVal = thresh.value;
         }
 
-        if (threshVal < lo || threshVal > hi) return null;
         return PT + CH - ((threshVal - lo) / (hi - lo)) * CH;
     }
 
@@ -195,14 +194,30 @@
         const m1valid = m1vals.filter(v => v !== undefined) as number[];
         const m2valid = m2vals.filter(v => v !== undefined) as number[];
 
-        const calcRange = (vals: number[]) => {
+        const stats1 = data.session_stats[metric1];
+
+        const calcRange = (vals: number[], extraVal?: number) => {
             if (!vals.length) return { lo: 0, hi: 1 };
-            const mn = Math.min(...vals), mx = Math.max(...vals);
+            const allVals = extraVal !== undefined ? [...vals, extraVal] : vals;
+            const mn = Math.min(...allVals), mx = Math.max(...allVals);
             const pad = (mx - mn) * 0.15 || Math.abs(mn) * 0.1 || 0.1;
             return { lo: mn - pad, hi: mx + pad };
         };
 
-        const r1 = calcRange(m1valid);
+        // Calculate reject threshold value for metric1 so axis always includes it
+        const thresh1 = REJECT_THRESHOLDS[metric1];
+        let rejectVal: number | undefined;
+        if (stats1 && thresh1) {
+            if (thresh1.type === 'sigma') {
+                rejectVal = thresh1.direction === 'high'
+                    ? stats1.mean + thresh1.value * stats1.stddev
+                    : stats1.mean - thresh1.value * stats1.stddev;
+            } else {
+                rejectVal = thresh1.value;
+            }
+        }
+
+        const r1 = calcRange(m1valid, rejectVal);
         const r2 = calcRange(m2valid);
 
         const toX  = (i: number) => n === 1 ? PL + CW / 2 : PL + (i / (n - 1)) * CW;
@@ -210,7 +225,6 @@
         const toY2 = (v: number) => PT + CH - ((v - r2.lo) / (r2.hi - r2.lo)) * CH;
 
         // Sigma bands (metric 1 only)
-        const stats1 = data.session_stats[metric1];
         if (stats1 && stats1.stddev > 0) {
             // Parse primary color for sigma band tinting
             [[3, 0.20], [2, 0.13], [1, 0.07]].forEach(([sigma, alpha]) => {
@@ -244,15 +258,31 @@
         // Reject threshold line (metric 1)
         const rejY = rejectThresholdY(metric1, stats1, r1.lo, r1.hi, PT, CH);
         if (rejY !== null) {
+            // Black border lines either side
+            ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([]);
+            ctx.beginPath(); ctx.moveTo(PL, rejY - 3); ctx.lineTo(PL + CW, rejY - 3); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(PL, rejY + 3); ctx.lineTo(PL + CW, rejY + 3); ctx.stroke();
+
+            // Main dotted reject line
             ctx.strokeStyle = 'rgba(255,60,60,0.75)';
             ctx.lineWidth = 4;
             ctx.setLineDash([6, 3]);
             ctx.beginPath(); ctx.moveTo(PL, rejY); ctx.lineTo(PL + CW, rejY); ctx.stroke();
             ctx.setLineDash([]);
-            ctx.fillStyle = 'rgba(255,80,80,0.9)';
+
+            // REJECT label with semi-opaque black background
             ctx.font = '15px monospace';
             ctx.textAlign = 'left';
-            ctx.fillText('REJECT', PL + 4, rejY - 3);
+            const labelText = 'REJECT';
+            const textW = ctx.measureText(labelText).width;
+            const labelX = PL + 4;
+            const labelY = rejY - 10;
+            ctx.fillStyle = 'rgba(0,0,0,0.60)';
+            ctx.fillRect(labelX - 2, labelY - 14, textW + 6, 18);
+            ctx.fillStyle = 'rgba(255,80,80,1.0)';
+            ctx.fillText(labelText, labelX, labelY);
         }
 
         // Chart border
