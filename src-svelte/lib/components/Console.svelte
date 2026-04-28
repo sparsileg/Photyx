@@ -31,6 +31,10 @@
 
     import { PCODE_COMMANDS } from '../pcodeCommands';
     import { applyAutoStretch, loadFile } from '../commands';
+    import { getHelp } from '../pcodeHelp';
+    import type { HelpEntry } from '../pcodeHelp';
+
+    let { onhelp }: { onhelp: (entry: HelpEntry) => void } = $props();
 
     // Watch for external console output — drain the queue
     $effect(() => {
@@ -139,12 +143,23 @@
         }
     }
 
-    const CLIENT_COMMANDS: Record<string, () => void> = {
-        pwd: () => {
+    const CLIENT_COMMANDS: Record<string, (raw: string) => void> = {
+        pwd: (_raw: string) => {
             const dir = $session.activeDirectory ?? '(no directory selected)';
             append(dir, 'output');
         },
-        help: () => {
+        help: (raw: string) => {
+            const parts = raw.trim().split(/\s+/);
+            const cmdArg = parts.length > 1 ? parts.slice(1).join(' ').trim() : null;
+            if (cmdArg) {
+                const entry = getHelp(cmdArg);
+                if (entry) {
+                    onhelp(entry);
+                } else {
+                    append(`No help found for '${cmdArg}'`, 'error');
+                }
+                return;
+            }
             append('Photyx pcode v1.0  —  commands:', 'output');
             append('  File:     SelectDirectory ListFiles FilterByKeyword', 'output');
             append('  I/O:      ReadFIT ReadXISF ReadTIFF ReadAll', 'output');
@@ -157,13 +172,13 @@
             append('  Script:   Set Print Echo CountFiles RunMacro', 'output');
             append('  Console:  pwd Help Clear Version', 'output');
         },
-        clear: () => { lines = []; },
-        version: () => {
+        clear: (_raw: string) => { lines = []; },
+        version: (_raw: string) => {
             append('Photyx 1.0.0-dev  |  pcode v1.0  |  Tauri + Svelte + Rust', 'output');
         },
-        showanalysisgraph: () => { ui.showView('analysisGraph'); },
-        showanalysisresults: () => { ui.showView('analysisResults'); },
-        clearannotations: () => { ui.clearAnnotations(); },
+        showanalysisgraph: (_raw: string) => { ui.showView('analysisGraph'); },
+        showanalysisresults: (_raw: string) => { ui.showView('analysisResults'); },
+        clearannotations: (_raw: string) => { ui.clearAnnotations(); },
     };
 
     async function dispatch(raw: string) {
@@ -174,7 +189,7 @@
         const cmdLower = firstLine.split(/\s/)[0].toLowerCase();
 
         if (CLIENT_COMMANDS[cmdLower]) {
-            CLIENT_COMMANDS[cmdLower]();
+            CLIENT_COMMANDS[cmdLower](firstLine);
             return;
         }
 

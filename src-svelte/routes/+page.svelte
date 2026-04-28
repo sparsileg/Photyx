@@ -4,6 +4,8 @@
     import { onMount } from 'svelte';
     import { ui } from '../lib/stores/ui';
     import { session } from '../lib/stores/session';
+    import HelpModal from '../lib/components/HelpModal.svelte';
+    import type { HelpEntry } from '../lib/pcodeHelp';
     import AnalysisGraph from '../lib/components/AnalysisGraph.svelte';
     import AnalysisResults from '../lib/components/AnalysisResults.svelte';
     import { VIEWS } from '../lib/stores/ui.ts';
@@ -31,6 +33,9 @@
         themeLink.href = `/themes/${theme}.css`;
         document.head.appendChild(themeLink);
     });
+
+    // Help modal
+    let helpEntry = $state<HelpEntry | null>(null);
 
     // Blink filename overlay
     let blinkFilename = $state('');
@@ -69,6 +74,10 @@
     <AboutModal onclose={() => ui.closeAbout()} />
 {/if}
 
+{#if helpEntry}
+    <HelpModal entry={helpEntry} onclose={() => helpEntry = null} />
+{/if}
+
 <div id="app">
     <MenuBar />
     <Toolbar />
@@ -95,7 +104,7 @@
                 {/if}
             {/if}
             <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded}>
-                <Console />
+                <Console onhelp={(entry) => helpEntry = entry} />
                 <InfoPanel onBlinkFrame={onBlinkFrame} mousePixel={mousePixel} />
             </div>
         </div>
