@@ -65,11 +65,14 @@
             console.error('DB hydration failed:', e);
         }
 
-        // Restore last directory into session store so File Browser shows it on launch
+        // Restore last directory — set both frontend store and Rust ctx.active_directory
         try {
             const lastDir = prefs['last_directory'];
             if (lastDir) {
                 session.setDirectory(lastDir);
+                await invoke('dispatch_command', {
+                    request: { command: 'SelectDirectory', args: { path: lastDir } }
+                });
             }
         } catch (e) {
             console.error('Failed to restore last directory:', e);

@@ -51,12 +51,14 @@
                 }
             }
             if (!anyError) notifications.success('Done.');
+            let autoStretched = false;
             for (const r of response.results) {
                 if (r.command.toLowerCase() === 'computefwhm' && r.success) {
                     ui.refreshAnnotations();
                 }
                 if (r.command.toLowerCase() === 'autostretch' && r.success) {
                     await applyAutoStretch();
+                    autoStretched = true;
                 }
             }
             if (response.session_changed) {
@@ -64,7 +66,7 @@
                 session.setDirectory(s.activeDirectory ?? '');
                 session.setFileList(s.fileList);
             }
-            if (response.display_changed) {
+            if (response.display_changed && !autoStretched) {
                 ui.requestFrameRefresh();
             }
         } catch (err) {

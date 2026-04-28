@@ -34,8 +34,14 @@ export async function syncSession() {
 /** Open folder picker and set active directory — does NOT load pixel data */
 export async function selectDirectory() {
     let selected;
+    let currentDir: string | null = null;
+    session.subscribe(s => { currentDir = s.activeDirectory; })();
     try {
-        selected = await open({ directory: true, multiple: false });
+        selected = await open({
+            directory: true,
+            multiple: false,
+            defaultPath: currentDir ?? undefined,
+        });
     } catch (e) {
         notifications.error(`Failed to open folder picker: ${e}`);
         return;
@@ -140,6 +146,7 @@ export async function loadFile(path: string) {
                 has_pixels: boolean;
             } | null;
         }>('debug_buffer_info');
+
         if (info.buffer) {
             const keywords = await invoke<Record<string, { name: string; value: string; comment: string | null }>>('get_keywords');
             session.update(st => ({
@@ -182,9 +189,14 @@ export async function displayFrame(index: number) {
     console.trace('displayFrame called with index:', index);
     try {
         ui.clearAnnotations();
-        await invoke('dispatch_command', {
-            request: { command: 'SetFrame', args: { index: String(index) } }
-        });
+        let setFrameResult;
+        try {
+            setFrameResult = await invoke<{ success: boolean; error: string | null }>('dispatch_command', {
+                request: { command: 'SetFrame', args: { index: String(index) } }
+            });
+        } catch (e) {
+            console.error('SetFrame invoke error:', e);
+        }
 
         session.setCurrentFrame(index);
 
@@ -226,34 +238,37 @@ export async function displayFrame(index: number) {
         }>('debug_buffer_info');
 
         if (info.buffer) {
-            const path = await invoke<{
-                activeDirectory: string | null;
-                fileList: string[];
-                currentFrame: number;
-            }>('get_session');
-            const filePath = path.fileList[index];
-            if (filePath) {
-                const keywords = await invoke<Record<string, { name: string; value: string; comment: string | null }>>('get_keywords');
-                session.update(s => ({
-                    ...s,
-                    loadedImages: {
-                        ...s.loadedImages,
-                        [filePath]: {
-                            filename: info.buffer!.filename,
-                            width: info.buffer!.width,
-                            height: info.buffer!.height,
-                            displayWidth: info.buffer!.display_width,
-                            bitDepth: info.buffer!.bit_depth,
-                            colorSpace: info.buffer!.channels === 3 ? 'RGB' : 'Mono',
-                            channels: info.buffer!.channels,
-                            keywords,
+            try {
+                const path = await invoke<{
+                    activeDirectory: string | null;
+                    fileList: string[];
+                    currentFrame: number;
+                }>('get_session');
+                const filePath = path.fileList[index];
+                if (filePath) {
+                    const keywords = await invoke<Record<string, { name: string; value: string; comment: string | null }>>('get_keywords');
+                    session.update(s => ({
+                        ...s,
+                        loadedImages: {
+                            ...s.loadedImages,
+                            [filePath]: {
+                                filename: info.buffer!.filename,
+                                width: info.buffer!.width,
+                                height: info.buffer!.height,
+                                displayWidth: info.buffer!.display_width,
+                                bitDepth: info.buffer!.bit_depth,
+                                colorSpace: info.buffer!.channels === 3 ? 'RGB' : 'Mono',
+                                channels: info.buffer!.channels,
+                                keywords,
+                            }
                         }
-                    }
-                }));
+                    }));
+                }
+            } catch (e) {
+                console.error('Error fetching session/keywords:', e);
             }
         }
 
-        console.log('requestFrameRefresh called from displayFrame');
         ui.requestFrameRefresh();
 
     } catch (e) {
