@@ -205,3 +205,37 @@ html, body {
     cursor: pointer;
     z-index: 200;
 }
+
+/* ── Crash recovery bar ────────────────────────────────────────────── */
+.recovery-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 600;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--warning-color);
+    color: var(--bg-color);
+    font-size: 13px;
+}
+
+.recovery-bar strong {
+    font-weight: 600;
+}
+
+.recovery-bar button {
+    padding: 3px 12px;
+    border: none;
+    border-radius: 3px;
+    background: var(--bg-color);
+    color: var(--text-color);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.recovery-bar button:hover {
+    background: var(--card-hover);
+}

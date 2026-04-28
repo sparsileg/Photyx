@@ -398,6 +398,30 @@ fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
     logging::init_logging()
 }
 
+// ── Background crash recovery timer ──────────────────────────────────────────
+
+fn start_crash_recovery_timer(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let app_handle = app.handle().clone();
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+            let state = app_handle.state::<PhotoxState>();
+            let has_session = {
+                let ctx = state.context.lock().expect("context lock poisoned");
+                ctx.current_session_id.is_some()
+            };
+            if has_session {
+                if let Err(e) = do_write_crash_recovery(&state) {
+                    tracing::warn!("Crash recovery write failed: {}", e);
+                } else {
+                    tracing::debug!("Crash recovery state written");
+                }
+            }
+        }
+    });
+    Ok(())
+}
+
 // ── Application entry point ───────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -455,12 +479,16 @@ pub fn run() {
     };
 
     tauri::Builder::default()
+        .setup(|app| { start_crash_recovery_timer(app) })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
+            backup_database,
+            check_crash_recovery,
+            close_session,
             debug_buffer_info,
             delete_macro,
             dispatch_command,
@@ -485,13 +513,16 @@ pub fn run() {
             list_macros,
             list_plugins,
             load_file,
+            open_session,
             read_log_file,
             record_directory_visit,
             rename_macro,
+            restore_database,
             run_script,
             save_quick_launch_buttons,
             set_preference,
             start_background_cache,
+            write_crash_recovery,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1704,6 +1735,251 @@ fn record_directory_visit(path: String, state: State<PhotoxState>) -> Result<(),
          )",
         rusqlite::params![max],
     ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ── Tauri commands: session history ──────────────────────────────────────────
+
+#[tauri::command]
+fn open_session(directory: String, file_count: usize, state: State<PhotoxState>) -> Result<i64, String> {
+    let db  = state.db.lock().expect("db lock poisoned");
+    let now = db::now_unix();
+    db.execute(
+        "INSERT INTO session_history (directory, opened_at, file_count) VALUES (?1, ?2, ?3)",
+        rusqlite::params![directory, now, file_count as i64],
+    ).map_err(|e| e.to_string())?;
+    let id = db.last_insert_rowid();
+    let mut ctx = state.context.lock().expect("context lock poisoned");
+    ctx.current_session_id = Some(id);
+    Ok(id)
+}
+
+#[tauri::command]
+fn close_session(state: State<PhotoxState>) -> Result<(), String> {
+    let db  = state.db.lock().expect("db lock poisoned");
+    let now = db::now_unix();
+    // Close all open sessions — safe to call even if none are open
+    db.execute(
+        "UPDATE session_history SET closed_at = ?1 WHERE closed_at IS NULL",
+        rusqlite::params![now],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ── Tauri commands: crash recovery ────────────────────────────────────────────
+
+fn do_write_crash_recovery(state: &PhotoxState) -> Result<(), String> {
+    let ctx = state.context.lock().expect("context lock poisoned");
+    let db  = state.db.lock().expect("db lock poisoned");
+    let now = db::now_unix();
+    let file_list = serde_json::to_string(&ctx.file_list).unwrap_or_default();
+    let autostretch_enabled: i64 = 1;
+    db.execute(
+        "INSERT INTO crash_recovery
+             (id, active_directory, file_list, current_frame_index, autostretch_enabled, written_at)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(id) DO UPDATE SET
+             active_directory    = excluded.active_directory,
+             file_list           = excluded.file_list,
+             current_frame_index = excluded.current_frame_index,
+             autostretch_enabled = excluded.autostretch_enabled,
+             written_at          = excluded.written_at",
+        rusqlite::params![
+            ctx.active_directory,
+            file_list,
+            ctx.current_frame as i64,
+            autostretch_enabled,
+            now,
+        ],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn write_crash_recovery(state: State<PhotoxState>) -> Result<(), String> {
+    do_write_crash_recovery(&state)
+}
+
+#[tauri::command]
+fn check_crash_recovery(state: State<PhotoxState>) -> Result<Option<serde_json::Value>, String> {
+    let db = state.db.lock().expect("db lock poisoned");
+
+    // Check for an open session in session_history
+    let open_session_id: Option<i64> = db.query_row(
+        "SELECT id FROM session_history WHERE closed_at IS NULL ORDER BY opened_at DESC LIMIT 1",
+        [],
+        |row| row.get(0),
+    ).ok();
+
+    let Some(session_id) = open_session_id else { return Ok(None); };
+
+    // Close the open session row immediately — whether user accepts or dismisses,
+    // this session is done. A new one will be opened if recovery is accepted.
+    let now = db::now_unix();
+    let _ = db.execute(
+        "UPDATE session_history SET closed_at = ?1 WHERE id = ?2",
+        rusqlite::params![now, session_id],
+    );
+
+    // Read crash recovery state
+    let result = db.query_row(
+        "SELECT active_directory, file_list, current_frame_index, written_at
+         FROM crash_recovery WHERE id = 1",
+        [],
+        |row| Ok(serde_json::json!({
+            "active_directory":    row.get::<_, Option<String>>(0)?,
+            "file_list":           row.get::<_, Option<String>>(1)?,
+            "current_frame_index": row.get::<_, Option<i64>>(2)?,
+            "written_at":          row.get::<_, i64>(3)?,
+        })),
+    ).ok();
+    Ok(result)
+}
+
+// ── Tauri commands: database backup / restore ─────────────────────────────────
+
+#[tauri::command]
+fn backup_database(state: State<PhotoxState>) -> Result<String, String> {
+    use flate2::write::GzEncoder;
+    use flate2::Compression;
+    use std::io::Write;
+    use std::path::PathBuf;
+
+    // Get backup directory from preferences, fall back to default
+    let backup_dir: PathBuf = {
+        let db = state.db.lock().expect("db lock poisoned");
+        let dir: Option<String> = db.query_row(
+            "SELECT value FROM preferences WHERE key = 'backup_directory'",
+            [],
+            |row| row.get(0),
+        ).ok();
+        match dir {
+            Some(d) if !d.is_empty() => PathBuf::from(d),
+            _ => dirs_next::data_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join("Photyx")
+                    .join("backups"),
+        }
+    };
+
+    std::fs::create_dir_all(&backup_dir)
+        .map_err(|e| format!("Failed to create backup directory: {}", e))?;
+
+    // Write SQLite backup to a temp .db file first
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let tmp_path  = backup_dir.join(format!("photyx_backup_{}.tmp.db", timestamp));
+    let gz_path   = backup_dir.join(format!("photyx_backup_{}.db.gz", timestamp));
+
+    {
+        let db = state.db.lock().expect("db lock poisoned");
+        let mut dst = rusqlite::Connection::open(&tmp_path)
+            .map_err(|e| format!("Failed to create temp backup file: {}", e))?;
+        let backup = rusqlite::backup::Backup::new(&db, &mut dst)
+            .map_err(|e| format!("Failed to initialize backup: {}", e))?;
+        backup.run_to_completion(100, std::time::Duration::from_millis(5), None)
+            .map_err(|e| format!("Backup failed: {}", e))?;
+    }
+
+    // Compress the temp file to .db.gz
+    {
+        let raw = std::fs::read(&tmp_path)
+            .map_err(|e| format!("Failed to read temp backup: {}", e))?;
+        let gz_file = std::fs::File::create(&gz_path)
+            .map_err(|e| format!("Failed to create compressed backup: {}", e))?;
+        let mut encoder = GzEncoder::new(gz_file, Compression::best());
+        encoder.write_all(&raw)
+            .map_err(|e| format!("Compression failed: {}", e))?;
+        encoder.finish()
+            .map_err(|e| format!("Compression finalisation failed: {}", e))?;
+    }
+
+    // Remove temp file
+    let _ = std::fs::remove_file(&tmp_path);
+
+    // Trim old backups — only count .db.gz files
+    let max: usize = {
+        let db = state.db.lock().expect("db lock poisoned");
+        db.query_row(
+            "SELECT CAST(value AS INTEGER) FROM preferences WHERE key = 'backup_max_count'",
+            [],
+            |row| row.get::<_, i64>(0),
+        ).unwrap_or(10) as usize
+    };
+
+    if let Ok(entries) = std::fs::read_dir(&backup_dir) {
+        let mut backups: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let name = e.file_name();
+                let s = name.to_string_lossy();
+                s.ends_with(".db.gz")
+            })
+            .collect();
+        backups.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+        for old in backups.iter().skip(max) {
+            let _ = std::fs::remove_file(old.path());
+        }
+    }
+
+    tracing::info!("Database backed up and compressed to {:?}", gz_path);
+    Ok(gz_path.to_str().unwrap_or("").replace('\\', "/"))
+}
+
+#[tauri::command]
+fn restore_database(backup_path: String, state: State<PhotoxState>) -> Result<(), String> {
+    use flate2::read::GzDecoder;
+    use std::io::Read;
+    use std::path::PathBuf;
+
+    let src = PathBuf::from(&backup_path);
+    if !src.exists() {
+        return Err(format!("Backup file not found: {}", backup_path));
+    }
+
+    // Determine the live DB path
+    let db_path = dirs_next::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("Photyx")
+        .join("photyx.db");
+
+    // Decompress if .gz, otherwise treat as raw .db
+    let db_bytes = if backup_path.ends_with(".gz") {
+        let gz_data = std::fs::read(&src)
+            .map_err(|e| format!("Failed to read backup file: {}", e))?;
+        let mut decoder = GzDecoder::new(gz_data.as_slice());
+        let mut decompressed = Vec::new();
+        decoder.read_to_end(&mut decompressed)
+            .map_err(|e| format!("Decompression failed: {}", e))?;
+        decompressed
+    } else {
+        std::fs::read(&src)
+            .map_err(|e| format!("Failed to read backup file: {}", e))?
+    };
+
+    // Acquire the DB lock and hold it for the entire restore operation
+    let mut db = state.db.lock().expect("db lock poisoned");
+
+    // Checkpoint and close the current connection cleanly before replacing the file
+    let _ = db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+
+    // Write restored data
+    std::fs::write(&db_path, &db_bytes)
+        .map_err(|e| format!("Restore failed: {}", e))?;
+
+    // Now remove WAL and SHM — any leftover WAL would replay old data over the restore
+    let _ = std::fs::remove_file(db_path.with_extension("db-wal"));
+    let _ = std::fs::remove_file(db_path.with_extension("db-shm"));
+
+    // Reopen the connection in-place so the running app sees the restored data
+    let new_conn = db::open_db(
+        dirs_next::data_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("Photyx")
+    ).map_err(|e| format!("Failed to reopen database after restore: {}", e))?;
+
+    *db = new_conn;
+
+    tracing::info!("Database restored from {:?} and connection reopened", src);
     Ok(())
 }
 

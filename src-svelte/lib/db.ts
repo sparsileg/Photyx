@@ -43,6 +43,41 @@ export const db = {
         return invoke('record_directory_visit', { path });
     },
 
+    // ── Session History ───────────────────────────────────────────────────────
+
+    openSession(directory: string, fileCount: number): Promise<number> {
+        return invoke('open_session', { directory, fileCount });
+    },
+
+    closeSession(): Promise<void> {
+        return invoke('close_session');
+    },
+
+    // ── Crash Recovery ────────────────────────────────────────────────────────
+
+    writeCrashRecovery(): Promise<void> {
+        return invoke('write_crash_recovery');
+    },
+
+    checkCrashRecovery(): Promise<{
+        active_directory: string | null;
+        file_list: string | null;
+        current_frame_index: number | null;
+        written_at: number;
+    } | null> {
+        return invoke('check_crash_recovery');
+    },
+
+    // ── Database Backup / Restore ─────────────────────────────────────────────
+
+    backupDatabase(): Promise<string> {
+        return invoke('backup_database');
+    },
+
+    restoreDatabase(backupPath: string): Promise<void> {
+        return invoke('restore_database', { backupPath });
+    },
+
     // ── Migration ─────────────────────────────────────────────────────────────
 
     async migrateLocalStorage(): Promise<void> {

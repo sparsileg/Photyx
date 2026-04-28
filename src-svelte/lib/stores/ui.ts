@@ -84,9 +84,12 @@ function createUIStore() {
         // Called from +page.svelte onMount after DB hydration.
         // Applies any preference-backed state from the preferences table.
         hydrateFromDb(prefs: Record<string, string>) {
+            const validThemes: Theme[] = ['dark', 'light', 'matrix'];
+            const savedTheme = prefs['theme'] as Theme;
+            const theme = validThemes.includes(savedTheme) ? savedTheme : 'matrix';
             update(s => ({
                 ...s,
-                theme: (prefs['theme'] as Theme) ?? 'matrix',
+                theme,
                 quickLaunchVisible: prefs['quick_launch_visible'] !== 'false',
             }));
         },

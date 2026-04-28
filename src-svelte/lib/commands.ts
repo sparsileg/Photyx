@@ -1,11 +1,12 @@
 // commands.ts — Shared backend command helpers
 // Wraps Tauri invoke calls for common operations
 
+import { db } from './db';
 import { invoke } from '@tauri-apps/api/core';
+import { notifications } from './stores/notifications';
 import { open } from '@tauri-apps/plugin-dialog';
 import { session } from './stores/session';
 import { ui } from './stores/ui';
-import { notifications } from './stores/notifications';
 
 export type FormatFilter = 'all' | 'fits' | 'xisf' | 'tiff' | 'png' | 'jpeg';
 
@@ -60,6 +61,11 @@ export async function selectDirectory() {
     session.update(s => ({ ...s, loadedImages: {} }));
     ui.clearViewer();
     notifications.info(`Directory: ${path}`);
+
+    // Persist directory visit and open a new session
+    db.recordDirectoryVisit(path).catch(e => console.error('recordDirectoryVisit failed:', e));
+    db.openSession(path, 0).catch(e => console.error('openSession failed:', e));
+    db.setPreference('last_directory', path).catch(e => console.error('setPreference last_directory failed:', e));
 }
 
 /** Load files from active directory using the specified format filter */

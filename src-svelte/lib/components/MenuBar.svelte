@@ -1,12 +1,15 @@
 <!-- MenuBar.svelte — Application menu bar. Spec §8.2 -->
+
 <script lang="ts">
-    import { ui } from '../stores/ui';
-    import { notifications } from '../stores/notifications';
-    import { selectDirectory, closeSession, applyAutoStretch, loadFile } from '../commands';
-    import { getCurrentWindow } from '@tauri-apps/api/window';
-    import { open } from '@tauri-apps/plugin-dialog';
-    import { invoke } from '@tauri-apps/api/core';
     import { consolePipe } from '../stores/consoleHistory';
+    import { db } from '../db';
+    import { getCurrentWindow } from '@tauri-apps/api/window';
+    import { invoke } from '@tauri-apps/api/core';
+    import { notifications } from '../stores/notifications';
+    import { open } from '@tauri-apps/plugin-dialog';
+    import { quickLaunch } from '../stores/quickLaunch';
+    import { selectDirectory, closeSession, applyAutoStretch, loadFile } from '../commands';
+    import { ui } from '../stores/ui';
 
     let openMenu = $state<string | null>(null);
 
@@ -21,23 +24,25 @@
     function action(a: string) {
         close();
         switch (a) {
-            case 'analyze-frames':    runAnalyzeFrames(); break;
-            case 'analysis-results':  ui.showView('analysisResults'); break;
+            case 'about':             ui.openAbout(); break;
             case 'analysis-graph':    ui.showView('analysisGraph'); break;
+            case 'analysis-results':  ui.showView('analysisResults'); break;
+            case 'analyze-frames':    runAnalyzeFrames(); break;
+            case 'backup-database':   backupDatabase(); break;
             case 'close-session':     closeSession(); break;
             case 'contour-plot':      runContourHeatmap(); break;
-            case 'exit':              getCurrentWindow().close(); break;
+            case 'exit':              db.closeSession().catch(() => {}).finally(() => getCurrentWindow().close()); break;
             case 'keywords':          ui.togglePanel('keywords'); break;
+            case 'load-single-image': loadSingleImage(); break;
             case 'log-viewer':        ui.openLogViewer(); break;
             case 'macro-library':     ui.togglePanel('macro-lib'); break;
             case 'plugin-manager':    ui.togglePanel('plugins'); break;
+            case 'restore-database':  restoreDatabase(); break;
             case 'run-macro':         ui.togglePanel('macro-editor'); break;
             case 'select-directory':  selectDirectory(); break;
-            case 'load-single-image': loadSingleImage(); break;
             case 'theme-dark':        ui.setTheme('dark'); break;
             case 'theme-light':       ui.setTheme('light'); break;
             case 'theme-matrix':      ui.setTheme('matrix'); break;
-            case 'about':             ui.openAbout(); break;
             default: notifications.info(`${a} — not yet implemented`);
         }
     }
@@ -111,6 +116,45 @@
         await loadFile(path);
     }
 
+    async function backupDatabase() {
+        notifications.running('Backing up database…');
+        try {
+            const path = await db.backupDatabase();
+            notifications.success(`Database backed up to ${path}`);
+        } catch (e) {
+            notifications.error(`Backup failed: ${e}`);
+        }
+    }
+
+    async function restoreDatabase() {
+        let selected;
+        try {
+            selected = await open({
+                multiple: false,
+                filters: [{ name: 'Photyx Database Backup', extensions: ['db.gz', 'db'] }]
+            });
+        } catch (e) {
+            notifications.error(`Failed to open file picker: ${e}`);
+            return;
+        }
+        if (!selected) return;
+        const path = typeof selected === 'string' ? selected : selected[0];
+        if (!path) return;
+        try {
+            await db.restoreDatabase(path);
+            // Brief pause to let the reopened connection settle
+            await new Promise(resolve => setTimeout(resolve, 200));
+            // Re-hydrate frontend stores from restored DB
+            const prefs = await db.getAllPreferences();
+            ui.hydrateFromDb(prefs);
+            const buttons = await db.getQuickLaunchButtons();
+            quickLaunch.hydrate(buttons);
+            notifications.success('Database restored successfully.');
+        } catch (e) {
+            notifications.error(`Restore failed: ${e}`);
+        }
+    }
+
     async function runContourHeatmap() {
         notifications.running('ContourHeatmap running…');
         try {
@@ -167,9 +211,12 @@
             { label: 'Contour Plot',     action: 'contour-plot' },
         ]},
         { name: 'Tools', items: [
-            { label: 'Settings',     action: 'settings' },
+            { label: 'Settings',        action: 'settings' },
             { sep: true },
-            { label: 'Log Viewer',   action: 'log-viewer' },
+            { label: 'Backup Database', action: 'backup-database' },
+            { label: 'Restore Database', action: 'restore-database' },
+            { sep: true },
+            { label: 'Log Viewer',      action: 'log-viewer' },
         ]},
         { name: 'Help', items: [
             { label: 'About Photyx', action: 'about' },
