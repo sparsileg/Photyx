@@ -1,7 +1,7 @@
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
     import { notifications } from '../stores/notifications';
-    import { consolePipe } from '../stores/consoleHistory';
+    import { pipeToConsole } from '../stores/consoleHistory';
     import { ui } from '../stores/ui';
     import { quickLaunch } from '../stores/quickLaunch';
     import { session } from '../stores/session';
@@ -43,7 +43,7 @@
                     anyError = true;
                 } else if (r.message) {
                     r.message.split('\n').forEach(line => {
-                        if (line) consolePipe.set({ id: Date.now(), text: line, type: 'success' });
+                        if (line) pipeToConsole(line, 'success');
                     });
                 }
                 if (r.command.toLowerCase() === 'listkeywords' && r.success) {

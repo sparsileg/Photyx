@@ -32,12 +32,12 @@
     import { PCODE_COMMANDS } from '../pcodeCommands';
     import { applyAutoStretch, loadFile } from '../commands';
 
-    // Watch for external console output
+    // Watch for external console output — drain the queue
     $effect(() => {
-        const line = $consolePipe;
-        if (line) {
-            append(line.text, line.type);
-            consolePipe.set(null);
+        const queue = $consolePipe;
+        if (queue.length > 0) {
+            queue.forEach(line => append(line.text, line.type));
+            consolePipe.set([]);
         }
     });
 

@@ -96,11 +96,10 @@ pub struct ScriptResult {
 const SESSION_COMMANDS: &[&str] = &[
     "readfit", "readtiff", "readxisf", "readall",
     "readallfitfiles", "readalltifffiles", "readallxisffiles", "readallfiles",
-    "selectdirectory", "clearsession", "movefile",
+    "selectdirectory", "clearsession", "movefile", "runmacro",
 ];
-
 const DISPLAY_COMMANDS: &[&str] = &[
-    "linearstretch", "histogramequalization",
+    "autostretch", "linearstretch", "histogramequalization", "runmacro",
 ];
 
 /// Execute a pcode script string — used by the macro editor and Quick Launch

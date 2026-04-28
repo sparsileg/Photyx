@@ -6,7 +6,7 @@
     import { quickLaunch } from '../../stores/quickLaunch';
     import { session } from '../../stores/session';
     import { notifications } from '../../stores/notifications';
-    import { consolePipe } from '../../stores/consoleHistory';
+    import { pipeToConsole } from '../../stores/consoleHistory';
 
     interface MacroEntry {
         name:    string;
@@ -120,7 +120,7 @@
                     anyError = true;
                 } else if (r.message) {
                     r.message.split('\n').forEach(line => {
-                        if (line) consolePipe.set({ id: Date.now(), text: line, type: 'success' });
+                        if (line) pipeToConsole(line, 'success');
                     });
                 }
             }
