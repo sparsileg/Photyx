@@ -376,6 +376,11 @@ On launch: if `written_at` is recent and `session_history` has an open session, 
 
 **File location:** `APPDATA/Photyx/photyx.db` — same directory as logs folder.
 
+- The `commands/` module split means all new Tauri commands should be added to the appropriate submodule rather than `lib.rs`. The invoke handler in `lib.rs` uses fully qualified paths (`commands::session::get_keywords`) — follow this pattern for all new commands.
+- The `backup` rusqlite feature must remain enabled — it's required by `backup_database`.
+- `restore_database` performs a WAL checkpoint before writing, deletes WAL/SHM after writing, and reopens the connection in-place — no app restart required.
+- The `db::now_unix()` helper in `db/mod.rs` is the single source of truth for Unix timestamps across all DB operations — always use it rather than computing timestamps inline.
+
 ---
 
 ## 6. Schema Summary
@@ -393,6 +398,13 @@ On launch: if `written_at` is recent and `session_history` has an open session, 
 | `session_history`        | Directory session log / crash detection | `id`                                 |
 | `console_history`        | Command history log                     | `id`                                 |
 | `crash_recovery`         | Session recovery state                  | Single row (`id = 1`)                |
+
+---
+
+## 7. Known Issues
+
+- AutoStretch stretch is lost when switching from Blink tab back to Pixels tab — the viewer reverts to raw unstretched display. Behavior may be pre-existing; deferred.
+- `selectDirectory` dialog opens to the current active directory as `defaultPath` — this is correct behavior but the OS file picker may override it with its own remembered location on some systems.
 
 ---
 

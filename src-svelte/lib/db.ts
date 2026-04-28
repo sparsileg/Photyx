@@ -11,6 +11,25 @@ export interface QuickLaunchButton {
     script:   string;
 }
 
+export interface MacroRow {
+    id:           number;
+    name:         string;
+    display_name: string;
+    script:       string;
+    tags:         string | null;
+    run_count:    number;
+    last_run_at:  number | null;
+    created_at:   number;
+    updated_at:   number;
+}
+
+export interface MacroVersionRow {
+    id:       number;
+    macro_id: number;
+    script:   string;
+    saved_at: number;
+}
+
 export const db = {
 
     // ── Preferences ───────────────────────────────────────────────────────────
@@ -76,6 +95,36 @@ export const db = {
 
     restoreDatabase(backupPath: string): Promise<void> {
         return invoke('restore_database', { backupPath });
+    },
+
+    // ── Macros ────────────────────────────────────────────────────────────────
+
+    getMacros(): Promise<MacroRow[]> {
+        return invoke('get_macros');
+    },
+
+    saveMacro(name: string, displayName: string, script: string): Promise<number> {
+        return invoke('save_macro', { name, displayName, script });
+    },
+
+    deleteMacro(id: number): Promise<void> {
+        return invoke('delete_macro', { id });
+    },
+
+    renameMacro(id: number, newDisplayName: string): Promise<string> {
+        return invoke('rename_macro', { id, newDisplayName });
+    },
+
+    getMacroVersions(macroId: number): Promise<MacroVersionRow[]> {
+        return invoke('get_macro_versions', { macroId });
+    },
+
+    restoreMacroVersion(versionId: number): Promise<void> {
+        return invoke('restore_macro_version', { versionId });
+    },
+
+    incrementMacroRunCount(id: number): Promise<void> {
+        return invoke('increment_macro_run_count', { id });
     },
 
     // ── Migration ─────────────────────────────────────────────────────────────

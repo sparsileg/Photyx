@@ -25,6 +25,10 @@ mod pcode;
 pub static GLOBAL_REGISTRY: once_cell::sync::OnceCell<Arc<PluginRegistry>> =
     once_cell::sync::OnceCell::new();
 
+/// Global DB reference for use by RunMacro (plugins cannot access PhotoxState directly)
+pub static GLOBAL_DB: once_cell::sync::OnceCell<std::sync::Mutex<rusqlite::Connection>> =
+    once_cell::sync::OnceCell::new();
+
 // ── Application state ─────────────────────────────────────────────────────────
 
 pub struct PhotoxState {
@@ -199,7 +203,11 @@ pub fn run() {
         .join("Photyx");
     std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
 
-    let db_conn = db::open_db(app_data_dir).expect("Failed to open database");
+    let db_conn = db::open_db(app_data_dir.clone()).expect("Failed to open database");
+    commands::macros::migrate_quick_launch_macro_refs(&db_conn)
+        .unwrap_or_else(|e| tracing::warn!("Quick Launch macro migration failed: {}", e));
+    let global_db_conn = db::open_db(app_data_dir).expect("Failed to open global DB connection");
+    let _ = GLOBAL_DB.set(Mutex::new(global_db_conn));
 
     let state = PhotoxState {
         registry,
@@ -232,9 +240,12 @@ pub fn run() {
             commands::logging::list_log_files,
             commands::logging::read_log_file,
             commands::macros::delete_macro,
-            commands::macros::get_macros_dir,
-            commands::macros::list_macros,
+            commands::macros::get_macro_versions,
+            commands::macros::get_macros,
+            commands::macros::increment_macro_run_count,
             commands::macros::rename_macro,
+            commands::macros::restore_macro_version,
+            commands::macros::save_macro,
             commands::preferences::get_all_preferences,
             commands::preferences::get_quick_launch_buttons,
             commands::preferences::get_recent_directories,

@@ -33,6 +33,7 @@
     import { applyAutoStretch, loadFile } from '../commands';
     import { getHelp } from '../pcodeHelp';
     import type { HelpEntry } from '../pcodeHelp';
+    import { handleClientCommand, CLIENT_COMMAND_NAMES } from '../clientCommands';
 
     let { onhelp }: { onhelp: (entry: HelpEntry) => void } = $props();
 
@@ -57,7 +58,6 @@
         blinksequence:      'fps=',
         cacheframes:        '',
         clear:              '',
-        clearannotations:   '',
         computefwhm:        '',
         contourheatmap:     'palette=[viridis|plasma|coolwarm]  contour_levels=#  threshold=  saturation=',
         copykeyword:        'from=  to=',
@@ -89,7 +89,6 @@
         modifykeyword:      'name=  value=  comment=  scope=',
         movefile:           'destination=',
         print:              'message (or bare: Print "hello")',
-        pwd:                '',
         readall:            '',
         readfit:            '',
         readtiff:           '',
@@ -100,11 +99,13 @@
         set:                '<varname> = <value>',
         setframe:           'index=',
         setzoom:            'level=',
-        showanalysisgraph:  '',
-        showanalysisresults:'',
+        showanalysisgraph:   (_raw: string) => { handleClientCommand('showanalysisgraph'); },
+        showanalysisresults: (_raw: string) => { handleClientCommand('showanalysisresults'); },
+        clearannotations:    (_raw: string) => { handleClientCommand('clearannotations'); },
+        version:             (_raw: string) => { handleClientCommand('version'); },
+        pwd:                 (_raw: string) => { handleClientCommand('pwd'); },
         sqrt:               '(#)',
         test:               '',
-        version:            '',
         writecurrent:       '',
         writefit:           'destination=  overwrite=',
         writeframe:         '',
@@ -272,6 +273,27 @@
                 notifications.error(`Session sync failed: ${e}`);
             }
         }
+
+        // Client-only commands — intercepted in pcode interpreter, executed here
+        if (data?.client_command) {
+            const cc = data.client_command as string;
+            if (cc === 'showanalysisgraph')  ui.showView('analysisGraph');
+            if (cc === 'showanalysisresults') ui.showView('analysisResults');
+            if (cc === 'clearannotations')   ui.clearAnnotations();
+            if (cc === 'clear')              lines = [];
+            if (cc === 'version')            append('Photyx 1.0.0-dev  |  pcode v1.0  |  Tauri + Svelte + Rust', 'output');
+            if (cc === 'pwd')                append($session.activeDirectory ?? '(no directory selected)', 'output');
+        }
+
+        if (data?.client_command) {
+            handleClientCommand(data.client_command as string);
+        }
+        if (Array.isArray(data?.client_commands)) {
+            for (const cc of data.client_commands as string[]) {
+                handleClientCommand(cc);
+            }
+        }
+
         if (cmd === 'autostretch') await applyAutoStretch();
         if (cmd === 'linearstretch' || cmd === 'histogramequalization') ui.requestFrameRefresh();
         if (cmd === 'computefwhm') ui.refreshAnnotations();

@@ -20,29 +20,6 @@ pub fn resolve_path(path: &str, active_directory: Option<&str>) -> String {
     }
 }
 
-/// Returns the OS-appropriate Photyx macros directory per spec §7.10.
-pub fn get_macros_dir() -> std::path::PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-        std::path::PathBuf::from(appdata).join("Photyx").join("Macros")
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        std::path::PathBuf::from(home)
-            .join("Library")
-            .join("Application Support")
-            .join("Photyx")
-            .join("Macros")
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        std::path::PathBuf::from(home).join(".config").join("Photyx").join("Macros")
-    }
-}
-
 /// Returns the OS-appropriate Photyx log directory per spec §10.
 /// Mirrors the logic in logging.rs — must stay in sync.
 pub fn get_log_dir() -> std::path::PathBuf {

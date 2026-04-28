@@ -336,6 +336,29 @@ fn execute_line(
                 *val = substitute_vars(val, variables);
             }
 
+            // Handle client-only commands — no Rust-side effect; intercepted here
+            // so the frontend can act on them via data.client_command.
+            // Must stay in sync with CLIENT_COMMAND_NAMES in clientCommands.ts.
+            const CLIENT_COMMANDS: &[&str] = &[
+                "showanalysisgraph",
+                "showanalysisresults",
+                "clearannotations",
+                "version",
+                "pwd",
+            ];
+            if CLIENT_COMMANDS.contains(&command.to_lowercase().as_str()) {
+                info!("pcode line {}: {} -> client command", line_number, command);
+                results.push(PcodeResult {
+                    line_number,
+                    command:    command.clone(),
+                    success:    true,
+                    message:    None,
+                    data:       Some(serde_json::json!({ "client_command": command.to_lowercase() })),
+                    trace_line: Some(command.clone()),
+                });
+                return;
+            }
+
             // Handle Assert internally so variable references evaluate correctly
             if command.to_lowercase() == "assert" {
                 let raw_expr = args.get("expression").cloned().unwrap_or_default();

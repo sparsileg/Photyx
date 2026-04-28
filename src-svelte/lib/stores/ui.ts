@@ -38,7 +38,7 @@ export interface UIState {
     keywordModalOpen:   boolean;
     logViewerOpen:      boolean;
     aboutOpen:          boolean;
-    macroEditorFile:    { path: string; name: string } | null;
+    macroEditorFile:    { id: number | null; name: string; displayName: string; script: string } | null;
     blinkPlaying:       boolean;
     showQualityFlags:   boolean;
     currentBlinkFlag:   string;
@@ -142,7 +142,7 @@ function createUIStore() {
         closeLogViewer:    () => update(s => ({ ...s, logViewerOpen: false })),
         openAbout:         () => update(s => ({ ...s, aboutOpen: true })),
         closeAbout:        () => update(s => ({ ...s, aboutOpen: false })),
-        openMacroEditor:   (file: { path: string; name: string } | null) => update(s => ({
+        openMacroEditor:   (file: { id: number | null; name: string; displayName: string; script: string } | null) => update(s => ({
             ...s,
             macroEditorFile: file,
             activePanel:     'macro-editor',
