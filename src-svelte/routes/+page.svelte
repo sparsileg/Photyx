@@ -87,10 +87,12 @@
             {:else}
                 <Viewer onMousePixel={onMousePixel} />
             {/if}
-            {#if $ui.blinkTabActive && blinkFilename}
-                <div id="blink-filename-overlay">{blinkFilename}</div>
+            {#if !$ui.consoleExpanded}
+                {#if $ui.blinkTabActive && blinkFilename}
+                    <div id="blink-filename-overlay">{blinkFilename}</div>
                 {:else if !$ui.blinkTabActive && $ui.activeView === null && $session.fileList.length > 0 && $session.fileList[$session.currentFrame]}
-                <div id="blink-filename-overlay">{$session.fileList[$session.currentFrame]?.split(/[\\/]/).pop() ?? ''}</div>
+                    <div id="blink-filename-overlay">{$session.fileList[$session.currentFrame]?.split(/[\\/]/).pop() ?? ''}</div>
+                {/if}
             {/if}
             <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded}>
                 <Console />

@@ -775,7 +775,7 @@
         style:pointer-events="none"
     ></canvas>
 
-    {#if hasImage}
+    {#if hasImage && !$ui.macroEditorFile}
         <div id="viewer-disclaimer">Display: JPEG compressed — pixel readout uses raw data</div>
     {/if}
 

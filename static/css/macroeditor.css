@@ -13,9 +13,12 @@
 
 /* Expanded: break out of the sliding panel to an overlay like the console */
 .macro-editor-panel.expanded {
-    position: absolute;
-    inset: 0;
-    z-index: 200;
+    position: fixed;
+    top: 96px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 400;
     border-radius: 0;
     overflow: hidden;
 }

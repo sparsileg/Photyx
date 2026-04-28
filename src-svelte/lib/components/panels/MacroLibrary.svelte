@@ -105,6 +105,7 @@
         if (running === macro.path) return;
         running = macro.path;
         notifications.running(`Running: ${macro.name}…`);
+        ui.closePanel();
         try {
             const response = await invoke<{
                 results: Array<{ line_number: number; command: string; success: boolean; message: string | null }>;
