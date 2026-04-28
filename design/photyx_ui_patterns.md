@@ -586,13 +586,13 @@ Components that need to cover the full viewer region (expanded console, macro ed
 
 ### z-index hierarchy
 
-| Layer                  | z-index |
-| ---------------------- | ------- |
-| Status bar             | 200     |
-| Sliding panels         | 140     |
-| Console (expanded)     | 300     |
-| Macro Editor           | 400     |
-| Help Modal             | 500     |
+| Layer              | z-index |
+| ------------------ | ------- |
+| Status bar         | 200     |
+| Sliding panels     | 140     |
+| Console (expanded) | 300     |
+| Macro Editor       | 400     |
+| Help Modal         | 500     |
 
 Higher values appear on top. Do not assign z-index values outside this table without updating it.
 

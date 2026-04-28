@@ -359,19 +359,7 @@ On launch: if `written_at` is recent and `session_history` has an open session, 
 
 ---
 
-## 5. Migration Plan (localStorage → SQLite)
-
-On first launch after Phase 9 upgrade (runs in Svelte `onMount` before UI renders):
-
-1. Check `preferences.localStorage_migrated` — if true, skip entirely
-2. Read `localStorage.getItem('theme')` → upsert into `preferences` as `theme`
-3. Read Quick Launch JSON from localStorage → insert rows into `quick_launch_buttons`
-4. Delete the localStorage keys
-5. Set `preferences.localStorage_migrated = true`
-
----
-
-## 6. Implementation Notes
+## 5. Implementation Notes
 
 **Rust side:**
 
@@ -390,7 +378,7 @@ On first launch after Phase 9 upgrade (runs in Svelte `onMount` before UI render
 
 ---
 
-## 7. Schema Summary
+## 6. Schema Summary
 
 | Table                    | Purpose                                 | Key                                  |
 | ------------------------ | --------------------------------------- | ------------------------------------ |
@@ -405,3 +393,116 @@ On first launch after Phase 9 upgrade (runs in Svelte `onMount` before UI render
 | `session_history`        | Directory session log / crash detection | `id`                                 |
 | `console_history`        | Command history log                     | `id`                                 |
 | `crash_recovery`         | Session recovery state                  | Single row (`id = 1`)                |
+
+---
+
+## Appendix A. Phased Implementation Plan
+
+Phase 9 is delivered in five sequential sub-phases. Each sub-phase has a defined completion criterion before the next begins.
+
+#### Sub-phase A — Rust DB Infrastructure
+
+Establish the database foundation that all subsequent sub-phases depend on.
+
+1. Add `rusqlite` with the `bundled` feature to `src-tauri/Cargo.toml`
+2. Add a `db` module (`src-tauri/src/db/mod.rs`) containing: `open_db()` which creates or opens `photyx.db`, applies WAL and foreign key pragmas, runs schema migrations, and returns a `Connection`
+3. Define all table `CREATE TABLE IF NOT EXISTS` statements in `db/schema.rs` as string constants
+4. Implement `PRAGMA user_version` migration runner: check current version, apply pending migration scripts in order, bump version after each
+5. Add `Mutex<Connection>` to `PhotoxState` in `lib.rs`; call `open_db()` in `run()` before the Tauri builder
+6. Seed the `algorithm_sets` table with version 1 and the `threshold_profiles` table with the default "Standard" profile on first open
+7. Insert the initial `crash_recovery` row (id=1) if not present
+
+**Completion criterion:** App launches, `photyx.db` exists in `APPDATA/Photyx/`, all tables present, `PRAGMA user_version` returns the current schema version.
+
+---
+
+#### Sub-phase B — Preferences & Quick Launch
+
+Highest immediate value: eliminates localStorage dependency and restores session continuity.
+
+1. Implement `get_preference(key)` and `set_preference(key, value)` Tauri commands; upsert pattern with `updated_at` timestamp
+2. Implement `get_all_preferences()` returning a `HashMap<String, String>` — used at startup to hydrate the frontend in one call
+3. Implement `get_quick_launch_buttons()` and `save_quick_launch_buttons(buttons)` Tauri commands
+4. Implement `get_recent_directories()` and `record_directory_visit(path)` Tauri commands; trim to `recent_directories_max` on each insert
+5. On Svelte startup (`onMount` in `+page.svelte`): run the localStorage migration (§5), then call `get_all_preferences()` and `get_quick_launch_buttons()` to hydrate stores
+6. Replace all localStorage reads/writes in `ui.ts` (theme) and `quickLaunch.ts` (button assignments) with Tauri command calls
+7. Write theme and Quick Launch changes to the DB immediately on change (same places that currently call `localStorage.setItem`)
+8. Wire `record_directory_visit` into the `SelectDirectory` success path
+
+**Completion criterion:** Theme and Quick Launch assignments survive an app restart. localStorage is no longer used.
+
+---
+
+#### Sub-phase C — Session History & Crash Recovery
+
+Enables crash recovery and session continuity (last directory restored on launch).
+
+1. Implement `open_session(directory)` Tauri command — inserts a row into `session_history` with `closed_at = NULL`; stores the returned `id` in `AppContext` as `current_session_id`
+2. Implement `close_session()` — sets `closed_at` on the current session row
+3. Implement `write_crash_recovery(state)` — upserts the single `crash_recovery` row
+4. Implement `check_crash_recovery()` — returns the recovery row if `written_at` is within the last session window and `session_history` has an open row
+5. Call `open_session()` after a successful `SelectDirectory`; call `close_session()` on app exit (Tauri `on_window_event` close handler)
+6. Start a background timer in Rust (60-second interval, or `crash_recovery_interval_secs` from preferences) that calls `write_crash_recovery()` with current `AppContext` state
+7. On launch, call `check_crash_recovery()` before the UI renders; if a recovery candidate exists, display a recovery offer dialog (inline pattern — no native OS dialogs); if accepted, restore directory and file list
+8. Restore `last_directory` from preferences on launch even when no crash is detected — so the File Browser shows the last location
+
+**Completion criterion:** App restart after a normal close restores the last directory. Simulated crash (force-kill) followed by relaunch offers session recovery.
+
+---
+
+#### Sub-phase D — Macros
+
+Replaces the filesystem-based macro system with the database.
+
+1. Implement `get_macros()`, `save_macro(name, display_name, script)`, `delete_macro(id)`, `rename_macro(id, new_name)` Tauri commands; `save_macro` inserts a version row into `macro_versions` before overwriting `macros.script`
+2. Implement `get_macro_versions(macro_id)` and `restore_macro_version(version_id)` Tauri commands
+3. Implement `increment_macro_run_count(id)` — called after a successful `RunMacro` execution; updates `run_count` and `last_run_at`
+4. Update `RunMacro` in the Rust plugin: look up macro script by name from the DB (via `AppContext` DB handle) rather than reading a `.phs` file from disk
+5. Rewrite `MacroLibrary.svelte` to use `get_macros()` instead of `list_macros`; update Edit, Rename, Delete, Pin, Run actions to use new commands
+6. Rewrite `MacroEditor.svelte` save path to call `save_macro()` instead of writing a file; remove the filesystem save logic
+7. Remove the now-unused `list_macros`, `delete_macro` (filesystem version), `rename_macro` (filesystem version), and `get_macros_dir` Tauri commands and their `lib.rs` handler registrations
+8. Remove `src-tauri/src/utils.rs` `get_macros_dir()` function if no longer referenced
+9. Add a one-time import utility (dev-only, not shipped) to bulk-load `.phs` files into the DB — for Stan's use during migration
+
+**Completion criterion:** Macros load from, save to, and run from the DB. No `.phs` file reads occur during normal operation. Version history is written on each save.
+
+---
+
+#### Sub-phase E — Analysis Results Persistence
+
+Persists AnalyzeFrames output across sessions; enables cross-session result queries.
+
+1. Implement `save_analysis_results(results, threshold_profile_id, equipment_profile_name)` Tauri command — upserts rows into `frame_analysis_results`; respects `user_override` flag (never overwrites a row where `user_override = 1` unless the user explicitly re-runs)
+2. Implement `get_persisted_analysis_results(directory)` — returns all results for files under a given directory path; used by Analysis Graph and Analysis Results table on load
+3. Implement `get_threshold_profiles()`, `save_threshold_profile(profile)`, `delete_threshold_profile(id)`, `set_active_profile(id)` Tauri commands
+4. Add a Threshold Profiles UI — a viewer-region component (`ThresholdProfiles.svelte`) accessible from Tools menu, following Pattern 1 (view registry)
+5. Update `AnalyzeFrames` to call `save_analysis_results()` after completion and to load the active threshold profile from the DB rather than using hardcoded defaults
+6. Update Analysis Graph and Analysis Results to call `get_persisted_analysis_results()` on open, falling back to in-memory session results if no persisted results exist for the current directory
+7. Implement `save_console_history(command, output, success)` and `get_console_history()` Tauri commands; wire `save_console_history` into `Console.svelte` after each command execution; populate console history on launch from DB
+8. Update the status bar to show the active threshold profile name
+
+**Completion criterion:** Analysis results survive an app restart. Re-opening a directory shows previous analysis results in the graph and table without re-running AnalyzeFrames. Active threshold profile is shown in the status bar.
+
+---
+
+#### Commit Points
+
+| After sub-phase | Suggested commit message                                                     |
+| --------------- | ---------------------------------------------------------------------------- |
+| A               | `feat: initialize SQLite database with full schema and migration runner`     |
+| B               | `feat: persist preferences and Quick Launch to SQLite; migrate localStorage` |
+| C               | `feat: session history, crash recovery, and last-directory restore`          |
+| D               | `feat: migrate macros from filesystem to SQLite with version history`        |
+| E               | `feat: persist analysis results and threshold profiles to SQLite`            |
+
+---
+
+## Appendix B. Migration Plan (localStorage → SQLite)
+
+On first launch after Phase 9 upgrade (runs in Svelte `onMount` before UI renders):
+
+1. Check `preferences.localStorage_migrated` — if true, skip entirely
+2. Read `localStorage.getItem('theme')` → upsert into `preferences` as `theme`
+3. Read Quick Launch JSON from localStorage → insert rows into `quick_launch_buttons`
+4. Delete the localStorage keys
+5. Set `preferences.localStorage_migrated = true`
