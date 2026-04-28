@@ -165,15 +165,17 @@ export const consolePipe = writable<ConsoleLine | null>(null);
 
 ### Usage in an external component
 
+**Always use `pipeToConsole()` — never call `consolePipe.set()` directly.** `consolePipe` is a queue; direct `.set()` calls overwrite each other on rapid successive writes. See Pattern 15 for the full queue rule.
+
 ```typescript
-import { consolePipe } from '../stores/consoleHistory';
+import { pipeToConsole } from '../stores/consoleHistory';
 
 // Send a single line
-consolePipe.set({ id: Date.now(), text: 'Hello from QuickLaunch', type: 'success' });
+pipeToConsole('Hello from QuickLaunch', 'success');
 
-// Send multiple lines (e.g. from a plugin result)
+// Send multiple lines
 result.message.split('\n').forEach(line => {
-    if (line) consolePipe.set({ id: Date.now(), text: line, type: 'success' });
+    if (line) pipeToConsole(line, 'success');
 });
 ```
 
@@ -309,6 +311,21 @@ Show the bar conditionally in the template:
 ### CSS
 
 Style the bar using theme variables — see `macroeditor.css` (`.me-confirm-bar`) and `sidebar.css` (`.ml-confirm-bar`) for reference implementations.
+
+### Variant — Pinned Warning (MacroLibrary)
+
+When a macro cannot be deleted because it is currently pinned to Quick Launch, show a **warning bar** instead of a confirmation bar — no Confirm button, just a message and Cancel:
+
+```svelte
+{#if pinnedWarning}
+    <div class="confirm-bar" onclick={(e) => e.stopPropagation()}>
+        <span>Remove from Quick Launch first.</span>
+        <button onclick={(e) => { e.stopPropagation(); pinnedWarning = false; }}>OK</button>
+    </div>
+{/if}
+```
+
+The warning bar uses the same CSS as the confirmation bar. It is not a confirmation — the destructive action does not proceed. See `MacroLibrary.svelte` for the reference implementation.
 
 ---
 
@@ -483,6 +500,129 @@ if (path) await loadFile(path);
 
 ---
 
+## Pattern 15 — consolePipe Queue Rule
+
+`consolePipe` in `consoleHistory.ts` is a **queue**, not a signal. `Console.svelte` watches it via `$effect` and appends each non-null value then resets to null — but if two `.set()` calls fire in the same microtask tick, the second overwrites the first before the effect runs, silently dropping a line.
+
+**Always use `pipeToConsole(text, type)` — never call `consolePipe.set()` directly.**
+
+```typescript
+import { pipeToConsole } from '../stores/consoleHistory';
+
+pipeToConsole('Operation complete.', 'success');
+pipeToConsole('Warning: file already exists.', 'warning');
+```
+
+`pipeToConsole()` internally enqueues lines so rapid successive calls are all delivered in order. Direct `.set()` calls bypass the queue and are not safe for multi-line output.
+
+This rule applies everywhere outside `Console.svelte`: `QuickLaunch.svelte`, `MacroLibrary.svelte`, `MenuBar.svelte`, and any future component that writes to the console.
+
+---
+
+## Pattern 16 — Help Modal
+
+The Help Modal displays contextual help for a pcode command. It is triggered from the console by typing `help <command>`.
+
+### Data source
+
+Command help entries live in `src-svelte/lib/pcodeHelp.ts`. Add an entry there for every new command:
+
+```typescript
+export const PCODE_HELP: Record<string, HelpEntry> = {
+    AutoStretch: {
+        syntax: 'AutoStretch',
+        description: 'Applies Auto-STF stretch to the current frame.',
+        params: [],
+    },
+    MyCommand: {
+        syntax: 'MyCommand param="value"',
+        description: 'Does something useful.',
+        params: [
+            { name: 'param', required: false, description: 'Controls the thing.' },
+        ],
+    },
+};
+```
+
+### Prop wiring
+
+`Console.svelte` exposes an `onhelp` callback prop:
+
+```typescript
+let { onhelp }: { onhelp?: (entry: HelpEntry | null) => void } = $props();
+```
+
+When the user types `help <command>`, `Console.svelte` looks up the entry in `PCODE_HELP` and calls `onhelp(entry)` (or `onhelp(null)` if not found, which Console handles by printing an error itself).
+
+In `+page.svelte`, `helpEntry` state receives the callback and passes it to `HelpModal`:
+
+```svelte
+<Console onhelp={(entry) => helpEntry = entry} />
+
+{#if helpEntry}
+    <HelpModal entry={helpEntry} onclose={() => helpEntry = null} />
+{/if}
+```
+
+### Positioning and z-index
+
+```css
+.help-modal {
+    position: fixed;
+    top: 96px;          /* clears menu (28px) + toolbar (34px) + quick launch (34px) */
+    right: 16px;
+    z-index: 500;
+    max-width: 420px;
+}
+```
+
+The modal is dismissable via its close button or the `Escape` key. The `Escape` handler is attached at the document level while the modal is open, and removed on close.
+
+---
+
+## Pattern 17 — Fixed Overlays (z-index Hierarchy)
+
+Components that need to cover the full viewer region (expanded console, macro editor, help modal) use `position: fixed` to break out of any parent stacking context created by `transform`, `opacity`, or `will-change`.
+
+### z-index hierarchy
+
+| Layer                  | z-index |
+| ---------------------- | ------- |
+| Status bar             | 200     |
+| Sliding panels         | 140     |
+| Console (expanded)     | 300     |
+| Macro Editor           | 400     |
+| Help Modal             | 500     |
+
+Higher values appear on top. Do not assign z-index values outside this table without updating it.
+
+### Top offset rule
+
+All fixed overlays must start below the top bars to avoid covering the menu and toolbar chrome:
+
+```
+menu bar:    28px
+toolbar:     34px
+quick launch: 34px
+─────────────────
+top:         96px
+```
+
+```css
+.my-overlay {
+    position: fixed;
+    top: 96px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 300;   /* pick from hierarchy table */
+}
+```
+
+Overlays that should not extend to the bottom (e.g. the Help Modal in the upper-right corner) set `top: 96px` and `right: 16px` with an explicit `max-height` and `overflow-y: auto` rather than `bottom: 0`.
+
+---
+
 ## CSS Variables Reference
 
 ## CSS Variables Reference
@@ -530,3 +670,9 @@ All CSS files must use these theme variables (defined in `static/themes/dark.css
 **Never duplicate file reading logic — use `read_image_file()` from `image_reader.rs` for format-agnostic loading. See Pattern 13.**
 
 **`DispatchResponse.data` carries the full plugin JSON response to the frontend for interactive calls only. Scripts use `run_script` which only exposes the message string. See Pattern 12.**
+
+**Always use `pipeToConsole()` to write to the console from outside `Console.svelte` — never call `consolePipe.set()` directly. Rapid direct `.set()` calls silently drop lines. See Pattern 15.**
+
+**Help Modal data lives exclusively in `pcodeHelp.ts`. Add an entry there for every new pcode command. See Pattern 16.**
+
+**Fixed overlays use `position: fixed`, start at `top: 96px`, and must respect the z-index hierarchy (panels 140, console expanded 300, macro editor 400, help modal 500). See Pattern 17.**
