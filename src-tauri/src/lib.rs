@@ -3,6 +3,7 @@
 
 mod analysis;
 mod context;
+mod db;
 mod logging;
 mod plugin;
 mod plugins;
@@ -27,6 +28,7 @@ pub static GLOBAL_REGISTRY: once_cell::sync::OnceCell<Arc<PluginRegistry>> = onc
 pub struct PhotoxState {
     pub registry: Arc<PluginRegistry>,
     pub context:  Mutex<AppContext>,
+    pub db:       Mutex<rusqlite::Connection>,
 }
 
 // ── Tauri command: dispatch a pcode command ───────────────────────────────────
@@ -438,9 +440,18 @@ pub fn run() {
     registry.register(Arc::new(plugins::write_xisf::WriteXISF));
 
     let _ = GLOBAL_REGISTRY.set(registry.clone());
+
+    let app_data_dir = dirs_next::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("Photyx");
+    std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
+
+    let db_conn = db::open_db(app_data_dir).expect("Failed to open database");
+
     let state = PhotoxState {
         registry,
         context: Mutex::new(AppContext::new()),
+        db:      Mutex::new(db_conn),
     };
 
     tauri::Builder::default()
