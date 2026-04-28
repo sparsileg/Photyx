@@ -1,8 +1,5 @@
 // commands/backup.rs — Database backup and restore Tauri command handlers
 
-use flate2::write::GzEncoder;
-use flate2::read::GzDecoder;
-use flate2::Compression;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use tauri::State;
@@ -31,17 +28,16 @@ pub fn backup_database(state: State<PhotoxState>) -> Result<String, String> {
     std::fs::create_dir_all(&backup_dir)
         .map_err(|e| format!("Failed to create backup directory: {}", e))?;
 
-    // Write SQLite backup to a temp .db file first
-    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-    let tmp_path  = backup_dir.join(format!("photyx_backup_{}.tmp.db", timestamp));
-    let gz_path   = backup_dir.join(format!("photyx_backup_{}.db.gz", timestamp));
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+    let zip_path  = backup_dir.join(format!("photyx_backup_{}.zip", timestamp));
+    let tmp_db    = backup_dir.join(format!("photyx_backup_{}.tmp.db", timestamp));
 
+    // ── Step 1: SQLite backup to temp file ───────────────────────────────────
     {
         let db = state.db.lock().expect("db lock poisoned");
-        // Checkpoint WAL to ensure all pending writes are in the main DB file
         db.execute_batch("PRAGMA wal_checkpoint(FULL);")
             .map_err(|e| format!("WAL checkpoint failed: {}", e))?;
-        let mut dst = rusqlite::Connection::open(&tmp_path)
+        let mut dst = rusqlite::Connection::open(&tmp_db)
             .map_err(|e| format!("Failed to create temp backup file: {}", e))?;
         let backup = rusqlite::backup::Backup::new(&db, &mut dst)
             .map_err(|e| format!("Failed to initialize backup: {}", e))?;
@@ -49,23 +45,59 @@ pub fn backup_database(state: State<PhotoxState>) -> Result<String, String> {
             .map_err(|e| format!("Backup failed: {}", e))?;
     }
 
-    // Compress the temp file to .db.gz
+    // ── Step 2: Read all macros from DB ───────────────────────────────────────
+    let macros: Vec<(String, String)> = {
+        let db = state.db.lock().expect("db lock poisoned");
+        let mut stmt = db.prepare(
+            "SELECT display_name, script FROM macros ORDER BY display_name COLLATE NOCASE"
+        ).map_err(|e| e.to_string())?;
+        let rows: Vec<(String, String)> = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+        rows
+    };
+
+    // ── Step 3: Build zip archive ─────────────────────────────────────────────
     {
-        let raw = std::fs::read(&tmp_path)
+        let zip_file = std::fs::File::create(&zip_path)
+            .map_err(|e| format!("Failed to create zip file: {}", e))?;
+        let mut zip = zip::ZipWriter::new(zip_file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        // Add photyx.db
+        let db_bytes = std::fs::read(&tmp_db)
             .map_err(|e| format!("Failed to read temp backup: {}", e))?;
-        let gz_file = std::fs::File::create(&gz_path)
-            .map_err(|e| format!("Failed to create compressed backup: {}", e))?;
-        let mut encoder = GzEncoder::new(gz_file, Compression::best());
-        encoder.write_all(&raw)
-            .map_err(|e| format!("Compression failed: {}", e))?;
-        encoder.finish()
-            .map_err(|e| format!("Compression finalisation failed: {}", e))?;
+        zip.start_file("photyx.db", options)
+            .map_err(|e| format!("Failed to add DB to zip: {}", e))?;
+        zip.write_all(&db_bytes)
+            .map_err(|e| format!("Failed to write DB to zip: {}", e))?;
+
+        // Add macros/ directory entries
+        for (display_name, script) in &macros {
+            // Sanitise display_name for use as a filename
+            let safe_name: String = display_name
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' })
+                .collect();
+            let entry_name = format!("macros/{}.phs", safe_name);
+            zip.start_file(&entry_name, options)
+                .map_err(|e| format!("Failed to add macro '{}' to zip: {}", display_name, e))?;
+            zip.write_all(script.as_bytes())
+                .map_err(|e| format!("Failed to write macro '{}' to zip: {}", display_name, e))?;
+        }
+
+        zip.finish()
+            .map_err(|e| format!("Failed to finalise zip: {}", e))?;
     }
 
-    // Remove temp file
-    let _ = std::fs::remove_file(&tmp_path);
+    // Remove temp DB file
+    let _ = std::fs::remove_file(&tmp_db);
 
-    // Trim old backups — only count .db.gz files
+    // ── Step 4: Trim old backups ──────────────────────────────────────────────
     let max: usize = {
         let db = state.db.lock().expect("db lock poisoned");
         db.query_row(
@@ -81,7 +113,7 @@ pub fn backup_database(state: State<PhotoxState>) -> Result<String, String> {
             .filter(|e| {
                 let name = e.file_name();
                 let s = name.to_string_lossy();
-                s.ends_with(".db.gz")
+                s.starts_with("photyx_backup_") && s.ends_with(".zip")
             })
             .collect();
         backups.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
@@ -90,8 +122,8 @@ pub fn backup_database(state: State<PhotoxState>) -> Result<String, String> {
         }
     }
 
-    tracing::info!("Database backed up and compressed to {:?}", gz_path);
-    Ok(gz_path.to_str().unwrap_or("").replace('\\', "/"))
+    tracing::info!("Backup written to {:?} ({} macros included)", zip_path, macros.len());
+    Ok(zip_path.to_str().unwrap_or("").replace('\\', "/"))
 }
 
 #[tauri::command]
@@ -106,18 +138,18 @@ pub fn restore_database(backup_path: String, state: State<PhotoxState>) -> Resul
         .join("Photyx")
         .join("photyx.db");
 
-    // Decompress if .gz, otherwise treat as raw .db
-    let db_bytes = if backup_path.ends_with(".gz") {
-        let gz_data = std::fs::read(&src)
-            .map_err(|e| format!("Failed to read backup file: {}", e))?;
-        let mut decoder = GzDecoder::new(gz_data.as_slice());
-        let mut decompressed = Vec::new();
-        decoder.read_to_end(&mut decompressed)
-            .map_err(|e| format!("Decompression failed: {}", e))?;
-        decompressed
-    } else {
-        std::fs::read(&src)
-            .map_err(|e| format!("Failed to read backup file: {}", e))?
+    // Extract photyx.db from the zip
+    let db_bytes = {
+        let zip_file = std::fs::File::open(&src)
+            .map_err(|e| format!("Failed to open backup zip: {}", e))?;
+        let mut archive = zip::ZipArchive::new(zip_file)
+            .map_err(|e| format!("Failed to read zip archive: {}", e))?;
+        let mut db_entry = archive.by_name("photyx.db")
+            .map_err(|_| "Backup zip does not contain photyx.db".to_string())?;
+        let mut bytes = Vec::new();
+        db_entry.read_to_end(&mut bytes)
+            .map_err(|e| format!("Failed to extract photyx.db: {}", e))?;
+        bytes
     };
 
     // Acquire DB lock for the entire restore operation
@@ -129,11 +161,11 @@ pub fn restore_database(backup_path: String, state: State<PhotoxState>) -> Resul
     std::fs::write(&db_path, &db_bytes)
         .map_err(|e| format!("Restore failed: {}", e))?;
 
-    // Remove WAL and SHM — leftover WAL would replay old data over the restore
+    // Remove WAL and SHM
     let _ = std::fs::remove_file(db_path.with_extension("db-wal"));
     let _ = std::fs::remove_file(db_path.with_extension("db-shm"));
 
-    // Reopen the connection in-place so the running app sees the restored data
+    // Reopen the connection in-place
     let new_conn = db::open_db(
         dirs_next::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))

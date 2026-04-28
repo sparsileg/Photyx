@@ -131,7 +131,7 @@
         try {
             selected = await open({
                 multiple: false,
-                filters: [{ name: 'Photyx Database Backup', extensions: ['db.gz', 'db'] }]
+                filters: [{ name: 'Photyx Database Backup', extensions: ['zip'] }]
             });
         } catch (e) {
             notifications.error(`Failed to open file picker: ${e}`);
