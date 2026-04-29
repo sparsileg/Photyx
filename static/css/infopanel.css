@@ -3,7 +3,7 @@
 #info-panel {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: visible;
     border-left: 1px solid var(--border-color);
     background: var(--sidebar-bg);
     position: absolute;
@@ -11,6 +11,7 @@
     left: 33.333%;
     right: 0;
     height: 120px;
+    z-index: 100;
 }
 
 .info-panel-tabs {
@@ -43,6 +44,7 @@
 .info-panel-body {
     flex: 1 1 auto;
     overflow-y: auto;
+    overflow-x: visible;
     padding: 8px 10px;
     display: none;
 }

@@ -6,6 +6,7 @@
     import { ui } from '../stores/ui';
     import { notifications } from '../stores/notifications';
     import { displayFrame } from '../commands';
+    import Dropdown from './Dropdown.svelte';
 
     let activeTab = $state<'pixels' | 'metadata' | 'histogram' | 'blink'>('pixels');
 
@@ -603,30 +604,20 @@
                 <!-- Row 2: Res + Min Delay + Quality Flags toggle -->
                 <div class="blink-row">
                     <span class="blink-inline-label">Res</span>
-                    <select
-                        class="blink-select"
-                        value={blinkResolution}
-                        disabled={blinkPlaying}
-                        onchange={(e) => {
-                            blinkResolution = (e.target as HTMLSelectElement).value as '12' | '25';
-                            ui.setBlinkResolution(blinkResolution);
-                        }}
-                    >
-                        <option value="25">25%</option>
-                        <option value="12">12.5%</option>
-                    </select>
+                    <Dropdown
+                        className="blink-select"
+                        bind:value={blinkResolution}
+                        openUp={true}
+                        options={[{ value: '25', label: '25%' }, { value: '12', label: '12.5%' }]}
+                    />
 
                     <span class="blink-inline-label" style="margin-left:12px;">Min Delay</span>
-                    <select
-                        class="blink-select"
-                        value={blinkDelay}
-                        disabled={blinkPlaying}
-                        onchange={(e) => blinkDelay = parseFloat((e.target as HTMLSelectElement).value)}
-                    >
-                        {#each DELAY_OPTIONS as d}
-                            <option value={d}>{d === 0 ? 'Max' : `${d}s`}</option>
-                        {/each}
-                    </select>
+                    <Dropdown
+                        className="blink-select"
+                        bind:value={blinkDelay}
+                        openUp={true}
+                        options={DELAY_OPTIONS.map(d => ({ value: d, label: d === 0 ? 'Max' : `${d}s` }))}
+                    />
 
                     <label class="blink-flag-toggle" style="margin-left:12px;" title="Show quality flag overlays">
                         <input

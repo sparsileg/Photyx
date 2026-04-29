@@ -488,6 +488,7 @@
         <Dropdown
             className="ag-m1"
             bind:value={metric1}
+            openUp={false}
             options={METRICS.map(m => ({ value: m.key, label: m.label }))}
         />
         <label class="ag-label">Metric 2</label>

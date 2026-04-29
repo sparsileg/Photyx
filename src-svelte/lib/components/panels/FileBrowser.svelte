@@ -5,6 +5,7 @@
     import { selectDirectory, loadFiles, displayFrame } from '../../commands';
     import type { FormatFilter } from '../../commands';
     import { FORMAT_FILTERS } from '../../commands';
+    import Dropdown from '../Dropdown.svelte';
 
     const MIN_WIDTH = 280;
     const MAX_WIDTH = 540;
@@ -56,15 +57,12 @@
         <button class="dir-browse-btn" onclick={selectDirectory}>…</button>
     </div>
     <div class="file-browser-controls">
-        <select
-            class="format-filter-select"
-            value={formatFilter}
-            onchange={(e) => formatFilter = (e.target as HTMLSelectElement).value as FormatFilter}
-        >
-            {#each FORMAT_FILTERS as f}
-                <option value={f.id}>{f.label}</option>
-            {/each}
-        </select>
+        <Dropdown
+            className="format-filter-select"
+            bind:value={formatFilter}
+            openUp={false}
+            options={FORMAT_FILTERS.map(f => ({ value: f.id, label: f.label }))}
+        />
         <button
             class="load-btn"
             disabled={!$session.activeDirectory}

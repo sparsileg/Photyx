@@ -1,93 +1,94 @@
+<!-- Dropdown.svelte — Custom select element that is CSS friendly -->
 <script lang="ts">
+    import { onMount, onDestroy } from 'svelte';
+
     export let value: string;
     export let options: { value: string; label: string }[];
     export let className: string = '';
+    export let openUp: boolean = false;
 
     let open = false;
+    let triggerEl: HTMLElement;
+    let menuEl: HTMLElement;
 
     function select(val: string) {
         value = val;
-        open = false;
+        close();
     }
 
-    function toggle() { open = !open; }
+    function close() {
+        open = false;
+        menuEl.style.display = 'none';
+        if (menuEl.parentNode === document.body) {
+            document.body.removeChild(menuEl);
+        }
+    }
+
+    function updateMenuPos() {
+        if (!triggerEl || !menuEl) return;
+        const rect = triggerEl.getBoundingClientRect();
+        const viewH = window.innerHeight;
+        const menuHeight = options.length * 24 + 8;
+        const shouldOpenUp = openUp || rect.bottom > viewH - menuHeight || rect.top > viewH * 0.75;
+        menuEl.style.left = `${rect.left}px`;
+        menuEl.style.width = `${rect.width}px`;
+        menuEl.style.top = shouldOpenUp ? `${rect.top - menuHeight}px` : `${rect.bottom}px`;
+    }
+
+    function toggle() {
+        if (open) {
+            close();
+        } else {
+            open = true;
+            menuEl.style.display = 'block';
+            document.body.appendChild(menuEl);
+            updateMenuPos();
+        }
+    }
 
     function onKeydown(e: KeyboardEvent) {
-        if (e.key === 'Escape') open = false;
+        if (e.key === 'Escape') close();
     }
+
+    function onDocumentClick(e: MouseEvent) {
+        if (!open) return;
+        if (triggerEl.contains(e.target as Node)) return;
+        if (menuEl.contains(e.target as Node)) return;
+        close();
+    }
+
+    onMount(() => {
+        menuEl.style.display = 'none';
+        document.addEventListener('click', onDocumentClick, true);
+    });
+
+    onDestroy(() => {
+        document.removeEventListener('click', onDocumentClick, true);
+        if (menuEl && menuEl.parentNode === document.body) {
+            document.body.removeChild(menuEl);
+        }
+    });
 
     $: selectedLabel = options.find(o => o.value === value)?.label ?? value;
 </script>
 
-<svelte:window on:keydown={onKeydown} />
+<svelte:window on:keydown={onKeydown} on:scroll={updateMenuPos} on:resize={updateMenuPos} />
 
-<div class="dropdown {className}" class:open>
+<div class="dropdown {className}" class:open bind:this={triggerEl}>
     <button class="dropdown-trigger" onclick={toggle} type="button">
         <span>{selectedLabel}</span>
         <span class="dropdown-arrow">{open ? '▲' : '▼'}</span>
     </button>
-    {#if open}
-        <div class="dropdown-menu">
-            {#each options as opt}
-                <div
-                    class="dropdown-item"
-                    class:selected={opt.value === value}
-                    onclick={() => select(opt.value)}
-                >
-                    {opt.label}
-                </div>
-            {/each}
-        </div>
-    {/if}
 </div>
 
-<style>
-    .dropdown {
-        position: relative;
-        display: inline-block;
-    }
-    .dropdown-trigger {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 3px 8px;
-        background: var(--input-bg, #111);
-        color: var(--input-fg, #00ff41);
-        border: 1px solid var(--border, #00ff41);
-        cursor: pointer;
-        font-size: 0.85rem;
-        min-width: 140px;
-        justify-content: space-between;
-    }
-    .dropdown-trigger:hover {
-        background: var(--input-bg-hover, #1a1a1a);
-    }
-    .dropdown-arrow {
-        font-size: 0.65rem;
-        opacity: 0.7;
-    }
-    .dropdown-menu {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        z-index: 999;
-        background: var(--input-bg, #111);
-        border: 1px solid var(--border, #00ff41);
-        min-width: 100%;
-        max-height: 260px;
-        overflow-y: auto;
-    }
-    .dropdown-item {
-        padding: 4px 8px;
-        color: var(--input-fg, #00ff41);
-        cursor: pointer;
-        font-size: 0.85rem;
-    }
-    .dropdown-item:hover {
-        background: var(--highlight-bg, #003b00);
-    }
-    .dropdown-item.selected {
-        background: var(--highlight-bg, #003b00);
-        font-weight: bold;
-    }
-</style>
+<div bind:this={menuEl} class="dropdown-menu">
+    {#each options as opt}
+        <div
+            class="dropdown-item"
+            class:selected={opt.value === value}
+            onclick={() => select(opt.value)}
+        >
+            {opt.label}
+        </div>
+    {/each}
+</div>
