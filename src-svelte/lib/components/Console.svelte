@@ -58,8 +58,10 @@
         blinksequence:      'fps=',
         cacheframes:        '',
         clear:              '',
+        clearannotations:    (_raw: string) => { handleClientCommand('clearannotations'); },
         computefwhm:        '',
         contourheatmap:     'palette=[viridis|plasma|coolwarm]  contour_levels=#  threshold=  saturation=',
+        copyfile:           'destination=  source=',
         copykeyword:        'from=  to=',
         countfiles:         '',
         cropimage:          'x=  y=  width=  height=',
@@ -72,7 +74,7 @@
         endif:              '',
         filterbykeyword:    'name=  value=',
         floor:              '(#)',
-        for:             '',
+        for:                '',
         gethistogram:       '',
         getimageproperty:   'property=',
         getkeyword:         'name=',
@@ -83,12 +85,13 @@
         listkeywords:       '',
         loadfile:           'path=',
         log:                'path=  append=',
-        min:                '(#,#)',
         max:                '(#,#)',
         medianvalue:        '',
+        min:                '(#,#)',
         modifykeyword:      'name=  value=  comment=  scope=',
         movefile:           'destination=',
         print:              'message (or bare: Print "hello")',
+        pwd:                (_raw: string) => { handleClientCommand('pwd'); },
         readall:            '',
         readfit:            '',
         readtiff:           '',
@@ -101,11 +104,9 @@
         setzoom:            'level=',
         showanalysisgraph:   (_raw: string) => { handleClientCommand('showanalysisgraph'); },
         showanalysisresults: (_raw: string) => { handleClientCommand('showanalysisresults'); },
-        clearannotations:    (_raw: string) => { handleClientCommand('clearannotations'); },
-        version:             (_raw: string) => { handleClientCommand('version'); },
-        pwd:                 (_raw: string) => { handleClientCommand('pwd'); },
         sqrt:               '(#)',
         test:               '',
+        version:             (_raw: string) => { handleClientCommand('version'); },
         writecurrent:       '',
         writefit:           'destination=  overwrite=',
         writeframe:         '',
@@ -171,6 +172,7 @@
             append('  View:     BlinkSequence CacheFrames SetZoom', 'output');
             append('  Analysis: ComputeFWHM CountStars ComputeEccentricity MedianValue ContourHeatmap', 'output');
             append('  Script:   Set Print Echo CountFiles RunMacro', 'output');
+            append('  Files:    MoveFile CopyFile', 'output');
             append('  Console:  pwd Help Clear Version', 'output');
         },
         clear: (_raw: string) => { lines = []; },
@@ -392,7 +394,20 @@
             }
         } else {
             const cmd = val.slice(0, spacePos).toLowerCase();
-            tabHint = ARG_HINTS[cmd] ? 'args: ' + ARG_HINTS[cmd] : '';
+            const rest = val.slice(spacePos + 1);
+            if (cmd === 'help' && rest.length > 0) {
+                const matches = ALL_COMMANDS.filter(c => c.toLowerCase().startsWith(rest.toLowerCase()));
+                if (matches.length === 1) {
+                    inputValue = 'help ' + matches[0];
+                    tabHint = '';
+                } else if (matches.length > 1) {
+                    tabHint = matches.join('  ');
+                } else {
+                    tabHint = '';
+                }
+            } else {
+                tabHint = ARG_HINTS[cmd] ? 'args: ' + ARG_HINTS[cmd] : '';
+            }
         }
     }
 
@@ -435,7 +450,14 @@
                 bind:this={textareaEl}
                 bind:value={inputValue}
                 onkeydown={onKeyDown}
-                oninput={() => { tabHint = ''; autoResize(); }}
+                oninput={() => {
+                    if (inputValue.toLowerCase().startsWith('help ')) {
+                        doTabComplete();
+                    } else {
+                        tabHint = '';
+                    }
+                    autoResize();
+                }}
                 rows={1}
                 autocomplete="off"
                 autocorrect="off"
@@ -469,7 +491,14 @@
                     bind:this={textareaEl}
                     bind:value={inputValue}
                     onkeydown={onKeyDown}
-                    oninput={() => { tabHint = ''; autoResize(); }}
+                    oninput={() => {
+                        if (inputValue.toLowerCase().startsWith('help ')) {
+                            doTabComplete();
+                        } else {
+                            tabHint = '';
+                        }
+                        autoResize();
+                    }}
                     rows={1}
                     autocomplete="off"
                     autocorrect="off"

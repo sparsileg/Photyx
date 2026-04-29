@@ -149,6 +149,81 @@ impl PhotonPlugin for MoveFile {
     }
 }
 
+// ── CopyFile ──────────────────────────────────────────────────────────────────
+
+/// Copies a file to a destination directory.
+/// Usage: CopyFile destination="D:/Backups"
+///        CopyFile source="$NEW_FILE" destination="D:/Heatmaps"
+pub struct CopyFile;
+
+impl PhotonPlugin for CopyFile {
+    fn name(&self)        -> &str { "CopyFile" }
+    fn version(&self)     -> &str { "1.0.0" }
+    fn description(&self) -> &str { "Copies a file to a destination directory. Uses current frame if source= is not specified." }
+
+    fn parameters(&self) -> Vec<ParamSpec> {
+        vec![
+            ParamSpec {
+                name:        "source".to_string(),
+                param_type:  ParamType::Path,
+                required:    false,
+                description: "Source file path (default: current frame)".to_string(),
+                default:     None,
+            },
+            ParamSpec {
+                name:        "destination".to_string(),
+                param_type:  ParamType::Path,
+                required:    true,
+                description: "Destination directory path".to_string(),
+                default:     None,
+            },
+        ]
+    }
+
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+        let destination = args.get("destination")
+            .ok_or_else(|| PluginError::missing_arg("destination"))?;
+
+        let dest_dir = crate::utils::resolve_path(
+            destination,
+            ctx.active_directory.as_deref(),
+        );
+
+        let src_path = if let Some(source) = args.get("source") {
+            crate::utils::resolve_path(source, ctx.active_directory.as_deref())
+        } else {
+            ctx.file_list
+                .get(ctx.current_frame)
+                .cloned()
+                .ok_or_else(|| PluginError::new("NO_FRAME", "CopyFile: no current frame"))?
+        };
+
+        let src = Path::new(&src_path);
+        let filename = src.file_name()
+            .ok_or_else(|| PluginError::new("BAD_PATH", "CopyFile: cannot determine filename"))?;
+
+        std::fs::create_dir_all(&dest_dir)
+            .map_err(|e| PluginError::new(
+                "IO_ERROR",
+                &format!("CopyFile: cannot create directory '{}': {}", dest_dir, e),
+            ))?;
+
+        let dest_path = Path::new(&dest_dir).join(filename);
+
+        std::fs::copy(&src_path, &dest_path)
+            .map_err(|e| PluginError::new(
+                "IO_ERROR",
+                &format!("CopyFile: cannot copy '{}' to '{}': {}", src_path, dest_path.display(), e),
+            ))?;
+
+        let dest_str = dest_path.display().to_string();
+        ctx.variables.insert("NEW_FILE".to_string(), dest_str.clone());
+
+        tracing::info!("CopyFile: '{}' -> '{}'", src_path, dest_str);
+        Ok(PluginOutput::Message(format!("Copied '{}' to '{}'", src_path, dest_str)))
+    }
+}
+
 // ── Print ─────────────────────────────────────────────────────────────────────
 
 /// Outputs a literal message to the pcode console.
@@ -292,11 +367,13 @@ impl PhotonPlugin for LoadFile {
 // ── Registration ──────────────────────────────────────────────────────────────
 
 pub fn register_all(registry: &crate::plugin::registry::PluginRegistry) {
-    registry.register(Arc::new(Assert));
+registry.register(Arc::new(Assert));
+    registry.register(Arc::new(CopyFile));
     registry.register(Arc::new(CountFiles));
     registry.register(Arc::new(GetKeyword));
     registry.register(Arc::new(LoadFile));
     registry.register(Arc::new(MoveFile));
     registry.register(Arc::new(Print));
+
 }
 // ----------------------------------------------------------------------

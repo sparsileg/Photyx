@@ -160,6 +160,18 @@ export const HELP_DB: Record<string, HelpEntry> = {
         example: 'WriteFrame destination="D:/Output/frame001.fit"',
     },
 
+    copyfile: {
+        name:        'CopyFile',
+        description: 'Copies a file to a destination directory. Uses the current frame if no source is specified. Stores the destination path in $NEW_FILE.',
+        syntax:      'CopyFile destination=<path> [source=<path>]',
+        arguments: [
+            { name: 'destination', type: 'path', required: true,  description: 'Destination directory path' },
+            { name: 'source',      type: 'path', required: false, description: 'Source file path (default: current frame)' },
+        ],
+        output:  'Copies the file to the destination directory. Source file and session are unchanged.',
+        example: 'CopyFile destination="D:/Backups"\nCopyFile source="$NEW_FILE" destination="D:/Heatmaps"',
+    },
+
     movefile: {
         name:        'MoveFile',
         description: 'Moves a file to a destination directory. Uses the current frame if no source is specified.',

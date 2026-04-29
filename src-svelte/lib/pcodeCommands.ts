@@ -67,13 +67,13 @@ export const PCODE_COMMANDS = new Set([
     'If',
     'LoadFile',
     'Log',
-    'MoveFile',
     'Print',
     'RunMacro',
     'Set',
     'Test',
 
     // ── File management ──────────────────────────────────────────────────────
+    'CopyFile',
     'FilterByKeyword',
     'ListFiles',
     'MoveFile',

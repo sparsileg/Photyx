@@ -88,11 +88,13 @@ fn compute_mono_stats(pixels: &PixelData) -> HistogramStats {
     let mut clipped = 0usize;
     let mut normalized: Vec<f64> = Vec::new();
 
+    const STRIDE: usize = 16;
     match pixels {
         PixelData::U16(v) => {
-            normalized = v.iter().map(|&p| p as f64 / 65535.0).collect();
             let clip_threshold = 65208u16;
-            for (&p, &n) in v.iter().zip(normalized.iter()) {
+            for &p in v.iter().step_by(STRIDE) {
+                let n = p as f64 / 65535.0;
+                normalized.push(n);
                 bins[(n * 255.0) as usize] += 1;
                 sum += n;
                 count += 1;
@@ -100,7 +102,7 @@ fn compute_mono_stats(pixels: &PixelData) -> HistogramStats {
             }
         }
         PixelData::F32(v) => {
-            for &p in v {
+            for &p in v.iter().step_by(STRIDE) {
                 if !p.is_finite() { continue; }
                 let n = p.clamp(0.0, 1.0) as f64;
                 normalized.push(n);
@@ -111,8 +113,9 @@ fn compute_mono_stats(pixels: &PixelData) -> HistogramStats {
             }
         }
         PixelData::U8(v) => {
-            normalized = v.iter().map(|&p| p as f64 / 255.0).collect();
-            for (&p, &n) in v.iter().zip(normalized.iter()) {
+            for &p in v.iter().step_by(STRIDE) {
+                let n = p as f64 / 255.0;
+                normalized.push(n);
                 bins[p as usize] += 1;
                 sum += n;
                 count += 1;
@@ -148,10 +151,11 @@ fn compute_rgb_stats(pixels: &PixelData) -> HistogramStats {
     let mut count = 0usize;
     let mut clipped = 0usize;
 
+    const STRIDE: usize = 16;
     match pixels {
         PixelData::U16(v) => {
             let clip = 65208u16;
-            for chunk in v.chunks_exact(3) {
+            for chunk in v.chunks_exact(3).step_by(STRIDE) {
                 let (r, g, b) = (chunk[0], chunk[1], chunk[2]);
                 let (nr, ng, nb) = (
                     r as f64 / 65535.0,
@@ -168,7 +172,7 @@ fn compute_rgb_stats(pixels: &PixelData) -> HistogramStats {
             }
         }
         PixelData::F32(v) => {
-            for chunk in v.chunks_exact(3) {
+            for chunk in v.chunks_exact(3).step_by(STRIDE) {
                 let (r, g, b) = (
                     chunk[0].clamp(0.0, 1.0) as f64,
                     chunk[1].clamp(0.0, 1.0) as f64,
@@ -184,7 +188,7 @@ fn compute_rgb_stats(pixels: &PixelData) -> HistogramStats {
             }
         }
         PixelData::U8(v) => {
-            for chunk in v.chunks_exact(3) {
+            for chunk in v.chunks_exact(3).step_by(STRIDE) {
                 let (r, g, b) = (chunk[0], chunk[1], chunk[2]);
                 let (nr, ng, nb) = (r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0);
                 bins_r[r as usize] += 1;

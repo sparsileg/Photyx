@@ -177,31 +177,33 @@
 <div id="app">
     <MenuBar />
     <Toolbar />
-    <QuickLaunch />
     <div id="content-area">
         <IconSidebar />
-            {#if $ui.activePanel === 'macro-editor'}
-                <MacroEditor />
-            {/if}
+        {#if $ui.activePanel === 'macro-editor'}
+            <MacroEditor />
+        {/if}
 
+        <div id="right-column">
+            <QuickLaunch />
             <div id="viewer-region">
-            {#if $ui.activeView === 'analysisGraph'}
-                <AnalysisGraph />
-            {:else if $ui.activeView === 'analysisResults'}
-                <AnalysisResults />
-            {:else}
-                <Viewer onMousePixel={onMousePixel} />
-            {/if}
-            {#if !$ui.consoleExpanded}
-                {#if $ui.blinkTabActive && blinkFilename}
-                    <div id="blink-filename-overlay">{blinkFilename}</div>
-                {:else if !$ui.blinkTabActive && $ui.activeView === null && $session.fileList.length > 0 && $session.fileList[$session.currentFrame]}
-                    <div id="blink-filename-overlay">{$session.fileList[$session.currentFrame]?.split(/[\\/]/).pop() ?? ''}</div>
+                {#if $ui.activeView === 'analysisGraph'}
+                    <AnalysisGraph />
+                {:else if $ui.activeView === 'analysisResults'}
+                    <AnalysisResults />
+                {:else}
+                    <Viewer onMousePixel={onMousePixel} />
                 {/if}
-            {/if}
-            <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded}>
-                <Console onhelp={(entry) => helpEntry = entry} />
-                <InfoPanel onBlinkFrame={onBlinkFrame} mousePixel={mousePixel} />
+                {#if !$ui.consoleExpanded}
+                    {#if $ui.blinkTabActive && blinkFilename}
+                        <div id="blink-filename-overlay">{blinkFilename}</div>
+                    {:else if !$ui.blinkTabActive && $ui.activeView === null && $session.fileList.length > 0 && $session.fileList[$session.currentFrame]}
+                        <div id="blink-filename-overlay">{$session.fileList[$session.currentFrame]?.split(/[\\/]/).pop() ?? ''}</div>
+                    {/if}
+                {/if}
+                <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded}>
+                    <Console onhelp={(entry) => helpEntry = entry} />
+                    <InfoPanel onBlinkFrame={onBlinkFrame} mousePixel={mousePixel} />
+                </div>
             </div>
         </div>
     </div>

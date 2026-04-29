@@ -412,16 +412,16 @@
         const normalized = (bin / 255).toFixed(3);
         const aduScale = $currentImage.bitDepth === 'U8' ? 255 : 65535;
         const adu = Math.round((bin / 255) * aduScale);
-        const totalPixels = $currentImage.width * $currentImage.height;
+        const samplePixels = histStats.bins.reduce((a, b) => a + b, 0);
 
         let hoverLine: string;
         if (histStats.bins_g !== null && histStats.bins_b !== null) {
-            const pctR = (histStats.bins[bin] / totalPixels * 100).toFixed(2);
-            const pctG = (histStats.bins_g[bin] / totalPixels * 100).toFixed(2);
-            const pctB = (histStats.bins_b[bin] / totalPixels * 100).toFixed(2);
+            const pctR = (histStats.bins[bin] / samplePixels * 100).toFixed(2);
+            const pctG = (histStats.bins_g[bin] / samplePixels * 100).toFixed(2);
+            const pctB = (histStats.bins_b[bin] / samplePixels * 100).toFixed(2);
             hoverLine = `Val: ${normalized} / ${adu}  R: ${pctR}%  G: ${pctG}%  B: ${pctB}%`;
         } else {
-            const pct = (histStats.bins[bin] / totalPixels * 100).toFixed(2);
+            const pct = (histStats.bins[bin] / samplePixels * 100).toFixed(2);
             hoverLine = `Val: ${normalized} / ${adu}  Count: ${pct}%`;
         }
         redrawWithHover(hoverLine);

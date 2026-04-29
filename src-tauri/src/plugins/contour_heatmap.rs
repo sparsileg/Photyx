@@ -452,8 +452,7 @@ impl PhotonPlugin for ContourHeatmap {
         };
 
         kw("PXTYPE",   "HEATMAP",          "Photyx image type");
-        kw("PXSRC",    &source_path,        "Source image path");
-        kw("PXGRID",   &grid.to_string(),   "Heatmap grid dimension (NxN)");
+        kw("PXGRID",   &format!("{}x{}", grid, grid), "Heatmap grid cols x rows");
         kw("PXSTARS",  &n.to_string(),      "Stars used in heatmap");
         kw("PXFWMIN",  &format!("{:.4}", fwhm_min), "Minimum FWHM (pixels)");
         kw("PXFWMAX",  &format!("{:.4}", fwhm_max), "Maximum FWHM (pixels)");

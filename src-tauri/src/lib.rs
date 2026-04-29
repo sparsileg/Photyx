@@ -103,11 +103,20 @@ pub struct ScriptResult {
     pub trace_line:  Option<String>,
 }
 
+// Commands that modify the session file list or active directory.
+// Any command that adds, removes, or reorders files — or changes the working
+// directory — belongs here. CopyFile is intentionally excluded: it does not
+// alter the session, only the filesystem.
 const SESSION_COMMANDS: &[&str] = &[
     "readfit", "readtiff", "readxisf", "readall",
     "readallfitfiles", "readalltifffiles", "readallxisffiles", "readallfiles",
     "selectdirectory", "clearsession", "movefile", "runmacro",
 ];
+
+// Commands that alter the pixel data currently displayed in the viewer.
+// Any command that produces a new stretched, processed, or transformed image
+// belongs here. File I/O and session commands do not belong here unless they
+// also change what is rendered in the viewer.
 const DISPLAY_COMMANDS: &[&str] = &[
     "autostretch", "linearstretch", "histogramequalization", "runmacro",
 ];
