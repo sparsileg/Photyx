@@ -1,6 +1,6 @@
-use std::sync::Arc;
 // commands/preferences.rs — Preferences and Quick Launch Tauri command handlers
 
+use std::sync::Arc;
 use tauri::State;
 use crate::PhotoxState;
 use crate::db;
@@ -13,9 +13,9 @@ pub fn get_all_preferences(state: State<Arc<PhotoxState>>) -> Result<std::collec
     let map = stmt.query_map([], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })
-    .map_err(|e| e.to_string())?
-    .filter_map(|r| r.ok())
-    .collect();
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
     Ok(map)
 }
 
@@ -45,9 +45,9 @@ pub fn get_quick_launch_buttons(state: State<Arc<PhotoxState>>) -> Result<Vec<se
             "script":   row.get::<_, String>(3)?,
         }))
     })
-    .map_err(|e| e.to_string())?
-    .filter_map(|r| r.ok())
-    .collect();
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
     Ok(rows)
 }
 

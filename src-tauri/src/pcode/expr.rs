@@ -68,9 +68,9 @@ fn resolve_side(s: &str, variables: &HashMap<String, String>) -> Result<String, 
 
 fn normalize_quotes(s: &str) -> String {
     s.replace('\u{201C}', "\"")
-     .replace('\u{201D}', "\"")
-     .replace('\u{2018}', "'")
-     .replace('\u{2019}', "'")
+        .replace('\u{201D}', "\"")
+        .replace('\u{2018}', "'")
+        .replace('\u{2019}', "'")
 }
 
 // ── Value type ────────────────────────────────────────────────────────────────

@@ -92,7 +92,7 @@ impl PhotonPlugin for WriteFrame {
             }
             _ => {
                 return Err(PluginError::new("UNSUPPORTED_FORMAT",
-                    &format!("WriteFrame does not support .{} files", ext)));
+                                            &format!("WriteFrame does not support .{} files", ext)));
             }
         }
 

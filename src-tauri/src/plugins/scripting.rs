@@ -367,7 +367,7 @@ impl PhotonPlugin for LoadFile {
 // ── Registration ──────────────────────────────────────────────────────────────
 
 pub fn register_all(registry: &crate::plugin::registry::PluginRegistry) {
-registry.register(Arc::new(Assert));
+    registry.register(Arc::new(Assert));
     registry.register(Arc::new(CopyFile));
     registry.register(Arc::new(CountFiles));
     registry.register(Arc::new(GetKeyword));

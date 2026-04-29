@@ -131,7 +131,7 @@ pub struct AppContext {
     pub last_stf_params: Option<(f32, f32)>,
     pub analysis_results: HashMap<String, crate::analysis::AnalysisResult>,
 
-/// Configurable log directory — if None, falls back to Tauri app data dir
+    /// Configurable log directory — if None, falls back to Tauri app data dir
     pub log_dir: Option<String>,
 
     /// Current session ID in session_history table — set by open_session, cleared by close_session

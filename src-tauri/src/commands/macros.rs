@@ -1,6 +1,6 @@
-use std::sync::Arc;
 // commands/macros.rs — Macro database Tauri command handlers
 
+use std::sync::Arc;
 use rusqlite::params;
 use serde::Serialize;
 use tauri::State;
@@ -106,7 +106,7 @@ pub fn save_macro(
             "INSERT INTO macro_versions (macro_id, script, saved_at) VALUES (?1, ?2, ?3)",
             params![existing_id, old_script, now],
         )
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
         db.execute(
             "UPDATE macros
@@ -114,7 +114,7 @@ pub fn save_macro(
              WHERE id = ?4",
             params![display_name, script, now, existing_id],
         )
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
         Ok(existing_id)
     } else {
@@ -123,7 +123,7 @@ pub fn save_macro(
              VALUES (?1, ?2, ?3, 0, ?4, ?5)",
             params![name, display_name, script, now, now],
         )
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
         Ok(db.last_insert_rowid())
     }
@@ -158,7 +158,7 @@ pub fn rename_macro(
         "UPDATE macros SET name = ?1, display_name = ?2, updated_at = ?3 WHERE id = ?4",
         params![new_name, new_display_name, now, id],
     )
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     Ok(new_name)
 }
@@ -226,13 +226,13 @@ pub fn restore_macro_version(
         "INSERT INTO macro_versions (macro_id, script, saved_at) VALUES (?1, ?2, ?3)",
         params![macro_id, current_script, now],
     )
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     db.execute(
         "UPDATE macros SET script = ?1, updated_at = ?2 WHERE id = ?3",
         params![version_script, now, macro_id],
     )
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -247,7 +247,7 @@ pub fn increment_macro_run_count(state: State<Arc<PhotoxState>>, id: i64) -> Res
         "UPDATE macros SET run_count = run_count + 1, last_run_at = ?1 WHERE id = ?2",
         params![now, id],
     )
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -295,7 +295,7 @@ pub fn migrate_quick_launch_macro_refs(db: &rusqlite::Connection) -> Result<(), 
                      WHERE id = ?3",
                     params![new_script, now, id],
                 )
-                .map_err(|e| e.to_string())?;
+                    .map_err(|e| e.to_string())?;
             }
         }
     }

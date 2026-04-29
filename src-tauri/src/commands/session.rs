@@ -1,6 +1,6 @@
-use std::sync::Arc;
 // commands/session.rs — Session state and crash recovery Tauri command handlers
 
+use std::sync::Arc;
 use tauri::{Manager, State};
 use crate::PhotoxState;
 use crate::db;

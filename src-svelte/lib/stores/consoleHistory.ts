@@ -4,9 +4,9 @@
 import { writable } from 'svelte/store';
 
 export interface ConsoleLine {
-    id: number;
-    text: string;
-    type: 'input-echo' | 'trace-echo' | 'output' | 'error' | 'warning' | 'success' | 'info';
+  id: number;
+  text: string;
+  type: 'input-echo' | 'trace-echo' | 'output' | 'error' | 'warning' | 'success' | 'info';
 }
 
 export const consoleHistory = writable<ConsoleLine[]>([]);
@@ -16,5 +16,5 @@ export const consoleHistory = writable<ConsoleLine[]>([]);
 export const consolePipe = writable<ConsoleLine[]>([]);
 
 export function pipeToConsole(text: string, type: ConsoleLine['type'] = 'success') {
-    consolePipe.update(q => [...q, { id: Date.now() + Math.random(), text, type }]);
+  consolePipe.update(q => [...q, { id: Date.now() + Math.random(), text, type }]);
 }

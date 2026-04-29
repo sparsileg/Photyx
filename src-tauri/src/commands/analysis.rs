@@ -1,6 +1,6 @@
-use std::sync::Arc;
 // commands/analysis.rs — Analysis and quality metrics Tauri command handlers
 
+use std::sync::Arc;
 use tauri::State;
 use crate::PhotoxState;
 
@@ -13,8 +13,8 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
             .and_then(|r| r.flag.as_ref())
             .map(|f| f.as_str().to_string())
             .or_else(|| ctx.image_buffers.get(path)
-                .and_then(|b| b.keywords.get("PXFLAG"))
-                .map(|kw| kw.value.clone()))
+                     .and_then(|b| b.keywords.get("PXFLAG"))
+                     .map(|kw| kw.value.clone()))
             .unwrap_or_default();
 
         let short = path.rsplit(['/', '\\']).next().unwrap_or(path);

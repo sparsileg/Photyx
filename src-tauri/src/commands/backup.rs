@@ -1,6 +1,6 @@
-use std::sync::Arc;
 // commands/backup.rs — Database backup and restore Tauri command handlers
 
+use std::sync::Arc;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use tauri::State;
@@ -20,9 +20,9 @@ pub fn backup_database(state: State<Arc<PhotoxState>>) -> Result<String, String>
         match dir {
             Some(d) if !d.is_empty() => PathBuf::from(d),
             _ => dirs_next::data_dir()
-                    .unwrap_or_else(|| PathBuf::from("."))
-                    .join("Photyx")
-                    .join("backups"),
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("Photyx")
+                .join("backups"),
         }
     };
 
@@ -55,9 +55,9 @@ pub fn backup_database(state: State<Arc<PhotoxState>>) -> Result<String, String>
         let rows: Vec<(String, String)> = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
         rows
     };
 

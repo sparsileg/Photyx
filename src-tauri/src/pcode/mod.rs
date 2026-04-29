@@ -80,7 +80,7 @@ fn parse_blocks(lines: &[(usize, PcodeLine)]) -> Result<Vec<Block>, String> {
                         PcodeLine::If { .. } => {
                             depth += 1;
                             if in_else { &mut else_lines } else { &mut then_lines }
-                                .push((ln, pl.clone()));
+                            .push((ln, pl.clone()));
                             i += 1;
                         }
                         PcodeLine::Else if depth == 1 => {
@@ -91,12 +91,12 @@ fn parse_blocks(lines: &[(usize, PcodeLine)]) -> Result<Vec<Block>, String> {
                             depth -= 1;
                             if depth == 0 { i += 1; break; }
                             if in_else { &mut else_lines } else { &mut then_lines }
-                                .push((ln, pl.clone()));
+                            .push((ln, pl.clone()));
                             i += 1;
                         }
                         _ => {
                             if in_else { &mut else_lines } else { &mut then_lines }
-                                .push((ln, pl.clone()));
+                            .push((ln, pl.clone()));
                             i += 1;
                         }
                     }
@@ -465,11 +465,11 @@ fn execute_line(
                         message:    msg,
                         data,
                         trace_line: Some(format!("{} {}",
-                            command,
-                            resolved_args.iter()
-                                .map(|(k, v)| format!("{}={}", k, v))
-                                .collect::<Vec<_>>()
-                                .join(" ")
+                                                 command,
+                                                 resolved_args.iter()
+                                                 .map(|(k, v)| format!("{}={}", k, v))
+                                                 .collect::<Vec<_>>()
+                                                 .join(" ")
                         )),
                     });
                 }

@@ -36,13 +36,13 @@ impl PhotonPlugin for GetHistogram {
             vec![
                 format!("File:     {}", filename),
                 format!("Median R/G/B: {:.0}/{:.0}/{:.0}",
-                    stats.median * 65535.0,
-                    stats.median_g.unwrap_or(0.0) * 65535.0,
-                    stats.median_b.unwrap_or(0.0) * 65535.0),
+                        stats.median * 65535.0,
+                        stats.median_g.unwrap_or(0.0) * 65535.0,
+                        stats.median_b.unwrap_or(0.0) * 65535.0),
                 format!("Std Dev R/G/B: {:.0}/{:.0}/{:.0}",
-                    stats.std_dev * 65535.0,
-                    stats.std_dev_g.unwrap_or(0.0) * 65535.0,
-                    stats.std_dev_b.unwrap_or(0.0) * 65535.0),
+                        stats.std_dev * 65535.0,
+                        stats.std_dev_g.unwrap_or(0.0) * 65535.0,
+                        stats.std_dev_b.unwrap_or(0.0) * 65535.0),
                 format!("Clipping: {:.3}%", stats.clipping_pct),
             ]
         } else {
