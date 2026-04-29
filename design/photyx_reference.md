@@ -25,6 +25,7 @@ All pcode commands in the initial release. Arguments in brackets are optional.
 | ComputeEccentricity | Analysis        | Calculates eccentricity for detected stars on current frame                                                                                                                                         | —                                                      |
 | ComputeFWHM         | Analysis        | Calculates FWHM for detected stars; displays per-star circle annotations on viewer overlay                                                                                                          | —                                                      |
 | ContourHeatmap      | Analysis        | Generates spatial FWHM heatmap for current frame; writes XISF to active directory; stores output path in `$NEW_FILE`                                                                                | [palette], [contour_levels], [threshold], [saturation] |
+| CopyFile            | File Management | Copies a file to a destination directory; defaults to current frame if source= not specified; destination created automatically; stores path in `$NEW_FILE`                                         | [source], destination                                  |
 | CopyKeyword         | Keyword         | Copies a keyword value to a new keyword name                                                                                                                                                        | from, to                                               |
 | CountFiles          | Scripting       | Stores number of files in current list in `$filecount`                                                                                                                                              | —                                                      |
 | CountStars          | Analysis        | Counts detected stars in current frame                                                                                                                                                              | —                                                      |
@@ -117,13 +118,12 @@ Macros declare runtime parameters using `@param` comment lines at the top of the
 @param NAME "Description" required|optional [default="value"]
 ```
 
-| Field | Description |
-| ----- | ----------- |
-| `NAME` | Token name; used as `$NAME` inside the script |
-| `"Description"` | Label shown in the parameter prompt dialog |
-| `required\|optional` | Whether the user must supply a value |
-| `default="value"` | Default value for optional params; used if user leaves blank |
-
+| Field                | Description                                                  |
+| -------------------- | ------------------------------------------------------------ |
+| `NAME`               | Token name; used as `$NAME` inside the script                |
+| `"Description"`      | Label shown in the parameter prompt dialog                   |
+| `required\|optional` | Whether the user must supply a value                         |
+| `default="value"`    | Default value for optional params; used if user leaves blank |
 
 **At run time:**
 
@@ -434,6 +434,7 @@ All plugins are Built-in Native in the initial release. WASM user plugins are su
 | ComputeEccentricity | Analysis        | ✅ Complete |
 | ComputeFWHM         | Analysis        | ✅ Complete |
 | ContourHeatmap      | Analysis        | ✅ Complete |
+| CopyFile            | File Management |            |
 | CopyKeyword         | Keyword         | ✅ Complete |
 | CountFiles          | Scripting       | ✅ Complete |
 | CountStars          | Analysis        | ✅ Complete |

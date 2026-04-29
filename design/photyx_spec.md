@@ -137,7 +137,16 @@ The console header Trace / No Trace toggle controls execution verbosity. Trace s
 
 ### 7.5 Macro Library
 
-Macros are stored in the SQLite database (`photyx.db`) rather than as files on disk. This gives cross-platform consistency and enables version history. The Macro Library panel lists all macros; the Macro Editor creates and edits them. Every save of an existing macro preserves the previous version in `macro_versions` for recovery.
+Macros are stored in the SQLite database (`photyx.db`) rather than as files
+on disk. This gives cross-platform consistency and enables version
+history. The Macro Library panel lists all macros; the Macro Editor creates
+and edits them. Every save of an existing macro preserves the previous
+version in `macro_versions` for recovery. **This is implemented as of Phase
+9 sub-phase D.** No `.phs` files are written or read during normal
+operation.
+
+We store text versions of the macros in the backup of the Photyx database
+so they be more easily recovered if necessary.
 
 Three-tier command model:
 
@@ -289,13 +298,30 @@ Modal overlay (Tools > Log Viewer). Left panel: log file list sorted newest firs
 
 ## 9. Settings & Persistence
 
-Settings are stored via `tauri-plugin-store` in the OS app data directory (Phase 9). See `photyx_reference.md` §5 for all settings tables.
+Settings are stored in the embedded SQLite database (`photyx.db`) in the OS
+app data directory (`APPDATA/Photyx/` on Windows). See
+`photyx_reference.md` §5 for all settings tables. Note: earlier versions of
+this spec referenced `tauri-plugin-store` — that approach was superseded by
+the SQLite implementation in Phase 9.
 
-Key items currently lost on restart (to be fixed in Phase 9): active theme (localStorage), last used directory, Quick Launch assignments (localStorage), AutoStretch enabled state.
+Key items currently lost on restart (to be fixed in Phase 9): active theme
+(localStorage), last used directory, Quick Launch assignments
+(localStorage), AutoStretch enabled state.
 
-**Rig profiles:** Named threshold sets for AnalyzeFrames. Multiple profiles; active profile shown in status bar. See `photyx_reference.md` §5.6 for defaults.
+**Rig profiles:** Named threshold sets for AnalyzeFrames. Multiple
+profiles; active profile shown in status bar. See `photyx_reference.md`
+§5.6 for defaults.
 
-**Crash recovery:** Session recovery file written every 60 seconds. On next launch after crash, Photyx offers to restore the previous session.
+**Crash recovery:** Session recovery file written every 60 seconds. On next
+launch after crash, Photyx offers to restore the previous session.
+
+**Database backup:** Manual backup is triggered from the Tools menu. The
+backup is a timestamped ZIP archive (`photyx_backup_YYYYMMDD_HHMMSS.zip`)
+written to `APPDATA/Photyx/backups/`. The archive contains two items: the
+raw `photyx.db` file, and a `macros/` subfolder containing each macro
+exported as a plain-text `.phs` file for human-readable recovery. Automatic
+scheduled backup is deferred.
+
 
 ---
 
@@ -345,9 +371,9 @@ Local HTTP REST server via Axum. Bound to localhost only by default; port 7171. 
 | Phase 6     | ✅ Complete               | UI audit and cleanup                                                                                                                                  |
 | Phase 7     | ✅ Complete               | AnalyzeFrames (7 metrics), PXFLAG, Analysis Graph, star annotations, consolePipe, blink overlay                                                       |
 | Phase 8     | ✅ Substantially complete | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                            |
-| **Phase 9** | ⬜ Next                   | Embedded SQLite, settings persistence, rig profiles, crash recovery, update mechanism, file associations                                              |
-| Phase 10    | ⬜ Planned                | Dynamic macro parameters at runtime, UI audit                                                                                                         |
-| Deferred    | ⏸                        | PNG/JPEG readers/writers, debayering, async dispatch, REST API, WASM analysis plugins, User plugin loading, plugin manifest system, Plugin Manager UI |
+| **Phase 9** | 🔄 In Progress | Embedded SQLite (✅), Quick Launch persistence (✅), session history (✅), crash recovery (✅), macros migrated to SQLite (✅); remaining: analysis results persistence, threshold profiles UI, console history persistence, status bar profile indicator, settings persistence |
+| Phase 10 | ⬜ Planned |  UI audit |
+| Deferred    | ⏸                        | PNG/JPEG readers/writers, debayering, async dispatch, REST API, WASM analysis plugins, User plugin loading, plugin manifest system, Plugin Manager UI, User plugin loading, plugin manifest system, plugin directory, |
 
 ---
 
