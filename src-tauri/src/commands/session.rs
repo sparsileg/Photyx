@@ -1,3 +1,4 @@
+use std::sync::Arc;
 // commands/session.rs — Session state and crash recovery Tauri command handlers
 
 use tauri::{Manager, State};
@@ -5,7 +6,7 @@ use crate::PhotoxState;
 use crate::db;
 
 #[tauri::command]
-pub fn get_session(state: State<PhotoxState>) -> serde_json::Value {
+pub fn get_session(state: State<Arc<PhotoxState>>) -> serde_json::Value {
     let ctx = state.context.lock().expect("context lock poisoned");
     serde_json::json!({
         "activeDirectory": ctx.active_directory,
@@ -15,7 +16,7 @@ pub fn get_session(state: State<PhotoxState>) -> serde_json::Value {
 }
 
 #[tauri::command]
-pub fn get_variable(name: String, state: State<PhotoxState>) -> Option<String> {
+pub fn get_variable(name: String, state: State<Arc<PhotoxState>>) -> Option<String> {
     let ctx = state.context.lock().expect("context lock poisoned");
     ctx.variables.get(&name.to_uppercase())
         .or_else(|| ctx.variables.get(&name))
@@ -23,7 +24,7 @@ pub fn get_variable(name: String, state: State<PhotoxState>) -> Option<String> {
 }
 
 #[tauri::command]
-pub fn debug_buffer_info(state: State<PhotoxState>) -> serde_json::Value {
+pub fn debug_buffer_info(state: State<Arc<PhotoxState>>) -> serde_json::Value {
     let ctx = state.context.lock().expect("context lock poisoned");
     let path = ctx.file_list.get(ctx.current_frame).cloned();
     let buffer_info = path.as_ref().and_then(|p| ctx.image_buffers.get(p)).map(|b| {
@@ -54,7 +55,7 @@ pub fn debug_buffer_info(state: State<PhotoxState>) -> serde_json::Value {
 pub fn open_session(
     directory: String,
     file_count: usize,
-    state: State<PhotoxState>,
+    state: State<Arc<PhotoxState>>,
 ) -> Result<i64, String> {
     let db  = state.db.lock().expect("db lock poisoned");
     let now = db::now_unix();
@@ -69,7 +70,7 @@ pub fn open_session(
 }
 
 #[tauri::command]
-pub fn close_session(state: State<PhotoxState>) -> Result<(), String> {
+pub fn close_session(state: State<Arc<PhotoxState>>) -> Result<(), String> {
     let db  = state.db.lock().expect("db lock poisoned");
     let now = db::now_unix();
     db.execute(
@@ -107,12 +108,12 @@ pub fn do_write_crash_recovery(state: &PhotoxState) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn write_crash_recovery(state: State<PhotoxState>) -> Result<(), String> {
+pub fn write_crash_recovery(state: State<Arc<PhotoxState>>) -> Result<(), String> {
     do_write_crash_recovery(&state)
 }
 
 #[tauri::command]
-pub fn check_crash_recovery(state: State<PhotoxState>) -> Result<Option<serde_json::Value>, String> {
+pub fn check_crash_recovery(state: State<Arc<PhotoxState>>) -> Result<Option<serde_json::Value>, String> {
     let db = state.db.lock().expect("db lock poisoned");
 
     let open_session_id: Option<i64> = db.query_row(
@@ -148,7 +149,7 @@ pub fn start_crash_recovery_timer(app: &tauri::App) -> Result<(), Box<dyn std::e
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(std::time::Duration::from_secs(60));
-            let state = app_handle.state::<PhotoxState>();
+            let state = app_handle.state::<Arc<PhotoxState>>();
             let has_session = {
                 let ctx = state.context.lock().expect("context lock poisoned");
                 ctx.current_session_id.is_some()
@@ -166,7 +167,7 @@ pub fn start_crash_recovery_timer(app: &tauri::App) -> Result<(), Box<dyn std::e
 }
 
 #[tauri::command]
-pub fn get_keywords(state: State<PhotoxState>) -> serde_json::Value {
+pub fn get_keywords(state: State<Arc<PhotoxState>>) -> serde_json::Value {
     let ctx = state.context.lock().expect("context lock poisoned");
     let path = match ctx.file_list.get(ctx.current_frame) {
         Some(p) => p,

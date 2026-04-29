@@ -1,3 +1,4 @@
+use std::sync::Arc;
 // commands/backup.rs — Database backup and restore Tauri command handlers
 
 use std::io::{Read, Write};
@@ -7,7 +8,7 @@ use crate::PhotoxState;
 use crate::db;
 
 #[tauri::command]
-pub fn backup_database(state: State<PhotoxState>) -> Result<String, String> {
+pub fn backup_database(state: State<Arc<PhotoxState>>) -> Result<String, String> {
     // Get backup directory from preferences, fall back to default
     let backup_dir: PathBuf = {
         let db = state.db.lock().expect("db lock poisoned");
@@ -127,7 +128,7 @@ pub fn backup_database(state: State<PhotoxState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn restore_database(backup_path: String, state: State<PhotoxState>) -> Result<(), String> {
+pub fn restore_database(backup_path: String, state: State<Arc<PhotoxState>>) -> Result<(), String> {
     let src = PathBuf::from(&backup_path);
     if !src.exists() {
         return Err(format!("Backup file not found: {}", backup_path));

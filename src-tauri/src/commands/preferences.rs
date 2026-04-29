@@ -1,3 +1,4 @@
+use std::sync::Arc;
 // commands/preferences.rs — Preferences and Quick Launch Tauri command handlers
 
 use tauri::State;
@@ -5,7 +6,7 @@ use crate::PhotoxState;
 use crate::db;
 
 #[tauri::command]
-pub fn get_all_preferences(state: State<PhotoxState>) -> Result<std::collections::HashMap<String, String>, String> {
+pub fn get_all_preferences(state: State<Arc<PhotoxState>>) -> Result<std::collections::HashMap<String, String>, String> {
     let db = state.db.lock().expect("db lock poisoned");
     let mut stmt = db.prepare("SELECT key, value FROM preferences")
         .map_err(|e| e.to_string())?;
@@ -19,7 +20,7 @@ pub fn get_all_preferences(state: State<PhotoxState>) -> Result<std::collections
 }
 
 #[tauri::command]
-pub fn set_preference(key: String, value: String, state: State<PhotoxState>) -> Result<(), String> {
+pub fn set_preference(key: String, value: String, state: State<Arc<PhotoxState>>) -> Result<(), String> {
     let db = state.db.lock().expect("db lock poisoned");
     db.execute(
         "INSERT INTO preferences (key, value, updated_at)
@@ -31,7 +32,7 @@ pub fn set_preference(key: String, value: String, state: State<PhotoxState>) -> 
 }
 
 #[tauri::command]
-pub fn get_quick_launch_buttons(state: State<PhotoxState>) -> Result<Vec<serde_json::Value>, String> {
+pub fn get_quick_launch_buttons(state: State<Arc<PhotoxState>>) -> Result<Vec<serde_json::Value>, String> {
     let db = state.db.lock().expect("db lock poisoned");
     let mut stmt = db.prepare(
         "SELECT id, position, label, script FROM quick_launch_buttons ORDER BY position"
@@ -53,7 +54,7 @@ pub fn get_quick_launch_buttons(state: State<PhotoxState>) -> Result<Vec<serde_j
 #[tauri::command]
 pub fn save_quick_launch_buttons(
     buttons: Vec<serde_json::Value>,
-    state: State<PhotoxState>,
+    state: State<Arc<PhotoxState>>,
 ) -> Result<(), String> {
     let db = state.db.lock().expect("db lock poisoned");
     db.execute("DELETE FROM quick_launch_buttons", [])
@@ -72,7 +73,7 @@ pub fn save_quick_launch_buttons(
 }
 
 #[tauri::command]
-pub fn get_recent_directories(state: State<PhotoxState>) -> Result<Vec<String>, String> {
+pub fn get_recent_directories(state: State<Arc<PhotoxState>>) -> Result<Vec<String>, String> {
     let db = state.db.lock().expect("db lock poisoned");
     let max: i64 = db.query_row(
         "SELECT CAST(value AS INTEGER) FROM preferences WHERE key = 'recent_directories_max'",
@@ -90,7 +91,7 @@ pub fn get_recent_directories(state: State<PhotoxState>) -> Result<Vec<String>, 
 }
 
 #[tauri::command]
-pub fn record_directory_visit(path: String, state: State<PhotoxState>) -> Result<(), String> {
+pub fn record_directory_visit(path: String, state: State<Arc<PhotoxState>>) -> Result<(), String> {
     let db = state.db.lock().expect("db lock poisoned");
     let now = db::now_unix();
     db.execute(

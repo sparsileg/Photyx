@@ -1,3 +1,4 @@
+use std::sync::Arc;
 // commands/macros.rs — Macro database Tauri command handlers
 
 use rusqlite::params;
@@ -46,7 +47,7 @@ pub fn derive_name(display_name: &str) -> String {
 
 /// Returns all macros ordered by display_name (case-insensitive).
 #[tauri::command]
-pub fn get_macros(state: State<PhotoxState>) -> Result<Vec<MacroRow>, String> {
+pub fn get_macros(state: State<Arc<PhotoxState>>) -> Result<Vec<MacroRow>, String> {
     let db = state.db.lock().expect("db lock poisoned");
     let mut stmt = db
         .prepare(
@@ -83,7 +84,7 @@ pub fn get_macros(state: State<PhotoxState>) -> Result<Vec<MacroRow>, String> {
 /// Returns the macro id.
 #[tauri::command]
 pub fn save_macro(
-    state:        State<PhotoxState>,
+    state:        State<Arc<PhotoxState>>,
     name:         String,
     display_name: String,
     script:       String,
@@ -130,7 +131,7 @@ pub fn save_macro(
 
 /// Deletes a macro by id. ON DELETE CASCADE removes version history automatically.
 #[tauri::command]
-pub fn delete_macro(state: State<PhotoxState>, id: i64) -> Result<(), String> {
+pub fn delete_macro(state: State<Arc<PhotoxState>>, id: i64) -> Result<(), String> {
     let db = state.db.lock().expect("db lock poisoned");
     db.execute("DELETE FROM macros WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
@@ -141,7 +142,7 @@ pub fn delete_macro(state: State<PhotoxState>, id: i64) -> Result<(), String> {
 /// Returns the new derived name so the frontend can update its state.
 #[tauri::command]
 pub fn rename_macro(
-    state:            State<PhotoxState>,
+    state:            State<Arc<PhotoxState>>,
     id:               i64,
     new_display_name: String,
 ) -> Result<String, String> {
@@ -165,7 +166,7 @@ pub fn rename_macro(
 /// Returns version history for a macro, newest first.
 #[tauri::command]
 pub fn get_macro_versions(
-    state:    State<PhotoxState>,
+    state:    State<Arc<PhotoxState>>,
     macro_id: i64,
 ) -> Result<Vec<MacroVersionRow>, String> {
     let db = state.db.lock().expect("db lock poisoned");
@@ -198,7 +199,7 @@ pub fn get_macro_versions(
 /// Saves the current script to macro_versions before overwriting.
 #[tauri::command]
 pub fn restore_macro_version(
-    state:      State<PhotoxState>,
+    state:      State<Arc<PhotoxState>>,
     version_id: i64,
 ) -> Result<(), String> {
     let db  = state.db.lock().expect("db lock poisoned");
@@ -239,7 +240,7 @@ pub fn restore_macro_version(
 /// Increments run_count and updates last_run_at for a macro.
 /// Called after a successful RunMacro execution.
 #[tauri::command]
-pub fn increment_macro_run_count(state: State<PhotoxState>, id: i64) -> Result<(), String> {
+pub fn increment_macro_run_count(state: State<Arc<PhotoxState>>, id: i64) -> Result<(), String> {
     let db  = state.db.lock().expect("db lock poisoned");
     let now = db::now_unix();
     db.execute(

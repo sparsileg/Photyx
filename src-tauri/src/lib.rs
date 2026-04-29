@@ -54,12 +54,19 @@ pub struct DispatchResponse {
 }
 
 #[tauri::command]
-fn dispatch_command(
+async fn dispatch_command(
     request: DispatchRequest,
-    state:   State<PhotoxState>,
-) -> DispatchResponse {
-    let mut ctx = state.context.lock().expect("context lock poisoned");
-    match state.registry.dispatch(&mut ctx, &request.command, &request.args) {
+    state:   State<'_, Arc<PhotoxState>>,
+) -> Result<DispatchResponse, String> {
+    let state: Arc<PhotoxState> = Arc::clone(&state);
+    let command = request.command.clone();
+    let args = request.args.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        tracing::info!("spawn_blocking: starting {}", command);
+        let mut ctx = state.context.lock().expect("context lock poisoned");
+        state.registry.dispatch(&mut ctx, &command, &args)
+    }).await.map_err(|e| format!("spawn_blocking panicked: {:?}", e))?;
+    match result {
         Ok(output) => {
             let (msg, data) = match output {
                 PluginOutput::Success        => (None, None),
@@ -76,10 +83,10 @@ fn dispatch_command(
                     Some(d),
                 ),
             };
-            DispatchResponse { success: true, output: msg, error: None, data }
+            Ok(DispatchResponse { success: true, output: msg, error: None, data })
         }
         Err(e) => {
-            DispatchResponse { success: false, output: None, error: Some(e.message), data: None }
+            Ok(DispatchResponse { success: false, output: None, error: Some(e.message), data: None })
         }
     }
 }
@@ -122,7 +129,7 @@ const DISPLAY_COMMANDS: &[&str] = &[
 ];
 
 #[tauri::command]
-fn run_script(script: String, state: State<PhotoxState>) -> ScriptResponse {
+fn run_script(script: String, state: State<Arc<PhotoxState>>) -> ScriptResponse {
     let mut ctx = state.context.lock().expect("context lock poisoned");
     let results = pcode::execute_script(&script, &mut ctx, &state.registry, true);
 
@@ -154,7 +161,7 @@ fn run_script(script: String, state: State<PhotoxState>) -> ScriptResponse {
 // ── Tauri command: list registered plugins ────────────────────────────────────
 
 #[tauri::command]
-fn list_plugins(state: State<PhotoxState>) -> Vec<serde_json::Value> {
+fn list_plugins(state: State<Arc<PhotoxState>>) -> Vec<serde_json::Value> {
     state.registry.list_with_details()
 }
 
@@ -218,11 +225,11 @@ pub fn run() {
     let global_db_conn = db::open_db(app_data_dir).expect("Failed to open global DB connection");
     let _ = GLOBAL_DB.set(Mutex::new(global_db_conn));
 
-    let state = PhotoxState {
+    let state = Arc::new(PhotoxState {
         registry,
         context: Mutex::new(AppContext::new()),
         db:      Mutex::new(db_conn),
-    };
+    });
 
     tauri::Builder::default()
         .setup(|app| { start_crash_recovery_timer(app) })

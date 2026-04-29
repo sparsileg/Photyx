@@ -1,10 +1,11 @@
+use std::sync::Arc;
 // commands/display.rs — Image display and pixel data Tauri command handlers
 
 use tauri::{Manager, State};
 use crate::PhotoxState;
 
 #[tauri::command]
-pub fn get_current_frame(state: State<PhotoxState>) -> Result<String, String> {
+pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {
     let ctx = state.context.lock().expect("context lock poisoned");
 
     let path = ctx.file_list.get(ctx.current_frame)
@@ -193,7 +194,7 @@ pub fn get_current_frame(state: State<PhotoxState>) -> Result<String, String> {
 pub fn get_autostretch_frame(
     shadow_clip: Option<f32>,
     target_background: Option<f32>,
-    state: State<PhotoxState>,
+    state: State<Arc<PhotoxState>>,
 ) -> Result<String, String> {
     use crate::plugins::auto_stretch::compute_autostretch_jpeg;
     let ctx = state.context.lock().expect("context lock poisoned");
@@ -211,7 +212,7 @@ pub fn get_autostretch_frame(
 pub fn get_blink_frame(
     index: usize,
     resolution: String,
-    state: State<PhotoxState>,
+    state: State<Arc<PhotoxState>>,
 ) -> Result<String, String> {
     let ctx = state.context.lock().expect("context lock poisoned");
 
@@ -229,7 +230,7 @@ pub fn get_blink_frame(
 }
 
 #[tauri::command]
-pub fn get_blink_cache_status(state: State<PhotoxState>) -> String {
+pub fn get_blink_cache_status(state: State<Arc<PhotoxState>>) -> String {
     let ctx = state.context.lock().expect("context lock poisoned");
     match ctx.blink_cache_status {
         crate::context::BlinkCacheStatus::Idle     => "idle".to_string(),
@@ -240,7 +241,7 @@ pub fn get_blink_cache_status(state: State<PhotoxState>) -> String {
 
 #[tauri::command]
 pub fn start_background_cache(
-    state: State<PhotoxState>,
+    state: State<Arc<PhotoxState>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     {
@@ -252,7 +253,7 @@ pub fn start_background_cache(
     let app = app.clone();
     let num_threads = (num_cpus::get()).saturating_sub(1).max(1);
     tauri::async_runtime::spawn(async move {
-        let state_arc = app.state::<PhotoxState>();
+        let state_arc = app.state::<Arc<PhotoxState>>();
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(num_threads)
             .build()
@@ -454,7 +455,7 @@ pub fn start_background_cache(
 }
 
 #[tauri::command]
-pub fn get_pixel(x: u32, y: u32, state: State<PhotoxState>) -> Result<serde_json::Value, String> {
+pub fn get_pixel(x: u32, y: u32, state: State<Arc<PhotoxState>>) -> Result<serde_json::Value, String> {
     let ctx = state.context.lock().expect("context lock poisoned");
 
     let path = ctx.file_list.get(ctx.current_frame)
@@ -533,7 +534,7 @@ pub fn get_pixel(x: u32, y: u32, state: State<PhotoxState>) -> Result<serde_json
 }
 
 #[tauri::command]
-pub fn get_full_frame(state: State<PhotoxState>) -> Result<String, String> {
+pub fn get_full_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {
     let path = {
         let ctx = state.context.lock().expect("context lock poisoned");
         ctx.file_list.get(ctx.current_frame)
@@ -649,7 +650,7 @@ pub fn get_full_frame(state: State<PhotoxState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn get_histogram(state: State<PhotoxState>) -> Result<serde_json::Value, String> {
+pub fn get_histogram(state: State<Arc<PhotoxState>>) -> Result<serde_json::Value, String> {
     let ctx = state.context.lock().expect("context lock poisoned");
 
     let path = ctx.file_list.get(ctx.current_frame)
@@ -680,7 +681,7 @@ pub fn get_histogram(state: State<PhotoxState>) -> Result<serde_json::Value, Str
 }
 
 #[tauri::command]
-pub fn load_file(path: String, state: State<PhotoxState>) -> Result<String, String> {
+pub fn load_file(path: String, state: State<Arc<PhotoxState>>) -> Result<String, String> {
     use crate::plugins::image_reader::read_image_file;
     use crate::context::PixelData;
 

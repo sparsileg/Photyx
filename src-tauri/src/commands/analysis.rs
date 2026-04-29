@@ -1,10 +1,11 @@
+use std::sync::Arc;
 // commands/analysis.rs — Analysis and quality metrics Tauri command handlers
 
 use tauri::State;
 use crate::PhotoxState;
 
 #[tauri::command]
-pub fn get_analysis_results(state: State<PhotoxState>) -> serde_json::Value {
+pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value {
     let ctx = state.context.lock().expect("context lock poisoned");
 
     let frames: Vec<serde_json::Value> = ctx.file_list.iter().enumerate().map(|(i, path)| {
@@ -82,7 +83,7 @@ pub fn extract_frame_label(filename: &str) -> String {
 }
 
 #[tauri::command]
-pub fn get_frame_flags(state: State<PhotoxState>) -> Vec<String> {
+pub fn get_frame_flags(state: State<Arc<PhotoxState>>) -> Vec<String> {
     let ctx = state.context.lock().expect("context lock poisoned");
     ctx.file_list.iter().map(|path| {
         if let Some(result) = ctx.analysis_results.get(path) {
@@ -100,7 +101,7 @@ pub fn get_frame_flags(state: State<PhotoxState>) -> Vec<String> {
 }
 
 #[tauri::command]
-pub fn get_star_positions(state: State<PhotoxState>) -> serde_json::Value {
+pub fn get_star_positions(state: State<Arc<PhotoxState>>) -> serde_json::Value {
     use crate::analysis::{self, stars::detect_stars, fwhm::star_fwhm, StarDetectionConfig};
 
     let ctx = state.context.lock().expect("context lock poisoned");

@@ -1,10 +1,11 @@
+use std::sync::Arc;
 // commands/logging.rs — Log file Tauri command handlers
 
 use tauri::State;
 use crate::PhotoxState;
 
 #[tauri::command]
-pub fn list_log_files(state: State<PhotoxState>) -> Result<Vec<serde_json::Value>, String> {
+pub fn list_log_files(state: State<Arc<PhotoxState>>) -> Result<Vec<serde_json::Value>, String> {
     let log_dir = {
         let ctx = state.context.lock().expect("context lock poisoned");
         ctx.log_dir.clone()
