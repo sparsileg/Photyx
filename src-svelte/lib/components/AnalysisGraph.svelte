@@ -4,6 +4,7 @@
     import { invoke } from '@tauri-apps/api/core';
     import { ui } from '../stores/ui';
     import { displayFrame } from '../commands';
+    import Dropdown from './Dropdown.svelte';
 
     // ── Data types ────────────────────────────────────────────────────────────
     interface FrameData {
@@ -484,19 +485,17 @@
         <span id="ag-title">Analysis Graph</span>
 
         <label class="ag-label">Metric 1</label>
-        <select class="ag-select ag-m1" bind:value={metric1}>
-            {#each METRICS as m}
-                <option value={m.key}>{m.label}</option>
-            {/each}
-        </select>
-
+        <Dropdown
+            className="ag-m1"
+            bind:value={metric1}
+            options={METRICS.map(m => ({ value: m.key, label: m.label }))}
+        />
         <label class="ag-label">Metric 2</label>
-        <select class="ag-select ag-m2" bind:value={metric2}>
-            <option value="none">None</option>
-            {#each METRICS as m}
-                <option value={m.key}>{m.label}</option>
-            {/each}
-        </select>
+        <Dropdown
+            className="ag-m2"
+            bind:value={metric2}
+            options={[{ value: 'none', label: 'None' }, ...METRICS.map(m => ({ value: m.key, label: m.label }))]}
+        />
 
         <button class="ag-btn" onclick={loadData}>↻ Refresh</button>
         <button class="ag-btn ag-close" onclick={() => ui.showView(null)}>✕ Close</button>
