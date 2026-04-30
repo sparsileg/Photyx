@@ -59,9 +59,13 @@ impl PhotonPlugin for RunMacro {
         let errors: Vec<_> = results.iter().filter(|r| !r.success).collect();
         let lines_run = results.len();
 
-        // Collect any client commands that fired during the macro so the
-        // frontend can execute them after run_script returns.
-        let client_commands: Vec<String> = results.iter()
+        // Collect client actions from inner results so the frontend can
+        // execute them after run_script returns. Merges both the new
+        // client_actions field and the legacy client_command data field.
+        let mut client_actions: Vec<String> = results.iter()
+            .flat_map(|r| r.client_actions.iter().cloned())
+            .collect();
+        let legacy: Vec<String> = results.iter()
             .filter_map(|r| {
                 r.data.as_ref()
                     .and_then(|d| d.get("client_command"))
@@ -69,15 +73,17 @@ impl PhotonPlugin for RunMacro {
                     .map(|s| s.to_string())
             })
             .collect();
+        client_actions.extend(legacy);
 
         if errors.is_empty() {
             let msg = format!("Macro '{}' complete ({} commands)", name, lines_run);
-            if client_commands.is_empty() {
+            if client_actions.is_empty() {
                 Ok(PluginOutput::Message(msg))
             } else {
                 Ok(PluginOutput::Data(serde_json::json!({
-                    "message":         msg,
-                    "client_commands": client_commands,
+                    "message":        msg,
+                    "client_action":  client_actions.first(),
+                    "client_actions": client_actions,
                 })))
             }
         } else {

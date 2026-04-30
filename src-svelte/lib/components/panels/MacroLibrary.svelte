@@ -9,6 +9,7 @@
   import { pipeToConsole } from '../../stores/consoleHistory';
   import { invoke } from '@tauri-apps/api/core';
   import { handleClientCommand } from '../../clientCommands';
+  import { applyAutoStretch } from '../../commands';
 
   // ── State ────────────────────────────────────────────────────────────────
   let macros        = $state<MacroRow[]>([]);
@@ -144,8 +145,8 @@
         results: Array<{ line_number: number; command: string; success: boolean; message: string | null; data: Record<string, unknown> | null }>;
         session_changed: boolean;
         display_changed: boolean;
+        client_actions:  string[];
       }>('run_script', { script: `RunMacro name="${macro.name}"` });
-
       let anyError = false;
       for (const r of response.results) {
         if (!r.success) {
@@ -161,26 +162,28 @@
         notifications.success(`${macro.display_name} complete.`);
         await db.incrementMacroRunCount(macro.id);
       }
-
       // Execute any client-only commands returned from the script
       for (const r of response.results) {
         if (r.success && r.data?.client_command) {
           handleClientCommand(r.data.client_command as string);
         }
-        // RunMacro bubbles up client commands from the inner script
-        if (r.success && Array.isArray(r.data?.client_commands)) {
-          for (const cc of r.data.client_commands as string[]) {
-            handleClientCommand(cc);
-          }
-        }
       }
-
       if (response.session_changed) {
         const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
         session.setDirectory(s.activeDirectory ?? '');
         session.setFileList(s.fileList);
       }
-      if (response.display_changed) {
+      // Dispatch client actions returned by Rust — no command-name matching needed
+      let autoStretched = false;
+      for (const action of response.client_actions) {
+        if (action === 'refresh_autostretch') {
+          await applyAutoStretch();
+          autoStretched = true;
+        }
+        if (action === 'refresh_annotations') ui.refreshAnnotations();
+        if (action === 'open_keyword_modal')  ui.openKeywordModal();
+      }
+      if (response.display_changed && !autoStretched && !annotationsRefreshed) {
         ui.requestFrameRefresh();
       }
     } catch (e) {

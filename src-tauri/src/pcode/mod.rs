@@ -15,12 +15,13 @@ use tokenizer::{tokenize_line, PcodeLine};
 /// A single result from executing one pcode line.
 #[derive(Debug, Clone)]
 pub struct PcodeResult {
-    pub line_number: usize,
-    pub command:     String,
-    pub success:     bool,
-    pub message:     Option<String>,
-    pub data:        Option<serde_json::Value>,
-    pub trace_line:  Option<String>,
+    pub line_number:    usize,
+    pub command:        String,
+    pub success:        bool,
+    pub message:        Option<String>,
+    pub data:           Option<serde_json::Value>,
+    pub trace_line:     Option<String>,
+    pub client_actions: Vec<String>,
 }
 
 impl PcodeResult {
@@ -183,6 +184,7 @@ pub fn execute_script(
             message:     Some(e),
             data:        None,
             trace_line:  None,
+            client_actions: vec![],
         }],
     };
 
@@ -247,6 +249,7 @@ fn execute_blocks(
                             message:    Some(format!("For: cannot parse 'from' value '{}'", from_str)),
                             data:       None,
                             trace_line: None,
+            client_actions: vec![],
                         });
                         if halt_on_error { *halted = true; }
                         return;
@@ -262,6 +265,7 @@ fn execute_blocks(
                             message:    Some(format!("For: cannot parse 'to' value '{}'", to_str)),
                             data:       None,
                             trace_line: None,
+            client_actions: vec![],
                         });
                         if halt_on_error { *halted = true; }
                         return;
@@ -312,6 +316,7 @@ fn execute_line(
                         message:    Some(format!("Expression error: {}", e)),
                         data:       None,
                         trace_line: None,
+            client_actions: vec![],
                     });
                     if halt_on_error { *halted = true; }
                     return;
@@ -327,6 +332,7 @@ fn execute_line(
                 message:    Some(format!("{} = {}", name, resolved)),
                 data:       None,
                 trace_line: Some(format!("Set {} = {}", name, resolved)),
+            client_actions: vec![],
             });
         }
 
@@ -355,6 +361,7 @@ fn execute_line(
                     message:    None,
                     data:       Some(serde_json::json!({ "client_command": command.to_lowercase() })),
                     trace_line: Some(command.clone()),
+            client_actions: vec![],
                 });
                 return;
             }
@@ -371,6 +378,7 @@ fn execute_line(
                             message:    None,
                             data:       None,
                             trace_line: Some(format!("Assert {}", raw_expr)),
+            client_actions: vec![],
                         });
                     }
                     Ok(false) => {
@@ -381,6 +389,7 @@ fn execute_line(
                             message:    Some(format!("Assertion failed: {}", raw_expr)),
                             data:       None,
                             trace_line: None,
+            client_actions: vec![],
                         });
                         if halt_on_error { *halted = true; }
                     }
@@ -392,6 +401,7 @@ fn execute_line(
                             message:    Some(format!("Assert expression error: {}", e)),
                             data:       None,
                             trace_line: None,
+            client_actions: vec![],
                         });
                         if halt_on_error { *halted = true; }
                     }
@@ -410,6 +420,7 @@ fn execute_line(
                     message:    Some(evaluated),
                     data:       None,
                     trace_line: Some(format!("Print {}", raw_message)),
+            client_actions: vec![],
                 });
                 return;
             }
@@ -425,38 +436,43 @@ fn execute_line(
                     message:    Some(result.unwrap_or_else(|e| e)),
                     data:       None,
                     trace_line: None,
+            client_actions: vec![],
                 });
                 return;
             }
 
             match registry.dispatch(ctx, command, &resolved_args) {
-                Ok(output) => {
-                    // Sync any variables the plugin wrote to ctx.variables
-                    for (k, v) in &ctx.variables {
-                        variables.insert(k.clone(), v.clone());
-                    }
-                    let (msg, data) = match output {
-                        PluginOutput::Success      => (None, None),
-                        PluginOutput::Message(m)   => (Some(m), None),
-                        PluginOutput::Value(v)     => {
-                            if let Some(varname) = resolved_args.get("name")
-                                .or_else(|| resolved_args.get("varname"))
-                            {
-                                let key = varname.to_uppercase();
-                                variables.insert(key.clone(), v.clone());
-                                ctx.variables.insert(key, v.clone());
+                        Ok(output) => {
+                            // Sync any variables the plugin wrote to ctx.variables
+                            for (k, v) in &ctx.variables {
+                                variables.insert(k.clone(), v.clone());
                             }
-                            (Some(v), None)
-                        }
-                        PluginOutput::Values(vs)   => (Some(vs.join("\n")), None),
-                        PluginOutput::Data(d)       => {
-                            let msg = d.get("message")
-                                .and_then(|m| m.as_str())
-                                .unwrap_or("Done")
-                                .to_string();
-                            (Some(msg), Some(d))
-                        }
-                    };
+                            let (msg, data, plugin_actions) = match output {
+                                PluginOutput::Success      => (None, None, vec![]),
+                                PluginOutput::Message(m)   => (Some(m), None, vec![]),
+                                PluginOutput::Value(v)     => {
+                                    if let Some(varname) = resolved_args.get("name")
+                                        .or_else(|| resolved_args.get("varname"))
+                                    {
+                                        let key = varname.to_uppercase();
+                                        variables.insert(key.clone(), v.clone());
+                                        ctx.variables.insert(key, v.clone());
+                                    }
+                                    (Some(v), None, vec![])
+                                }
+                                PluginOutput::Values(vs)   => (Some(vs.join("\n")), None, vec![]),
+                                PluginOutput::Data(d)       => {
+                                    let msg = d.get("message")
+                                        .and_then(|m| m.as_str())
+                                        .unwrap_or("Done")
+                                        .to_string();
+                                    let actions: Vec<String> = d.get("client_action")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| vec![s.to_string()])
+                                        .unwrap_or_default();
+                                    (Some(msg), Some(d), actions)
+                                }
+                            };
                     info!("pcode line {}: {} -> OK", line_number, command);
                     results.push(PcodeResult {
                         line_number,
@@ -471,6 +487,7 @@ fn execute_line(
                                                  .collect::<Vec<_>>()
                                                  .join(" ")
                         )),
+                        client_actions: plugin_actions,
                     });
                 }
                 Err(e) => {
@@ -482,6 +499,7 @@ fn execute_line(
                         message:    Some(e.message.clone()),
                         data:       None,
                         trace_line: None,
+            client_actions: vec![],
                     });
                     if halt_on_error {
                         *halted = true;

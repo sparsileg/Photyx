@@ -207,6 +207,7 @@
         }>;
         session_changed: boolean;
         display_changed: boolean;
+        client_actions:  string[];
       }>('run_script', { script: trimmed });
 
       for (const result of response.results) {
@@ -236,6 +237,15 @@
           append(msg, 'error');
           notifications.error(msg);
         }
+      }
+      // Dispatch client actions returned by Rust — no command-name matching needed
+      for (const action of response.client_actions) {
+        if (action === 'refresh_autostretch') {
+          await applyAutoStretch();
+          ui.clearAnnotations();
+        }
+        if (action === 'refresh_annotations') ui.refreshAnnotations();
+        if (action === 'open_keyword_modal')  ui.openKeywordModal();
       }
     } catch (err) {
       const msg = `Invoke error: ${err}`;
@@ -296,11 +306,8 @@
       }
     }
 
-    if (cmd === 'autostretch') await applyAutoStretch();
     if (cmd === 'linearstretch' || cmd === 'histogramequalization') ui.requestFrameRefresh();
-    if (cmd === 'computefwhm') ui.refreshAnnotations();
     if (cmd === 'contourheatmap') {
-      if (output) notifications.success(output);
       const filePath = data?.output as string | null;
       if (filePath) await loadFile(filePath);
     }
@@ -308,7 +315,7 @@
       const filePath = data?.path as string | null;
       if (filePath) await loadFile(filePath);
     }
-    if (cmd === 'setframe' || cmd === 'autostretch') ui.clearAnnotations();
+    if (cmd === 'setframe') ui.clearAnnotations();
   }
 
   function submit() {

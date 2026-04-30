@@ -37,7 +37,10 @@ impl PhotonPlugin for ListKeywords {
             }
         }).collect();
 
-        Ok(PluginOutput::Values(lines))
+        Ok(PluginOutput::Data(serde_json::json!({
+            "message":       lines.join("\n"),
+            "client_action": "open_keyword_modal",
+        })))
     }
 }
 

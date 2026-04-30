@@ -29,40 +29,38 @@
 
   // ── Run entry ────────────────────────────────────────────────────────────
   async function runEntry(script: string) {
-    console.log('[QL] runEntry script:', script);
     try {
       const response = await invoke<{
         results: Array<{ line_number: number; command: string; success: boolean; message: string | null }>;
         session_changed: boolean;
         display_changed: boolean;
+        client_actions:  string[];
       }>('run_script', { script });
-
       let anyError = false;
-      let autoStretched = false;
       for (const r of response.results) {
         if (!r.success) {
           notifications.error(`${r.command}: ${r.message ?? 'error'}`);
           anyError = true;
-        } else {
-          if (r.message) {
-            r.message.split('\n').forEach(line => {
-              if (line) pipeToConsole(line, 'success');
-            });
-          }
-          const cmd = r.command.toLowerCase();
-          if (cmd === 'listkeywords')  ui.openKeywordModal();
-          if (cmd === 'computefwhm')   ui.refreshAnnotations();
-          if (cmd === 'autostretch') {
-            await applyAutoStretch();
-            autoStretched = true;
-          }
+        } else if (r.message) {
+          r.message.split('\n').forEach(line => {
+            if (line) pipeToConsole(line, 'success');
+          });
         }
       }
-      console.log('[QL] session_changed:', response.session_changed, 'display_changed:', response.display_changed);
       if (response.session_changed) {
         const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
         session.setDirectory(s.activeDirectory ?? '');
         session.setFileList(s.fileList);
+      }
+      // Dispatch client actions returned by Rust — no command-name matching needed
+      let autoStretched = false;
+      for (const action of response.client_actions) {
+        if (action === 'refresh_autostretch') {
+          await applyAutoStretch();
+          autoStretched = true;
+        }
+        if (action === 'refresh_annotations') ui.refreshAnnotations();
+        if (action === 'open_keyword_modal')  ui.openKeywordModal();
       }
       if (response.display_changed && !autoStretched) {
         ui.requestFrameRefresh();

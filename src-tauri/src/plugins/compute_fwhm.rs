@@ -136,6 +136,7 @@ impl PhotonPlugin for ComputeFWHM {
             data["plate_scale"]   = json!(plate_scale);
         }
 
+        data["client_action"] = serde_json::json!("refresh_annotations");
         Ok(PluginOutput::Data(data))
     }
 }

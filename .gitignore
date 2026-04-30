@@ -31,3 +31,6 @@ Thumbs.db
 
 # Undo-tree persistent undo files
 .*~undo-tree~
+
+# emacs temp files
+\#*\#

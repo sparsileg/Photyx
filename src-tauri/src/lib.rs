@@ -98,16 +98,18 @@ pub struct ScriptResponse {
     pub results:         Vec<ScriptResult>,
     pub session_changed: bool,
     pub display_changed: bool,
+    pub client_actions:  Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ScriptResult {
-    pub line_number: usize,
-    pub command:     String,
-    pub success:     bool,
-    pub message:     Option<String>,
-    pub data:        Option<serde_json::Value>,
-    pub trace_line:  Option<String>,
+    pub line_number:    usize,
+    pub command:        String,
+    pub success:        bool,
+    pub message:        Option<String>,
+    pub data:           Option<serde_json::Value>,
+    pub trace_line:     Option<String>,
+    pub client_actions: Vec<String>,
 }
 
 // Commands that modify the session file list or active directory.
@@ -125,7 +127,7 @@ const SESSION_COMMANDS: &[&str] = &[
 // belongs here. File I/O and session commands do not belong here unless they
 // also change what is rendered in the viewer.
 const DISPLAY_COMMANDS: &[&str] = &[
-    "autostretch", "linearstretch", "histogramequalization", "runmacro",
+    "autostretch", "linearstretch", "histogramequalization",
 ];
 
 #[tauri::command]
@@ -144,17 +146,24 @@ fn run_script(script: String, state: State<Arc<PhotoxState>>) -> ScriptResponse 
         }
     }
 
+    let client_actions: Vec<String> = results.iter()
+        .filter(|r| r.success)
+        .flat_map(|r| r.client_actions.iter().cloned())
+        .collect();
+
     ScriptResponse {
         results: results.iter().map(|r| ScriptResult {
-            line_number: r.line_number,
-            command:     r.command.clone(),
-            success:     r.success,
-            message:     r.message.clone(),
-            data:        r.data.clone(),
-            trace_line:  r.trace_line.clone(),
+            line_number:    r.line_number,
+            command:        r.command.clone(),
+            success:        r.success,
+            message:        r.message.clone(),
+            data:           r.data.clone(),
+            trace_line:     r.trace_line.clone(),
+            client_actions: r.client_actions.clone(),
         }).collect(),
         session_changed,
         display_changed,
+        client_actions,
     }
 }
 
