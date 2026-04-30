@@ -1,8 +1,8 @@
 # Photyx — Developer Notes
 
-**Version:** 23
-**Last updated:** 28 April 2026
-**Status:** Active development — Phase 8 substantially complete; ContourHeatmap and display pipeline refactor complete
+**Version:** 24
+**Last updated:** 30 April 2026
+**Status:** Active development — Phase 9 substantially complete; Phase D closed
 
 ---
 
@@ -486,11 +486,12 @@ The pcode interpreter lives in `src-tauri/src/pcode/` as a standalone module wit
 
 **`run_script` Tauri command** — executes a script string directly from the frontend (macro editor Run button), returns a `ScriptResponse` struct containing:
 
-- `results` — array of `ScriptResult` (line_number, command, success, message)
+- `results` — array of `ScriptResult` (line_number, command, success, message, client_actions)
 - `session_changed` — true if any read, select, clear, or move command succeeded; frontend syncs session state
-- `display_changed` — true if AutoStretch or similar display command succeeded; frontend triggers frame refresh
+- `display_changed` — true if a display command (AutoStretch, etc.) succeeded directly; not set for RunMacro
+- `client_actions` — flat list of action strings collected from all results including inner macro results; frontend dispatches these after session sync (see §3.54)
 
-This eliminates command-name matching on the frontend — components simply react to the flags.
+Components react to flags and client_actions rather than inspecting command names.
 
 **Flow control** — the interpreter now pre-parses scripts into a block tree before execution, supporting:
 
@@ -853,7 +854,7 @@ Bare macro names (without a path prefix or `.phs` extension) are resolved automa
 
 `DISPLAY_COMMANDS` lists commands that alter the pixel data currently displayed in the viewer. Any command that produces a new stretched, processed, or transformed image belongs here. File I/O and session commands do not belong here unless they also change what is rendered in the viewer.
 
-`SESSION_COMMANDS` and `DISPLAY_COMMANDS` in `lib.rs` include `runmacro` so that session sync and display refresh fire correctly after macro execution. If `RunMacro` is ever renamed or aliased, update both lists.
+`SESSION_COMMANDS` in `lib.rs` includes `runmacro` so that session sync fires correctly after macro execution. `DISPLAY_COMMANDS` does NOT include `runmacro` — display updates after macro execution are driven entirely by `client_actions` (see §3.54). If `RunMacro` is ever renamed or aliased, update `SESSION_COMMANDS`.
 
 ---
 
@@ -880,7 +881,56 @@ The recommended post-AnalyzeFrames workflow:
 2. **Deliberate review** — slow the rate or step manually through the sequence. For each flagged frame, make a final decision using P (pass) or R (reject). Each keypress writes PXFLAG to the file immediately.
 3. **Delete confirmed rejects** — use `DeleteRejected` command or equivalent UI action. A confirmation bar shows the count of files to be deleted before proceeding.
 
-**Multi-session note:** AnalyzeFrames thresholds are session-relative. Sigma scores from one session cannot be meaningfully compared to another. When integrating across sessions, pass all PASS frames to PixInsight SubframeSelector for cross-session weight-based ranking.
+**Multi-session note:** AnalyzeFrames thresholds are
+session-relative. Sigma scores from one session cannot be meaningfully
+compared to another. When integrating across sessions, pass all PASS
+frames to PixInsight SubframeSelector for cross-session weight-based
+ranking.
+
+---
+
+### 3.54 client_actions — Cross-Boundary Side Effects
+
+When a plugin needs the frontend to perform an action after execution (display refresh, annotation overlay, modal open), it declares this by emitting a `client_action` string in its `PluginOutput::Data` JSON. This replaces the previous pattern of command-name matching on the frontend.
+
+**Rust side — emitting an action:**
+
+```rust
+Ok(PluginOutput::Data(serde_json::json!({
+    "message":       "AutoStretch applied",
+    "client_action": "refresh_autostretch",
+})))
+```
+
+**Registered client actions:**
+
+| Action                | Emitted by     | Frontend effect                        |
+| --------------------- | -------------- | -------------------------------------- |
+| `refresh_autostretch` | AutoStretch    | Calls `applyAutoStretch()`             |
+| `refresh_annotations` | ComputeFWHM    | Calls `ui.refreshAnnotations()`        |
+| `open_keyword_modal`  | ListKeywords   | Calls `ui.openKeywordModal()`          |
+
+**How actions flow through RunMacro:**
+
+`RunMacro` collects `client_actions` from all inner `PcodeResult` entries and re-emits them in its own `PluginOutput::Data`. This means a macro wrapping `AutoStretch` correctly delivers `refresh_autostretch` to the frontend — no command-name inspection required.
+
+**Frontend dispatch (QuickLaunch, MacroLibrary, Console):**
+
+```typescript
+for (const action of response.client_actions) {
+    if (action === 'refresh_autostretch') {
+        await applyAutoStretch();
+        autoStretched = true;
+    }
+    if (action === 'refresh_annotations') ui.refreshAnnotations();
+    if (action === 'open_keyword_modal')  ui.openKeywordModal();
+}
+```
+
+**Plugin contract:** Any plugin that affects the display or triggers a UI side effect must emit the appropriate `client_action`. This is part of the plugin's responsibilities alongside implementing `name()`, `version()`, and `execute()`. The frontend never needs to change when a new action is added — only the plugin and the dispatch table above.
+
+**`display_changed` flag:** `DISPLAY_COMMANDS` in `lib.rs` no longer includes `runmacro`. Display updates after macro execution are driven entirely by `client_actions`. Commands that directly modify the display (e.g. `AutoStretch`) remain in `DISPLAY_COMMANDS` for the non-macro interactive path.
+
 
 ---
 
@@ -1025,19 +1075,23 @@ Photyx will use an embedded SQLite database via the rusqlite crate, which static
 | Phase 6  | ✅ Complete               | UI cleanup complete                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Phase 7  | ✅ Complete               | AnalyzeFrames with 7 native metrics; PASS/REJECT classification; PXFLAG keyword; Analysis Graph viewer-region component; star annotation overlay; consolePipe store; blink red border overlay; viewer filename overlay; theme-aware chart colors                                                                                                                                                                                                                                                                                               |
 | Phase 8  | ✅ Substantially complete | Moment-based FWHM; 8×8 background gradient grid; 5-pixel minimum star filter; WriteFITS U16 sign conversion fix; histogram canvas width fix; UI audit pass; ContourHeatmap plugin (spatial FWHM heatmap, adaptive grid, 3 palettes, XISF output, `$NEW_FILE` convention); display pipeline refactor (raw display, explicit AutoStretch, blink-only cache); `image_reader.rs` format-agnostic reader; load_file Tauri command; File > Load Single Image menu item; LoadFile pcode command; DispatchResponse.data field; histogram hover readout |
-| Phase 9  | ⬜ Not started            | Embedded SQLite, Settings persistence, rig profiles, themes, crash recovery, update mechanism, file associations                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Phase 9  | 🔄 In progress            | Embedded SQLite (✅), Quick Launch persistence (✅), session history (✅), crash recovery (✅), macros migrated to SQLite (✅); remaining: User Preferences dialog, Analysis Parameters dialog, analysis results persistence, threshold profiles UI, console history persistence, status bar profile indicator, AppSettings struct                                                                                                                                                                                                              |
 | Phase 10 | ⬜ Not started            | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Deferred | ⏸ Parked                 | Full keyword management UI, PNG/JPEG readers and writers, debayering, async dispatch, REST API (Axum), CLI access, WASM analysis plugins                                                                                                                                                                                                                                                                                                                                                                                                       |
 
-## 9. Settings Persistence Batch (Phase 9)
+## 9. Settings Persistence (Phase 9)
 
-The following settings are currently using localStorage or are lost on restart. They will be migrated to `tauri-plugin-store` in Phase 9:
+All settings persistence is now driven by the SQLite database
+(`photyx.db`) via `rusqlite`. The authoritative reference for the
+schema, persistence tiers, and implementation plan is
+`photyx_persistence_inventory.md`. The authoritative reference for
+which settings exist, their defaults, and their persistence/user-pref
+classification is `photyx_reference.md` §5.
 
-- Active theme (currently in localStorage)
-- Last used directory (currently lost on restart)
-- Quick Launch button assignments (currently in localStorage)
-- AutoStretch enabled state
-- Macro editor font size
-- Format filter selection (File Browser)
-- Log directory (if user-configurable)
-- Macros directory (if user-configurable)
+The in-memory settings object (`AppSettings`) is loaded at startup
+from the `preferences` table and held in `PhotoxState`. All reads are
+from memory; writes go to both the struct and the DB immediately. This
+is planned for Phase 9 sub-phase E.
+
+Settings that remain in localStorage (to be migrated): none —
+migration complete as of Phase 9 sub-phase B.

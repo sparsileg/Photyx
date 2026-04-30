@@ -190,30 +190,11 @@ result.message.split('\n').forEach(line => {
 
 ---
 
-## Pattern 5 — Post-Command Side Effects in Console.svelte
+## Pattern 5 — Post-Command Side Effects
 
-When a Rust plugin command succeeds, `Console.svelte` runs `syncSessionState()` to handle any side effects. Add cases here for commands that need to trigger frontend state changes after execution.
+**Do not use command-name matching for post-command side effects.** The established pattern is `client_actions` (Pattern 18). Command-name matching in `syncSessionState` and result loops is a legacy approach that breaks when commands are wrapped in macros.
 
-```typescript
-async function syncSessionState(cmd: string, args: Record<string, string>, output: string | null) {
-    // existing cases...
-    if (cmd === 'mycommand') {
-        ui.doSomething();
-    }
-}
-```
-
-The same pattern applies in `QuickLaunch.svelte` — inspect `response.results` after `run_script` completes:
-
-```typescript
-for (const r of response.results) {
-    if (r.command.toLowerCase() === 'mycommand' && r.success) {
-        ui.doSomething();
-    }
-}
-```
-
-Both places must be updated if a command can be triggered from both the console and the Quick Launch bar.
+`syncSessionState` in `Console.svelte` is retained for session sync (directory, file list) and for handling `ContourHeatmap` and `LoadFile` which use the `dispatch_command` path rather than `run_script`. Do not add new command-name cases there for display or UI side effects — use `client_actions` instead.
 
 ---
 
@@ -627,7 +608,59 @@ Overlays that should not extend to the bottom (e.g. the Help Modal in the upper-
 
 ---
 
-## CSS Variables Reference
+## Pattern 18 — Plugin Client Actions (client_actions)
+
+When a plugin needs the frontend to perform a side effect after execution — refreshing the display, drawing an overlay, opening a modal — it declares this by emitting a `client_action` string in its `PluginOutput::Data` JSON. The frontend dispatches these actions after `run_script` returns, with no command-name matching required.
+
+### Rust side — emitting an action
+
+```rust
+Ok(PluginOutput::Data(serde_json::json!({
+    "message":       "Operation complete",
+    "client_action": "refresh_autostretch",
+})))
+```
+
+### Registered actions
+
+| Action                | Plugin         | Frontend effect                 |
+| --------------------- | -------------- | ------------------------------- |
+| `refresh_autostretch` | AutoStretch    | Calls `applyAutoStretch()`      |
+| `refresh_annotations` | ComputeFWHM    | Calls `ui.refreshAnnotations()` |
+| `open_keyword_modal`  | ListKeywords   | Calls `ui.openKeywordModal()`   |
+
+### Frontend dispatch — all three entry points
+
+`QuickLaunch.svelte`, `MacroLibrary.svelte`, and `Console.svelte` all dispatch `client_actions` using the same pattern:
+
+```typescript
+let autoStretched = false;
+for (const action of response.client_actions) {
+    if (action === 'refresh_autostretch') {
+        await applyAutoStretch();
+        autoStretched = true;
+    }
+    if (action === 'refresh_annotations') ui.refreshAnnotations();
+    if (action === 'open_keyword_modal')  ui.openKeywordModal();
+}
+if (response.display_changed && !autoStretched) {
+    ui.requestFrameRefresh();
+}
+```
+
+### RunMacro propagation
+
+`RunMacro` automatically collects `client_actions` from all inner plugin results and re-emits them in its own response. A macro wrapping `AutoStretch` correctly delivers `refresh_autostretch` to the frontend — no special handling required.
+
+### Rules
+
+- **Never** use command-name matching for display or UI side effects — use `client_actions`
+- **Every new plugin** that affects the display or triggers a UI side effect must emit the appropriate `client_action` — this is part of the plugin contract
+- **The frontend dispatch table** (above) must be updated when a new action is registered
+- `display_changed` remains in `ScriptResponse` for the non-macro direct command path — always guard `requestFrameRefresh()` with `!autoStretched` to prevent overwriting a stretched display
+
+
+---
 
 ## CSS Variables Reference
 
@@ -656,7 +689,7 @@ All CSS files must use these theme variables (defined in `static/themes/dark.css
 ---
 
 ## Key Principles
-
+pp
 **If the action only affects the frontend (opening a view, changing a setting), handle it entirely in `CLIENT_COMMANDS` and the `ui` store. Only go to Rust when you need `AppContext` data.**
 
 **All viewer-region views are managed exclusively through `ui.showView()`. Individual boolean flags for view visibility are not permitted.**
