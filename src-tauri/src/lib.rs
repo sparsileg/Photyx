@@ -118,7 +118,6 @@ pub struct ScriptResult {
 // alter the session, only the filesystem.
 const SESSION_COMMANDS: &[&str] = &[
     "readfit", "readtiff", "readxisf", "readall",
-    "readallfitfiles", "readalltifffiles", "readallxisffiles", "readallfiles",
     "selectdirectory", "clearsession", "movefile", "runmacro",
 ];
 

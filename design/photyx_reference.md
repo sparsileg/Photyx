@@ -1,10 +1,14 @@
 # Photyx — Reference Document
 
-**Version:** 1
-**Last updated:** 28 April 2026
-**Status:** Active — updated as commands, keywords, and settings are added
+**Version:** 1 **Last updated:** 28 April 2026 **Status:** Active —
+updated as commands, keywords, and settings are added
 
-This document is the authoritative lookup reference for pcode commands, interrogation properties, keyword mappings, analysis metrics, and settings. It is a companion to `photyx_spec.md` (requirements) and `development_notes.md` (implementation). Upload this document when doing work involving pcode scripting, keyword management, analysis, or settings configuration.
+This document is the authoritative lookup reference for pcode
+commands, interrogation properties, keyword mappings, analysis
+metrics, and settings. It is a companion to `photyx_spec.md`
+(requirements) and `development_notes.md` (implementation). Upload
+this document when doing work involving pcode scripting, keyword
+management, analysis, or settings configuration.
 
 ---
 
@@ -64,18 +68,10 @@ All pcode commands in the initial release. Arguments in brackets are optional.
 
 ### 1.1 Command Aliases
 
-Old-style names are retained as backward-compatible aliases but should not be used in new scripts.
+Command aliases (ReadAllFITFiles, ReadAllXISFFiles, etc.) have been
+removed. Use the canonical names: ReadFIT, ReadXISF, ReadTIFF,
+ReadAll, WriteFIT, WriteXISF, WriteTIFF, WriteCurrent, WriteFrame.
 
-| Canonical Name |
-| -------------- |
-| ReadFIT        |
-| ReadXISF       |
-| ReadTIFF       |
-| ReadAll        |
-| WriteFIT       |
-| WriteXISF      |
-| WriteTIFF      |
-| WriteCurrent   |
 
 ### 1.2 Keyword Scope Parameter
 
@@ -244,7 +240,10 @@ When converting FITS to XISF, all FITS keywords are written verbatim into the FI
 | FOCALLEN     | Instrument:Telescope:FocalLength     |
 | IMAGETYP     | Observation:Image:Type               |
 
-WCS transformation keywords (`CRPIX1/2`, `CD1_1`, `CD1_2`, `CD2_1`, `CD2_2`, `CDELT1/2`, `CROTA1/2`, `LONPOLE`, `LATPOLE`, `PV1_*`, all PC matrix keywords) have no XISF Property equivalents and are preserved verbatim in the FITSKeyword block only.
+WCS transformation keywords (`CRPIX1/2`, `CD1_1`, `CD1_2`, `CD2_1`,
+`CD2_2`, `CDELT1/2`, `CROTA1/2`, `LONPOLE`, `LATPOLE`, `PV1_*`, all PC
+matrix keywords) have no XISF Property equivalents and are preserved
+verbatim in the FITSKeyword block only.
 
 ---
 
@@ -266,8 +265,10 @@ WCS transformation keywords (`CRPIX1/2`, `CD1_1`, `CD1_2`, `CD2_1`, `CD2_2`, `CD
 
 - **PASS / REJECT only** — no SUSPECT classification
 - A frame is REJECT if any single metric exceeds its threshold
-- `triggered_by` records which metrics caused the REJECT (visible in Analysis Graph tooltip)
-- PXFLAG keyword is written to each file immediately when AnalyzeFrames completes
+- `triggered_by` records which metrics caused the REJECT (visible in
+  Analysis Graph tooltip)
+- PXFLAG keyword is written to each file immediately when
+  AnalyzeFrames completes
 
 ### 4.3 PXFLAG Keyword
 
@@ -276,7 +277,9 @@ PXFLAG = 'PASS'    / Photyx frame analysis recommendation
 PXFLAG = 'REJECT'  / Photyx frame analysis recommendation
 ```
 
-User can override any frame's flag during blink review with P (pass) or R (reject) keyboard shortcuts. Each keypress writes PXFLAG to the file immediately.
+User can override any frame's flag during blink review with P (pass)
+or R (reject) keyboard shortcuts. Each keypress writes PXFLAG to the
+file immediately.
 
 ---
 
@@ -366,6 +369,29 @@ buttons automatically wrap to the next row.
 | Shadow clip           | -2.8    | X         | X    |
 | Target background     | 0.15    | X         | X    |
 
+
+### 5.8 Setting Bounds
+
+Persisted settings that impact resources or usability have enforced
+min/max bounds. Bounds are defined as constants in the `AppSettings`
+Rust struct and applied on read — the database stores the raw value
+and Rust clamps it. This allows bounds to change without a schema
+migration.
+
+| Setting                  | Min          | Max          |
+| ------------------------ | ------------ | ------------ |
+| JPEG quality             | 1            | 100          |
+| Recent directories max   | 1            | 50           |
+| Console history size     | 100          | 5000         |
+| Macro editor font size   | 8px          | 24px         |
+| Buffer pool memory limit | 512 MB       | 32 GB        |
+| AutoStretch shadow clip  | -5.0         | 0.0          |
+| AutoStretch target bg    | 0.01         | 0.50         |
+| Crash recovery interval  | 15 seconds   | 300 seconds  |
+| Threshold sigmas (all)   | 0.5σ         | 5.0σ         |
+| Eccentricity absolute    | 0.10         | 1.00         |
+
+
 ---
 
 ## 6. File Format Coverage
@@ -404,33 +430,48 @@ buttons automatically wrap to the next row.
 
 ## 7. Tauri Commands (Implemented)
 
-| Command                  | Description                                                                                           |
-| ------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `dispatch_command`       | Dispatches a single pcode command to the plugin registry (legacy interactive path)                    |
-| `run_script`             | Executes a pcode script string; returns ScriptResponse with results, session_changed, display_changed |
-| `debug_buffer_info`      | Returns buffer metadata including display_width and color_space                                       |
-| `delete_macro`           | Deletes a .phs macro file from the Macros directory                                                   |
-| `get_analysis_results`   | Returns per-frame metrics, flags, triggered_by, and session stats                                     |
-| `get_autostretch_frame`  | Computes Auto-STF stretch on current frame, returns JPEG data URL; does not cache                     |
-| `get_blink_cache_status` | Returns blink cache build status: idle / building / ready                                             |
-| `get_blink_frame`        | Returns a blink frame as JPEG data URL from blink cache (by index + resolution)                       |
-| `get_current_frame`      | Returns current image as raw (unstretched) JPEG data URL, rendered on the fly                         |
-| `get_frame_flags`        | Returns PXFLAG values for all loaded frames (used by blink overlay)                                   |
-| `get_full_frame`         | Returns current image at full resolution with last STF params applied; cached after first call        |
-| `get_histogram`          | Computes and returns histogram bins + stats for current frame (per-channel for RGB)                   |
-| `get_keywords`           | Returns all keywords for current frame as a keyed map                                                 |
-| `get_macros_dir`         | Returns the Macros directory path as a forward-slash string                                           |
-| `get_pixel`              | Returns raw pixel value(s) at source coordinates (x, y) from the raw image buffer                     |
-| `get_session`            | Returns current session state (directory, file list, current frame)                                   |
-| `get_star_positions`     | Re-runs star detection on current frame; returns {cx, cy, fwhm, r} per star for annotation overlay    |
-| `get_variable`           | Returns a pcode variable value from ctx.variables by name                                             |
-| `list_log_files`         | Lists available log files in the logs directory, sorted newest first                                  |
-| `list_macros`            | Lists .phs files in the Macros directory with name, path, line count, and tooltip                     |
-| `list_plugins`           | Returns list of registered plugins with name, version, and type                                       |
-| `load_file`              | Reads a single image file from disk, injects into session, returns JPEG data URL                      |
-| `read_log_file`          | Reads and parses a log file into structured {timestamp, level, module, message} lines                 |
-| `rename_macro`           | Renames a .phs macro file; validates name, returns new path                                           |
-| `start_background_cache` | Spawns background task to build blink cache JPEGs                                                     |
+| Command                      | Description                                                                                                          |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `dispatch_command`           | Dispatches a single pcode command to the plugin registry (legacy interactive path)                                   |
+| `run_script`                 | Executes a pcode script string; returns ScriptResponse with results, session_changed, display_changed, client_actions |
+| `debug_buffer_info`          | Returns buffer metadata including display_width and color_space                                                      |
+| `get_analysis_results`       | Returns per-frame metrics, flags, triggered_by, and session stats                                                    |
+| `get_autostretch_frame`      | Computes Auto-STF stretch on current frame, returns JPEG data URL; does not cache                                    |
+| `get_blink_cache_status`     | Returns blink cache build status: idle / building / ready                                                            |
+| `get_blink_frame`            | Returns a blink frame as JPEG data URL from blink cache (by index + resolution)                                      |
+| `get_current_frame`          | Returns current image as raw (unstretched) JPEG data URL, rendered on the fly                                        |
+| `get_frame_flags`            | Returns PXFLAG values for all loaded frames (used by blink overlay)                                                  |
+| `get_full_frame`             | Returns current image at full resolution with last STF params applied; cached after first call                       |
+| `get_histogram`              | Computes and returns histogram bins + stats for current frame (per-channel for RGB)                                  |
+| `get_keywords`               | Returns all keywords for current frame as a keyed map                                                                |
+| `get_pixel`                  | Returns raw pixel value(s) at source coordinates (x, y) from the raw image buffer                                    |
+| `get_session`                | Returns current session state (directory, file list, current frame)                                                  |
+| `get_star_positions`         | Re-runs star detection on current frame; returns {cx, cy, fwhm, r} per star for annotation overlay                   |
+| `get_variable`               | Returns a pcode variable value from ctx.variables by name                                                            |
+| `list_log_files`             | Lists available log files in the logs directory, sorted newest first                                                 |
+| `list_plugins`               | Returns list of registered plugins with name, version, and type                                                      |
+| `load_file`                  | Reads a single image file from disk, injects into session, returns JPEG data URL                                     |
+| `read_log_file`              | Reads and parses a log file into structured {timestamp, level, module, message} lines                                |
+| `start_background_cache`     | Spawns background task to build blink cache JPEGs                                                                    |
+| `backup_database`            | Creates a timestamped ZIP backup of photyx.db in the configured backup directory                                     |
+| `restore_database`           | Restores photyx.db from a ZIP backup; reopens connection in-place without app restart                                |
+| `get_all_preferences`        | Returns all preferences as HashMap<String, String>; called at startup to hydrate frontend                            |
+| `set_preference`             | Upserts a single preference key/value pair                                                                           |
+| `get_quick_launch_buttons`   | Returns ordered list of Quick Launch button assignments                                                              |
+| `save_quick_launch_buttons`  | Replaces all Quick Launch button assignments                                                                         |
+| `get_recent_directories`     | Returns recent directories ordered by last_used desc, trimmed to recent_directories_max                              |
+| `record_directory_visit`     | Upserts a directory visit; trims list to recent_directories_max                                                      |
+| `get_macros`                 | Returns all macros with name, display_name, script, run_count, last_run_at                                           |
+| `save_macro`                 | Inserts or updates a macro; saves previous version to macro_versions before overwriting                              |
+| `delete_macro`               | Deletes a macro and its version history from the database                                                            |
+| `rename_macro`               | Renames a macro; validates name uniqueness                                                                           |
+| `get_macro_versions`         | Returns version history for a macro ordered newest first                                                             |
+| `restore_macro_version`      | Restores a previous macro version as the current script                                                              |
+| `increment_macro_run_count`  | Updates run_count and last_run_at for a macro after successful execution                                             |
+| `open_session`               | Inserts a session_history row with closed_at = NULL; returns session id                                              |
+| `close_session`              | Sets closed_at on the current session_history row                                                                    |
+| `write_crash_recovery`       | Upserts the single crash_recovery row with current session state                                                     |
+| `check_crash_recovery`       | Returns crash recovery candidate if written_at is recent and a session is open                                       |
 
 ---
 

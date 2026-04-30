@@ -75,33 +75,6 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'SelectDirectory path="D:/Astrophotos/M31/Lights"\nReadAll',
   },
 
-  readallfitfiles: {
-    name:        'ReadAllFITFiles',
-    description: 'Loads all FITS files from the active directory into the session.',
-    syntax:      'ReadAllFITFiles',
-    arguments:   [],
-    output:  'Populates the session file list with all .fit and .fits files in the active directory.',
-    example: 'ReadAllFITFiles',
-  },
-
-  readalltifffiles: {
-    name:        'ReadAllTIFFFiles',
-    description: 'Loads all TIFF files from the active directory into the session.',
-    syntax:      'ReadAllTIFFFiles',
-    arguments:   [],
-    output:  'Populates the session file list with all .tif and .tiff files in the active directory.',
-    example: 'ReadAllTIFFFiles',
-  },
-
-  readallxisffiles: {
-    name:        'ReadAllXISFFiles',
-    description: 'Loads all XISF files from the active directory into the session.',
-    syntax:      'ReadAllXISFFiles',
-    arguments:   [],
-    output:  'Populates the session file list with all .xisf files in the active directory.',
-    example: 'ReadAllXISFFiles',
-  },
-
   writefit: {
     name:        'WriteFIT',
     description: 'Writes all session files to a destination directory in FITS format.',
@@ -298,7 +271,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
     syntax:      'AnalyzeFrames',
     arguments:   [],
     output:  'Populates analysis results for all frames. Results visible in Analysis Results and Analysis Graph views.',
-    example: 'ReadAllFITFiles\nAnalyzeFrames',
+    example: 'ReadAll\nAnalyzeFrames',
   },
 
   computefwhm: {
