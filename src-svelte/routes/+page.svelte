@@ -12,6 +12,7 @@
   import LogViewer from '../lib/components/LogViewer.svelte';
   import MacroEditor from '../lib/components/panels/MacroEditor.svelte';
   import MenuBar from '../lib/components/MenuBar.svelte';
+  import PreferencesDialog from '../lib/components/PreferencesDialog.svelte';
   import QuickLaunch from '../lib/components/QuickLaunch.svelte';
   import StatusBar from '../lib/components/StatusBar.svelte';
   import Toolbar from '../lib/components/Toolbar.svelte';
@@ -23,6 +24,7 @@
   import { onMount } from 'svelte';
   import { quickLaunch } from '../lib/stores/quickLaunch';
   import { session } from '../lib/stores/session';
+  import { settings } from '../lib/stores/settings';
   import { ui } from '../lib/stores/ui';
 
   // Load theme stylesheet dynamically
@@ -36,6 +38,9 @@
     themeLink.href = `/themes/${theme}.css`;
     document.head.appendChild(themeLink);
   });
+
+  // Preferences dialog
+  let preferencesOpen = $state(false);
 
   // Help modal
   let helpEntry = $state<HelpEntry | null>(null);
@@ -59,6 +64,7 @@
       await db.migrateLocalStorage();
       prefs = await db.getAllPreferences();
       ui.hydrateFromDb(prefs);
+      settings.hydrate(prefs);
       const buttons = await db.getQuickLaunchButtons();
       quickLaunch.hydrate(buttons);
     } catch (e) {
@@ -152,6 +158,9 @@
 
 <svelte:window onkeydown={onKeyDown} />
 
+{#if $ui.preferencesOpen}
+  <PreferencesDialog onclose={() => ui.closePreferences()} />
+{/if}
 {#if $ui.keywordModalOpen}
   <KeywordModal onclose={() => ui.closeKeywordModal()} />
 {/if}

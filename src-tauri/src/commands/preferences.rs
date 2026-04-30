@@ -22,13 +22,8 @@ pub fn get_all_preferences(state: State<Arc<PhotoxState>>) -> Result<std::collec
 #[tauri::command]
 pub fn set_preference(key: String, value: String, state: State<Arc<PhotoxState>>) -> Result<(), String> {
     let db = state.db.lock().expect("db lock poisoned");
-    db.execute(
-        "INSERT INTO preferences (key, value, updated_at)
-         VALUES (?1, ?2, ?3)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-        rusqlite::params![key, value, db::now_unix()],
-    ).map_err(|e| e.to_string())?;
-    Ok(())
+    let mut settings = state.settings.lock().expect("settings lock poisoned");
+    settings.save_preference(&key, &value, &db)
 }
 
 #[tauri::command]

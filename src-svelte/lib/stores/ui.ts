@@ -18,59 +18,61 @@ export const VIEWS = [
 export type ViewName = typeof VIEWS[number];
 
 export interface UIState {
-  theme:              Theme;
-  activePanel:        PanelId;
-  activeView:         ViewName | null;
-  zoomLevel:          ZoomLevel;
-  quickLaunchVisible: boolean;
-  activeChannel:      'rgb' | 'r' | 'g' | 'b';
-  frameRefreshToken:  number;
-  viewerClearToken:   number;
-  consoleExpanded:    boolean;
-  blinkImageUrl:      string | null;
+  aboutOpen:           boolean;
+  activeChannel:       'rgb' | 'r' | 'g' | 'b';
+  activePanel:         PanelId;
+  activeView:          ViewName | null;
+  annotationToken:     number;
   autostretchImageUrl: string | null;
-  displayImageUrl:    string | null;
-  blinkCached:        boolean;
-  blinkCaching:       boolean;
-  blinkTabActive:     boolean;
-  blinkResolution:    '12' | '25';
-  blinkModeActive:    boolean;
-  keywordModalOpen:   boolean;
-  logViewerOpen:      boolean;
-  aboutOpen:          boolean;
-  macroEditorFile:    { id: number | null; name: string; displayName: string; script: string } | null;
-  blinkPlaying:       boolean;
-  showQualityFlags:   boolean;
-  currentBlinkFlag:   string;
-  annotationToken:    number;
+  blinkCached:         boolean;
+  blinkCaching:        boolean;
+  blinkImageUrl:       string | null;
+  blinkModeActive:     boolean;
+  blinkPlaying:        boolean;
+  blinkResolution:     '12' | '25';
+  blinkTabActive:      boolean;
+  consoleExpanded:     boolean;
+  currentBlinkFlag:    string;
+  displayImageUrl:     string | null;
+  frameRefreshToken:   number;
+  keywordModalOpen:    boolean;
+  logViewerOpen:       boolean;
+  macroEditorFile:     { id: number | null; name: string; displayName: string; script: string } | null;
+  preferencesOpen:     boolean;
+  quickLaunchVisible:  boolean;
+  showQualityFlags:    boolean;
+  theme:               Theme;
+  viewerClearToken:    number;
+  zoomLevel:           ZoomLevel;
 }
 
 const initial: UIState = {
-  theme:              'matrix',   // overwritten by hydrateFromDb()
-  activePanel:        null,
-  activeView:         null,
-  zoomLevel:          'fit',
-  quickLaunchVisible: true,
-  activeChannel:      'rgb',
-  frameRefreshToken:  0,
-  viewerClearToken:   0,
-  consoleExpanded:    false,
-  blinkImageUrl:      null,
+  aboutOpen:           false,
+  activeChannel:       'rgb',
+  activePanel:         null,
+  activeView:          null,
+  annotationToken:     0,
   autostretchImageUrl: null,
-  displayImageUrl:    null,
-  blinkCached:        false,
-  blinkCaching:       false,
-  blinkTabActive:     false,
-  blinkResolution:    '12',
-  blinkModeActive:    false,
-  keywordModalOpen:   false,
-  logViewerOpen:      false,
-  aboutOpen:          false,
-  macroEditorFile:    null,
-  blinkPlaying:       false,
-  showQualityFlags:   true,
-  currentBlinkFlag:   '',
-  annotationToken:    0,
+  blinkCached:         false,
+  blinkCaching:        false,
+  blinkImageUrl:       null,
+  blinkModeActive:     false,
+  blinkPlaying:        false,
+  blinkResolution:     '12',
+  blinkTabActive:      false,
+  consoleExpanded:     false,
+  currentBlinkFlag:    '',
+  displayImageUrl:     null,
+  frameRefreshToken:   0,
+  keywordModalOpen:    false,
+  logViewerOpen:       false,
+  macroEditorFile:     null,
+  preferencesOpen:     false,
+  quickLaunchVisible:  true,
+  showQualityFlags:    true,
+  theme:               'matrix',   // overwritten by hydrateFromDb()
+  viewerClearToken:    0,
+  zoomLevel:           'fit',
 };
 
 function createUIStore() {
@@ -140,8 +142,10 @@ function createUIStore() {
     closeKeywordModal: () => update(s => ({ ...s, keywordModalOpen: false })),
     openLogViewer:     () => update(s => ({ ...s, logViewerOpen: true })),
     closeLogViewer:    () => update(s => ({ ...s, logViewerOpen: false })),
-    openAbout:         () => update(s => ({ ...s, aboutOpen: true })),
-    closeAbout:        () => update(s => ({ ...s, aboutOpen: false })),
+    openAbout: () => update(s => ({ ...s, aboutOpen: true })),
+    closeAbout: () => update(s => ({ ...s, aboutOpen: false })),
+    openPreferences: () => update(s => ({ ...s, preferencesOpen: true })),
+    closePreferences: () => update(s => ({ ...s, preferencesOpen: false })),
     openMacroEditor:   (file: { id: number | null; name: string; displayName: string; script: string } | null) => update(s => ({
       ...s,
       macroEditorFile: file,

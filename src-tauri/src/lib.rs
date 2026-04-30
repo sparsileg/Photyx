@@ -8,6 +8,7 @@ mod db;
 mod logging;
 mod plugin;
 mod plugins;
+mod settings;
 mod utils;
 
 use commands::session::start_crash_recovery_timer;
@@ -35,6 +36,7 @@ pub struct PhotoxState {
     pub registry: Arc<PluginRegistry>,
     pub context:  Mutex<AppContext>,
     pub db:       Mutex<rusqlite::Connection>,
+    pub settings: Mutex<settings::AppSettings>,
 }
 
 // ── Tauri command: dispatch a pcode command ───────────────────────────────────
@@ -233,10 +235,14 @@ pub fn run() {
     let global_db_conn = db::open_db(app_data_dir).expect("Failed to open global DB connection");
     let _ = GLOBAL_DB.set(Mutex::new(global_db_conn));
 
+    let mut app_settings = settings::AppSettings::new();
+    app_settings.load_from_db(&db_conn);
+
     let state = Arc::new(PhotoxState {
         registry,
-        context: Mutex::new(AppContext::new()),
-        db:      Mutex::new(db_conn),
+        context:  Mutex::new(AppContext::new()),
+        db:       Mutex::new(db_conn),
+        settings: Mutex::new(app_settings),
     });
 
     tauri::Builder::default()
