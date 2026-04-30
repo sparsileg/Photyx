@@ -206,15 +206,17 @@ Single main window, single-window SPA. No floating OS windows.
 
 ### 8.2 Menu Bar
 
-| Menu    | Items                                                                                |
-| ------- | ------------------------------------------------------------------------------------ |
-| File    | Select Directory, Load Single Image, Clear Session, Exit                             |
-| Edit    | Preferences                                                                          |
-| View    | Dark, Light, Matrix                                                                  |
-| Process | Auto Stretch                                                                         |
-| Analyze | FWHM, Star Count, Eccentricity, Median Value, Contour Plot (Heatmap), Analysis Graph |
-| Tools   | Settings, Log Viewer                                                                 |
-| Help    | About, Documentation, Check for Updates                                              |
+| Menu     | Items                                                                                |
+| -------- | ------------------------------------------------------------------------------------ |
+| File     | Select Directory, Load Single Image, Close Session, Exit                             |
+| Edit     | Preferences, Analysis Parameters                                                     |
+| View     | Dark, Light, Matrix                                                                  |
+| Analyze  | Analyze Frames, Analysis Results, Analysis Graph, Contour Plot (Heatmap)             |
+| Tools    | Backup Database, Restore Database, Log Viewer                              |
+| Help     | About, Documentation, Check for Updates                                              |
+
+Deferred for now is whether or not to put FWHM, Star Count, Eccentricity,
+Median value, and others in the Analyze menu.
 
 ### 8.3 Icon Sidebar & Panels
 
@@ -293,6 +295,77 @@ Full-width single line at bottom. Background color reflects type (neutral / blue
 ### 8.12 Log Viewer
 
 Modal overlay (Tools > Log Viewer). Left panel: log file list sorted newest first. Right panel: parsed log contents with ERROR/WARN/INFO/DEBUG level filters, auto-tail every 2 seconds, auto-scroll suspended when user scrolls up.
+
+
+### 8.13 Preferences Dialog (Edit > Preferences)
+
+Modal overlay. Contains all application behavior settings from
+Section 5.1 through 5.5 and 5.7. Settings are grouped by their
+section headings. Display-only items (e.g. database storage path)
+are shown as non-editable text. User Pref items are editable fields;
+Last Used items are shown as informational (the current value is
+displayed but the field is not directly editable — it is updated
+automatically by the application as the user works).
+
+Follows the z-index hierarchy for modal overlays (Pattern 17).
+Changes are written to the database immediately on confirmation;
+Cancel discards all changes made in the current dialog session.
+
+### 8.14 Analysis Parameters Dialog (Edit > Analysis Parameters)
+
+Modal overlay. Manages named threshold profiles for AnalyzeFrames.
+Profiles are free-form named sets of rejection thresholds — hardware
+configuration is a common basis for naming (e.g.
+"AT115EDT/ASI533MC Pro") but any name is valid (e.g. "Test 1",
+"Bortle 4 Site", "Narrowband").
+
+**Profile selector:** Dropdown of all named profiles at the top of
+the dialog, with New, Rename, and Delete controls alongside it.
+Switching profiles loads that profile's threshold values into the
+fields below. The active profile name is shown in the status bar.
+
+**Threshold fields:** One field per metric (7 total), editable.
+Helper text beneath the profile selector reads: "Thresholds are
+typically calibrated per imaging rig and site conditions."
+
+**Default profile:** A "Standard" profile with the default threshold
+values (Section 5.6) is created on first launch and cannot be
+deleted.
+
+Changes are written to the `threshold_profiles` table and
+`AppSettings` immediately on confirmation. The active profile id
+is stored in `preferences.active_threshold_profile_id`.
+
+Follows the z-index hierarchy for modal overlays (Pattern 17).
+
+### 8.15 Quick Launch Panel
+
+A bar of shortcut buttons displayed below the toolbar. Buttons are
+arranged in a grid that wraps to additional rows automatically as
+the number of pinned macros grows — there is no fixed limit on the
+number of buttons.
+
+**Hard-coded buttons:** Four buttons are pre-populated on first launch
+and cannot be removed or reordered:
+
+| Position | Label        | Command      |
+| -------- | ------------ | ------------ |
+| 1        | List KW      | ListKeywords |
+| 2        | FWHM         | ComputeFWHM  |
+| 3        | Stars        | CountStars   |
+| 4        | Auto Stretch | AutoStretch  |
+
+**User-pinned buttons:** Any macro in the Macro Library can be pinned
+to the Quick Launch panel. Pinned macros appear after the four
+hard-coded buttons in the order they were pinned. A pinned button
+can be unpinned from the Macro Library or via right-click on the
+button itself. If the macro has @param declarations, clicking the
+button presents the parameter prompt dialog before execution.
+
+**Layout:** The panel grows vertically as buttons are added,
+pushing the viewer region and bottom panel down accordingly.
+Button assignments are persisted to the `quick_launch_buttons`
+table in the database.
 
 ---
 

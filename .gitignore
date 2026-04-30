@@ -28,3 +28,6 @@ src-tauri/target/
 # OS
 .DS_Store
 Thumbs.db
+
+# Undo-tree persistent undo files
+.*~undo-tree~
