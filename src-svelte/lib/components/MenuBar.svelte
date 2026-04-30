@@ -197,7 +197,8 @@
   { label: 'Exit',         action: 'exit' },
   ]},
   { name: 'Edit', items: [
-  { label: 'Preferences',  action: 'preferences' },
+  { label: 'Preferences',        action: 'preferences' },
+  { label: 'Analysis Parameters', action: 'analysis-parameters' },
   ]},
   { name: 'View', items: [
   { label: 'Theme: Dark',  action: 'theme-dark' },
@@ -211,8 +212,6 @@
   { label: 'Contour Plot',     action: 'contour-plot' },
   ]},
   { name: 'Tools', items: [
-  { label: 'Settings',        action: 'settings' },
-  { sep: true },
   { label: 'Backup Database', action: 'backup-database' },
   { label: 'Restore Database', action: 'restore-database' },
   { sep: true },
@@ -221,8 +220,6 @@
   { name: 'Help', items: [
   { label: 'About Photyx', action: 'about' },
   { label: 'Documentation',action: 'documentation' },
-  { sep: true },
-  { label: 'Check for Updates', action: 'check-updates' },
   ]},
   ] as menu}
   <div

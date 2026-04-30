@@ -29,6 +29,7 @@
 
   // ── Run entry ────────────────────────────────────────────────────────────
   async function runEntry(script: string) {
+    console.log('[QL] runEntry script:', script);
     try {
       const response = await invoke<{
         results: Array<{ line_number: number; command: string; success: boolean; message: string | null }>;
@@ -37,30 +38,27 @@
       }>('run_script', { script });
 
       let anyError = false;
+      let autoStretched = false;
       for (const r of response.results) {
         if (!r.success) {
           notifications.error(`${r.command}: ${r.message ?? 'error'}`);
           anyError = true;
-        } else if (r.message) {
-          r.message.split('\n').forEach(line => {
-            if (line) pipeToConsole(line, 'success');
-          });
-        }
-        if (r.command.toLowerCase() === 'listkeywords' && r.success) {
-          ui.openKeywordModal();
-        }
-      }
-      if (!anyError) notifications.success('Done.');
-      let autoStretched = false;
-      for (const r of response.results) {
-        if (r.command.toLowerCase() === 'computefwhm' && r.success) {
-          ui.refreshAnnotations();
-        }
-        if (r.command.toLowerCase() === 'autostretch' && r.success) {
-          await applyAutoStretch();
-          autoStretched = true;
+        } else {
+          if (r.message) {
+            r.message.split('\n').forEach(line => {
+              if (line) pipeToConsole(line, 'success');
+            });
+          }
+          const cmd = r.command.toLowerCase();
+          if (cmd === 'listkeywords')  ui.openKeywordModal();
+          if (cmd === 'computefwhm')   ui.refreshAnnotations();
+          if (cmd === 'autostretch') {
+            await applyAutoStretch();
+            autoStretched = true;
+          }
         }
       }
+      console.log('[QL] session_changed:', response.session_changed, 'display_changed:', response.display_changed);
       if (response.session_changed) {
         const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
         session.setDirectory(s.activeDirectory ?? '');
@@ -69,6 +67,7 @@
       if (response.display_changed && !autoStretched) {
         ui.requestFrameRefresh();
       }
+      if (!anyError) notifications.success('Done.');
     } catch (err) {
       notifications.error(`Quick Launch error: ${err}`);
     }

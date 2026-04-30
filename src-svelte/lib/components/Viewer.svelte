@@ -454,10 +454,13 @@
   let lastAutostretchUrl: string | null = null;
   $effect(() => {
     const url = $ui.autostretchImageUrl;
+    console.log('[Viewer] autostretchImageUrl changed:', url ? `data URL (${url.length} chars)` : 'null');
     if (url && url !== lastAutostretchUrl) {
       lastAutostretchUrl = url;
+      console.log('[Viewer] drawing autostretch frame');
       drawImageFromUrl(url);
     } else if (!url) {
+      console.log('[Viewer] autostretchImageUrl cleared');
       lastAutostretchUrl = null;
     }
   });
@@ -479,6 +482,7 @@
   $effect(() => {
     const token = $ui.frameRefreshToken;
     if (token > 0 && token !== lastToken) {
+      console.log('[Viewer] frameRefreshToken fired:', token);
       lastToken = token;
       lastNeedsFullRes = false;
       loadCurrentFrame();
@@ -493,7 +497,7 @@
     if ($ui.displayImageUrl) {
       return;
     } else if ($ui.autostretchImageUrl) {
-      applyAutoStretch();
+      return;
     } else if (full) {
       loadFullFrame();
     } else {

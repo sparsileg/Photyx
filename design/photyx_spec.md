@@ -212,8 +212,8 @@ Single main window, single-window SPA. No floating OS windows.
 | Edit     | Preferences, Analysis Parameters                                                     |
 | View     | Dark, Light, Matrix                                                                  |
 | Analyze  | Analyze Frames, Analysis Results, Analysis Graph, Contour Plot (Heatmap)             |
-| Tools    | Backup Database, Restore Database, Log Viewer                              |
-| Help     | About, Documentation, Check for Updates                                              |
+| Tools    | Backup Database, Restore Database, Log Viewer                                        |
+| Help     | About, Documentation                                                                 |
 
 Deferred for now is whether or not to put FWHM, Star Count, Eccentricity,
 Median value, and others in the Analyze menu.
@@ -294,7 +294,10 @@ Full-width single line at bottom. Background color reflects type (neutral / blue
 
 ### 8.12 Log Viewer
 
-Modal overlay (Tools > Log Viewer). Left panel: log file list sorted newest first. Right panel: parsed log contents with ERROR/WARN/INFO/DEBUG level filters, auto-tail every 2 seconds, auto-scroll suspended when user scrolls up.
+Modal overlay (Tools > Log Viewer). Left panel: log file list sorted
+newest first. Right panel: parsed log contents with
+ERROR/WARN/INFO/DEBUG level filters, auto-tail every 2 seconds,
+auto-scroll suspended when user scrolls up.
 
 
 ### 8.13 Preferences Dialog (Edit > Preferences)
@@ -411,7 +414,9 @@ scheduled backup is deferred.
 
 ### 11.1 Philosophy
 
-Photyx flags obvious disasters only. Borderline frames are left for downstream tools (PixInsight SubframeSelector). Classification is session-relative — never cross-session absolute.
+Photyx flags obvious disasters only. Borderline frames are left for
+downstream tools (PixInsight SubframeSelector). Classification is
+session-relative — never cross-session absolute.
 
 ### 11.2 Metrics & Thresholds
 
