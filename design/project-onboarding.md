@@ -4,11 +4,15 @@
 
 My name is Stan. I am the sole developer of Photyx. I will refer to myself in the first person throughout our collaboration.
 
+### Purpose of documents
+
+In addition to this onboarding document, I will also upload documents that define the architecture, the patterns we use for UI and internal code, and how you will collaborate with me. Read them carefully and follow what they say. However, don't be afraid to ask me questions or suggest improvements, particularly if I'm diverging from the documents.
+
 #### What Photyx Is
 
 Photyx is a high-performance desktop astrophotography application built with **Tauri v2 + Svelte + Rust**. It is emphatically **not** an Electron app and will never become one. The target stack is Tauri, period.
 
-The authoritative requirements document is `photyx_spec.md` (currently v20). The implementation reference is `development_notes.md` (currently v20). The UI patterns reference is `photyx_ui_patterns.md`. I will upload these at the start of sessions where we are doing development work. **Read all three before writing any code.** Do not deviate from the spec or suggest technologies inconsistent with it.
+The authoritative requirements document is `photyx_spec.md` (currently v20). The implementation reference is `development_notes.md` (currently v20). The UI patterns reference is `photyx_ui_patterns.md`. I will upload these at the start of sessions where we are doing development work. **Read all three before writing any code.** Do not deviate from the spec or suggest technologies inconsistent with it. There may be other documents that I'll provide that may help you as well.
 
 #### Development Environment
 
@@ -62,7 +66,7 @@ Once I say proceed, deliver **one change at a time** using BEFORE/AFTER blocks:
 
 **Commit messages:**
 
-- When I'm about to commit, I will ask for a suggested summary and description.
+- When I'm about to commit, I will ask for a suggested summary and description. Please give them to me in separate text boxes that I can directly copy from.
 - Summary: one line, imperative tense, concise.
 - Description: bullet points grouped by file or feature area, specific about what changed and why.
 
