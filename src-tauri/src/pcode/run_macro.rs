@@ -33,7 +33,7 @@ impl PhotonPlugin for RunMacro {
 
         let script = std::fs::read_to_string(&resolved)
             .map_err(|e| PluginError::new("IO_ERROR",
-                &format!("Cannot read macro file '{}': {}", resolved, e)))?;
+                                          &format!("Cannot read macro file '{}': {}", resolved, e)))?;
 
         info!("RunMacro: executing '{}'", resolved);
 

@@ -347,6 +347,8 @@ Std dev is computed from the full pixel set, not from bins.
 
 The histogram canvas draws RGB channels with additive blending (lighter composite operation) for a natural RGB histogram appearance.
 
+Histogram statistics are computed on a stride-16 sample (every 16th pixel). The clipping percentage is computed as clipped/sampled and is accurate regardless of stride — the ratio is preserved. The hover percentage readout in `InfoPanel.svelte` divides bin counts by the total sample size (sum of all bins) rather than the full pixel count to match the stride.
+
 ### 3.13 Dynamic FITS Keyword Reading
 
 Keywords are read dynamically using raw cfitsio FFI (`ffghsp` + `ffgrec`), not a fixed list. This reads all keywords in the primary HDU header. COMMENT, HISTORY, and END records are skipped. String values are unquoted.
@@ -847,6 +849,10 @@ The `trace` state variable in `Console.svelte` controls two things simultaneousl
 
 Bare macro names (without a path prefix or `.phs` extension) are resolved automatically against the Macros directory. Scripts do not need to supply full paths.
 
+`SESSION_COMMANDS` in `lib.rs` lists commands that modify the session file list or active directory. Any command that adds, removes, or reorders files — or changes the working directory — belongs here. `CopyFile` is intentionally excluded: it does not alter the session, only the filesystem.
+
+`DISPLAY_COMMANDS` lists commands that alter the pixel data currently displayed in the viewer. Any command that produces a new stretched, processed, or transformed image belongs here. File I/O and session commands do not belong here unless they also change what is rendered in the viewer.
+
 `SESSION_COMMANDS` and `DISPLAY_COMMANDS` in `lib.rs` include `runmacro` so that session sync and display refresh fire correctly after macro execution. If `RunMacro` is ever renamed or aliased, update both lists.
 
 ---
@@ -921,6 +927,7 @@ The recommended post-AnalyzeFrames workflow:
 | AutoStretch     | Processing      | ✅ Complete | Mono and RGB, display-res only, raw buffer preserved; defaults exposed as constants                                                          |
 | CacheFrames     | Blink           | ✅ Complete | Rayon parallel, both resolutions                                                                                                             |
 | ClearSession    | Session         | ✅ Complete |                                                                                                                                              |
+| CopyFile        | File Management | ✅ Complete | Copies current frame file or arbitrary path (source= param); destination created automatically; stores destination path in `$NEW_FILE`       |
 | CopyKeyword     | Keyword         | ✅ Complete |                                                                                                                                              |
 | CountFiles      | Scripting       | ✅ Complete | Stores result in $filecount                                                                                                                  |
 | DeleteKeyword   | Keyword         | ✅ Complete | scope=all\|current parameter                                                                                                                 |
@@ -985,22 +992,24 @@ Photyx will use an embedded SQLite database via the rusqlite crate, which static
 
 ## 7. Known Issues & Deferred Items
 
-| Issue                                    | Notes                                                                                                                                                                                                        |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| cfitsio parallel loading crashes         | Thread-safety issue — sequential loading used for now                                                                                                                                                        |
-| Blink UI jitter                          | Toolbar/Quick Launch chrome jitters during blink; DevTools CLS = 0.01, culprit undetected after canvas switch; suspected Tauri WebView compositor artifact on Windows; deferred                              |
-| Full-res frames are JPEG not lossless    | Disclosed via disclaimer bar; pixel readout always uses raw buffer                                                                                                                                           |
-| Long-running commands block UI           | pcode invoke awaits Rust response, freezing JS; fix requires Tauri event system; deferred                                                                                                                    |
-| Zoom is approximate at high levels       | Full-res cache uses AutoStretch STF params computed on display-res downsample; minor difference possible                                                                                                     |
-| XISF Vector/Matrix properties            | Read as placeholder string, skipped on write; deferred pending test files                                                                                                                                    |
-| Rayon thread count not user-configurable | Hardcoded to num_cpus-1; §9.7 setting not yet wired                                                                                                                                                          |
-| No persistent settings store             | tauri-plugin-store not yet implemented (Phase 9)                                                                                                                                                             |
-| No crash recovery                        | Phase 9 item                                                                                                                                                                                                 |
-| Last used directory lost on restart      | Session state is in-memory only; Phase 9 persistence will restore it                                                                                                                                         |
-| stderr log output in dev mode            | Log entries are duplicated to the terminal during `npm run tauri dev`. This is the `fmt::layer().with_writer(std::io::stderr)` layer in `logging.rs`. It can be removed when no longer needed for debugging. |
-| Histogram ADU mouse tracking             | Implemented — hover shows normalized value, ADU, and per-channel percentages                                                                                                                                 |
-| Single file load blink isolation         | Files loaded via LoadFile/load_file are added to ctx.file_list; scripts that loop the file list will include them until next batch load                                                                      |
-| AutoStretch performance in dev mode      | 3–5 seconds for RGB 9MP images in debug build; expected to be near-instant in release build                                                                                                                  |
+| Issue                                         | Notes                                                                                                                                                                                                                                                                                     |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| cfitsio parallel loading crashes              | Thread-safety issue — sequential loading used for now                                                                                                                                                                                                                                     |
+| Blink UI jitter                               | Toolbar/Quick Launch chrome jitters during blink; DevTools CLS = 0.01, culprit undetected after canvas switch; suspected Tauri WebView compositor artifact on Windows; deferred                                                                                                           |
+| Full-res frames are JPEG not lossless         | Disclosed via disclaimer bar; pixel readout always uses raw buffer                                                                                                                                                                                                                        |
+| Long-running commands block UI                | pcode invoke awaits Rust response, freezing JS; fix requires Tauri event system; deferred                                                                                                                                                                                                 |
+| Zoom is approximate at high levels            | Full-res cache uses AutoStretch STF params computed on display-res downsample; minor difference possible                                                                                                                                                                                  |
+| XISF Vector/Matrix properties                 | Read as placeholder string, skipped on write; deferred pending test files                                                                                                                                                                                                                 |
+| Rayon thread count not user-configurable      | Hardcoded to num_cpus-1; §9.7 setting not yet wired                                                                                                                                                                                                                                       |
+| No persistent settings store                  | tauri-plugin-store not yet implemented (Phase 9)                                                                                                                                                                                                                                          |
+| No crash recovery                             | Phase 9 item                                                                                                                                                                                                                                                                              |
+| Last used directory lost on restart           | Session state is in-memory only; Phase 9 persistence will restore it                                                                                                                                                                                                                      |
+| stderr log output in dev mode                 | Log entries are duplicated to the terminal during `npm run tauri dev`. This is the `fmt::layer().with_writer(std::io::stderr)` layer in `logging.rs`. It can be removed when no longer needed for debugging.                                                                              |
+| Histogram ADU mouse tracking                  | Implemented — hover shows normalized value, ADU, and per-channel percentages                                                                                                                                                                                                              |
+| Sidebar icon tooltips clipped by Quick Launch | CSS pseudo-element tooltips on `.sidebar-icon` are trapped in `#icon-sidebar`'s stacking context (z-index 150), which is below `#quick-launch` (z-index 180). Raising `#icon-sidebar` z-index causes panel regression. True fix requires layout refactor or JS-driven tooltips. Deferred. |
+| Plugin boilerplate is verbose                 | Simple plugins like CopyFile pay heavy framework overhead for minimal logic. A `macro_rules!` or procedural macro could reduce this significantly. Deferred to Phase 10 or later — the refactor touches every plugin and should be done in one pass.                                      |
+| Single file load blink isolation              | Files loaded via LoadFile/load_file are added to ctx.file_list; scripts that loop the file list will include them until next batch load                                                                                                                                                   |
+| AutoStretch performance in dev mode           | 3–5 seconds for RGB 9MP images in debug build; expected to be near-instant in release build                                                                                                                                                                                               |
 
 ---
 

@@ -146,8 +146,8 @@ Only use this when the command needs to read or modify `AppContext` on the Rust 
 2. Add `pub mod my_plugin;` to `src-tauri/src/plugins/mod.rs`
 3. Register in `lib.rs` `run()`: `registry.register(Arc::new(plugins::my_plugin::MyPlugin));`
 4. Add command name to `pcodeCommands.ts`
-
----
+5. Add a help entry to `pcodeHelp.ts` — every command must have a help entry for the `help <command>` console feature to work
+6. Add an `ARG_HINTS` entry to `Console.svelte` for tab completion argument hints
 
 ## Pattern 4 — Sending Output to the Console from Outside Console.svelte
 
@@ -588,8 +588,12 @@ Components that need to cover the full viewer region (expanded console, macro ed
 
 | Layer              | z-index |
 | ------------------ | ------- |
+| Menu bar           | 200     |
 | Status bar         | 200     |
-| Sliding panels     | 140     |
+| Toolbar            | 190     |
+| Quick Launch       | 180     |
+| Sliding panels     | 185     |
+| Icon sidebar       | 150     |
 | Console (expanded) | 300     |
 | Macro Editor       | 400     |
 | Help Modal         | 500     |

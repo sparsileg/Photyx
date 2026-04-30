@@ -99,10 +99,10 @@ impl PhotonPlugin for ReadAll {
 
         let msg = if errors > 0 {
             format!("Loaded {}/{} files ({} FITS, {} XISF, {} TIFF, {} errors)",
-                loaded, total, fits_files.len(), xisf_files.len(), tiff_files.len(), errors)
+                    loaded, total, fits_files.len(), xisf_files.len(), tiff_files.len(), errors)
         } else {
             format!("Loaded {} file(s) ({} FITS, {} XISF, {} TIFF)",
-                loaded, fits_files.len(), xisf_files.len(), tiff_files.len())
+                    loaded, fits_files.len(), xisf_files.len(), tiff_files.len())
         };
 
         Ok(PluginOutput::Message(msg))

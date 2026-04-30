@@ -240,7 +240,7 @@
 #tab-hint {
     flex: 0 0 auto;
     font-size: 10px;
-    color: var(--text-secondary);
+    color: var(--warning-color);
     padding: 2px 8px;
     border-top: 1px solid var(--border-color);
     min-height: 18px;
@@ -248,5 +248,5 @@
 }
 
 #console-panel.expanded #tab-hint {
-    font-size: 13px;
+    font-size: 26px;
 }

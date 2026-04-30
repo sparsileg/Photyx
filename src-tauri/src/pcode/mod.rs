@@ -80,7 +80,7 @@ fn parse_blocks(lines: &[(usize, PcodeLine)]) -> Result<Vec<Block>, String> {
                         PcodeLine::If { .. } => {
                             depth += 1;
                             if in_else { &mut else_lines } else { &mut then_lines }
-                                .push((ln, pl.clone()));
+                            .push((ln, pl.clone()));
                             i += 1;
                         }
                         PcodeLine::Else if depth == 1 => {
@@ -91,12 +91,12 @@ fn parse_blocks(lines: &[(usize, PcodeLine)]) -> Result<Vec<Block>, String> {
                             depth -= 1;
                             if depth == 0 { i += 1; break; }
                             if in_else { &mut else_lines } else { &mut then_lines }
-                                .push((ln, pl.clone()));
+                            .push((ln, pl.clone()));
                             i += 1;
                         }
                         _ => {
                             if in_else { &mut else_lines } else { &mut then_lines }
-                                .push((ln, pl.clone()));
+                            .push((ln, pl.clone()));
                             i += 1;
                         }
                     }
@@ -336,6 +336,29 @@ fn execute_line(
                 *val = substitute_vars(val, variables);
             }
 
+            // Handle client-only commands — no Rust-side effect; intercepted here
+            // so the frontend can act on them via data.client_command.
+            // Must stay in sync with CLIENT_COMMAND_NAMES in clientCommands.ts.
+            const CLIENT_COMMANDS: &[&str] = &[
+                "showanalysisgraph",
+                "showanalysisresults",
+                "clearannotations",
+                "version",
+                "pwd",
+            ];
+            if CLIENT_COMMANDS.contains(&command.to_lowercase().as_str()) {
+                info!("pcode line {}: {} -> client command", line_number, command);
+                results.push(PcodeResult {
+                    line_number,
+                    command:    command.clone(),
+                    success:    true,
+                    message:    None,
+                    data:       Some(serde_json::json!({ "client_command": command.to_lowercase() })),
+                    trace_line: Some(command.clone()),
+                });
+                return;
+            }
+
             // Handle Assert internally so variable references evaluate correctly
             if command.to_lowercase() == "assert" {
                 let raw_expr = args.get("expression").cloned().unwrap_or_default();
@@ -442,11 +465,11 @@ fn execute_line(
                         message:    msg,
                         data,
                         trace_line: Some(format!("{} {}",
-                            command,
-                            resolved_args.iter()
-                                .map(|(k, v)| format!("{}={}", k, v))
-                                .collect::<Vec<_>>()
-                                .join(" ")
+                                                 command,
+                                                 resolved_args.iter()
+                                                 .map(|(k, v)| format!("{}={}", k, v))
+                                                 .collect::<Vec<_>>()
+                                                 .join(" ")
                         )),
                     });
                 }

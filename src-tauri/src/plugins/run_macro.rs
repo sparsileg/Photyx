@@ -1,5 +1,5 @@
 // plugins/run_macro.rs — RunMacro built-in native plugin
-// Executes a saved .phs macro file through the pcode interpreter.
+// Executes a macro stored in the SQLite database through the pcode interpreter.
 // Spec §7.7, §6.3
 
 use tracing::info;
@@ -10,49 +10,46 @@ pub struct RunMacro;
 
 impl PhotonPlugin for RunMacro {
     fn name(&self)        -> &str { "RunMacro" }
-    fn version(&self)     -> &str { "1.0" }
-    fn description(&self) -> &str { "Executes a saved .phs macro file" }
+    fn version(&self)     -> &str { "1.1" }
+    fn description(&self) -> &str { "Executes a macro stored in the database" }
 
     fn parameters(&self) -> Vec<ParamSpec> {
         vec![
             ParamSpec {
-                name:        "filename".to_string(),
-                param_type:  ParamType::Path,
+                name:        "name".to_string(),
+                param_type:  ParamType::String,
                 required:    true,
-                description: "Path to the .phs macro file".to_string(),
+                description: "Name of the macro to execute".to_string(),
                 default:     None,
             },
         ]
     }
 
     fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        let filename = args.get("filename")
-            .ok_or_else(|| PluginError::missing_arg("filename"))?;
+        let name = args.get("name")
+            .ok_or_else(|| PluginError::missing_arg("name"))?;
 
-        // Resolve the macro path — if no directory separator and no .phs extension,
-        // look in the macros directory automatically
-        let resolved = {
-            let p = std::path::Path::new(filename);
-            if p.is_absolute() || p.components().count() > 1 {
-                // Already a full or relative path
-                crate::utils::resolve_path(filename, ctx.active_directory.as_deref())
-            } else {
-                // Bare name — look in macros directory, add .phs if needed
-                let name = if filename.to_lowercase().ends_with(".phs") {
-                    filename.to_string()
-                } else {
-                    format!("{}.phs", filename)
-                };
-                let macros_dir = crate::utils::get_macros_dir();
-                macros_dir.join(name).to_str().unwrap_or(filename).to_string()
-            }
-        };
+        // Look up the macro script from the database.
+        let db = crate::GLOBAL_DB.get()
+            .ok_or_else(|| PluginError::new("INTERNAL", "Global DB not initialized"))?;
+        let db = db.lock().expect("global db lock poisoned");
 
-        let script = std::fs::read_to_string(&resolved)
-            .map_err(|e| PluginError::new("IO_ERROR",
-                &format!("Cannot read macro file '{}': {}", resolved, e)))?;
+        let script: String = db
+            .query_row(
+                "SELECT script FROM macros WHERE name = ?1",
+                rusqlite::params![name],
+                |row| row.get(0),
+            )
+            .map_err(|_| PluginError::new(
+                "NOT_FOUND",
+                &format!("No macro named '{}' found in database", name),
+            ))?;
 
-        info!("RunMacro: executing '{}'", resolved);
+        // Release the DB lock before executing — the script may call other
+        // plugins that also need the DB lock (e.g. a nested RunMacro).
+        drop(db);
+
+        info!("RunMacro: executing '{}'", name);
 
         let registry = crate::GLOBAL_REGISTRY.get()
             .ok_or_else(|| PluginError::new("INTERNAL", "Registry not initialized"))?;
@@ -62,20 +59,31 @@ impl PhotonPlugin for RunMacro {
         let errors: Vec<_> = results.iter().filter(|r| !r.success).collect();
         let lines_run = results.len();
 
+        // Collect any client commands that fired during the macro so the
+        // frontend can execute them after run_script returns.
+        let client_commands: Vec<String> = results.iter()
+            .filter_map(|r| {
+                r.data.as_ref()
+                    .and_then(|d| d.get("client_command"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .collect();
+
         if errors.is_empty() {
-            let mut output = results.iter()
-                .filter_map(|r| r.message.as_deref())
-                .filter(|m| !m.is_empty())
-                .collect::<Vec<_>>()
-                .join("\n");
-            if output.is_empty() {
-                output = format!("Macro '{}' complete ({} commands)", resolved, lines_run);
+            let msg = format!("Macro '{}' complete ({} commands)", name, lines_run);
+            if client_commands.is_empty() {
+                Ok(PluginOutput::Message(msg))
+            } else {
+                Ok(PluginOutput::Data(serde_json::json!({
+                    "message":         msg,
+                    "client_commands": client_commands,
+                })))
             }
-            Ok(PluginOutput::Message(output))
         } else {
             Ok(PluginOutput::Message(format!(
                 "Macro '{}' halted after {} command(s): {}",
-                resolved,
+                name,
                 lines_run,
                 errors[0].message.as_deref().unwrap_or("unknown error")
             )))

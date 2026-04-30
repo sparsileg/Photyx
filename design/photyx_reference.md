@@ -25,6 +25,7 @@ All pcode commands in the initial release. Arguments in brackets are optional.
 | ComputeEccentricity | Analysis        | Calculates eccentricity for detected stars on current frame                                                                                                                                         | —                                                      |
 | ComputeFWHM         | Analysis        | Calculates FWHM for detected stars; displays per-star circle annotations on viewer overlay                                                                                                          | —                                                      |
 | ContourHeatmap      | Analysis        | Generates spatial FWHM heatmap for current frame; writes XISF to active directory; stores output path in `$NEW_FILE`                                                                                | [palette], [contour_levels], [threshold], [saturation] |
+| CopyFile            | File Management | Copies a file to a destination directory; defaults to current frame if source= not specified; destination created automatically; stores path in `$NEW_FILE`                                         | [source], destination                                  |
 | CopyKeyword         | Keyword         | Copies a keyword value to a new keyword name                                                                                                                                                        | from, to                                               |
 | CountFiles          | Scripting       | Stores number of files in current list in `$filecount`                                                                                                                                              | —                                                      |
 | CountStars          | Analysis        | Counts detected stars in current frame                                                                                                                                                              | —                                                      |
@@ -65,16 +66,16 @@ All pcode commands in the initial release. Arguments in brackets are optional.
 
 Old-style names are retained as backward-compatible aliases but should not be used in new scripts.
 
-| Alias             | Canonical Name |
-| ----------------- | -------------- |
-| ReadAllFITFiles   | ReadFIT        |
-| ReadAllXISFFiles  | ReadXISF       |
-| ReadAllTIFFFiles  | ReadTIFF       |
-| ReadAllFiles      | ReadAll        |
-| WriteAllFITFiles  | WriteFIT       |
-| WriteAllXISFFiles | WriteXISF      |
-| WriteAllTIFFFiles | WriteTIFF      |
-| WriteCurrentFiles | WriteCurrent   |
+| Canonical Name |
+| -------------- |
+| ReadFIT        |
+| ReadXISF       |
+| ReadTIFF       |
+| ReadAll        |
+| WriteFIT       |
+| WriteXISF      |
+| WriteTIFF      |
+| WriteCurrent   |
 
 ### 1.2 Keyword Scope Parameter
 
@@ -117,13 +118,12 @@ Macros declare runtime parameters using `@param` comment lines at the top of the
 @param NAME "Description" required|optional [default="value"]
 ```
 
-| Field | Description |
-| ----- | ----------- |
-| `NAME` | Token name; used as `$NAME` inside the script |
-| `"Description"` | Label shown in the parameter prompt dialog |
-| `required\|optional` | Whether the user must supply a value |
-| `default="value"` | Default value for optional params; used if user leaves blank |
-
+| Field                | Description                                                  |
+| -------------------- | ------------------------------------------------------------ |
+| `NAME`               | Token name; used as `$NAME` inside the script                |
+| `"Description"`      | Label shown in the parameter prompt dialog                   |
+| `required\|optional` | Whether the user must supply a value                         |
+| `default="value"`    | Default value for optional params; used if user leaves blank |
 
 **At run time:**
 
@@ -282,61 +282,89 @@ User can override any frame's flag during blink review with P (pass) or R (rejec
 
 ## 5. Settings Reference
 
+If a setting is NOT persisted, it will always be set to the hard-coded
+default at the start of the operation. The user may be able to change
+the value during a session, but the last value will not be saved in the
+database (example: default zoom level).
+
+If a setting is persisted and there is no entry in User Preferences,
+the user can change the value as part of the workflow and that value is
+saved in the database and used until changed (example: working
+directory).
+
+If a setting is persisted and there is an entry in User Preferences,
+the default is used until the user sets a value in User Preferences,
+and from then on the user-set value is always used (example: backup
+directory).
+
+| Persisted | User Pref | Action           |
+| --------- | --------- | ---------------- |
+|           |           | Always default   |
+| X         |           | Last used        |
+| X         | X         | Always user pref |
+
 ### 5.1 UI / Viewer Settings
 
-| Setting              | Default        | Persisted |
-| -------------------- | -------------- | --------- |
-| Color theme          | Matrix         | ✓         |
-| Default zoom level   | Fit            | ✗         |
-| Default blink rate   | 0.1s per frame | ✗         |
-| Default channel view | RGB            | ✗         |
+| Setting              | Default        | Persisted | Pref |
+| -------------------- | -------------- | --------- | ---- |
+| Color theme          | Matrix         | X         |      |
+| Default zoom level   | Fit            |           |      |
+| Default blink rate   | 0.1s per frame |           |      |
+| Default channel view | RGB            |           |      |
 
 ### 5.2 File & Path Settings
 
-| Setting                   | Default             | Persisted |
-| ------------------------- | ------------------- | --------- |
-| Default working directory | Last used directory | ✓         |
-| Default JPEG quality      | 75%                 | ✓         |
-| Overwrite behavior        | Prompt              | ✓         |
-| Recent directories list   | Last 10             | ✓         |
-| Format filter selection   | All Supported       | ✓         |
+| Setting                 | Default       | Persisted | Pref |
+| ----------------------- | ------------- | --------- | ---- |
+| Working directory       | Last used     | X         |      |
+| JPEG quality            | 75%           | X         | X    |
+| Overwrite behavior      | Prompt        |           |      |
+| Recent directories list | Last 10       | X         | X    |
+| Format filter selection | All Supported |           |      |
 
 ### 5.3 pcode / Macro Settings
 
-| Setting                 | Default             | Persisted |
-| ----------------------- | ------------------- | --------- |
-| Macro library directory | OS app data Macros/ | ✓         |
-| Console history size    | 500 commands        | ✓         |
-| Error behavior          | Halt on error       | ✓         |
-| Macro editor font size  | 13px                | ✓         |
+| Setting              | Default          | Persisted | Pref |
+| -------------------- | ---------------- | --------- | ---- |
+| Database storage     | OS dependent     |           |      |
+| Backup directory     | Downloads folder | X         | X    |
+| Console history size | 500 commands     | X         | X    |
+| Error behavior       | Halt on error    |           |      |
+| Macro editor font size | 13px           | X         | X    |
 
 ### 5.4 Performance Settings
 
-| Setting                     | Default           | Persisted |
-| --------------------------- | ----------------- | --------- |
-| Buffer pool memory limit    | 4 GB              | ✓         |
-| Blink pre-cache frame count | All loaded frames | ✓         |
-| Rayon thread count          | num_cpus - 1      | ✓         |
+| Setting                  | Default           | Persisted | Pref |
+| ------------------------ | ----------------- | --------- | ---- |
+| Buffer pool memory limit | 4 GB              | X         | X    |
+| Blink pre-cache frames   | All loaded frames |           |      |
+| Rayon thread count       | num_cpus - 1      |           |      |
 
 ### 5.5 Quick Launch Settings
 
-| Setting            | Default | Persisted |
-| ------------------ | ------- | --------- |
-| Button assignments | —       | ✓         |
-| Grid column count  | 4       | ✓         |
-| Panel visible      | true    | ✓         |
+The user can pin as many macros as they wish to the Quick Launch panel;
+buttons automatically wrap to the next row.
 
 ### 5.6 Rig Profile Defaults (AnalyzeFrames)
 
-| Threshold                  | Type     | Default |
-| -------------------------- | -------- | ------- |
-| Background median Reject   | Sigma    | +2.5σ   |
-| Background std dev Reject  | Sigma    | +2.5σ   |
-| Background gradient Reject | Sigma    | +2.5σ   |
-| SNR estimate Reject        | Sigma    | -2.5σ   |
-| FWHM Reject                | Sigma    | +2.5σ   |
-| Eccentricity Reject        | Absolute | 0.85    |
-| Star count Reject          | Sigma    | -1.5σ   |
+| Setting                    | Type     | Default | Persisted | Pref |
+| -------------------------- | -------- | ------- | --------- | ---- |
+| Name                       | String   | Standard|  X        | X    |
+| Background median Reject   | Sigma    | +2.5σ   | X         | X    |
+| Background std dev Reject  | Sigma    | +2.5σ   | X         | X    |
+| Background gradient Reject | Sigma    | +2.5σ   | X         | X    |
+| SNR estimate Reject        | Sigma    | -2.5σ   | X         | X    |
+| FWHM Reject                | Sigma    | +2.5σ   | X         | X    |
+| Eccentricity Reject        | Absolute | 0.85    | X         | X    |
+| Star count Reject          | Sigma    | -1.5σ   | X         | X    |
+
+### 5.7 AutoStretch Settings
+
+| Setting               | Default | Persisted | Pref |
+| --------------------- | ------- | --------- | ---- |
+| AutoStretch enabled   | Off     |           |      |
+| Shadow clip           | -2.8    | X         | X    |
+| Target background     | 0.15    | X         | X    |
 
 ---
 
@@ -434,6 +462,7 @@ All plugins are Built-in Native in the initial release. WASM user plugins are su
 | ComputeEccentricity | Analysis        | ✅ Complete |
 | ComputeFWHM         | Analysis        | ✅ Complete |
 | ContourHeatmap      | Analysis        | ✅ Complete |
+| CopyFile            | File Management |            |
 | CopyKeyword         | Keyword         | ✅ Complete |
 | CountFiles          | Scripting       | ✅ Complete |
 | CountStars          | Analysis        | ✅ Complete |

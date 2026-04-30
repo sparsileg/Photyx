@@ -207,8 +207,8 @@ fn execute_all(
                 fwhm:                fwhm_result.as_ref().map(|r| r.fwhm_pixels),
                 eccentricity:        ecc_result.as_ref().map(|r| r.eccentricity),
                 star_count:          fwhm_result.as_ref().map(|r| r.star_count as u32)
-                                         .or_else(|| ecc_result.as_ref().map(|r| r.star_count as u32))
-                                         .or_else(|| Some(stars.len() as u32)),
+                    .or_else(|| ecc_result.as_ref().map(|r| r.star_count as u32))
+                    .or_else(|| Some(stars.len() as u32)),
                 flag: None,
                 triggered_by: vec![],
             };
@@ -330,8 +330,8 @@ fn compute_metrics_for_image(
         fwhm:                fwhm_result.as_ref().map(|r| r.fwhm_pixels),
         eccentricity:        ecc_result.as_ref().map(|r| r.eccentricity),
         star_count:          fwhm_result.as_ref().map(|r| r.star_count as u32)
-                                .or_else(|| ecc_result.as_ref().map(|r| r.star_count as u32))
-                                .or_else(|| Some(stars.len() as u32)),
+            .or_else(|| ecc_result.as_ref().map(|r| r.star_count as u32))
+            .or_else(|| Some(stars.len() as u32)),
         flag: None,
         triggered_by: vec![],
     })

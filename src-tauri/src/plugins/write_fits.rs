@@ -148,7 +148,7 @@ pub(crate) fn write_fits_new(out_path: &str, buffer: &ImageBuffer) -> Result<(),
     for kw in buffer.keywords.values() {
         match kw.name.as_str() {
             "SIMPLE" | "BITPIX" | "NAXIS" | "NAXIS1" | "NAXIS2" | "NAXIS3"
-            | "EXTEND" | "END" | "FILENAME" | "BZERO" | "BSCALE" => continue,
+                | "EXTEND" | "END" | "FILENAME" | "BZERO" | "BSCALE" => continue,
             _ => {}
         }
         let result = if let Some(comment) = &kw.comment {
