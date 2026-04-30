@@ -129,6 +129,10 @@ pub struct AppContext {
 
     /// Last computed Auto-STF parameters (c0, m) — reused by get_full_frame
     pub last_stf_params: Option<(f32, f32)>,
+
+    /// AutoStretch defaults — loaded from AppSettings at startup and on preference change
+    pub autostretch_shadow_clip: f32,
+    pub autostretch_target_bg:   f32,
     pub analysis_results: HashMap<String, crate::analysis::AnalysisResult>,
 
     /// Configurable log directory — if None, falls back to Tauri app data dir
@@ -140,7 +144,10 @@ pub struct AppContext {
 
 impl AppContext {
     pub fn new() -> Self {
-        Self::default()
+        let mut ctx = Self::default();
+        ctx.autostretch_shadow_clip = crate::settings::defaults::DEFAULT_AUTOSTRETCH_SHADOW_CLIP as f32;
+        ctx.autostretch_target_bg   = crate::settings::defaults::DEFAULT_AUTOSTRETCH_TARGET_BG as f32;
+        ctx
     }
 
     /// Get a loaded image by index into the file list

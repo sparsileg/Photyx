@@ -1,8 +1,8 @@
 # Photyx — Specification & Requirements Document
 
 **Version:** 20
-**Date:** 28 April 2026
-**Status:** Active Development — Phase 8 substantially complete
+**Date:** 30 April 2026
+**Status:** Active Development — Phase 9 in progress
 
 ---
 
@@ -43,7 +43,7 @@ Distribution: .msi / .exe (Windows), .dmg (macOS), .AppImage or .deb (Linux).
 | REST API | Axum (local HTTP, deferred)                                     |
 | Logging  | Rust `tracing` crate; rolling file log in OS app data directory |
 | Plugins  | Built-in native (Rust) + user WASM via Wasmtime                 |
-| Settings | `tauri-plugin-store` (Phase 9)                                  |
+| Preferences | `tauri-plugin-store` (Phase 9)                                  |
 | Updates  | `tauri-plugin-updater` via GitHub Releases (Phase 9)            |
 
 Key crates in use: `fitsio` (FITS), `tiff`, `rayon`, `tracing`, `serde_json`, `bytemuck`, `once_cell`, `chrono`.
@@ -215,8 +215,6 @@ Single main window, single-window SPA. No floating OS windows.
 | Tools    | Backup Database, Restore Database, Log Viewer                                        |
 | Help     | About, Documentation                                                                 |
 
-Deferred for now is whether or not to put FWHM, Star Count, Eccentricity,
-Median value, and others in the Analyze menu.
 
 ### 8.3 Icon Sidebar & Panels
 
@@ -449,9 +447,31 @@ Local HTTP REST server via Axum. Bound to localhost only by default; port 7171. 
 | Phase 6     | ✅ Complete               | UI audit and cleanup                                                                                                                                  |
 | Phase 7     | ✅ Complete               | AnalyzeFrames (7 metrics), PXFLAG, Analysis Graph, star annotations, consolePipe, blink overlay                                                       |
 | Phase 8     | ✅ Substantially complete | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                            |
-| **Phase 9** | 🔄 In Progress | Embedded SQLite (✅), Quick Launch persistence (✅), session history (✅), crash recovery (✅), macros migrated to SQLite (✅); remaining: analysis results persistence, threshold profiles UI, console history persistence, status bar profile indicator, settings persistence |
+| **Phase 9** | 🔄 In Progress | Embedded SQLite (✅), Quick Launch persistence (✅), session history (✅), crash recovery (✅), macros migrated to SQLite (✅); ✅ preferences persistence, remaining: analysis results persistence, threshold profiles UI, console history persistence, status bar profile indicator |
 | Phase 10 | ⬜ Planned |  UI audit |
-| Deferred    | ⏸                        | PNG/JPEG readers/writers, debayering, async dispatch, REST API, WASM analysis plugins, User plugin loading, plugin manifest system, Plugin Manager UI, User plugin loading, plugin manifest system, plugin directory, |
+
+
+### 13.1 Deferred Items
+
+Some of these items may not be implemented. Others are waiting for
+other items to be complete before being implemented.
+
+    - PNG/JPEG readers/writers
+    - debayering
+    - async dispatch
+    - REST API
+    - WASM analysis plugins
+    - User plugin loading, plugin manifest system, Plugin Manager UI
+    - Channel switching (R/G/B buttons) — buttons update the store but
+      nothing reads $ui.activeChannel; requires changes to
+      get_current_frame, get_autostretch_frame, get_full_frame on Rust
+      side plus viewer reload on channel change
+    - Recent Directories UI — DB infrastructure is in place but no menu UI implemented
+    - jpeg_quality — persisted but unwired; waiting on JPEG export implementation
+    - buffer_pool_bytes — persisted but unwired; waiting on buffer
+      pool enforcement (total_memory_used() is a stub returning 0)
+    - console_history_size — persisted but unwired; waiting on console
+      history persistence (save_console_history/get_console_history)
 
 ---
 

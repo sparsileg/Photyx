@@ -23,7 +23,22 @@ pub fn get_all_preferences(state: State<Arc<PhotoxState>>) -> Result<std::collec
 pub fn set_preference(key: String, value: String, state: State<Arc<PhotoxState>>) -> Result<(), String> {
     let db = state.db.lock().expect("db lock poisoned");
     let mut settings = state.settings.lock().expect("settings lock poisoned");
-    settings.save_preference(&key, &value, &db)
+    settings.save_preference(&key, &value, &db)?;
+
+    // Propagate autostretch settings into AppContext immediately
+    if key == "autostretch_shadow_clip" {
+        if let Ok(v) = value.parse::<f32>() {
+            let mut ctx = state.context.lock().expect("context lock poisoned");
+            ctx.autostretch_shadow_clip = v;
+        }
+    } else if key == "autostretch_target_bg" {
+        if let Ok(v) = value.parse::<f32>() {
+            let mut ctx = state.context.lock().expect("context lock poisoned");
+            ctx.autostretch_target_bg = v;
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -70,11 +85,7 @@ pub fn save_quick_launch_buttons(
 #[tauri::command]
 pub fn get_recent_directories(state: State<Arc<PhotoxState>>) -> Result<Vec<String>, String> {
     let db = state.db.lock().expect("db lock poisoned");
-    let max: i64 = db.query_row(
-        "SELECT CAST(value AS INTEGER) FROM preferences WHERE key = 'recent_directories_max'",
-        [],
-        |row| row.get(0),
-    ).unwrap_or(10);
+    let max = state.settings.lock().expect("settings lock poisoned").recent_directories_max;
     let mut stmt = db.prepare(
         "SELECT path FROM recent_directories ORDER BY last_used DESC LIMIT ?1"
     ).map_err(|e| e.to_string())?;
@@ -97,11 +108,7 @@ pub fn record_directory_visit(path: String, state: State<Arc<PhotoxState>>) -> R
              use_count = use_count + 1",
         rusqlite::params![path, now],
     ).map_err(|e| e.to_string())?;
-    let max: i64 = db.query_row(
-        "SELECT CAST(value AS INTEGER) FROM preferences WHERE key = 'recent_directories_max'",
-        [],
-        |row| row.get(0),
-    ).unwrap_or(10);
+    let max = state.settings.lock().expect("settings lock poisoned").recent_directories_max;
     db.execute(
         "DELETE FROM recent_directories WHERE id NOT IN (
              SELECT id FROM recent_directories ORDER BY last_used DESC LIMIT ?1

@@ -200,8 +200,8 @@ pub fn get_autostretch_frame(
     let ctx = state.context.lock().expect("context lock poisoned");
     let jpeg_bytes = compute_autostretch_jpeg(
         &ctx,
-        shadow_clip.unwrap_or(-2.8),
-        target_background.unwrap_or(0.15),
+        shadow_clip.unwrap_or(ctx.autostretch_shadow_clip),
+        target_background.unwrap_or(ctx.autostretch_target_bg),
     )?;
     use base64::Engine as _;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes);

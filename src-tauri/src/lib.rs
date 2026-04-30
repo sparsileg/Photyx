@@ -238,9 +238,13 @@ pub fn run() {
     let mut app_settings = settings::AppSettings::new();
     app_settings.load_from_db(&db_conn);
 
+    let mut app_context = AppContext::new();
+    app_context.autostretch_shadow_clip = app_settings.autostretch_shadow_clip as f32;
+    app_context.autostretch_target_bg   = app_settings.autostretch_target_bg as f32;
+
     let state = Arc::new(PhotoxState {
         registry,
-        context:  Mutex::new(AppContext::new()),
+        context:  Mutex::new(app_context),
         db:       Mutex::new(db_conn),
         settings: Mutex::new(app_settings),
     });

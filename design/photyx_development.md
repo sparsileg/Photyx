@@ -1,8 +1,8 @@
 # Photyx — Developer Notes
 
-**Version:** 24
+**Version:** 25
 **Last updated:** 30 April 2026
-**Status:** Active development — Phase 9 substantially complete; Phase D closed
+**Status:** Active development — Phase 9 sub-phase E in progress
 
 ---
 
@@ -30,15 +30,19 @@ Photyx/
 │   │   │   ├── KeywordModal.svelte
 │   │   │   ├── LogViewer.svelte
 │   │   │   ├── MenuBar.svelte
+│   │   │   ├── PreferencesDialog.svelte
 │   │   │   ├── QuickLaunch.svelte
 │   │   │   ├── StatusBar.svelte
 │   │   │   ├── Toolbar.svelte
 │   │   │   └── Viewer.svelte
+│   │   ├── settings/     ← Frontend settings constants (mirrors defaults.rs)
+│   │   │   └── constants.ts
 │   │   └── stores/       ← Svelte writable stores
 │   │       ├── consoleHistory.ts
 │   │       ├── notifications.ts
 │   │       ├── quickLaunch.ts
 │   │       ├── session.ts
+│   │       ├── settings.ts
 │   │       └── ui.ts
 │   └── routes/
 │       └── +page.svelte  ← Main application shell
@@ -47,6 +51,9 @@ Photyx/
 │       ├── lib.rs        ← Tauri entry point, command handlers
 │       ├── logging.rs    ← Rolling file logger (tracing + tracing-appender)
 │       ├── utils.rs      ← Shared utilities: resolve_path, get_log_dir, get_macros_dir
+│       ├── settings/     ← AppSettings global object and defaults
+│       │   ├── mod.rs    ← AppSettings struct; load_from_db(), save_preference()
+│       │   └── defaults.rs ← Single source of truth for all hard-coded values and bounds
 │       ├── plugin/       ← Plugin host infrastructure
 │       │   ├── mod.rs    ← PhotonPlugin trait, ArgMap, PluginOutput, PluginError, ParamSpec
 │       │   └── registry.rs ← Plugin registry: register, lookup, dispatch, list_with_details
@@ -114,6 +121,7 @@ Photyx/
 │   │   ├── logviewer.css
 │   │   ├── macroeditor.css
 │   │   ├── modal.css
+│   │   ├── preferences.css
 │   │   ├── sidebar.css
 │   │   ├── statusbar.css
 │   │   ├── toolbar.css
@@ -236,12 +244,7 @@ AutoStretch operates on a dynamic display-resolution downsampled copy of the ima
 
 This is a **~50x reduction** in pixel count versus operating on the full buffer. AutoStretch takes well under 500ms for a 3008x3008 U16 image.
 
-The shadow clip default is -2.8 (PixInsight convention). The target background default is 0.15 (reduced from the PixInsight default of 0.25 for better visual results with astrophotography data). Both values are exposed as constants at the top of `auto_stretch.rs` for easy tuning:
-
-```rust
-const DEFAULT_SHADOW_CLIP:       f32 = -2.8;
-const DEFAULT_TARGET_BACKGROUND: f32 = 0.15;
-```
+The shadow clip default is -2.8 and the target background default is 0.15. Both values are defined in `src-tauri/src/settings/defaults.rs` and loaded into `AppContext` at startup via `AppSettings`. They are user-configurable via Edit > Preferences. When AutoStretch runs without explicit args, it reads from `ctx.autostretch_shadow_clip` and `ctx.autostretch_target_bg` rather than hardcoded constants.
 
 For RGB images, STF parameters are computed independently per channel, matching PixInsight's Auto-STF behavior.
 
@@ -934,6 +937,37 @@ for (const action of response.client_actions) {
 
 ---
 
+### 3.55 AppSettings Architecture
+
+All application settings are held in a single `AppSettings` struct (`src-tauri/src/settings/mod.rs`) stored in `PhotoxState` behind a `Mutex`. This is the global in-memory settings object — the single source of truth for all settings in the backend.
+
+**Two-source population:**
+
+- `src-tauri/src/settings/defaults.rs` — defines every hard-coded default value and bounds as Rust constants. No magic numbers anywhere else in the codebase.
+- `preferences` table in `photyx.db` — persisted user preferences loaded at startup via `AppSettings::load_from_db()`.
+
+**Startup sequence:**
+
+1. `AppSettings::new()` initializes all fields from `defaults.rs`
+2. `load_from_db()` overwrites persisted fields from the `preferences` table; missing keys silently fall back to defaults; values are clamped to bounds on read
+3. `AppContext` is initialized with autostretch values from `AppSettings`
+4. `PhotoxState` is constructed with `Mutex<AppSettings>`
+
+**Read/write pattern:**
+
+- All reads come from the in-memory struct (no DB queries for settings)
+- `set_preference()` Tauri command calls `AppSettings::save_preference()` which updates the struct and writes to the DB atomically
+- Autostretch values are additionally propagated into `AppContext` immediately on change so plugins see them without a restart
+
+**Frontend mirror:**
+
+- `src-svelte/lib/settings/constants.ts` — mirrors all bounds and defaults for validation and display; field metadata (labels, helper text, step sizes) for the Preferences dialog
+- `src-svelte/lib/stores/settings.ts` — Svelte store holding `AppPreferences`; hydrated from `get_all_preferences` at startup; `savePreferences()` batches `set_preference` calls on OK/Apply
+
+**Preferences dialog (Edit > Preferences):**
+
+Works on a draft copy of the current store values. Nothing is written until OK or Apply. Validates bounds before writing. Cancel discards all changes. Covers the 8 user-facing preference fields from `photyx_reference.md` §5 (marked Persisted + Pref). Theme is excluded — handled by View menu. Rig profile thresholds are excluded — handled by Edit > Analysis Parameters.
+
 ## 4. Tauri Commands (Implemented)
 
 > **Note:** The Tauri commands table and plugin status table have been moved to `photyx_reference.md` §7 and §9 respectively for easier lookup. The tables below are retained here as the implementation-layer record but `photyx_reference.md` is the authoritative lookup source.
@@ -1010,13 +1044,13 @@ for (const action of response.client_actions) {
 
 ## 6. UI State Store (`ui.ts`) — Key Fields
 
-Photyx will use an embedded SQLite database via the rusqlite crate, which statically links SQLite into the binary with no external dependencies. The tauri-plugin-sql plugin exposes the database to the Svelte frontend via invoke. Planned uses include: replacing localStorage for Quick Launch buttons, theme, and user preferences; a macro library table storing name, description, script text, created date, and last run date; a frame analysis results table (one row per file per analysis type — FWHM, star count, eccentricity, median value) so results persist across sessions and can be queried; and a session history log. This is deferred to Phase 9 alongside other persistence work.
-
 | Field                 | Purpose                                                                                                  |
 | --------------------- | -------------------------------------------------------------------------------------------------------- |
+| `aboutOpen`           | Whether the About modal is open                                                                          |
 | `activePanel`         | Currently open sidebar panel                                                                             |
 | `activeView`          | Currently active viewer-region view (`'analysisGraph'`, `'analysisResults'`, or `null` for image viewer) |
-| `aboutOpen`           | Whether the About modal is open                                                                          |
+| `annotationToken`     | Positive = show annotations, negative = clear annotations                                                |
+| `autostretchImageUrl` | Data URL of AutoStretch result for current frame; cleared on frame change                                |
 | `blinkCached`         | Whether blink cache has been built                                                                       |
 | `blinkCaching`        | Whether blink cache build is in progress                                                                 |
 | `blinkImageUrl`       | Current blink frame data URL (null when not in blink mode)                                               |
@@ -1025,16 +1059,18 @@ Photyx will use an embedded SQLite database via the rusqlite crate, which static
 | `blinkResolution`     | Currently selected blink resolution ('12' = 12.5%, '25' = 25%)                                           |
 | `blinkTabActive`      | Whether the Blink tab is currently selected                                                              |
 | `consoleExpanded`     | Whether console history is expanded                                                                      |
+| `currentBlinkFlag`    | PXFLAG value for the currently displayed blink frame                                                     |
+| `displayImageUrl`     | Data URL of temporary display image (heatmap, single loaded file); cleared on frame change               |
 | `frameRefreshToken`   | Incremented to trigger viewer frame reload                                                               |
 | `keywordModalOpen`    | Whether the keyword modal dialog is open                                                                 |
 | `logViewerOpen`       | Whether the Log Viewer modal is open                                                                     |
-| `macroEditorFile`     | File currently open in Macro Editor (`{ path, name }` or `null`)                                         |
-| `theme`               | Active theme (dark / light / matrix), persisted to localStorage                                          |
+| `macroEditorFile`     | File currently open in Macro Editor (`{ id, name, displayName, script }` or `null`)                      |
+| `preferencesOpen`     | Whether the Preferences dialog is open                                                                   |
+| `quickLaunchVisible`  | Whether the Quick Launch bar is visible                                                                   |
+| `showQualityFlags`    | Whether PXFLAG reject borders are shown during blink                                                     |
+| `theme`               | Active theme (dark / light / matrix), persisted to DB                                                    |
 | `viewerClearToken`    | Incremented to clear viewer and restore starfield                                                        |
 | `zoomLevel`           | Current zoom level                                                                                       |
-| `annotationToken`     | Positive = show annotations, negative = clear annotations                                                |
-| `autostretchImageUrl` | Data URL of AutoStretch result for current frame; cleared on frame change                                |
-| `displayImageUrl`     | Data URL of temporary display image (heatmap, single loaded file); cleared on frame change               |
 
 **View management:** `activeView` replaces the previous `showAnalysisGraph` and `showAnalysisResults` boolean flags. Always use `ui.showView()` to change the active view — never set `activeView` directly. See §3.40.
 
@@ -1050,10 +1086,7 @@ Photyx will use an embedded SQLite database via the rusqlite crate, which static
 | Long-running commands block UI                | pcode invoke awaits Rust response, freezing JS; fix requires Tauri event system; deferred                                                                                                                                                                                                 |
 | Zoom is approximate at high levels            | Full-res cache uses AutoStretch STF params computed on display-res downsample; minor difference possible                                                                                                                                                                                  |
 | XISF Vector/Matrix properties                 | Read as placeholder string, skipped on write; deferred pending test files                                                                                                                                                                                                                 |
-| Rayon thread count not user-configurable      | Hardcoded to num_cpus-1; §9.7 setting not yet wired                                                                                                                                                                                                                                       |
-| No persistent settings store                  | tauri-plugin-store not yet implemented (Phase 9)                                                                                                                                                                                                                                          |
-| No crash recovery                             | Phase 9 item                                                                                                                                                                                                                                                                              |
-| Last used directory lost on restart           | Session state is in-memory only; Phase 9 persistence will restore it                                                                                                                                                                                                                      |
+| Rayon thread count not user-configurable      | Hardcoded to num_cpus-1; setting exists in AppSettings but not yet wired                                                                                                                                                                                                                  |
 | stderr log output in dev mode                 | Log entries are duplicated to the terminal during `npm run tauri dev`. This is the `fmt::layer().with_writer(std::io::stderr)` layer in `logging.rs`. It can be removed when no longer needed for debugging.                                                                              |
 | Histogram ADU mouse tracking                  | Implemented — hover shows normalized value, ADU, and per-channel percentages                                                                                                                                                                                                              |
 | Sidebar icon tooltips clipped by Quick Launch | CSS pseudo-element tooltips on `.sidebar-icon` are trapped in `#icon-sidebar`'s stacking context (z-index 150), which is below `#quick-launch` (z-index 180). Raising `#icon-sidebar` z-index causes panel regression. True fix requires layout refactor or JS-driven tooltips. Deferred. |
@@ -1075,23 +1108,234 @@ Photyx will use an embedded SQLite database via the rusqlite crate, which static
 | Phase 6  | ✅ Complete               | UI cleanup complete                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Phase 7  | ✅ Complete               | AnalyzeFrames with 7 native metrics; PASS/REJECT classification; PXFLAG keyword; Analysis Graph viewer-region component; star annotation overlay; consolePipe store; blink red border overlay; viewer filename overlay; theme-aware chart colors                                                                                                                                                                                                                                                                                               |
 | Phase 8  | ✅ Substantially complete | Moment-based FWHM; 8×8 background gradient grid; 5-pixel minimum star filter; WriteFITS U16 sign conversion fix; histogram canvas width fix; UI audit pass; ContourHeatmap plugin (spatial FWHM heatmap, adaptive grid, 3 palettes, XISF output, `$NEW_FILE` convention); display pipeline refactor (raw display, explicit AutoStretch, blink-only cache); `image_reader.rs` format-agnostic reader; load_file Tauri command; File > Load Single Image menu item; LoadFile pcode command; DispatchResponse.data field; histogram hover readout |
-| Phase 9  | 🔄 In progress            | Embedded SQLite (✅), Quick Launch persistence (✅), session history (✅), crash recovery (✅), macros migrated to SQLite (✅); remaining: User Preferences dialog, Analysis Parameters dialog, analysis results persistence, threshold profiles UI, console history persistence, status bar profile indicator, AppSettings struct                                                                                                                                                                                                              |
+| Phase 9  | 🔄 In progress            | Embedded SQLite (✅), Quick Launch persistence (✅), session history (✅), crash recovery (✅), macros migrated to SQLite (✅), AppSettings global object (✅), Preferences dialog (✅); remaining: Analysis Parameters dialog, analysis results persistence, threshold profiles UI, console history persistence, status bar profile indicator |
 | Phase 10 | ⬜ Not started            | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Deferred | ⏸ Parked                 | Full keyword management UI, PNG/JPEG readers and writers, debayering, async dispatch, REST API (Axum), CLI access, WASM analysis plugins                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ## 9. Settings Persistence (Phase 9)
 
-All settings persistence is now driven by the SQLite database
-(`photyx.db`) via `rusqlite`. The authoritative reference for the
-schema, persistence tiers, and implementation plan is
-`photyx_persistence_inventory.md`. The authoritative reference for
-which settings exist, their defaults, and their persistence/user-pref
-classification is `photyx_reference.md` §5.
+All settings persistence is driven by the SQLite database (`photyx.db`) via `rusqlite`. The authoritative reference for the schema, persistence tiers, and implementation plan is `photyx_persistence_inventory.md`. The authoritative reference for which settings exist, their defaults, and their persistence/user-pref classification is `photyx_reference.md` §5.
 
-The in-memory settings object (`AppSettings`) is loaded at startup
-from the `preferences` table and held in `PhotoxState`. All reads are
-from memory; writes go to both the struct and the DB immediately. This
-is planned for Phase 9 sub-phase E.
+The `AppSettings` struct (`src-tauri/src/settings/mod.rs`) is the global in-memory settings object. It is loaded at startup from `defaults.rs` (hard-coded values) and the `preferences` table (persisted user values), then stored in `PhotoxState` as `Mutex<AppSettings>`. All reads come from the struct; writes go to both the struct and the DB simultaneously via `save_preference()`. See §3.55 for the full architecture.
 
-Settings that remain in localStorage (to be migrated): none —
-migration complete as of Phase 9 sub-phase B.
+Settings that remain in localStorage: none — migration complete as of Phase 9 sub-phase B.
+
+---
+
+## 10. Database Schema
+
+All tables live in `APPDATA/Photyx/photyx.db`. Schema version is tracked via `PRAGMA user_version`. Migrations are applied in order at startup via `db::open_db()`.
+
+### 10.1 `preferences` — Key/Value Store
+
+```sql
+CREATE TABLE preferences (
+    key         TEXT PRIMARY KEY,
+    value       TEXT NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+```
+
+User-facing keys (shown in Edit > Preferences):
+
+| Key | Type | Default | Min | Max |
+|---|---|---|---|---|
+| `theme` | string | `"matrix"` | — | — |
+| `jpeg_quality` | integer | `75` | `1` | `100` |
+| `recent_directories_max` | integer | `10` | `1` | `50` |
+| `backup_directory` | string | `""` | — | — |
+| `console_history_size` | integer | `500` | `100` | `5000` |
+| `macro_editor_font_size` | integer | `13` | `8` | `24` |
+| `buffer_pool_memory_limit` | integer | `4294967296` | `536870912` | `34359738368` |
+| `autostretch_shadow_clip` | float | `-2.8` | `-5.0` | `0.0` |
+| `autostretch_target_bg` | float | `0.15` | `0.01` | `0.50` |
+| `active_threshold_profile_id` | integer | `null` | — | — |
+
+Internal keys (not shown in Preferences dialog):
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `last_directory` | string | `""` | Restored on launch |
+| `crash_recovery_interval_secs` | integer | `60` | 15–300 |
+| `localStorage_migrated` | boolean | `false` | One-time migration flag |
+
+Bounds are enforced in `AppSettings` on read — DB stores raw values. See `src-tauri/src/settings/defaults.rs` for all constants.
+
+### 10.2 `quick_launch_buttons`
+
+```sql
+CREATE TABLE quick_launch_buttons (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    position    INTEGER NOT NULL,
+    label       TEXT NOT NULL,
+    script      TEXT NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+```
+
+### 10.3 `recent_directories`
+
+```sql
+CREATE TABLE recent_directories (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    path        TEXT NOT NULL UNIQUE,
+    last_used   INTEGER NOT NULL,
+    use_count   INTEGER NOT NULL DEFAULT 1
+);
+```
+
+Trimmed to `recent_directories_max` on each insert, ordered by `last_used` desc.
+
+### 10.4 `threshold_profiles`
+
+```sql
+CREATE TABLE threshold_profiles (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                        TEXT NOT NULL UNIQUE,
+    description                 TEXT,
+    bg_median_reject_sigma      REAL NOT NULL DEFAULT 2.5,
+    bg_stddev_reject_sigma      REAL NOT NULL DEFAULT 2.5,
+    bg_gradient_reject_sigma    REAL NOT NULL DEFAULT 2.5,
+    snr_reject_sigma            REAL NOT NULL DEFAULT 2.5,
+    fwhm_reject_sigma           REAL NOT NULL DEFAULT 2.5,
+    star_count_reject_sigma     REAL NOT NULL DEFAULT 1.5,
+    eccentricity_reject_abs     REAL NOT NULL DEFAULT 0.85,
+    created_at                  INTEGER NOT NULL,
+    updated_at                  INTEGER NOT NULL
+);
+```
+
+A default "Standard" profile is inserted on first launch. Active profile stored in `preferences.active_threshold_profile_id`.
+
+### 10.5 `algorithm_sets`
+
+```sql
+CREATE TABLE algorithm_sets (
+    version                         INTEGER PRIMARY KEY,
+    bg_algorithm_version            TEXT NOT NULL,
+    snr_algorithm_version           TEXT NOT NULL,
+    fwhm_algorithm_version          TEXT NOT NULL,
+    eccentricity_algorithm_version  TEXT NOT NULL,
+    star_count_algorithm_version    TEXT NOT NULL,
+    released_at                     INTEGER NOT NULL,
+    notes                           TEXT
+);
+```
+
+Current version is a compile-time constant in `defaults.rs` (`ALGORITHM_SET_VERSION`). Bumped manually when any algorithm changes.
+
+### 10.6 `frame_analysis_results`
+
+```sql
+CREATE TABLE frame_analysis_results (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path               TEXT NOT NULL,
+    algorithm_set_version   INTEGER NOT NULL REFERENCES algorithm_sets(version),
+    threshold_profile_id    INTEGER REFERENCES threshold_profiles(id),
+    equipment_profile_name  TEXT,
+    analyzed_at             INTEGER NOT NULL,
+    bg_median               REAL,
+    bg_stddev               REAL,
+    bg_gradient             REAL,
+    snr_estimate            REAL,
+    fwhm_median_px          REAL,
+    fwhm_median_arcsec      REAL,
+    eccentricity            REAL,
+    star_count              INTEGER,
+    session_bg_median_mean  REAL,
+    session_bg_median_sd    REAL,
+    session_fwhm_mean       REAL,
+    session_fwhm_sd         REAL,
+    session_ecc_mean        REAL,
+    session_ecc_sd          REAL,
+    session_snr_mean        REAL,
+    session_snr_sd          REAL,
+    session_stars_mean      REAL,
+    session_stars_sd        REAL,
+    pxflag                  TEXT NOT NULL DEFAULT 'PASS',
+    triggered_by            TEXT,
+    user_override           INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(file_path, algorithm_set_version)
+);
+
+CREATE INDEX idx_far_path    ON frame_analysis_results(file_path);
+CREATE INDEX idx_far_version ON frame_analysis_results(algorithm_set_version);
+```
+
+`user_override = 1` protects manual P/R decisions from being overwritten by a re-run.
+
+### 10.7 `macros`
+
+```sql
+CREATE TABLE macros (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL UNIQUE,
+    display_name    TEXT,
+    script          TEXT NOT NULL,
+    tags            TEXT,
+    run_count       INTEGER NOT NULL DEFAULT 0,
+    last_run_at     INTEGER,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+);
+```
+
+### 10.8 `macro_versions`
+
+```sql
+CREATE TABLE macro_versions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    macro_id    INTEGER NOT NULL REFERENCES macros(id) ON DELETE CASCADE,
+    script      TEXT NOT NULL,
+    saved_at    INTEGER NOT NULL
+);
+
+CREATE INDEX idx_mv_macro ON macro_versions(macro_id, saved_at DESC);
+```
+
+A version row is inserted before `macros.script` is overwritten on each save. `ON DELETE CASCADE` removes history when a macro is deleted.
+
+### 10.9 `session_history`
+
+```sql
+CREATE TABLE session_history (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    directory       TEXT NOT NULL,
+    opened_at       INTEGER NOT NULL,
+    closed_at       INTEGER,
+    file_count      INTEGER,
+    commands_run    INTEGER DEFAULT 0
+);
+```
+
+`closed_at IS NULL` with a recent `opened_at` = crash recovery candidate.
+
+### 10.10 `console_history`
+
+```sql
+CREATE TABLE console_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    executed_at INTEGER NOT NULL,
+    command     TEXT NOT NULL,
+    output      TEXT,
+    success     INTEGER NOT NULL DEFAULT 1
+);
+```
+
+Trimmed to `console_history_size` after each insert.
+
+### 10.11 `crash_recovery`
+
+```sql
+CREATE TABLE crash_recovery (
+    id                  INTEGER PRIMARY KEY CHECK (id = 1),
+    active_directory    TEXT,
+    file_list           TEXT,
+    current_frame_index INTEGER,
+    zoom_level          TEXT,
+    active_panel        TEXT,
+    written_at          INTEGER NOT NULL
+);
+```
+
+Single-row table. Written every `crash_recovery_interval_secs` seconds while a session is active.

@@ -39,9 +39,6 @@
     document.head.appendChild(themeLink);
   });
 
-  // Preferences dialog
-  let preferencesOpen = $state(false);
-
   // Help modal
   let helpEntry = $state<HelpEntry | null>(null);
 

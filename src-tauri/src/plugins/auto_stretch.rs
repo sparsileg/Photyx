@@ -47,11 +47,11 @@ impl PhotonPlugin for AutoStretch {
     fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
         let target_bg = args.get("targetbackground")
             .and_then(|v| v.parse::<f32>().ok())
-            .unwrap_or(DEFAULT_TARGET_BACKGROUND);
+            .unwrap_or(ctx.autostretch_target_bg);
 
         let shadow_clip = args.get("shadowclip")
             .and_then(|v| v.parse::<f32>().ok())
-            .unwrap_or(DEFAULT_SHADOW_CLIP);
+            .unwrap_or(ctx.autostretch_shadow_clip);
 
         let jpeg_bytes = compute_autostretch_jpeg(ctx, shadow_clip, target_bg)
             .map_err(|e| PluginError::new("AUTOSTRETCH_ERROR", &e))?;

@@ -225,12 +225,20 @@
 .blink-select {
     font-family: inherit;
     font-size: 10px;
-    padding: 2px 4px;
     border: 1px solid var(--border-color);
     background: var(--card-bg);
     color: var(--text-secondary);
     cursor: pointer;
     outline: none;
+    width: 70px;
+}
+
+.blink-select .dropdown-trigger {
+    min-width: unset;
+    width: 70px;
+    padding: 2px 4px;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .blink-select:focus {

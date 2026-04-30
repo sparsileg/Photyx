@@ -587,7 +587,6 @@
 }
 
 .format-filter-select {
-    flex: 1;
     font-family: inherit;
     font-size: 10px;
     padding: 2px 4px;
@@ -596,6 +595,15 @@
     color: var(--text-secondary);
     cursor: pointer;
     outline: none;
+    width: 136px;
+}
+
+.format-filter-select .dropdown-trigger {
+    min-width: unset;
+    width: 130px;
+    padding: 2px 4px;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .format-filter-select:focus {

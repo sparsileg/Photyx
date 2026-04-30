@@ -167,7 +167,7 @@
                         id={`pref-${key}`}
                         class="pref-input pref-input-numeric"
                         type="number"
-                        step={meta.type === 'float' ? '0.01' : '1'}
+                        step={meta.step ?? (meta.type === 'float' ? '0.01' : '1')}
                         min={meta.min}
                         max={meta.max}
                         value={draft[key] ?? meta.default}

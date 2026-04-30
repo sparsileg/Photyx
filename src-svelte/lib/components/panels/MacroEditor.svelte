@@ -1,8 +1,11 @@
+
 <!-- MacroEditor.svelte — Spec §8.6, Phase 9D -->
 <script lang="ts">
   import { db } from '../../db';
   import { ui } from '../../stores/ui';
   import { notifications } from '../../stores/notifications';
+  import { settings } from '../../stores/settings';
+  import { MACRO_FONT_MIN, MACRO_FONT_MAX } from '../../settings/constants';
   import { PCODE_COMMANDS } from '../../pcodeCommands';
 
   // ── Editor state ─────────────────────────────────────────────────────────
@@ -10,7 +13,7 @@
   let macroName    = $state('');
   let displayName  = $state('');
   let macroText    = $state('');
-  let fontSize     = $state(16);
+  let fontSize     = $state($settings.macro_editor_font_size);
   let dirty        = $state(false);
   let confirmingLeave = $state(false);
 
@@ -44,10 +47,8 @@
   });
 
   // ── Font size controls ────────────────────────────────────────────────────
-  const FONT_MIN = 12;
-  const FONT_MAX = 24;
-  function decreaseFontSize() { fontSize = Math.max(FONT_MIN, fontSize - 1); }
-  function increaseFontSize() { fontSize = Math.min(FONT_MAX, fontSize + 1); }
+  function decreaseFontSize() { fontSize = Math.max(MACRO_FONT_MIN, fontSize - 1); }
+  function increaseFontSize() { fontSize = Math.min(MACRO_FONT_MAX, fontSize + 1); }
 
   // ── Name derivation ───────────────────────────────────────────────────────
   function deriveName(dn: string): string {
@@ -206,9 +207,9 @@
     <button class="me-btn" onclick={saveMacro}>Save</button>
     <button class="me-btn" onclick={startSaveAs}>Save As…</button>
     <span class="me-font-label">A</span>
-    <button class="me-btn me-btn-font" onclick={decreaseFontSize} disabled={fontSize <= FONT_MIN}>−</button>
+    <button class="me-btn me-btn-font" onclick={decreaseFontSize} disabled={fontSize <= MACRO_FONT_MIN}>−</button>
             <span class="me-font-size">{fontSize}px</span>
-            <button class="me-btn me-btn-font" onclick={increaseFontSize} disabled={fontSize >= FONT_MAX}>+</button>
+            <button class="me-btn me-btn-font" onclick={increaseFontSize} disabled={fontSize >= MACRO_FONT_MAX}>+</button>
     <span class="me-font-label me-font-label-lg">A</span>
   </div>
 

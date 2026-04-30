@@ -11,18 +11,14 @@ use crate::db;
 pub fn backup_database(state: State<Arc<PhotoxState>>) -> Result<String, String> {
     // Get backup directory from preferences, fall back to default
     let backup_dir: PathBuf = {
-        let db = state.db.lock().expect("db lock poisoned");
-        let dir: Option<String> = db.query_row(
-            "SELECT value FROM preferences WHERE key = 'backup_directory'",
-            [],
-            |row| row.get(0),
-        ).ok();
-        match dir {
-            Some(d) if !d.is_empty() => PathBuf::from(d),
-            _ => dirs_next::data_dir()
+        let dir = state.settings.lock().expect("settings lock poisoned").backup_directory.clone();
+        if !dir.is_empty() {
+            PathBuf::from(dir)
+        } else {
+            dirs_next::data_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join("Photyx")
-                .join("backups"),
+                .join("backups")
         }
     };
 
