@@ -17,7 +17,7 @@
   function onWindowClick(e: MouseEvent) {
     if ($ui.activePanel === null) return;
     const target = e.target as HTMLElement;
-    if (target.closest('#panel-container') || target.closest('#icon-sidebar') || target.closest('.macro-editor-panel')) return;
+    if (target.closest('#panel-container') || target.closest('#icon-sidebar') || target.closest('.macro-editor-panel') || target.closest('.dropdown-menu')) return;
     ui.closePanel();
   }
 </script>

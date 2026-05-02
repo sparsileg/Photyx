@@ -172,6 +172,7 @@
   }
 
   async function showBlinkFrame(index: number) {
+    console.log('showBlinkFrame resolution:', blinkResolution);
     try {
       const dataUrl = await invoke<string>('get_blink_frame', { index, resolution: blinkResolution });
       ui.setBlinkFrame(dataUrl);
@@ -269,6 +270,7 @@
   let resolutionInitialized = false;
   $effect(() => {
     const _ = blinkResolution;
+    console.log('blinkResolution effect fired:', blinkResolution);
     if (!resolutionInitialized) { resolutionInitialized = true; return; }
     ui.setBlinkCached(false);
   });
@@ -607,19 +609,21 @@
           <span class="blink-inline-label">Res</span>
           <Dropdown
             className="blink-select"
-            bind:value={blinkResolution}
+            value={blinkResolution}
             openUp={true}
             width={70}
             options={[{ value: '25', label: '25%' }, { value: '12', label: '12.5%' }]}
+            on:change={(e) => { blinkResolution = e.detail as '12' | '25'; ui.setBlinkResolution(blinkResolution); }}
             />
 
           <span class="blink-inline-label" style="margin-left:12px;">Min Delay</span>
           <Dropdown
             className="blink-select"
-            bind:value={blinkDelay}
+            value={String(blinkDelay)}
             openUp={true}
             width={70}
-            options={DELAY_OPTIONS.map(d => ({ value: d, label: d === 0 ? 'Max' : `${d}s` }))}
+            options={DELAY_OPTIONS.map(d => ({ value: String(d), label: d === 0 ? 'Max' : `${d}s` }))}
+            on:change={(e) => { blinkDelay = parseFloat(e.detail); }}
             />
 
             <label class="blink-flag-toggle" style="margin-left:12px;"

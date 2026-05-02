@@ -545,15 +545,17 @@ function drawRejectLine(
     <label class="ag-label">Metric 1</label>
     <Dropdown
       className="ag-m1"
-      bind:value={metric1}
+      value={metric1}
       openUp={false}
       options={METRICS.map(m => ({ value: m.key, label: m.label }))}
+      on:change={(e) => { metric1 = e.detail; }}
       />
       <label class="ag-label">Metric 2</label>
       <Dropdown
         className="ag-m2"
-        bind:value={metric2}
+        value={metric2}
         options={[{ value: 'none', label: 'None' }, ...METRICS.map(m => ({ value: m.key, label: m.label }))]}
+        on:change={(e) => { metric2 = e.detail; }}
         />
 
         <button class="ag-btn" onclick={loadData}>↻ Refresh</button>

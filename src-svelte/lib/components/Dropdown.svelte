@@ -1,7 +1,9 @@
 <!-- Dropdown.svelte — Custom select element that is CSS friendly -->
 
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, createEventDispatcher } from 'svelte';
+
+  const dispatch = createEventDispatcher();
 
   export let value: string;
   export let options: { value: string; label: string }[];
@@ -15,6 +17,7 @@
 
   function select(val: string) {
     value = val;
+    dispatch('change', val);
     close();
   }
 
@@ -62,11 +65,11 @@
 
   onMount(() => {
     menuEl.style.display = 'none';
-    document.addEventListener('click', onDocumentClick, true);
+    document.addEventListener('click', onDocumentClick, false);
   });
 
   onDestroy(() => {
-    document.removeEventListener('click', onDocumentClick, true);
+    document.removeEventListener('click', onDocumentClick, false);
     if (menuEl && menuEl.parentNode === document.body) {
       document.body.removeChild(menuEl);
     }
