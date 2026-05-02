@@ -1,8 +1,6 @@
 # Photyx — Specification & Requirements Document
 
-**Version:** 20
-**Date:** 30 April 2026
-**Status:** Active Development — Phase 9 in progress
+**Version:** 21 **Date:** 2 May 2026 **Status:** Active Development — Phase 9 in progress
 
 ---
 
@@ -36,19 +34,19 @@ Distribution: .msi / .exe (Windows), .dmg (macOS), .AppImage or .deb (Linux).
 
 ## 4. Technology Stack
 
-| Layer    | Technology                                                      |
-| -------- | --------------------------------------------------------------- |
-| Frontend | Tauri v2 + Svelte + TypeScript; OS-native WebView (no Chromium) |
-| Backend  | Rust; Rayon for parallelism; Tauri IPC for frontend ↔ backend   |
-| REST API | Axum (local HTTP, deferred)                                     |
-| Logging  | Rust `tracing` crate; rolling file log in OS app data directory |
-| Plugins  | Built-in native (Rust) + user WASM via Wasmtime                 |
-| Preferences | `tauri-plugin-store` (Phase 9)                                  |
-| Updates  | `tauri-plugin-updater` via GitHub Releases (Phase 9)            |
+| Layer       | Technology                                                      |
+| ----------- | --------------------------------------------------------------- |
+| Frontend    | Tauri v2 + Svelte + TypeScript; OS-native WebView (no Chromium) |
+| Backend     | Rust; Rayon for parallelism; Tauri IPC for frontend ↔ backend   |
+| REST API    | Axum (local HTTP, deferred)                                     |
+| Logging     | Rust `tracing` crate; rolling file log in OS app data directory |
+| Plugins     | Built-in native (Rust) + user WASM via Wasmtime                 |
+| Persistence | Embedded SQLite via `rusqlite` (statically linked)              |
+| Updates     | `tauri-plugin-updater` via GitHub Releases (deferred)           |
 
-Key crates in use: `fitsio` (FITS), `tiff`, `rayon`, `tracing`, `serde_json`, `bytemuck`, `once_cell`, `chrono`.
+Key crates in use: `fitsio` (FITS), `tiff`, `rayon`, `tracing`, `serde_json`, `bytemuck`, `once_cell`, `chrono`, `rusqlite`.
 
-The `photyx-xisf` crate (MIT OR Apache-2.0) is a standalone workspace member implementing the XISF reader/writer with zero-copy pixel deserialization. See `development_notes.md` §3.17 for details.
+The `photyx-xisf` crate (MIT OR Apache-2.0) is a standalone workspace member implementing the XISF reader/writer with zero-copy pixel deserialization.
 
 ---
 
@@ -75,7 +73,7 @@ See `photyx_reference.md` §6 for the full format/keyword coverage table.
 
 ### 5.3 Format Conversion
 
-Format conversion is read-plugin → write-plugin with no special conversion layer. Any readable format can be converted to any writable format via pcode. Keyword fidelity is required: all source keywords must be preserved in the output to the extent the target format supports them; any that cannot be represented are logged as a warning.
+Format conversion is read-plugin → write-plugin with no special conversion layer. Any readable format can be converted to any writable format via pcode.
 
 ### 5.4 Debayering
 
@@ -83,7 +81,7 @@ CFA (Bayer) files are loaded and displayed as mono by default. Debayering is on 
 
 ### 5.5 FITS-to-XISF Keyword Mapping
 
-See `photyx_reference.md` §3 for the full mapping table. All FITS keywords go into the FITSKeyword block verbatim; keywords with a known XISF Property equivalent are additionally written to the Properties block.
+See `photyx_reference.md` §3 for the full mapping table.
 
 ---
 
@@ -96,15 +94,9 @@ Every operation in Photyx is a plugin: file readers, writers, keyword operations
 - **Built-in native plugins** — compiled into the binary; maximum performance; version-locked with core
 - **User WASM plugins** — loaded via Wasmtime; sandboxed; cross-platform; one `.wasm` runs on all platforms
 
-All plugins implement the `PhotonPlugin` trait (`name`, `version`, `description`, `parameters`, `execute`). See `development_notes.md` §3 for the trait definition.
-
 ### 6.2 Plugin Status
 
 See `photyx_reference.md` §9 for the full plugin designation and status table.
-
-### 6.3 Plugin Settings & Distribution
-
-Each plugin may define its own settings namespace (stored under `plugin.<Name>.*` in the settings store). User WASM plugins are installed by placing them in the plugins directory with a TOML manifest.
 
 ---
 
@@ -112,7 +104,7 @@ Each plugin may define its own settings namespace (stored under `plugin.<Name>.*
 
 ### 7.1 Overview
 
-pcode is a line-oriented macro language. Each line is a command name followed by zero or more named arguments. Macros are saved as `.phs` files and executable from the console, REST API, or command line.
+pcode is a line-oriented macro language. Each line is a command name followed by zero or more named arguments. Macros are stored in SQLite and executable from the console, REST API, or command line.
 
 ### 7.2 Language Features
 
@@ -121,287 +113,149 @@ pcode is a line-oriented macro language. Each line is a command name followed by
 - Variables: `Set name = "M31"` (string literals must use **double quotes**)
 - Arithmetic: `+`, `-`, `*`, `/`, `^`; grouping with `( )`
 - Math functions: `sqrt()`, `abs()`, `round()`, `floor()`, `ceil()`, `min()`, `max()`
-- Conditionals: `If / ElseIf / Else / EndIf`
-- Loops: `For i = 1 To N / EndFor` and `ForEach / EndForEach`
+- Conditionals: `If / Else / EndIf`
+- Loops: `For i = 1 To N / EndFor`
 - Error handling: halt-on-error by default; configurable
-- `$NEW_FILE` convention: plugins that create output files store the path here for use in subsequent commands
-- `@param` token system: macros declare named parameters at the top using special comment lines; values are supplied at run time via a prompt dialog (Macro Library, Quick Launch) or as named arguments (console); this makes macros fully generic without embedding paths or values in the script
+- `$NEW_FILE` convention: plugins that create output files store the path here
+- `@param` token system: macros declare named parameters at the top
 
 ### 7.3 pcode Command Reference
 
-See `photyx_reference.md` §1 for the full command dictionary, aliases, scope parameter, and string literal rules.
+See `photyx_reference.md` §1 for the full command dictionary.
 
 ### 7.4 Trace Mode
 
-The console header Trace / No Trace toggle controls execution verbosity. Trace shows command echo and Set assignment output. No Trace (default) suppresses both. `Assert` is always silent on pass in both modes. See `photyx_reference.md` §1.4.
+The console header Trace / No Trace toggle controls execution verbosity.
 
 ### 7.5 Macro Library
 
-Macros are stored in the SQLite database (`photyx.db`) rather than as files
-on disk. This gives cross-platform consistency and enables version
-history. The Macro Library panel lists all macros; the Macro Editor creates
-and edits them. Every save of an existing macro preserves the previous
-version in `macro_versions` for recovery. **This is implemented as of Phase
-9 sub-phase D.** No `.phs` files are written or read during normal
-operation.
-
-We store text versions of the macros in the backup of the Photyx database
-so they be more easily recovered if necessary.
-
-Three-tier command model:
-
-```
-Tier 1: Built-in Native — ReadFIT, AutoStretch, AnalyzeFrames, …
-Tier 2: User WASM plugins
-Tier 3: User Macros (stored in photyx.db)
-```
-
-#### @param Token System
-
-Macros declare runtime parameters using `@param` comment lines at the top of the script:
-
-```
-@param INPUT_DIR "Source directory" required
-@param OUTPUT_DIR "Destination directory" required
-@param TARGET_NAME "Object name" optional default="Unknown"
-SelectDirectory path="$INPUT_DIR"
-ReadFIT
-AddKeyword name=OBJECT value="$TARGET_NAME"
-WriteFIT destination="$OUTPUT_DIR"
-```
-
-When a macro with `@param` declarations is run from the Macro Library or Quick Launch, Photyx presents a parameter prompt — one field per declared parameter, with browse buttons for directory-type params. From the console, parameters are passed as named arguments:
-
-```
-RunMacro ProcessLights INPUT_DIR="D:/M31" OUTPUT_DIR="D:/Output"
-```
-
-Quick Launch buttons store only `RunMacro name=X` — no parameter values are embedded. Parameters are always resolved at run time, keeping macros fully generic.
-
-### 7.6 Path Conventions
-
-See `photyx_reference.md` §8. Forward slashes always; backend translates to OS-native. `~` expands to home directory. UNC paths supported (`//host/share`). Paths with spaces must be double-quoted.
-
-### 7.7 Interrogation Properties
-
-See `photyx_reference.md` §2 for GetImageProperty, GetKeyword, GetSessionProperty, and Test tables.
+Macros are stored in the SQLite database (`photyx.db`). The Macro Library panel lists all macros; the Macro Editor creates and edits them. Every save of an existing macro preserves the previous version in `macro_versions` for recovery.
 
 ---
 
 ## 8. User Interface
 
-### 8.1 Layout
+### 8.1 Application Shell
 
-Single main window, single-window SPA. No floating OS windows.
+Single-window SPA. Layout from top to bottom: Menu Bar (28px) → Toolbar (34px) → Content Area (flex: 1) → Status Bar (22px).
 
-```
-┌─ Menu bar (28px) ──────────────────────────────────┐
-├─ Toolbar (34px) ───────────────────────────────────┤
-├─ Quick Launch (34px, collapsible) ─────────────────┤
-├─ Icon sidebar │ Viewer region (dominant)            │
-│               │                                    │
-├─ Console (1/3)│ Info Panel (2/3) ──────────────────┤
-└─ Status / Notification bar (full width) ───────────┘
-```
+Content Area contains: Icon Sidebar (40px) | Viewer Region (flex: 1). The Quick Launch panel (34px) sits above the Viewer Region.
 
 ### 8.2 Menu Bar
 
-| Menu     | Items                                                                                |
-| -------- | ------------------------------------------------------------------------------------ |
-| File     | Select Directory, Load Single Image, Close Session, Exit                             |
-| Edit     | Preferences, Analysis Parameters                                                     |
-| View     | Dark, Light, Matrix                                                                  |
-| Analyze  | Analyze Frames, Analysis Results, Analysis Graph, Contour Plot (Heatmap)             |
-| Tools    | Backup Database, Restore Database, Log Viewer                                        |
-| Help     | About, Documentation                                                                 |
+File: Select Directory, Load Single Image, Close Session, Exit
+Edit: Preferences, Analysis Parameters
+View: Theme (Dark / Light / Matrix)
+Analyze: Analyze Frames, Analysis Results, Analysis Graph, Contour Plot
+Tools: Backup Database, Restore Database, Log Viewer
+Help: About Photyx, Documentation
 
+### 8.3 Toolbar
 
-### 8.3 Icon Sidebar & Panels
-
-| Icon   | Panel          | Notes                                                               |
-| ------ | -------------- | ------------------------------------------------------------------- |
-| Folder | File Browser   | File list, directory bar, format filter, Load button                |
-| Tag    | Keyword Editor | Inline editing; wide panel (75vw); Write Changes calls WriteFrame   |
-| Code   | Macro Editor   | Opens exclusively from Macro Library (Edit / New buttons)           |
-| List   | Macro Library  | Lists .phs files; Pin, Run, Edit, Rename, Delete per entry          |
-| Puzzle | Plugin Manager | Lists plugins; enable/disable for WASM only; native = always Active |
-
-**Macro Library — Run behavior:** clicking Run closes the panel automatically so console output is visible.
-
-**Macro Editor — entry points:** Edit button on a macro entry, or New button in the library header. No standalone sidebar icon. Always saves to `APPDATA/Photyx/Macros/`.
+Channel selector (RGB / R / G / B), Zoom controls (Fit / 25% / 50% / 100% / 200%), AutoStretch toggle.
 
 ### 8.4 Viewer Region
 
-The dominant UI element. Viewer-region components (image viewer, Analysis Graph, Analysis Results, ContourHeatmap) are mutually exclusive and controlled via `ui.showView()` in the view registry. See `photyx_ui_patterns.md` Pattern 6.
+Canvas-based image viewer with starfield placeholder when no image is loaded. Overlays: quality flag border (blink mode), star annotations (ComputeFWHM), filename overlay.
 
-- Zoom: Fit (default), 25%, 50%, 100%, 200% — keyboard shortcuts 0–4
-- Pan: click-drag at any zoom level; momentum on release
-- Pixel tracking: always-on; fires only when source pixel under cursor changes
-- Star annotation overlay: drawn by ComputeFWHM; cleared on frame navigation
+### 8.5 Icon Sidebar & Sliding Panels
 
-### 8.5 Info Panel
+Icon sidebar with 4 panel icons. Panels slide in from the left:
 
-Always visible; two-thirds of bottom area.
+- File Browser — directory picker, format filter dropdown, Load button, file list
+- Keyword Editor — inline editing; name is read-only; Write Changes writes current frame
+- Macro Library — list, run, edit, pin, delete macros
+- Plugin Manager — list native and WASM plugins
 
-- **Pixel tab:** X/Y coordinates, Raw (0.0–1.0) and Val (0–65535) readouts; RGB triplet for color images; RA/Dec if WCS keywords present; clipping indicators (red = highlight, blue = shadow)
-- **Histogram tab:** Live log-scale histogram; per-channel for RGB; Median, Std Dev, Clipping % stats; ADU hover readout
-- **Blink tab:** Play/Pause/Previous/Next controls; frame counter; resolution selector (12.5% / 25%); delay selector
+### 8.6 File Browser
 
-### 8.6 Console
+Directory path bar with Browse button. Format filter dropdown (All Supported / FITS Only / XISF Only / TIFF Only). Load button. File list with click-to-navigate.
 
-One-third of bottom area; always visible.
+### 8.7 Image Viewer
 
-- `>` prompt; command history (up/down arrows); tab completion
-- Trace / No Trace toggle in header
-- Click header to expand to full-width terminal overlay (80vh, `position: fixed`, z-index 300)
-- `help <command>` opens the Help Modal (upper-right, z-index 500, data from `pcodeHelp.ts`)
-- All commands route through `run_script` — not `dispatch_command`
+Canvas-based display. Zoom: Fit / 25% / 50% / 100% / 200%. Pan at non-fit zoom levels with momentum. Pixel-accurate readout via `get_pixel` (raw buffer, not JPEG). Full-res cache for high zoom. JPEG disclaimer bar.
 
-### 8.7 Analysis Graph
+### 8.8 Info Panel
 
-Viewer-region component. Triggered from Analyze menu or `ShowAnalysisGraph` console command.
+Tabs: Pixels (coordinate + pixel value + WCS), Metadata (size/bit depth/color/image center), Histogram (per-channel RGB or mono), Blink (play controls + resolution + delay + quality flags toggle).
 
-- 7 metrics available; Metric 1 solid line with dots (REJECT = larger red dots), Metric 2 dotted
-- Sigma bands at ±1σ/±2σ/±3σ; red dashed reject threshold line
-- Y axis always scales to include the reject threshold line
-- Two-line tooltip: value + flag + triggered metrics / filename
-- Click dot → navigate to frame; Close → return to viewer
+### 8.9 pcode Console
 
-### 8.8 Analysis Results
+Line-oriented command input with tab completion, command history (↑/↓), Trace/No Trace toggle, and expandable full-screen mode. All commands route through `run_script`.
 
-Viewer-region component. Sortable table of per-frame metrics. Very small values displayed in scientific notation. Filename truncated to `first16chars…last5chars.ext`.
+### 8.10 Status Bar
 
-### 8.9 Themes
+Notification bar showing latest notification with type-specific color and icon. Click to open notification history overlay. `running` type triggers pulse animation AND expands bar to 3× height (66px) with dark semi-transparent overlay — provides clear visual indication of long-running operations. Bar shrinks back smoothly when operation completes.
 
-Matrix (default, green-on-black), Dark, Light. Switching is immediate; theme persisted across sessions.
+### 8.11 Analysis Results
 
-### 8.10 Keyboard Shortcuts
+Viewer-region component (replaces image viewer). Sortable table of per-frame quality metrics with Refresh button. Columns: #, Filename, FWHM, Eccentricity, Stars, SNR, Bg Median, Bg Std Dev, Bg Gradient, PXFLAG.
 
-| Key   | Action                                 |
-| ----- | -------------------------------------- |
-| Space | Blink play / pause                     |
-| J     | Previous frame (blink)                 |
-| K     | Next frame (blink)                     |
-| P     | Mark frame PASS (writes immediately)   |
-| R     | Mark frame REJECT (writes immediately) |
-| 0–4   | Zoom: Fit, 25%, 50%, 100%, 200%        |
+### 8.12 Analysis Graph
 
-### 8.11 Status Bar & Notifications
+Viewer-region component. Line chart of up to two metrics across all loaded frames. Metric 1: solid line, colored dots (red for REJECT, white for PASS). Metric 2: dotted line in warning color. Reject threshold lines drawn for both metrics (primary: red left-aligned, secondary: warning color right-aligned, both outlined in black for visibility). Reject lines reflect thresholds used in the last AnalyzeFrames run — not the current active profile. Click on a dot navigates to that frame (requires vertical proximity to dot). Refresh button re-fetches data.
 
-Full-width single line at bottom. Background color reflects type (neutral / blue / amber / red). Click to open Notification History. Long-running operations use `notifications.running()` pulse animation; replaced by `notifications.success()` or `notifications.error()` on completion.
+### 8.13 Edit > Preferences
 
-### 8.12 Log Viewer
+Modal dialog (540px wide). Draft-copy pattern — nothing written until OK or Apply. Cancel discards. Covers 8 user-facing preference fields. Theme excluded (View menu). Threshold profiles excluded (Edit > Analysis Parameters). Clicking outside the dialog does NOT close it.
 
-Modal overlay (Tools > Log Viewer). Left panel: log file list sorted
-newest first. Right panel: parsed log contents with
-ERROR/WARN/INFO/DEBUG level filters, auto-tail every 2 seconds,
-auto-scroll suspended when user scrolls up.
+### 8.14 Edit > Analysis Parameters (Threshold Profiles)
 
+Modal dialog (400px wide). Manages named sets of AnalyzeFrames rejection thresholds.
 
-### 8.13 Preferences Dialog (Edit > Preferences)
+**Profile selector row:** `[🗑] [profile dropdown] [＋]`
 
-Modal overlay. Contains all application behavior settings from
-Section 5.1 through 5.5 and 5.7. Settings are grouped by their
-section headings. Display-only items (e.g. database storage path)
-are shown as non-editable text. User Pref items are editable fields;
-Last Used items are shown as informational (the current value is
-displayed but the field is not directly editable — it is updated
-automatically by the application as the user works).
+- Trash deletes selected profile (inline confirmation bar); any profile including the last one can be deleted; deleting the last profile re-seeds a "Default" profile
+- ＋ reveals a name input row for creating a new profile with default threshold values
+- Selecting a profile in the dropdown makes it the one being edited (not immediately active)
 
-Follows the z-index hierarchy for modal overlays (Pattern 17).
-Changes are written to the database immediately on confirmation;
-Cancel discards all changes made in the current dialog session.
+**Active profile indicator:** "Active profile: [name]" line below the selector row, updated on OK/Apply.
 
-### 8.14 Analysis Parameters Dialog (Edit > Analysis Parameters)
+**Threshold fields:** 7 fields in label/direction/input layout:
 
-Modal overlay. Manages named threshold profiles for AnalyzeFrames.
-Profiles are free-form named sets of rejection thresholds — hardware
-configuration is a common basis for naming (e.g.
-"AT115EDT/ASI533MC Pro") but any name is valid (e.g. "Test 1",
-"Bortle 4 Site", "Narrowband").
+- Background Median: > +σ (0.5–5.0, default 2.5)
+- Background Std Dev: > +σ (0.5–5.0, default 2.5)
+- Background Gradient: > +σ (0.5–5.0, default 2.5)
+- SNR Estimate: < −σ (−0.5 to −5.0, default −2.5)
+- FWHM: > +σ (0.5–5.0, default 2.5)
+- Star Count: < −σ (−0.5 to −5.0, default −1.5)
+- Eccentricity: > absolute (0.10–1.00, default 0.85)
 
-**Profile selector:** Dropdown of all named profiles at the top of
-the dialog, with New, Rename, and Delete controls alongside it.
-Switching profiles loads that profile's threshold values into the
-fields below. The active profile name is shown in the status bar.
+**Unsaved changes:** Switching profiles with unsaved edits shows inline confirmation bar.
 
-**Threshold fields:** One field per metric (7 total), editable.
-Helper text beneath the profile selector reads: "Thresholds are
-typically calibrated per imaging rig and site conditions."
+**OK/Apply:** Saves profile to DB and sets it as the active profile (propagated to AppContext immediately).
 
-**Default profile:** A "Standard" profile with the default threshold
-values (Section 5.6) is created on first launch and cannot be
-deleted.
-
-Changes are written to the `threshold_profiles` table and
-`AppSettings` immediately on confirmation. The active profile id
-is stored in `preferences.active_threshold_profile_id`.
-
-Follows the z-index hierarchy for modal overlays (Pattern 17).
+Clicking outside the dialog does NOT close it.
 
 ### 8.15 Quick Launch Panel
 
-A bar of shortcut buttons displayed below the toolbar. Buttons are
-arranged in a grid that wraps to additional rows automatically as
-the number of pinned macros grows — there is no fixed limit on the
-number of buttons.
+Bar of shortcut buttons below the toolbar. Buttons run pcode scripts via `run_script`. Right-click to remove. Pin macros from the Macro Library. Button assignments persisted to `quick_launch_buttons` table.
 
-**Hard-coded buttons:** Four buttons are pre-populated on first launch
-and cannot be removed or reordered:
+### 8.16 Log Viewer
 
-| Position | Label        | Command      |
-| -------- | ------------ | ------------ |
-| 1        | List KW      | ListKeywords |
-| 2        | FWHM         | ComputeFWHM  |
-| 3        | Stars        | CountStars   |
-| 4        | Auto Stretch | AutoStretch  |
+Modal overlay. File picker → log content with level filters (ERROR/WARN/INFO/DEBUG). Auto-tail polls every 2 seconds; auto-scroll suspends when user scrolls up.
 
-**User-pinned buttons:** Any macro in the Macro Library can be pinned
-to the Quick Launch panel. Pinned macros appear after the four
-hard-coded buttons in the order they were pinned. A pinned button
-can be unpinned from the Macro Library or via right-click on the
-button itself. If the macro has @param declarations, clicking the
-button presents the parameter prompt dialog before execution.
+### 8.17 Blink Tab
 
-**Layout:** The panel grows vertically as buttons are added,
-pushing the viewer region and bottom panel down accordingly.
-Button assignments are persisted to the `quick_launch_buttons`
-table in the database.
+Play/pause/step controls. Resolution dropdown (12.5% / 25%). Min Delay dropdown. Highlight Rejected toggle (red border overlay on REJECT frames). Cache built on first play; invalidated when resolution changes or file list changes.
 
 ---
 
 ## 9. Settings & Persistence
 
-Settings are stored in the embedded SQLite database (`photyx.db`) in the OS
-app data directory (`APPDATA/Photyx/` on Windows). See
-`photyx_reference.md` §5 for all settings tables. Note: earlier versions of
-this spec referenced `tauri-plugin-store` — that approach was superseded by
-the SQLite implementation in Phase 9.
+Settings are stored in the embedded SQLite database (`photyx.db`) in the OS app data directory (`APPDATA/Photyx/` on Windows, `~/.local/share/Photyx/` on Linux). See `photyx_reference.md` §5 for all settings tables and `photyx_persistence_inventory.md` for the full schema.
 
-Key items currently lost on restart (to be fixed in Phase 9): active theme
-(localStorage), last used directory, Quick Launch assignments
-(localStorage), AutoStretch enabled state.
+**Threshold profiles:** Named sets of AnalyzeFrames rejection thresholds. Multiple profiles supported; managed via Edit > Analysis Parameters. Active profile propagated into `AppContext.analysis_thresholds` immediately on change. See §8.14 and `photyx_persistence_inventory.md` §5.
 
-**Rig profiles:** Named threshold sets for AnalyzeFrames. Multiple
-profiles; active profile shown in status bar. See `photyx_reference.md`
-§5.6 for defaults.
+**Crash recovery:** Session recovery state written every 60 seconds. On next launch after crash, Photyx offers to restore the previous session.
 
-**Crash recovery:** Session recovery file written every 60 seconds. On next
-launch after crash, Photyx offers to restore the previous session.
-
-**Database backup:** Manual backup is triggered from the Tools menu. The
-backup is a timestamped ZIP archive (`photyx_backup_YYYYMMDD_HHMMSS.zip`)
-written to `APPDATA/Photyx/backups/`. The archive contains two items: the
-raw `photyx.db` file, and a `macros/` subfolder containing each macro
-exported as a plain-text `.phs` file for human-readable recovery. Automatic
-scheduled backup is deferred.
-
+**Database backup:** Manual backup triggered from the Tools menu. Timestamped ZIP archive containing `photyx.db` and a `macros/` subfolder with each macro as a plain-text `.phs` file.
 
 ---
 
 ## 10. Logging
 
-- Location: `{APPDATA}/Photyx/logs/` (Windows: `AppData\Roaming\Photyx\logs\`)
+- Location: `{APPDATA}/Photyx/logs/`
 - Rolling policy: new file per session; last 10 retained
 - Levels: ERROR, WARN, INFO, DEBUG (default INFO in release, DEBUG in dev)
 - Error-level events also surface in the notification bar
@@ -412,13 +266,19 @@ scheduled backup is deferred.
 
 ### 11.1 Philosophy
 
-Photyx flags obvious disasters only. Borderline frames are left for
-downstream tools (PixInsight SubframeSelector). Classification is
-session-relative — never cross-session absolute.
+Photyx flags obvious disasters only. Borderline frames are left for downstream tools (PixInsight SubframeSelector). Classification is session-relative — never cross-session absolute.
 
 ### 11.2 Metrics & Thresholds
 
 See `photyx_reference.md` §4 for the full metrics table and classification rules.
+
+Seven metrics: Background Median (+σ), Background Std Dev (+σ), Background Gradient (+σ), SNR Estimate (−σ), FWHM (+σ), Star Count (−σ), Eccentricity (absolute).
+
+Thresholds are user-configurable via named profiles (Edit > Analysis Parameters). The active profile's thresholds are used when AnalyzeFrames runs. The thresholds actually used in the last run are stored in `ctx.last_analysis_thresholds` and returned by `get_analysis_results` for display in the Analysis Graph.
+
+**Note on metric redundancy:** Cross-session correlation analysis shows Bg Std Dev is highly correlated with Bg Median (r = 0.97–0.99) in all sessions examined. Removal of Bg Std Dev is planned pending additional dataset confirmation.
+
+**Planned: Iterative sigma clipping.** Extreme outliers (clouds, satellites) inflate session std dev and distort rejection thresholds for all other frames. Fix: two-pass computation — compute initial stats, exclude extreme outliers, recompute stats, classify. Outlier-excluded frames will be visually marked in the Analysis Graph.
 
 ### 11.3 Workflow
 
@@ -431,47 +291,42 @@ See `photyx_reference.md` §4 for the full metrics table and classification rule
 
 ## 12. External API (Deferred)
 
-Local HTTP REST server via Axum. Bound to localhost only by default; port 7171. Authentication middleware stub pre-wired (passthrough by default). Endpoints: `/api/macro/run`, `/api/macro/{name}`, `/api/images`, `/api/keywords/{filename}`, `/api/status`. Deferred to post-Phase 9.
+Local HTTP REST server via Axum. Deferred to post-Phase 9.
 
 ---
 
 ## 13. Development Phases
 
-| Phase       | Status                   | Focus                                                                                                                                                 |
-| ----------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 1     | ✅ Complete               | Scaffold, plugin host, FITS reader, viewer, logging                                                                                                   |
-| Phase 2     | ✅ Complete               | Blink engine, Auto-STF, zoom, pan, pixel tracking, Info Panel                                                                                         |
-| Phase 3     | ✅ Complete               | photyx-xisf crate, XISF read/write, TIFF read/write, RGB display, background cache                                                                    |
-| Phase 4     | ✅ Complete               | Keyword plugins, write plugins, AstroTIFF round-trip, FITS u16 fix, path resolution                                                                   |
-| Phase 5     | ✅ Complete               | pcode interpreter (If/For/variables), Macro Editor, Quick Launch, GetKeyword, RunMacro, atomic writes                                                 |
-| Phase 6     | ✅ Complete               | UI audit and cleanup                                                                                                                                  |
-| Phase 7     | ✅ Complete               | AnalyzeFrames (7 metrics), PXFLAG, Analysis Graph, star annotations, consolePipe, blink overlay                                                       |
-| Phase 8     | ✅ Substantially complete | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                            |
-| **Phase 9** | 🔄 In Progress | Embedded SQLite (✅), Quick Launch persistence (✅), session history (✅), crash recovery (✅), macros migrated to SQLite (✅); ✅ preferences persistence, remaining: analysis results persistence, threshold profiles UI, console history persistence, status bar profile indicator |
-| Phase 10 | ⬜ Planned |  UI audit |
-
+| Phase       | Status                   | Focus                                                                                                                                                                                                                                                            |
+| ----------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 1     | ✅ Complete               | Scaffold, plugin host, FITS reader, viewer, logging                                                                                                                                                                                                              |
+| Phase 2     | ✅ Complete               | Blink engine, Auto-STF, zoom, pan, pixel tracking, Info Panel                                                                                                                                                                                                    |
+| Phase 3     | ✅ Complete               | photyx-xisf crate, XISF read/write, TIFF read/write, RGB display, background cache                                                                                                                                                                               |
+| Phase 4     | ✅ Complete               | Keyword plugins, write plugins, AstroTIFF round-trip, FITS u16 fix, path resolution                                                                                                                                                                              |
+| Phase 5     | ✅ Complete               | pcode interpreter (If/For/variables), Macro Editor, Quick Launch, GetKeyword, RunMacro, atomic writes                                                                                                                                                            |
+| Phase 6     | ✅ Complete               | UI audit and cleanup                                                                                                                                                                                                                                             |
+| Phase 7     | ✅ Complete               | AnalyzeFrames (7 metrics), PXFLAG, Analysis Graph, star annotations, consolePipe, blink overlay                                                                                                                                                                  |
+| Phase 8     | ✅ Substantially complete | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                                                                                                                                       |
+| **Phase 9** | 🔄 In Progress           | SQLite (✅), Quick Launch persistence (✅), session history (✅), crash recovery (✅), macros in SQLite (✅), AppSettings (✅), Preferences dialog (✅), threshold profiles (✅); remaining: analysis results persistence, console history, status bar profile indicator |
+| Phase 10    | ⬜ Planned                | UI audit pass                                                                                                                                                                                                                                                    |
 
 ### 13.1 Deferred Items
 
-Some of these items may not be implemented. Others are waiting for
-other items to be complete before being implemented.
-
-    - PNG/JPEG readers/writers
-    - debayering
-    - async dispatch
-    - REST API
-    - WASM analysis plugins
-    - User plugin loading, plugin manifest system, Plugin Manager UI
-    - Channel switching (R/G/B buttons) — buttons update the store but
-      nothing reads $ui.activeChannel; requires changes to
-      get_current_frame, get_autostretch_frame, get_full_frame on Rust
-      side plus viewer reload on channel change
-    - Recent Directories UI — DB infrastructure is in place but no menu UI implemented
-    - jpeg_quality — persisted but unwired; waiting on JPEG export implementation
-    - buffer_pool_bytes — persisted but unwired; waiting on buffer
-      pool enforcement (total_memory_used() is a stub returning 0)
-    - console_history_size — persisted but unwired; waiting on console
-      history persistence (save_console_history/get_console_history)
+- PNG/JPEG readers/writers
+- Debayering
+- Async dispatch (long-running commands block UI; requires Tauri event system)
+- REST API
+- WASM analysis plugins
+- User plugin loading, plugin manifest system, Plugin Manager UI
+- Channel switching (R/G/B buttons)
+- Recent Directories UI
+- jpeg_quality — persisted but unwired
+- buffer_pool_bytes — persisted but unwired
+- console_history_size — persisted but unwired
+- AnalyzeFrames progress reporting (requires async dispatch)
+- Iterative sigma clipping in session stats
+- AnalyzeFrames metric caching (skip Pass 1 when metrics already cached)
+- Bg Std Dev metric removal (pending additional dataset confirmation)
 
 ---
 
@@ -482,4 +337,4 @@ other items to be complete before being implemented.
 
 ---
 
-*Previous version: 19 — Next review: Upon completion of Phase 9*
+*Previous version: 20 — Next review: Upon completion of Phase 9*
