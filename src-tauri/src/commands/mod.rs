@@ -8,5 +8,6 @@ pub mod logging;
 pub mod macros;
 pub mod preferences;
 pub mod session;
+pub mod threshold_profiles;
 
 // ----------------------------------------------------------------------

@@ -16,7 +16,7 @@ use crate::analysis::{
     metrics::snr_estimate,
     profiles,
     session_stats::{
-        classify_frame, compute_session_stats, AnalysisThresholds,
+        classify_frame, compute_session_stats,
     },
     stars::detect_stars,
     AnalysisResult, BackgroundConfig, StarDetectionConfig,
@@ -152,7 +152,7 @@ fn execute_all(
         return Err(PluginError::new("NO_FILES", "No files loaded."));
     }
 
-    let thresholds = AnalysisThresholds::default();
+    let thresholds = ctx.analysis_thresholds.clone();
     ctx.analysis_results.clear();
 
     struct FrameSnapshot {
@@ -275,6 +275,8 @@ fn execute_all(
 
         ctx.analysis_results.insert(result.filename.clone(), result.clone());
     }
+
+    ctx.last_analysis_thresholds = Some(thresholds);
 
     let message = format!(
         "AnalyzeFrames complete: {} frames — {} PASS, {} REJECT{}",

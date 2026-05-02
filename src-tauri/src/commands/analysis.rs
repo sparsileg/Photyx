@@ -54,6 +54,16 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
         .collect();
     let stats = compute_session_stats(&result_refs);
 
+    let applied = ctx.last_analysis_thresholds.as_ref().map(|t| serde_json::json!({
+        "background_median":   { "value": t.background_median.reject,   "direction": "high" },
+        "background_stddev":   { "value": t.background_stddev.reject,   "direction": "high" },
+        "background_gradient": { "value": t.background_gradient.reject, "direction": "high" },
+        "snr_estimate":        { "value": t.snr_estimate.reject,        "direction": "low"  },
+        "fwhm":                { "value": t.fwhm.reject,                "direction": "high" },
+        "star_count":          { "value": t.star_count.reject,          "direction": "low"  },
+        "eccentricity":        { "value": t.eccentricity.reject,        "direction": "high" },
+    }));
+
     serde_json::json!({
         "frames": frames,
         "session_stats": {
@@ -64,7 +74,8 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
             "fwhm":                { "mean": stats.fwhm.mean,                "stddev": stats.fwhm.stddev },
             "eccentricity":        { "mean": stats.eccentricity.mean,        "stddev": stats.eccentricity.stddev },
             "star_count":          { "mean": stats.star_count.mean,          "stddev": stats.star_count.stddev },
-        }
+        },
+        "applied_thresholds": applied,
     })
 }
 

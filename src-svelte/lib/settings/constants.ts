@@ -143,6 +143,105 @@ export interface PrefSection {
   keys: string[];
 }
 
+// ── Threshold Profiles ────────────────────────────────────────────────────────
+
+export const BG_MEDIAN_SIGMA_DEFAULT  = 2.5;
+export const BG_STDDEV_SIGMA_DEFAULT  = 2.5;
+export const BG_GRADIENT_SIGMA_DEFAULT = 2.5;
+export const SNR_SIGMA_DEFAULT        = 2.5;
+export const FWHM_SIGMA_DEFAULT       = 2.5;
+export const STAR_COUNT_SIGMA_DEFAULT = 1.5;
+export const ECCENTRICITY_ABS_DEFAULT = 0.85;
+export const ECCENTRICITY_ABS_MIN     = 0.10;
+export const ECCENTRICITY_ABS_MAX     = 1.00;
+export const SIGMA_MIN                = 0.5;
+export const SIGMA_MAX                = 5.0;
+export const SIGMA_STEP               = 0.5;
+
+export interface ThresholdFieldMeta {
+  key:       string;
+  label:     string;
+  direction: '+' | '-';   // '+' = reject if above, '-' = reject if below
+  type:      'sigma' | 'absolute';
+  min:       number;
+  max:       number;
+  default:   number;
+  step:      number;
+}
+
+export const THRESHOLD_FIELDS: ThresholdFieldMeta[] = [
+  {
+    key:       'bg_median_reject_sigma',
+    label:     'Background Median',
+    direction: '+',
+    type:      'sigma',
+    min:       SIGMA_MIN,
+    max:       SIGMA_MAX,
+    default:   BG_MEDIAN_SIGMA_DEFAULT,
+    step:      SIGMA_STEP,
+  },
+  {
+    key:       'bg_stddev_reject_sigma',
+    label:     'Background Std Dev',
+    direction: '+',
+    type:      'sigma',
+    min:       SIGMA_MIN,
+    max:       SIGMA_MAX,
+    default:   BG_STDDEV_SIGMA_DEFAULT,
+    step:      SIGMA_STEP,
+  },
+  {
+    key:       'bg_gradient_reject_sigma',
+    label:     'Background Gradient',
+    direction: '+',
+    type:      'sigma',
+    min:       SIGMA_MIN,
+    max:       SIGMA_MAX,
+    default:   BG_GRADIENT_SIGMA_DEFAULT,
+    step:      SIGMA_STEP,
+  },
+  {
+    key:       'snr_reject_sigma',
+    label:     'SNR Estimate',
+    direction: '-',
+    type:      'sigma',
+    min:       SIGMA_MIN,
+    max:       SIGMA_MAX,
+    default:   SNR_SIGMA_DEFAULT,
+    step:      SIGMA_STEP,
+  },
+  {
+    key:       'fwhm_reject_sigma',
+    label:     'FWHM',
+    direction: '+',
+    type:      'sigma',
+    min:       SIGMA_MIN,
+    max:       SIGMA_MAX,
+    default:   FWHM_SIGMA_DEFAULT,
+    step:      SIGMA_STEP,
+  },
+  {
+    key:       'star_count_reject_sigma',
+    label:     'Star Count',
+    direction: '-',
+    type:      'sigma',
+    min:       SIGMA_MIN,
+    max:       SIGMA_MAX,
+    default:   STAR_COUNT_SIGMA_DEFAULT,
+    step:      SIGMA_STEP,
+  },
+  {
+    key:       'eccentricity_reject_abs',
+    label:     'Eccentricity',
+    direction: '+',
+    type:      'absolute',
+    min:       ECCENTRICITY_ABS_MIN,
+    max:       ECCENTRICITY_ABS_MAX,
+    default:   ECCENTRICITY_ABS_DEFAULT,
+    step:      0.01,
+  },
+];
+
 export const PREF_SECTIONS: PrefSection[] = [
   {
     title: 'File & Path',

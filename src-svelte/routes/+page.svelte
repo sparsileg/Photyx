@@ -13,6 +13,7 @@
   import MacroEditor from '../lib/components/panels/MacroEditor.svelte';
   import MenuBar from '../lib/components/MenuBar.svelte';
   import PreferencesDialog from '../lib/components/PreferencesDialog.svelte';
+  import ThresholdProfilesDialog from '../lib/components/ThresholdProfilesDialog.svelte';
   import QuickLaunch from '../lib/components/QuickLaunch.svelte';
   import StatusBar from '../lib/components/StatusBar.svelte';
   import Toolbar from '../lib/components/Toolbar.svelte';
@@ -25,6 +26,7 @@
   import { quickLaunch } from '../lib/stores/quickLaunch';
   import { session } from '../lib/stores/session';
   import { settings } from '../lib/stores/settings';
+  import { thresholdProfiles } from '../lib/stores/thresholdProfiles';
   import { ui } from '../lib/stores/ui';
 
   // Load theme stylesheet dynamically
@@ -64,6 +66,7 @@
       settings.hydrate(prefs);
       const buttons = await db.getQuickLaunchButtons();
       quickLaunch.hydrate(buttons);
+      await thresholdProfiles.hydrate();
     } catch (e) {
       console.error('DB hydration failed:', e);
     }
@@ -155,6 +158,9 @@
 
 <svelte:window onkeydown={onKeyDown} />
 
+{#if $ui.analysisParametersOpen}
+  <ThresholdProfilesDialog onclose={() => ui.closeAnalysisParameters()} />
+{/if}
 {#if $ui.preferencesOpen}
   <PreferencesDialog onclose={() => ui.closePreferences()} />
 {/if}

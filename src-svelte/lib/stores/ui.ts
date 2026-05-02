@@ -38,6 +38,7 @@ export interface UIState {
   keywordModalOpen:    boolean;
   logViewerOpen:       boolean;
   macroEditorFile:     { id: number | null; name: string; displayName: string; script: string } | null;
+  analysisParametersOpen: boolean;
   preferencesOpen:     boolean;
   quickLaunchVisible:  boolean;
   showQualityFlags:    boolean;
@@ -67,6 +68,7 @@ const initial: UIState = {
   keywordModalOpen:    false,
   logViewerOpen:       false,
   macroEditorFile:     null,
+  analysisParametersOpen: false,
   preferencesOpen:     false,
   quickLaunchVisible:  true,
   showQualityFlags:    true,
@@ -144,6 +146,8 @@ function createUIStore() {
     closeLogViewer:    () => update(s => ({ ...s, logViewerOpen: false })),
     openAbout: () => update(s => ({ ...s, aboutOpen: true })),
     closeAbout: () => update(s => ({ ...s, aboutOpen: false })),
+    openAnalysisParameters: () => update(s => ({ ...s, analysisParametersOpen: true })),
+    closeAnalysisParameters: () => update(s => ({ ...s, analysisParametersOpen: false })),
     openPreferences: () => update(s => ({ ...s, preferencesOpen: true })),
     closePreferences: () => update(s => ({ ...s, preferencesOpen: false })),
     openMacroEditor:   (file: { id: number | null; name: string; displayName: string; script: string } | null) => update(s => ({

@@ -25,6 +25,7 @@
     close();
     switch (a) {
     case 'about':             ui.openAbout(); break;
+    case 'analysis-parameters': ui.openAnalysisParameters(); break;
     case 'preferences':       ui.openPreferences(); break;
     case 'analysis-graph':    ui.showView('analysisGraph'); break;
     case 'analysis-results':  ui.showView('analysisResults'); break;

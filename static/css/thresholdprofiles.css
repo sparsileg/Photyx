@@ -1,0 +1,376 @@
+/* thresholdprofiles.css — Threshold Profiles dialog styles. */
+/* Uses theme CSS variables only — no hardcoded colours. */
+
+/* ── Backdrop ────────────────────────────────────────────────────────────── */
+
+.tp-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 450;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── Dialog box ──────────────────────────────────────────────────────────── */
+
+.tp-dialog {
+    background:     var(--bg-color);
+    border:         1px solid var(--border-color);
+    border-radius:  4px;
+    width:          400px;
+    max-height:     80vh;
+    display:        flex;
+    flex-direction: column;
+    overflow:       hidden;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.tp-header {
+    display:         flex;
+    align-items:     center;
+    justify-content: space-between;
+    padding:         10px 14px;
+    background:      var(--card-bg);
+    border-bottom:   1px solid var(--border-color);
+    flex-shrink:     0;
+}
+
+.tp-title {
+    font-size:      13px;
+    font-weight:    600;
+    color:          var(--primary-color);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.tp-close-btn {
+    background:  none;
+    border:      none;
+    color:       var(--text-secondary);
+    cursor:      pointer;
+    font-size:   14px;
+    padding:     2px 6px;
+    line-height: 1;
+}
+
+.tp-close-btn:hover {
+    color: var(--text-color);
+}
+
+/* ── Body ────────────────────────────────────────────────────────────────── */
+
+.tp-body {
+    overflow-y: auto;
+    padding:    14px 16px;
+    flex:       1;
+}
+
+/* ── Profile selector row ────────────────────────────────────────────────── */
+
+.tp-selector-row {
+    display:     flex;
+    align-items: center;
+    gap:         8px;
+    margin-bottom: 6px;
+}
+
+.tp-profile-dropdown {
+    flex: 1;
+}
+
+.tp-profile-dropdown .dropdown-trigger {
+    width: 100%;
+}
+
+.tp-profile-select {
+    flex:          1;
+    background:    var(--input-bg);
+    border:        1px solid var(--border-color);
+    border-radius: 3px;
+    color:         var(--text-color);
+    font-size:     12px;
+    padding:       4px 7px;
+    outline:       none;
+    cursor:        pointer;
+}
+
+.tp-profile-select:focus {
+    border-color: var(--primary-color);
+}
+
+.tp-icon-btn {
+    background:    var(--card-bg);
+    border:        1px solid var(--border-color);
+    border-radius: 3px;
+    color:         var(--text-color);
+    cursor:        pointer;
+    font-size:     14px;
+    line-height:   1;
+    padding:       4px 8px;
+}
+
+.tp-icon-btn:hover {
+    background:   var(--card-hover);
+    border-color: var(--primary-color);
+}
+
+.tp-icon-btn.danger:hover {
+    border-color: var(--error-color);
+    color:        var(--error-color);
+}
+
+/* ── New profile name input row ──────────────────────────────────────────── */
+
+.tp-new-row {
+    display:       flex;
+    align-items:   center;
+    gap:           6px;
+    margin-bottom: 8px;
+    padding:       8px;
+    background:    var(--card-bg);
+    border:        1px solid var(--border-color);
+    border-radius: 3px;
+}
+
+.tp-new-input {
+    flex:          1;
+    background:    var(--input-bg);
+    border:        1px solid var(--border-color);
+    border-radius: 3px;
+    color:         var(--text-color);
+    font-size:     12px;
+    padding:       4px 7px;
+    outline:       none;
+}
+
+.tp-new-input:focus {
+    border-color: var(--primary-color);
+}
+
+.tp-new-input::placeholder {
+    color: var(--text-secondary);
+}
+
+.tp-new-btn {
+    background:    var(--card-bg);
+    border:        1px solid var(--border-color);
+    border-radius: 3px;
+    color:         var(--text-color);
+    cursor:        pointer;
+    font-size:     11px;
+    padding:       4px 10px;
+}
+
+.tp-new-btn:hover {
+    background:   var(--card-hover);
+    border-color: var(--primary-color);
+}
+
+.tp-new-btn.primary {
+    background:   var(--primary-color);
+    border-color: var(--primary-color);
+    color:        var(--primary-text);
+}
+
+.tp-new-btn.primary:hover {
+    background: var(--primary-hover);
+}
+
+.tp-new-btn:disabled {
+    opacity: 0.4;
+    cursor:  not-allowed;
+}
+
+/* ── Active profile indicator ────────────────────────────────────────────── */
+
+.tp-active-label {
+    font-size:     11px;
+    color:         var(--primary-color);
+    margin-bottom: 14px;
+    padding-left:  2px;
+}
+
+/* ── Confirm bar ─────────────────────────────────────────────────────────── */
+
+.tp-confirm-bar {
+    display:       flex;
+    align-items:   center;
+    gap:           8px;
+    padding:       8px 10px;
+    margin-bottom: 12px;
+    background:    var(--card-bg);
+    border:        1px solid var(--error-color);
+    border-radius: 3px;
+    font-size:     12px;
+    color:         var(--text-color);
+}
+
+.tp-confirm-bar span {
+    flex: 1;
+}
+
+.tp-confirm-btn {
+    background:    var(--card-bg);
+    border:        1px solid var(--border-color);
+    border-radius: 3px;
+    color:         var(--text-color);
+    cursor:        pointer;
+    font-size:     11px;
+    padding:       3px 10px;
+}
+
+.tp-confirm-btn:hover {
+    background:   var(--card-hover);
+    border-color: var(--primary-color);
+}
+
+.tp-confirm-btn.danger {
+    border-color: var(--error-color);
+    color:        var(--error-color);
+}
+
+.tp-confirm-btn.danger:hover {
+    background: var(--error-color);
+    color:      var(--bg-color);
+}
+
+/* ── Threshold table ─────────────────────────────────────────────────────── */
+
+.tp-table {
+    width:           100%;
+    border-collapse: collapse;
+    font-size:       12px;
+}
+
+.tp-table th {
+    text-align:     left;
+    font-size:      11px;
+    font-weight:    600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color:          var(--primary-color);
+    border-bottom:  1px solid var(--border-color);
+    padding:        4px 8px 6px;
+}
+
+.tp-table th.right {
+    text-align: right;
+}
+
+.tp-table td {
+    padding:       6px 8px;
+    border-bottom: 1px solid var(--border-color-light);
+    vertical-align: middle;
+}
+
+.tp-table tr:last-child td {
+    border-bottom: none;
+}
+
+.tp-metric-label {
+    color: var(--text-color);
+}
+
+.tp-reject-cell {
+    display:     flex;
+    align-items: center;
+    gap:         6px;
+    justify-content: flex-end;
+}
+
+.tp-direction {
+    font-size:   12px;
+    color:       var(--text-secondary);
+    font-family: monospace;
+    min-width:   16px;
+    text-align:  right;
+}
+
+.tp-select {
+    background:    var(--input-bg);
+    border:        1px solid var(--border-color);
+    border-radius: 3px;
+    color:         var(--text-color);
+    font-size:     12px;
+    padding:       3px 6px;
+    outline:       none;
+    cursor:        pointer;
+}
+
+.tp-select:focus {
+    border-color: var(--primary-color);
+}
+
+.tp-unit {
+    font-size:  11px;
+    color:      var(--text-secondary);
+    min-width:  12px;
+}
+
+.tp-abs-input {
+    background:    var(--input-bg);
+    border:        1px solid var(--border-color);
+    border-radius: 3px;
+    color:         var(--text-color);
+    font-size:     12px;
+    padding:       3px 6px;
+    outline:       none;
+    width:         70px;
+    text-align:    right;
+}
+
+.tp-abs-input:focus {
+    border-color: var(--primary-color);
+}
+
+.tp-abs-input.has-error {
+    border-color: var(--error-color);
+}
+
+.tp-error {
+    font-size: 11px;
+    color:     var(--error-color);
+    padding:   4px 8px 0;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
+.tp-footer {
+    display:         flex;
+    justify-content: flex-end;
+    gap:             8px;
+    padding:         10px 14px;
+    background:      var(--card-bg);
+    border-top:      1px solid var(--border-color);
+    flex-shrink:     0;
+}
+
+.tp-btn {
+    border-radius: 3px;
+    cursor:        pointer;
+    font-size:     12px;
+    padding:       5px 16px;
+    border:        1px solid var(--border-color);
+}
+
+.tp-btn-primary {
+    background:   var(--primary-color);
+    color:        var(--primary-text);
+    border-color: var(--primary-color);
+}
+
+.tp-btn-primary:hover {
+    background: var(--primary-hover);
+}
+
+.tp-btn-secondary {
+    background: var(--card-bg);
+    color:      var(--text-color);
+}
+
+.tp-btn-secondary:hover {
+    background: var(--card-hover);
+}

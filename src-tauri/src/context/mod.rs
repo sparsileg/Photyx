@@ -131,8 +131,15 @@ pub struct AppContext {
     pub last_stf_params: Option<(f32, f32)>,
 
     /// AutoStretch defaults — loaded from AppSettings at startup and on preference change
+    /// AutoStretch defaults — loaded from AppSettings at startup and on preference change
     pub autostretch_shadow_clip: f32,
     pub autostretch_target_bg:   f32,
+
+    /// Active AnalyzeFrames thresholds — loaded from AppSettings at startup and on profile change
+    pub analysis_thresholds: crate::analysis::session_stats::AnalysisThresholds,
+
+    /// Thresholds actually used in the last AnalyzeFrames run — returned with analysis results
+    pub last_analysis_thresholds: Option<crate::analysis::session_stats::AnalysisThresholds>,
     pub analysis_results: HashMap<String, crate::analysis::AnalysisResult>,
 
     /// Configurable log directory — if None, falls back to Tauri app data dir

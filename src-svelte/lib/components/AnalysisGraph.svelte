@@ -1,4 +1,4 @@
-<!-- AnalysisGraph.svelte — Analysis graph displayed in the viewer region. Spec §15 -->
+w<!-- AnalysisGraph.svelte — Analysis graph displayed in the viewer region. Spec §15 -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
@@ -25,9 +25,15 @@
 
   interface MetricStats { mean: number; stddev: number; }
 
+  interface AppliedThreshold {
+    value:     number;
+    direction: 'high' | 'low';
+  }
+
   interface AnalysisData {
-    frames:        FrameData[];
-    session_stats: Record<string, MetricStats>;
+    frames:              FrameData[];
+    session_stats:       Record<string, MetricStats>;
+    applied_thresholds:  Record<string, AppliedThreshold> | null;
   }
 
   // ── Metrics ───────────────────────────────────────────────────────────────
@@ -46,16 +52,23 @@
   }
 
   // ── Reject threshold lookup ───────────────────────────────────────────────
-  // Mirrors defaults in session_stats.rs
-  const REJECT_THRESHOLDS: Record<string, { type: 'sigma' | 'absolute'; value: number; direction: 'high' | 'low' }> = {
-    background_median:   { type: 'sigma',    value: 2.5,  direction: 'high' },
-    background_stddev:   { type: 'sigma',    value: 2.5,  direction: 'high' },
-    background_gradient: { type: 'sigma',    value: 2.5,  direction: 'high' },
-    snr_estimate:        { type: 'sigma',    value: 2.5,  direction: 'low'  },
-    fwhm:                { type: 'sigma',    value: 2.5,  direction: 'high' },
-    star_count:          { type: 'sigma',    value: 1.5,  direction: 'low'  },
-    eccentricity:        { type: 'absolute', value: 0.85, direction: 'high' },
-  };
+  // Eccentricity is absolute; all others are sigma-based.
+  const ABSOLUTE_METRICS = new Set(['eccentricity']);
+
+  function getRejectThresholds(d: AnalysisData | null): Record<string, { type: 'sigma' | 'absolute'; value: number; direction: 'high' | 'low' }> | null {
+    const applied = d?.applied_thresholds;
+    if (!applied) return null;
+    return Object.fromEntries(
+      Object.entries(applied).map(([key, t]) => [
+        key,
+        {
+          type:      ABSOLUTE_METRICS.has(key) ? 'absolute' : 'sigma',
+          value:     t.value,
+          direction: t.direction,
+        }
+      ])
+    );
+  }
 
   // ── State ─────────────────────────────────────────────────────────────────
   let data    = $state<AnalysisData | null>(null);
@@ -151,8 +164,10 @@
     hi:     number,
     PT:     number,
     CH:     number,
+    thresholds: ReturnType<typeof getRejectThresholds>,
   ): number | null {
-    const thresh = REJECT_THRESHOLDS[key];
+    if (!thresholds) return null;
+    const thresh = thresholds[key];
     if (!thresh || !stats || stats.stddev === 0) return null;
 
     let threshVal: number;
@@ -165,6 +180,45 @@
     }
 
     return PT + CH - ((threshVal - lo) / (hi - lo)) * CH;
+  }
+
+function drawRejectLine(
+    ctx:       CanvasRenderingContext2D,
+    y:         number,
+    PL:        number,
+    CW:        number,
+    color:     string,
+    lineWidth: number,
+    labelSide: 'left' | 'right',
+    fontSize:  number,
+  ) {
+    // Black border lines either side
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.lineWidth = lineWidth > 2 ? 2 : 1;
+    ctx.setLineDash([]);
+    const offset = lineWidth > 2 ? 3 : 2;
+    ctx.beginPath(); ctx.moveTo(PL, y - offset); ctx.lineTo(PL + CW, y - offset); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PL, y + offset); ctx.lineTo(PL + CW, y + offset); ctx.stroke();
+
+    // Main dotted reject line
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.setLineDash([6, 3]);
+    ctx.beginPath(); ctx.moveTo(PL, y); ctx.lineTo(PL + CW, y); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // REJECT label with semi-opaque black background
+    ctx.font = `${fontSize}px monospace`;
+    const labelText = 'REJECT';
+    const textW = ctx.measureText(labelText).width;
+    const labelX = labelSide === 'left' ? PL + 4 : PL + CW - 4;
+    const labelY = y - (fontSize < 14 ? 8 : 10);
+    ctx.textAlign = labelSide;
+    const rectX = labelSide === 'left' ? labelX - 2 : labelX - textW - 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.60)';
+    ctx.fillRect(rectX, labelY - fontSize, textW + 6, fontSize + 4);
+    ctx.fillStyle = color;
+    ctx.fillText(labelText, labelX, labelY);
   }
 
   function drawChart() {
@@ -205,8 +259,10 @@
       return { lo: mn - pad, hi: mx + pad };
     };
 
+    const thresholds = getRejectThresholds(data);
+
     // Calculate reject threshold value for metric1 so axis always includes it
-    const thresh1 = REJECT_THRESHOLDS[metric1];
+    const thresh1 = thresholds?.[metric1];
     let rejectVal: number | undefined;
     if (stats1 && thresh1) {
       if (thresh1.type === 'sigma') {
@@ -219,7 +275,24 @@
     }
 
     const r1 = calcRange(m1valid, rejectVal);
-    const r2 = calcRange(m2valid);
+
+    // Calculate reject threshold value for metric2 so right axis always includes it
+    let rejectVal2: number | undefined;
+    if (m2def && thresholds) {
+      const stats2 = data.session_stats[metric2];
+      const thresh2 = thresholds[metric2];
+      if (stats2 && thresh2) {
+        if (thresh2.type === 'sigma') {
+          rejectVal2 = thresh2.direction === 'high'
+            ? stats2.mean + thresh2.value * stats2.stddev
+            : stats2.mean - thresh2.value * stats2.stddev;
+        } else {
+          rejectVal2 = thresh2.value;
+        }
+      }
+    }
+
+    const r2 = metric1 === metric2 ? r1 : calcRange(m2valid, rejectVal2);
 
     const toX  = (i: number) => n === 1 ? PL + CW / 2 : PL + (i / (n - 1)) * CW;
     const toY1 = (v: number) => PT + CH - ((v - r1.lo) / (r1.hi - r1.lo)) * CH;
@@ -257,33 +330,18 @@
     }
 
     // Reject threshold line (metric 1)
-    const rejY = rejectThresholdY(metric1, stats1, r1.lo, r1.hi, PT, CH);
+    const rejY = rejectThresholdY(metric1, stats1, r1.lo, r1.hi, PT, CH, thresholds);
     if (rejY !== null) {
-      // Black border lines either side
-      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([]);
-      ctx.beginPath(); ctx.moveTo(PL, rejY - 3); ctx.lineTo(PL + CW, rejY - 3); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(PL, rejY + 3); ctx.lineTo(PL + CW, rejY + 3); ctx.stroke();
+      drawRejectLine(ctx, rejY, PL, CW, 'rgba(255,60,60,0.75)', 4, 'left', 15);
+    }
 
-      // Main dotted reject line
-      ctx.strokeStyle = 'rgba(255,60,60,0.75)';
-      ctx.lineWidth = 4;
-      ctx.setLineDash([6, 3]);
-      ctx.beginPath(); ctx.moveTo(PL, rejY); ctx.lineTo(PL + CW, rejY); ctx.stroke();
-      ctx.setLineDash([]);
-
-      // REJECT label with semi-opaque black background
-      ctx.font = '15px monospace';
-      ctx.textAlign = 'left';
-      const labelText = 'REJECT';
-      const textW = ctx.measureText(labelText).width;
-      const labelX = PL + 4;
-      const labelY = rejY - 10;
-      ctx.fillStyle = 'rgba(0,0,0,0.60)';
-      ctx.fillRect(labelX - 2, labelY - 14, textW + 6, 18);
-      ctx.fillStyle = 'rgba(255,80,80,1.0)';
-      ctx.fillText(labelText, labelX, labelY);
+    // Reject threshold line (metric 2)
+    if (m2def && m2valid.length) {
+      const stats2 = data.session_stats[metric2];
+      const rejY2 = rejectThresholdY(metric2, stats2, r2.lo, r2.hi, PT, CH, thresholds);
+      if (rejY2 !== null) {
+        drawRejectLine(ctx, rejY2, PL, CW, C.warning, 2, 'right', 13);
+      }
     }
 
     // Chart border

@@ -53,18 +53,28 @@ pub const CRASH_RECOVERY_INTERVAL_MAX:          i64 = 300;
 
 // ── Threshold Profiles (AnalyzeFrames defaults) ───────────────────────────────
 
-pub const DEFAULT_PROFILE_NAME:              &str = "Standard";
+pub const DEFAULT_PROFILE_NAME:              &str = "Default";
 pub const DEFAULT_BG_MEDIAN_SIGMA:           f64  = 2.5;
+pub const BG_MEDIAN_SIGMA_MIN:               f64  = 0.5;
+pub const BG_MEDIAN_SIGMA_MAX:               f64  = 5.0;
 pub const DEFAULT_BG_STDDEV_SIGMA:           f64  = 2.5;
+pub const BG_STDDEV_SIGMA_MIN:               f64  = 0.5;
+pub const BG_STDDEV_SIGMA_MAX:               f64  = 5.0;
 pub const DEFAULT_BG_GRADIENT_SIGMA:         f64  = 2.5;
+pub const BG_GRADIENT_SIGMA_MIN:             f64  = 0.5;
+pub const BG_GRADIENT_SIGMA_MAX:             f64  = 5.0;
 pub const DEFAULT_SNR_SIGMA:                 f64  = 2.5;
+pub const SNR_SIGMA_MIN:                     f64  = 0.5;
+pub const SNR_SIGMA_MAX:                     f64  = 5.0;
 pub const DEFAULT_FWHM_SIGMA:                f64  = 2.5;
+pub const FWHM_SIGMA_MIN:                    f64  = 0.5;
+pub const FWHM_SIGMA_MAX:                    f64  = 5.0;
 pub const DEFAULT_STAR_COUNT_SIGMA:          f64  = 1.5;
+pub const STAR_COUNT_SIGMA_MIN:              f64  = 0.5;
+pub const STAR_COUNT_SIGMA_MAX:              f64  = 5.0;
 pub const DEFAULT_ECCENTRICITY_ABS:          f64  = 0.85;
-pub const THRESHOLD_SIGMA_MIN:               f64  = 0.5;
-pub const THRESHOLD_SIGMA_MAX:               f64  = 5.0;
-pub const THRESHOLD_ECCENTRICITY_MIN:        f64  = 0.10;
-pub const THRESHOLD_ECCENTRICITY_MAX:        f64  = 1.00;
+pub const ECCENTRICITY_ABS_MIN:              f64  = 0.10;
+pub const ECCENTRICITY_ABS_MAX:              f64  = 1.00;
 
 // ── Non-persisted runtime constants ──────────────────────────────────────────
 // These are never written to the DB. They live here so they are

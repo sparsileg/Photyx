@@ -1,4 +1,5 @@
 // settings/mod.rs — AppSettings global object.
+
 // Populated at startup from defaults.rs (hard-coded values) and the
 // preferences table (persisted user values). All reads come from this
 // struct; writes go to both this struct and the DB simultaneously.
@@ -7,6 +8,37 @@
 pub mod defaults;
 use defaults::*;
 use rusqlite::Connection;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ThresholdProfile {
+    pub id:                       i64,
+    pub name:                     String,
+    pub description:              Option<String>,
+    pub bg_median_reject_sigma:   f64,
+    pub bg_stddev_reject_sigma:   f64,
+    pub bg_gradient_reject_sigma: f64,
+    pub snr_reject_sigma:         f64,
+    pub fwhm_reject_sigma:        f64,
+    pub star_count_reject_sigma:  f64,
+    pub eccentricity_reject_abs:  f64,
+}
+
+impl ThresholdProfile {
+    pub fn default_profile() -> Self {
+        Self {
+            id:                       0,
+            name:                     DEFAULT_PROFILE_NAME.to_string(),
+            description:              None,
+            bg_median_reject_sigma:   DEFAULT_BG_MEDIAN_SIGMA,
+            bg_stddev_reject_sigma:   DEFAULT_BG_STDDEV_SIGMA,
+            bg_gradient_reject_sigma: DEFAULT_BG_GRADIENT_SIGMA,
+            snr_reject_sigma:         DEFAULT_SNR_SIGMA,
+            fwhm_reject_sigma:        DEFAULT_FWHM_SIGMA,
+            star_count_reject_sigma:  DEFAULT_STAR_COUNT_SIGMA,
+            eccentricity_reject_abs:  DEFAULT_ECCENTRICITY_ABS,
+        }
+    }
+}
 
 /// All application settings in one place.
 /// Fields marked "not persisted" are always set from defaults.rs.
@@ -43,7 +75,8 @@ pub struct AppSettings {
     pub crash_recovery_interval_secs: i64,   // persisted, internal
 
     // ── Active threshold profile ──────────────────────────────────────
-    pub active_threshold_profile_id: Option<i64>, // persisted
+    pub active_threshold_profile_id: Option<i64>,       // persisted
+    pub threshold_profiles:          Vec<ThresholdProfile>, // loaded at startup, not persisted as key/value
 
     // ── Non-persisted runtime constants ──────────────────────────────
     pub display_max_width_px:        u32,
@@ -73,6 +106,7 @@ impl AppSettings {
             autostretch_target_bg:        DEFAULT_AUTOSTRETCH_TARGET_BG,
             crash_recovery_interval_secs: DEFAULT_CRASH_RECOVERY_INTERVAL_SECS,
             active_threshold_profile_id:  None,
+            threshold_profiles:           Vec::new(),
             display_max_width_px:         DISPLAY_MAX_WIDTH_PX,
             blink_jpeg_quality:           BLINK_JPEG_QUALITY,
             display_jpeg_quality:         DISPLAY_JPEG_QUALITY,
@@ -214,6 +248,76 @@ impl AppSettings {
                 self.active_threshold_profile_id = value.parse::<i64>().ok();
             }
             _ => {}
+        }
+    }
+
+    /// Load all threshold profiles from the DB into self.threshold_profiles.
+    /// If the table is empty, seeds a "Default" profile and makes it active.
+    pub fn load_threshold_profiles(&mut self, db: &Connection) {
+        let mut stmt = match db.prepare(
+            "SELECT id, name, description,
+                    bg_median_reject_sigma, bg_stddev_reject_sigma, bg_gradient_reject_sigma,
+                    snr_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
+                    eccentricity_reject_abs
+             FROM threshold_profiles ORDER BY id"
+        ) {
+            Ok(s)  => s,
+            Err(e) => { tracing::warn!("load_threshold_profiles: {}", e); return; }
+        };
+
+        let profiles: Vec<ThresholdProfile> = stmt.query_map([], |row| {
+            Ok(ThresholdProfile {
+                id:                       row.get(0)?,
+                name:                     row.get(1)?,
+                description:              row.get(2)?,
+                bg_median_reject_sigma:   row.get(3)?,
+                bg_stddev_reject_sigma:   row.get(4)?,
+                bg_gradient_reject_sigma: row.get(5)?,
+                snr_reject_sigma:         row.get(6)?,
+                fwhm_reject_sigma:        row.get(7)?,
+                star_count_reject_sigma:  row.get(8)?,
+                eccentricity_reject_abs:  row.get(9)?,
+            })
+        })
+        .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default();
+
+        if profiles.is_empty() {
+            let now = crate::db::now_unix();
+            let p = ThresholdProfile::default_profile();
+            match db.execute(
+                "INSERT INTO threshold_profiles
+                 (name, description,
+                  bg_median_reject_sigma, bg_stddev_reject_sigma, bg_gradient_reject_sigma,
+                  snr_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
+                  eccentricity_reject_abs, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
+                rusqlite::params![
+                    p.name, p.description,
+                    p.bg_median_reject_sigma, p.bg_stddev_reject_sigma, p.bg_gradient_reject_sigma,
+                    p.snr_reject_sigma, p.fwhm_reject_sigma, p.star_count_reject_sigma,
+                    p.eccentricity_reject_abs, now
+                ],
+            ) {
+                Ok(_) => {
+                    let new_id = db.last_insert_rowid();
+                    let _ = db.execute(
+                        "INSERT INTO preferences (key, value, updated_at)
+                         VALUES ('active_threshold_profile_id', ?1, ?2)
+                         ON CONFLICT(key) DO UPDATE SET
+                             value = excluded.value,
+                             updated_at = excluded.updated_at",
+                        rusqlite::params![new_id, now],
+                    );
+                    self.active_threshold_profile_id = Some(new_id);
+                    self.threshold_profiles = vec![ThresholdProfile {
+                        id: new_id, ..ThresholdProfile::default_profile()
+                    }];
+                }
+                Err(e) => tracing::warn!("load_threshold_profiles: seed failed: {}", e),
+            }
+        } else {
+            self.threshold_profiles = profiles;
         }
     }
 

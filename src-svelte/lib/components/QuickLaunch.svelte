@@ -54,7 +54,10 @@
       }
       // Dispatch client actions returned by Rust — no command-name matching needed
       let autoStretched = false;
-      for (const action of response.client_actions) {
+      if (!Array.isArray(response.client_actions)) {
+        console.warn('QuickLaunch: client_actions was not an array:', response.client_actions, 'script:', script);
+      }
+      for (const action of response.client_actions ?? []) {
         if (action === 'refresh_autostretch') {
           await applyAutoStretch();
           autoStretched = true;

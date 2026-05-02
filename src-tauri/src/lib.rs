@@ -237,10 +237,26 @@ pub fn run() {
 
     let mut app_settings = settings::AppSettings::new();
     app_settings.load_from_db(&db_conn);
+    app_settings.load_threshold_profiles(&db_conn);
 
     let mut app_context = AppContext::new();
     app_context.autostretch_shadow_clip = app_settings.autostretch_shadow_clip as f32;
     app_context.autostretch_target_bg   = app_settings.autostretch_target_bg as f32;
+
+    // Load active threshold profile into AppContext
+    if let Some(active_id) = app_settings.active_threshold_profile_id {
+        if let Some(profile) = app_settings.threshold_profiles.iter().find(|p| p.id == active_id) {
+            app_context.analysis_thresholds = crate::analysis::session_stats::AnalysisThresholds {
+                background_median:   crate::analysis::session_stats::MetricThresholds { reject: profile.bg_median_reject_sigma as f32 },
+                background_stddev:   crate::analysis::session_stats::MetricThresholds { reject: profile.bg_stddev_reject_sigma as f32 },
+                background_gradient: crate::analysis::session_stats::MetricThresholds { reject: profile.bg_gradient_reject_sigma as f32 },
+                snr_estimate:        crate::analysis::session_stats::MetricThresholds { reject: profile.snr_reject_sigma.abs() as f32 },
+                fwhm:                crate::analysis::session_stats::MetricThresholds { reject: profile.fwhm_reject_sigma as f32 },
+                star_count:          crate::analysis::session_stats::MetricThresholds { reject: profile.star_count_reject_sigma.abs() as f32 },
+                eccentricity:        crate::analysis::session_stats::MetricThresholds { reject: profile.eccentricity_reject_abs as f32 },
+            };
+        }
+    }
 
     let state = Arc::new(PhotoxState {
         registry,
@@ -286,6 +302,11 @@ pub fn run() {
             commands::preferences::record_directory_visit,
             commands::preferences::save_quick_launch_buttons,
             commands::preferences::set_preference,
+            commands::threshold_profiles::delete_threshold_profile,
+            commands::threshold_profiles::get_active_threshold_profile_id,
+            commands::threshold_profiles::get_threshold_profiles,
+            commands::threshold_profiles::save_threshold_profile,
+            commands::threshold_profiles::set_active_threshold_profile,
             commands::session::check_crash_recovery,
             commands::session::close_session,
             commands::session::debug_buffer_info,

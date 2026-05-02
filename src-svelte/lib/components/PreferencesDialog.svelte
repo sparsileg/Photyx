@@ -131,7 +131,7 @@
 
 <svelte:window onkeydown={onKeyDown} />
 
-<div class="pref-backdrop" onclick={cancel}>
+<div class="pref-backdrop">
   <div class="pref-dialog" onclick={(e) => e.stopPropagation()}>
 
     <div class="pref-header">

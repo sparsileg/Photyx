@@ -239,7 +239,10 @@
         }
       }
       // Dispatch client actions returned by Rust — no command-name matching needed
-      for (const action of response.client_actions) {
+      if (!Array.isArray(response.client_actions)) {
+        console.warn('Console: client_actions was not an array:', response.client_actions);
+      }
+      for (const action of response.client_actions ?? []) {
         if (action === 'refresh_autostretch') {
           await applyAutoStretch();
           ui.clearAnnotations();
