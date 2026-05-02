@@ -14,10 +14,15 @@
 .ar-toolbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 10px;
     padding: 6px 12px;
+    background: var(--card-bg);
     border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
+}
+
+.ar-toolbar .ar-close-btn {
+    margin-left: auto;
 }
 
 .ar-title {
@@ -26,17 +31,36 @@
     color: var(--primary-color);
 }
 
+.ar-btn {
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: monospace;
+    padding: 3px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+.ar-btn:hover {
+    background: var(--card-hover);
+    color: var(--primary-color);
+    border-color: var(--primary-hover);
+}
 .ar-close-btn {
     background: none;
     border: 1px solid var(--border-color);
-    color: var(--text-color);
+    color: var(--error-color);
     padding: 3px 10px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 11px;
+    font-family: monospace;
+    border-radius: 2px;
+    opacity: 0.6;
 }
-
 .ar-close-btn:hover {
     background: var(--card-hover);
+    border-color: var(--error-color);
+    opacity: 1;
 }
 
 .ar-loading {

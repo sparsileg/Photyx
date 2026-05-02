@@ -38,11 +38,11 @@ pub fn save_threshold_profile(
         bg_gradient_reject_sigma: profile.bg_gradient_reject_sigma
                                     .clamp(BG_GRADIENT_SIGMA_MIN, BG_GRADIENT_SIGMA_MAX),
         snr_reject_sigma:         profile.snr_reject_sigma
-                                    .clamp(SNR_SIGMA_MIN, SNR_SIGMA_MAX),
+                                    .clamp(-SNR_SIGMA_MAX, -SNR_SIGMA_MIN),
         fwhm_reject_sigma:        profile.fwhm_reject_sigma
                                     .clamp(FWHM_SIGMA_MIN, FWHM_SIGMA_MAX),
         star_count_reject_sigma:  profile.star_count_reject_sigma
-                                    .clamp(STAR_COUNT_SIGMA_MIN, STAR_COUNT_SIGMA_MAX),
+                                    .clamp(-STAR_COUNT_SIGMA_MAX, -STAR_COUNT_SIGMA_MIN),
         eccentricity_reject_abs:  profile.eccentricity_reject_abs
                                     .clamp(ECCENTRICITY_ABS_MIN, ECCENTRICITY_ABS_MAX),
     };

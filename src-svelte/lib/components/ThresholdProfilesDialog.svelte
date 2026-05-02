@@ -198,6 +198,7 @@
 
   async function apply() {
     if (!dirty || selectedId === null || hasErrors()) return;
+    console.log('apply draft:', JSON.stringify(draft));
     try {
       const profile = $thresholdProfiles.profiles.find(p => p.id === selectedId);
       if (!profile) return;
@@ -285,10 +286,11 @@
 
         <Dropdown
           className="tp-profile-dropdown"
-          bind:value={selectedIdStr}
+          value={selectedIdStr}
           options={$thresholdProfiles.profiles.map(p => ({ value: String(p.id), label: p.name }))}
           openUp={false}
           width={null}
+          on:change={(e) => { selectedIdStr = e.detail; }}
         />
 
         <button
@@ -354,8 +356,6 @@
                   class="pref-input pref-input-numeric"
                   type="number"
                   step={field.step}
-                  min={fieldMin(field)}
-                  max={fieldMax(field)}
                   value={draft[field.key] ?? field.default}
                   oninput={(e) => onFieldInput(
                     field.key,

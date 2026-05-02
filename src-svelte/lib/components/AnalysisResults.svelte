@@ -75,7 +75,8 @@
     return sortAsc ? ' ▲' : ' ▼';
   }
 
-  onMount(async () => {
+  async function loadData() {
+    loading = true;
     try {
       const data = await invoke<{ frames: FrameResult[] }>('get_analysis_results');
       frames = data.frames;
@@ -84,12 +85,15 @@
     } finally {
       loading = false;
     }
-  });
+  }
+
+  onMount(loadData);
 </script>
 
 <div id="analysis-results">
   <div class="ar-toolbar">
     <span class="ar-title">Analysis Results</span>
+    <button class="ar-btn" onclick={loadData}>↻ Refresh</button>
     <button class="ar-close-btn" onclick={() => ui.showView(null)}>✕ Close</button>
   </div>
 

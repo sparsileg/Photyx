@@ -32,7 +32,7 @@
 
 <!-- Notification history overlay -->
 {#if historyOpen}
-  <div id="notif-history" class="open">
+  <div id="notif-history" class="open" class:running={$latestNotification?.type === 'running'}>
     <div class="notif-history-header">
       Notification History
       <span class="notif-close" onclick={() => historyOpen = false}>✕</span>

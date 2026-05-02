@@ -37,6 +37,10 @@
         client_actions:  string[];
       }>('run_script', { script });
       let anyError = false;
+      if (!Array.isArray(response.results)) {
+        console.warn('QuickLaunch: results was not an array:', response.results, 'script:', script);
+        throw new Error(`Unexpected response format: results is ${typeof response.results}`);
+      }
       for (const r of response.results) {
         if (!r.success) {
           notifications.error(`${r.command}: ${r.message ?? 'error'}`);

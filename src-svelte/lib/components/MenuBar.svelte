@@ -1,7 +1,7 @@
 <!-- MenuBar.svelte — Application menu bar. Spec §8.2 -->
 
 <script lang="ts">
-  import { consolePipe } from '../stores/consoleHistory';
+  import { pipeToConsole } from '../stores/consoleHistory';
   import { db } from '../db';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { invoke } from '@tauri-apps/api/core';
@@ -61,16 +61,16 @@
       });
       if (response.success) {
         const msg = response.output ?? 'AnalyzeFrames complete';
-        consolePipe.set({ id: Date.now(), text: msg, type: 'success' });
+        pipeToConsole(msg, 'success');
         notifications.success('AnalyzeFrames complete');
       } else {
         const err = response.error ?? 'AnalyzeFrames failed';
-        consolePipe.set({ id: Date.now(), text: err, type: 'error' });
+        pipeToConsole(err, 'error');
         notifications.error(err);
       }
     } catch (err) {
       const msg = `AnalyzeFrames error: ${err}`;
-      consolePipe.set({ id: Date.now(), text: msg, type: 'error' });
+      pipeToConsole(msg, 'error');
       notifications.error(msg);
     }
   }
@@ -86,17 +86,17 @@
       });
       if (response.success) {
         const msg = response.output ?? 'AutoStretch applied';
-        consolePipe.set({ id: Date.now(), text: msg, type: 'success' });
+        pipeToConsole(msg, 'success');
         notifications.success(msg);
         await applyAutoStretch();
       } else {
         const err = response.error ?? 'AutoStretch failed';
-        consolePipe.set({ id: Date.now(), text: err, type: 'error' });
+        pipeToConsole(err, 'error');
         notifications.error(err);
       }
     } catch (err) {
       const msg = `AutoStretch error: ${err}`;
-      consolePipe.set({ id: Date.now(), text: msg, type: 'error' });
+      pipeToConsole(msg, 'error');
       notifications.error(msg);
     }
   }
@@ -144,9 +144,7 @@
     if (!path) return;
     try {
       await db.restoreDatabase(path);
-      // Brief pause to let the reopened connection settle
       await new Promise(resolve => setTimeout(resolve, 200));
-      // Re-hydrate frontend stores from restored DB
       const prefs = await db.getAllPreferences();
       ui.hydrateFromDb(prefs);
       const buttons = await db.getQuickLaunchButtons();
@@ -170,18 +168,18 @@
       });
       if (response.success) {
         const msg = response.output ?? 'ContourHeatmap complete';
-        consolePipe.set({ id: Date.now(), text: msg, type: 'success' });
+        pipeToConsole(msg, 'success');
         notifications.success(msg);
         const filePath = response.data?.output as string | null;
         if (filePath) await loadFile(filePath);
       } else {
         const err = response.error ?? 'ContourHeatmap failed';
-        consolePipe.set({ id: Date.now(), text: err, type: 'error' });
+        pipeToConsole(err, 'error');
         notifications.error(err);
       }
     } catch (err) {
       const msg = `ContourHeatmap error: ${err}`;
-      consolePipe.set({ id: Date.now(), text: msg, type: 'error' });
+      pipeToConsole(msg, 'error');
       notifications.error(msg);
     }
   }
@@ -192,63 +190,63 @@
 <div id="menu-bar">
   {#each [
     { name: 'File', items: [
-  { label: 'Select Directory…',    action: 'select-directory',     shortcut: 'Ctrl+O' },
-  { label: 'Load Single Image…',   action: 'load-single-image' },
-  { label: 'Close Session',        action: 'close-session' },
-  { sep: true },
-  { label: 'Exit',         action: 'exit' },
-  ]},
-  { name: 'Edit', items: [
-  { label: 'Preferences',        action: 'preferences' },
-  { label: 'Analysis Parameters', action: 'analysis-parameters' },
-  ]},
-  { name: 'View', items: [
-  { label: 'Theme: Dark',  action: 'theme-dark' },
-  { label: 'Theme: Light', action: 'theme-light' },
-  { label: 'Theme: Matrix',action: 'theme-matrix' },
-  ]},
-  { name: 'Analyze', items: [
-  { label: 'Analyze Frames',   action: 'analyze-frames' },
-  { label: 'Analysis Results', action: 'analysis-results' },
-  { label: 'Analysis Graph',   action: 'analysis-graph' },
-  { label: 'Contour Plot',     action: 'contour-plot' },
-  ]},
-  { name: 'Tools', items: [
-  { label: 'Backup Database', action: 'backup-database' },
-  { label: 'Restore Database', action: 'restore-database' },
-  { sep: true },
-  { label: 'Log Viewer',      action: 'log-viewer' },
-  ]},
-  { name: 'Help', items: [
-  { label: 'About Photyx', action: 'about' },
-  { label: 'Documentation',action: 'documentation' },
-  ]},
+      { label: 'Select Directory…',  action: 'select-directory', shortcut: 'Ctrl+O' },
+      { label: 'Load Single Image…', action: 'load-single-image' },
+      { label: 'Close Session',      action: 'close-session' },
+      { sep: true },
+      { label: 'Exit',               action: 'exit' },
+    ]},
+    { name: 'Edit', items: [
+      { label: 'Preferences',         action: 'preferences' },
+      { label: 'Analysis Parameters', action: 'analysis-parameters' },
+    ]},
+    { name: 'View', items: [
+      { label: 'Theme: Dark',   action: 'theme-dark' },
+      { label: 'Theme: Light',  action: 'theme-light' },
+      { label: 'Theme: Matrix', action: 'theme-matrix' },
+    ]},
+    { name: 'Analyze', items: [
+      { label: 'Analyze Frames',   action: 'analyze-frames' },
+      { label: 'Analysis Results', action: 'analysis-results' },
+      { label: 'Analysis Graph',   action: 'analysis-graph' },
+      { label: 'Contour Plot',     action: 'contour-plot' },
+    ]},
+    { name: 'Tools', items: [
+      { label: 'Backup Database',  action: 'backup-database' },
+      { label: 'Restore Database', action: 'restore-database' },
+      { sep: true },
+      { label: 'Log Viewer', action: 'log-viewer' },
+    ]},
+    { name: 'Help', items: [
+      { label: 'About Photyx',  action: 'about' },
+      { label: 'Documentation', action: 'documentation' },
+    ]},
   ] as menu}
-  <div
-    class="menu-item"
-    class:open={openMenu === menu.name}
-    onclick={(e) => { e.stopPropagation(); toggle(menu.name); }}
+    <div
+      class="menu-item"
+      class:open={openMenu === menu.name}
+      onclick={(e) => { e.stopPropagation(); toggle(menu.name); }}
     >
-    {menu.name}
-    {#if openMenu === menu.name}
-      <div class="menu-dropdown">
-        {#each menu.items as item}
-          {#if item.sep}
-            <div class="menu-separator"></div>
-          {:else}
-            <div
-              class="menu-dropdown-item"
-              onclick={(e) => { e.stopPropagation(); action(item.action ?? ''); }}
+      {menu.name}
+      {#if openMenu === menu.name}
+        <div class="menu-dropdown">
+          {#each menu.items as item}
+            {#if item.sep}
+              <div class="menu-separator"></div>
+            {:else}
+              <div
+                class="menu-dropdown-item"
+                onclick={(e) => { e.stopPropagation(); action(item.action ?? ''); }}
               >
-              {item.label}
-              {#if item.shortcut}
-                <span class="shortcut">{item.shortcut}</span>
-              {/if}
-            </div>
-          {/if}
-        {/each}
-      </div>
-    {/if}
-  </div>
-{/each}
+                {item.label}
+                {#if item.shortcut}
+                  <span class="shortcut">{item.shortcut}</span>
+                {/if}
+              </div>
+            {/if}
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/each}
 </div>
