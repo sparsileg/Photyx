@@ -6,35 +6,66 @@ use crate::PhotoxState;
 
 #[tauri::command]
 pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value {
-    let ctx = state.context.lock().expect("context lock poisoned");
+    let mut ctx = state.context.lock().expect("context lock poisoned");
+
+    // If no cached metrics exist, return empty — AnalyzeFrames hasn't run yet.
+    if ctx.analysis_results.is_empty() {
+        return serde_json::json!({
+            "frames": [],
+            "session_stats": {},
+            "applied_thresholds": null,
+            "outlier_paths": [],
+        });
+    }
+
+    // Reclassify all frames on the fly using cached metrics + current thresholds.
+    // This allows threshold changes to take effect without rerunning AnalyzeFrames.
+    use crate::analysis::session_stats::{
+        classify_frame, compute_session_stats_iterative, AnalysisThresholds,
+    };
+
+    let thresholds: AnalysisThresholds = ctx.analysis_thresholds.clone();
+
+    let result_refs: Vec<&crate::analysis::AnalysisResult> = ctx.file_list.iter()
+        .filter_map(|p| ctx.analysis_results.get(p))
+        .collect();
+
+    let (session_stats, outlier_paths) = compute_session_stats_iterative(&result_refs);
+
+    // Store updated stats and outliers back into ctx so blink overlay etc. stays consistent
+    ctx.last_session_stats = Some(session_stats.clone());
+    ctx.outlier_frame_paths = outlier_paths.clone();
+
+    // Reclassify each frame and update stored results
+    let paths: Vec<String> = ctx.file_list.clone();
+    for path in &paths {
+        if let Some(result) = ctx.analysis_results.get(path).cloned() {
+            let (flag, triggered) = classify_frame(&result, &session_stats, &thresholds);
+            if let Some(r) = ctx.analysis_results.get_mut(path) {
+                r.flag = Some(flag);
+                r.triggered_by = triggered;
+            }
+        }
+    }
 
     let frames: Vec<serde_json::Value> = ctx.file_list.iter().enumerate().map(|(i, path)| {
-        let flag = ctx.analysis_results.get(path)
-            .and_then(|r| r.flag.as_ref())
-            .map(|f| f.as_str().to_string())
-            .or_else(|| ctx.image_buffers.get(path)
-                     .and_then(|b| b.keywords.get("PXFLAG"))
-                     .map(|kw| kw.value.clone()))
-            .unwrap_or_default();
-
         let short = path.rsplit(['/', '\\']).next().unwrap_or(path);
         let label = extract_frame_label(short);
 
         if let Some(r) = ctx.analysis_results.get(path) {
+            let flag = r.flag.as_ref().map(|f| f.as_str().to_string()).unwrap_or_default();
             serde_json::json!({
-                "index":               i,
-                "filename":            path,
-                "label":               label,
-                "short_name":          short,
-                "background_median":   r.background_median,
-                "background_stddev":   r.background_stddev,
-                "background_gradient": r.background_gradient,
-                "snr_estimate":        r.snr_estimate,
-                "fwhm":                r.fwhm,
-                "eccentricity":        r.eccentricity,
-                "star_count":          r.star_count,
-                "flag":                flag,
-                "triggered":           r.triggered_by,
+                "index":             i,
+                "filename":          path,
+                "label":             label,
+                "short_name":        short,
+                "background_median": r.background_median,
+                "snr_estimate":      r.snr_estimate,
+                "fwhm":              r.fwhm,
+                "eccentricity":      r.eccentricity,
+                "star_count":        r.star_count,
+                "flag":              flag,
+                "triggered":         r.triggered_by,
             })
         } else {
             serde_json::json!({
@@ -42,48 +73,101 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
                 "filename":   path,
                 "label":      label,
                 "short_name": short,
-                "flag":       flag,
+                "flag":       "",
                 "triggered":  [],
             })
         }
     }).collect();
 
-    let stats = ctx.last_session_stats.clone().unwrap_or_else(|| {
-        use crate::analysis::session_stats::compute_session_stats;
-        let result_refs: Vec<&crate::analysis::AnalysisResult> = ctx.file_list.iter()
-            .filter_map(|p| ctx.analysis_results.get(p))
-            .collect();
-        compute_session_stats(&result_refs)
+    let applied = serde_json::json!({
+        "background_median": { "value": thresholds.background_median.reject, "direction": "high" },
+        "snr_estimate":      { "value": thresholds.snr_estimate.reject,      "direction": "low"  },
+        "fwhm":              { "value": thresholds.fwhm.reject,              "direction": "high" },
+        "star_count":        { "value": thresholds.star_count.reject,        "direction": "low"  },
+        "eccentricity":      { "value": thresholds.eccentricity.reject,      "direction": "high" },
     });
 
-    let applied = ctx.last_analysis_thresholds.as_ref().map(|t| serde_json::json!({
-        "background_median":   { "value": t.background_median.reject,   "direction": "high" },
-        "background_stddev":   { "value": t.background_stddev.reject,   "direction": "high" },
-        "background_gradient": { "value": t.background_gradient.reject, "direction": "high" },
-        "snr_estimate":        { "value": t.snr_estimate.reject,        "direction": "low"  },
-        "fwhm":                { "value": t.fwhm.reject,                "direction": "high" },
-        "star_count":          { "value": t.star_count.reject,          "direction": "low"  },
-        "eccentricity":        { "value": t.eccentricity.reject,        "direction": "high" },
-    }));
-
-    let outlier_paths: Vec<&str> = ctx.outlier_frame_paths.iter()
+    let outlier_path_strs: Vec<&str> = outlier_paths.iter()
         .map(|s| s.as_str())
         .collect();
 
     serde_json::json!({
         "frames": frames,
         "session_stats": {
-            "background_median":   { "mean": stats.background_median.mean,   "stddev": stats.background_median.stddev },
-            "background_stddev":   { "mean": stats.background_stddev.mean,   "stddev": stats.background_stddev.stddev },
-            "background_gradient": { "mean": stats.background_gradient.mean, "stddev": stats.background_gradient.stddev },
-            "snr_estimate":        { "mean": stats.snr_estimate.mean,        "stddev": stats.snr_estimate.stddev },
-            "fwhm":                { "mean": stats.fwhm.mean,                "stddev": stats.fwhm.stddev },
-            "eccentricity":        { "mean": stats.eccentricity.mean,        "stddev": stats.eccentricity.stddev },
-            "star_count":          { "mean": stats.star_count.mean,          "stddev": stats.star_count.stddev },
+            "background_median": { "mean": session_stats.background_median.mean, "stddev": session_stats.background_median.stddev },
+            "snr_estimate":      { "mean": session_stats.snr_estimate.mean,      "stddev": session_stats.snr_estimate.stddev },
+            "fwhm":              { "mean": session_stats.fwhm.mean,              "stddev": session_stats.fwhm.stddev },
+            "eccentricity":      { "mean": session_stats.eccentricity.mean,      "stddev": session_stats.eccentricity.stddev },
+            "star_count":        { "mean": session_stats.star_count.mean,        "stddev": session_stats.star_count.stddev },
         },
         "applied_thresholds": applied,
-        "outlier_paths": outlier_paths,
+        "outlier_paths": outlier_path_strs,
     })
+}
+
+/// Write PXFLAG keywords to all image buffers and flush to disk via WriteCurrent.
+/// Updates last_analysis_thresholds to match the thresholds used for the committed results.
+#[tauri::command]
+pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String, String> {
+    use crate::context::KeywordEntry;
+    use crate::plugin::ArgMap;
+
+    {
+        let mut ctx = state.context.lock().expect("context lock poisoned");
+
+        if ctx.analysis_results.is_empty() {
+            return Err("No analysis results to commit. Run AnalyzeFrames first.".to_string());
+        }
+
+        let thresholds = ctx.analysis_thresholds.clone();
+        let paths: Vec<String> = ctx.file_list.clone();
+        let mut pass_count   = 0u32;
+        let mut reject_count = 0u32;
+
+        // Write PXFLAG to image buffers in memory
+        for path in &paths {
+            if let Some(result) = ctx.analysis_results.get(path) {
+                if let Some(flag) = &result.flag {
+                    let flag_str = flag.as_str().to_string();
+                    match flag {
+                        crate::analysis::PxFlag::Pass   => pass_count   += 1,
+                        crate::analysis::PxFlag::Reject => reject_count += 1,
+                    }
+                    if let Some(buf) = ctx.image_buffers.get_mut(path) {
+                        buf.keywords.insert(
+                            "PXFLAG".to_string(),
+                            KeywordEntry::new("PXFLAG", &flag_str, Some("Photyx frame quality flag")),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Update last_analysis_thresholds to reflect what was committed
+        ctx.last_analysis_thresholds = Some(thresholds);
+
+        tracing::info!(
+            "CommitResults: {} PASS, {} REJECT — writing to disk",
+            pass_count, reject_count
+        );
+    }
+
+    // Flush to disk via WriteCurrent — drop ctx lock first so registry can reacquire it
+    let args = ArgMap::new();
+    state.registry
+        .dispatch(&mut state.context.lock().expect("context lock poisoned"), "WriteCurrent", &args)
+        .map(|output| {
+            match output {
+                crate::plugin::PluginOutput::Message(m) => m,
+                crate::plugin::PluginOutput::Data(d) => d
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Committed.")
+                    .to_string(),
+                _ => "Committed.".to_string(),
+            }
+        })
+        .map_err(|e| e.message)
 }
 
 pub fn extract_frame_label(filename: &str) -> String {

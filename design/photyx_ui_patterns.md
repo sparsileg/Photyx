@@ -358,6 +358,31 @@ Without this, clicking a dropdown menu item (which is appended to `document.body
 
 ---
 
+## Pattern 21 — Commit Results (File Write from Viewer-Region Toolbar)
+
+For actions that write to files from a viewer-region component toolbar, use the running/success notification pattern. No confirmation dialog is required when the action is user-initiated and the result is visible before committing.
+
+```typescript
+async function commitResults() {
+    notifications.running('Writing PXFLAG to files…');
+    try {
+        const msg = await invoke<string>('commit_analysis_results');
+        notifications.success(msg);
+    } catch (e) {
+        notifications.error(`Commit failed: ${e}`);
+    }
+}
+```
+
+**When to use this pattern vs Pattern 8 (inline confirmation):**
+
+- Use **Pattern 8** (inline confirmation bar) when the action is irreversible or destructive (delete, overwrite without preview)
+- Use **Pattern 21** (direct commit with notification) when the user has already reviewed the results in the UI and the action reflects exactly what they see — the preview IS the confirmation
+
+**Commit Results is present in both Analysis Graph and Analysis Results toolbars** because users may make their decision from either view. Both call the same `commit_analysis_results` Tauri command.
+
+---
+
 ## CSS Variables Reference
 
 All CSS files must use these theme variables:
@@ -405,3 +430,5 @@ All CSS files must use these theme variables:
 **The status bar expands to 3× height when `notifications.running()` is active. `#app` must have `position: relative`. See Pattern 9.**
 
 **Fixed overlays use `position: fixed`, start at `top: 96px`, and must respect the z-index hierarchy. See Pattern 17.**
+
+**Commit Results does not require a confirmation dialog when the user has already reviewed results in the UI. Use notifications.running() + notifications.success(). See Pattern 21.**

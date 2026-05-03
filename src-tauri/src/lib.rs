@@ -115,18 +115,12 @@ pub struct ScriptResult {
 }
 
 // Commands that modify the session file list or active directory.
-// Any command that adds, removes, or reorders files — or changes the working
-// directory — belongs here. CopyFile is intentionally excluded: it does not
-// alter the session, only the filesystem.
 const SESSION_COMMANDS: &[&str] = &[
     "readfit", "readtiff", "readxisf", "readall",
     "selectdirectory", "clearsession", "movefile", "runmacro",
 ];
 
 // Commands that alter the pixel data currently displayed in the viewer.
-// Any command that produces a new stretched, processed, or transformed image
-// belongs here. File I/O and session commands do not belong here unless they
-// also change what is rendered in the viewer.
 const DISPLAY_COMMANDS: &[&str] = &[
     "autostretch", "linearstretch", "histogramequalization",
 ];
@@ -247,13 +241,11 @@ pub fn run() {
     if let Some(active_id) = app_settings.active_threshold_profile_id {
         if let Some(profile) = app_settings.threshold_profiles.iter().find(|p| p.id == active_id) {
             app_context.analysis_thresholds = crate::analysis::session_stats::AnalysisThresholds {
-                background_median:   crate::analysis::session_stats::MetricThresholds { reject: profile.bg_median_reject_sigma as f32 },
-                background_stddev:   crate::analysis::session_stats::MetricThresholds { reject: profile.bg_stddev_reject_sigma as f32 },
-                background_gradient: crate::analysis::session_stats::MetricThresholds { reject: profile.bg_gradient_reject_sigma as f32 },
-                snr_estimate:        crate::analysis::session_stats::MetricThresholds { reject: profile.snr_reject_sigma.abs() as f32 },
-                fwhm:                crate::analysis::session_stats::MetricThresholds { reject: profile.fwhm_reject_sigma as f32 },
-                star_count:          crate::analysis::session_stats::MetricThresholds { reject: profile.star_count_reject_sigma.abs() as f32 },
-                eccentricity:        crate::analysis::session_stats::MetricThresholds { reject: profile.eccentricity_reject_abs as f32 },
+                background_median: crate::analysis::session_stats::MetricThresholds { reject: profile.bg_median_reject_sigma as f32 },
+                snr_estimate:      crate::analysis::session_stats::MetricThresholds { reject: profile.snr_reject_sigma.abs() as f32 },
+                fwhm:              crate::analysis::session_stats::MetricThresholds { reject: profile.fwhm_reject_sigma as f32 },
+                star_count:        crate::analysis::session_stats::MetricThresholds { reject: profile.star_count_reject_sigma.abs() as f32 },
+                eccentricity:      crate::analysis::session_stats::MetricThresholds { reject: profile.eccentricity_reject_abs as f32 },
             };
         }
     }
@@ -273,6 +265,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
+            commands::analysis::commit_analysis_results,
             commands::analysis::get_analysis_results,
             commands::analysis::get_frame_flags,
             commands::analysis::get_star_positions,

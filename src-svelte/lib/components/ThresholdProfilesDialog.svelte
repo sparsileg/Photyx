@@ -1,3 +1,5 @@
+
+
 <!-- ThresholdProfilesDialog.svelte — Edit > Analysis Parameters modal. -->
 <!-- Manages threshold profiles for AnalyzeFrames. -->
 
@@ -67,13 +69,11 @@
     const profile = $thresholdProfiles.profiles.find(p => p.id === id);
     if (!profile) return;
     draft = {
-      bg_median_reject_sigma:   profile.bg_median_reject_sigma,
-      bg_stddev_reject_sigma:   profile.bg_stddev_reject_sigma,
-      bg_gradient_reject_sigma: profile.bg_gradient_reject_sigma,
-      snr_reject_sigma:         profile.snr_reject_sigma,
-      fwhm_reject_sigma:        profile.fwhm_reject_sigma,
-      star_count_reject_sigma:  profile.star_count_reject_sigma,
-      eccentricity_reject_abs:  profile.eccentricity_reject_abs,
+      bg_median_reject_sigma:  profile.bg_median_reject_sigma,
+      snr_reject_sigma:        profile.snr_reject_sigma,
+      fwhm_reject_sigma:       profile.fwhm_reject_sigma,
+      star_count_reject_sigma: profile.star_count_reject_sigma,
+      eccentricity_reject_abs: profile.eccentricity_reject_abs,
     };
     dirty = false;
     errors = {};
@@ -121,16 +121,14 @@
     if (!name) return;
     try {
       const base: ThresholdProfile = {
-        id:                       0,
+        id:                      0,
         name,
-        description:              null,
-        bg_median_reject_sigma:   2.5,
-        bg_stddev_reject_sigma:   2.5,
-        bg_gradient_reject_sigma: 2.5,
-        snr_reject_sigma:         -2.5,
-        fwhm_reject_sigma:        2.5,
-        star_count_reject_sigma:  -1.5,
-        eccentricity_reject_abs:  0.85,
+        description:             null,
+        bg_median_reject_sigma:  2.5,
+        snr_reject_sigma:        -2.5,
+        fwhm_reject_sigma:       2.5,
+        star_count_reject_sigma: -1.5,
+        eccentricity_reject_abs: 0.85,
       };
       const saved = await thresholdProfiles.saveProfile(base);
       selectedId = saved.id;
@@ -204,13 +202,11 @@
       if (!profile) return;
       const saved: ThresholdProfile = {
         ...profile,
-        bg_median_reject_sigma:   Number(draft.bg_median_reject_sigma),
-        bg_stddev_reject_sigma:   Number(draft.bg_stddev_reject_sigma),
-        bg_gradient_reject_sigma: Number(draft.bg_gradient_reject_sigma),
-        snr_reject_sigma:         Number(draft.snr_reject_sigma),
-        fwhm_reject_sigma:        Number(draft.fwhm_reject_sigma),
-        star_count_reject_sigma:  Number(draft.star_count_reject_sigma),
-        eccentricity_reject_abs:  Number(draft.eccentricity_reject_abs),
+        bg_median_reject_sigma:  Number(draft.bg_median_reject_sigma),
+        snr_reject_sigma:        Number(draft.snr_reject_sigma),
+        fwhm_reject_sigma:       Number(draft.fwhm_reject_sigma),
+        star_count_reject_sigma: Number(draft.star_count_reject_sigma),
+        eccentricity_reject_abs: Number(draft.eccentricity_reject_abs),
       };
       await thresholdProfiles.saveProfile(saved);
       await thresholdProfiles.setActiveProfile(selectedId);

@@ -1,10 +1,8 @@
-// plugins/background_median.rs — BackgroundMedian, BackgroundStdDev, BackgroundGradient plugins
+// plugins/background_median.rs — BackgroundMedian plugin
 // Spec §15.4, §7.8
 //
-// Three thin plugin wrappers over analysis::background::compute_background_metrics.
-// All three share identical pixel-preparation logic; only which field they report differs.
-// Running any one of them populates all three fields in the AnalysisResult for that frame,
-// so there is no redundant computation if the user runs them in sequence.
+// Thin plugin wrapper over analysis::background::compute_background_metrics.
+// Populates background_median in the AnalysisResult for the current frame.
 
 use crate::analysis::{
     self,
@@ -73,11 +71,10 @@ fn parse_config(args: &ArgMap) -> Result<BackgroundConfig, PluginError> {
     Ok(config)
 }
 
-/// Run background metrics and store all three results in AppContext.
-/// Returns the BackgroundMetrics for the caller to select which value to surface.
+/// Run background metrics and store background_median in AppContext.
 fn run_and_store(
-    ctx:    &mut AppContext,
-    args:   &ArgMap,
+    ctx:  &mut AppContext,
+    args: &ArgMap,
 ) -> Result<(BackgroundMetrics, String), PluginError> {
     let config  = parse_config(args)?;
     let prepped = prepare_current_image(ctx)?;
@@ -89,12 +86,9 @@ fn run_and_store(
         &config,
     );
 
-    // Store all three results — no wasted work if user runs all three plugins
     {
         let result = ctx.analysis_result_for(&prepped.path);
-        result.background_median   = Some(metrics.median);
-        result.background_stddev   = Some(metrics.stddev);
-        result.background_gradient = Some(metrics.gradient);
+        result.background_median = Some(metrics.median);
     }
 
     Ok((metrics, prepped.path))
@@ -108,8 +102,7 @@ impl PhotonPlugin for BackgroundMedianPlugin {
     fn name(&self)        -> &str { "BackgroundMedian" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {
-        "Computes the sigma-clipped background median for the current frame. \
-         Also computes and stores background std dev and gradient as a side effect."
+        "Computes the sigma-clipped background median for the current frame."
     }
 
     fn parameters(&self) -> Vec<ParamSpec> {
@@ -144,12 +137,10 @@ impl PhotonPlugin for BackgroundMedianPlugin {
         let median_adu = (metrics.median * 65535.0).round() as u32;
 
         Ok(PluginOutput::Data(json!({
-            "plugin":   "BackgroundMedian",
-            "filename": path,
-            "background_median":   metrics.median,
+            "plugin":                "BackgroundMedian",
+            "filename":              path,
+            "background_median":     metrics.median,
             "background_median_adu": median_adu,
-            "background_stddev":   metrics.stddev,
-            "background_gradient": metrics.gradient,
             "message": format!(
                 "Background median: {:.4} ({} ADU)",
                 metrics.median, median_adu
@@ -158,7 +149,7 @@ impl PhotonPlugin for BackgroundMedianPlugin {
     }
 }
 
-// ── BackgroundStdDev plugin ───────────────────────────────────────────────────
+// ── BackgroundStdDev plugin (kept for pcode compatibility, deprecated) ────────
 
 pub struct BackgroundStdDevPlugin;
 
@@ -166,36 +157,25 @@ impl PhotonPlugin for BackgroundStdDevPlugin {
     fn name(&self)        -> &str { "BackgroundStdDev" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {
-        "Computes the sigma-clipped background standard deviation for the current frame. \
-         Also computes and stores background median and gradient as a side effect."
+        "Deprecated. BackgroundStdDev is redundant with BackgroundMedian and is no longer \
+         used in AnalyzeFrames. Retained for pcode script compatibility only."
     }
-
-    fn parameters(&self) -> Vec<ParamSpec> {
-        // Same parameters as BackgroundMedian
-        BackgroundMedianPlugin.parameters()
-    }
+    fn parameters(&self) -> Vec<ParamSpec> { BackgroundMedianPlugin.parameters() }
 
     fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
         let (metrics, path) = run_and_store(ctx, args)?;
-
         let stddev_adu = (metrics.stddev * 65535.0).round() as u32;
-
         Ok(PluginOutput::Data(json!({
-            "plugin":   "BackgroundStdDev",
-            "filename": path,
-            "background_median":   metrics.median,
-            "background_stddev":   metrics.stddev,
+            "plugin":                "BackgroundStdDev",
+            "filename":              path,
+            "background_median":     metrics.median,
             "background_stddev_adu": stddev_adu,
-            "background_gradient": metrics.gradient,
-            "message": format!(
-                "Background std dev: {:.4} ({} ADU)",
-                metrics.stddev, stddev_adu
-            ),
+            "message": format!("Background std dev: {:.4} ({} ADU)", metrics.stddev, stddev_adu),
         })))
     }
 }
 
-// ── BackgroundGradient plugin ─────────────────────────────────────────────────
+// ── BackgroundGradient plugin (kept for pcode compatibility, deprecated) ──────
 
 pub struct BackgroundGradientPlugin;
 
@@ -203,30 +183,20 @@ impl PhotonPlugin for BackgroundGradientPlugin {
     fn name(&self)        -> &str { "BackgroundGradient" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {
-        "Computes the background gradient (max − min cell background median across a grid) \
-         for the current frame. Also computes and stores background median and std dev."
+        "Deprecated. BackgroundGradient is no longer used in AnalyzeFrames. \
+         Retained for pcode script compatibility only."
     }
-
-    fn parameters(&self) -> Vec<ParamSpec> {
-        BackgroundMedianPlugin.parameters()
-    }
+    fn parameters(&self) -> Vec<ParamSpec> { BackgroundMedianPlugin.parameters() }
 
     fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
         let (metrics, path) = run_and_store(ctx, args)?;
-
         let gradient_adu = (metrics.gradient * 65535.0).round() as u32;
-
         Ok(PluginOutput::Data(json!({
-            "plugin":   "BackgroundGradient",
-            "filename": path,
-            "background_median":   metrics.median,
-            "background_stddev":   metrics.stddev,
-            "background_gradient": metrics.gradient,
+            "plugin":                  "BackgroundGradient",
+            "filename":                path,
+            "background_median":       metrics.median,
             "background_gradient_adu": gradient_adu,
-            "message": format!(
-                "Background gradient: {:.4} ({} ADU)",
-                metrics.gradient, gradient_adu
-            ),
+            "message": format!("Background gradient: {:.4} ({} ADU)", metrics.gradient, gradient_adu),
         })))
     }
 }

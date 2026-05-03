@@ -249,15 +249,13 @@ verbatim in the FITSKeyword block only.
 
 ### 4.1 Metrics
 
-| Metric              | Description                                             | Threshold Type           | Default Reject |
-| ------------------- | ------------------------------------------------------- | ------------------------ | -------------- |
-| Background median   | Sigma-clipped sky background level                      | Sigma (session-relative) | > +2.5σ        |
-| Background std dev  | Noise floor estimate                                    | Sigma (session-relative) | > +2.5σ        |
-| Background gradient | Spatial variation across 8×8 grid                       | Sigma (session-relative) | > +2.5σ        |
-| SNR estimate        | Star signal / background noise                          | Sigma (session-relative) | < -2.5σ        |
-| FWHM                | Median FWHM via intensity-weighted second-order moments | Sigma (session-relative) | > +2.5σ        |
-| Eccentricity        | Median eccentricity via second-order moments            | Absolute                 | > 0.85         |
-| Star count          | Stars detected (minimum 5 connected pixels)             | Sigma (session-relative) | < -1.5σ        |
+| Metric             | Description                                             | Threshold Type           | Default Reject |
+| ------------------ | ------------------------------------------------------- | ------------------------ | -------------- |
+| Background std dev | Noise floor estimate                                    | Sigma (session-relative) | > +2.5σ        |
+| SNR estimate       | Star signal / background noise                          | Sigma (session-relative) | < -2.5σ        |
+| FWHM               | Median FWHM via intensity-weighted second-order moments | Sigma (session-relative) | > +2.5σ        |
+| Eccentricity       | Median eccentricity via second-order moments            | Absolute                 | > 0.85         |
+| Star count         | Stars detected (minimum 5 connected pixels)             | Sigma (session-relative) | < -1.5σ        |
 
 ### 4.2 Classification
 
@@ -302,39 +300,39 @@ them. This allows bounds to change without a schema migration.
 
 ### 5.2 UI / Viewer Settings
 
-| Setting              | Default        | Persisted | Pref | DB Key |
-| -------------------- | -------------- | --------- | ---- | ------ |
+| Setting              | Default        | Persisted | Pref | DB Key  |
+| -------------------- | -------------- | --------- | ---- | ------- |
 | Color theme          | Matrix         | X         |      | `theme` |
-| Default zoom level   | Fit            |           |      | — |
-| Default blink rate   | 0.1s per frame |           |      | — |
-| Default channel view | RGB            |           |      | — |
+| Default zoom level   | Fit            |           |      | —       |
+| Default blink rate   | 0.1s per frame |           |      | —       |
+| Default channel view | RGB            |           |      | —       |
 
 ### 5.3 File & Path Settings
 
-| Setting                 | Default       | Persisted | Pref | DB Key | Min | Max |
-| ----------------------- | ------------- | --------- | ---- | ------ | --- | --- |
-| Working directory       | Last used     | X         |      | `last_directory` | — | — |
-| JPEG quality            | 75%           | X         | X    | `jpeg_quality` | 1 | 100 |
-| Overwrite behavior      | Prompt        |           |      | — | — | — |
-| Recent directories max  | 10            | X         | X    | `recent_directories_max` | 1 | 50 |
-| Format filter selection | All Supported |           |      | — | — | — |
+| Setting                 | Default       | Persisted | Pref | DB Key                   | Min | Max |
+| ----------------------- | ------------- | --------- | ---- | ------------------------ | --- | --- |
+| Working directory       | Last used     | X         |      | `last_directory`         | —   | —   |
+| JPEG quality            | 75%           | X         | X    | `jpeg_quality`           | 1   | 100 |
+| Overwrite behavior      | Prompt        |           |      | —                        | —   | —   |
+| Recent directories max  | 10            | X         | X    | `recent_directories_max` | 1   | 50  |
+| Format filter selection | All Supported |           |      | —                        | —   | —   |
 
 ### 5.4 pcode / Macro Settings
 
-| Setting                | Default          | Persisted | Pref | DB Key | Min | Max |
-| ---------------------- | ---------------- | --------- | ---- | ------ | --- | --- |
-| Backup directory       | Downloads folder | X         | X    | `backup_directory` | — | — |
-| Console history size   | 500              | X         | X    | `console_history_size` | 100 | 5000 |
-| Error behavior         | Halt on error    |           |      | — | — | — |
-| Macro editor font size | 13px             | X         | X    | `macro_editor_font_size` | 8 | 24 |
+| Setting                | Default          | Persisted | Pref | DB Key                   | Min | Max  |
+| ---------------------- | ---------------- | --------- | ---- | ------------------------ | --- | ---- |
+| Backup directory       | Downloads folder | X         | X    | `backup_directory`       | —   | —    |
+| Console history size   | 500              | X         | X    | `console_history_size`   | 100 | 5000 |
+| Error behavior         | Halt on error    |           |      | —                        | —   | —    |
+| Macro editor font size | 13px             | X         | X    | `macro_editor_font_size` | 8   | 24   |
 
 ### 5.5 Performance Settings
 
-| Setting                  | Default      | Persisted | Pref | DB Key | Min | Max |
-| ------------------------ | ------------ | --------- | ---- | ------ | --- | --- |
+| Setting                  | Default      | Persisted | Pref | DB Key                     | Min    | Max   |
+| ------------------------ | ------------ | --------- | ---- | -------------------------- | ------ | ----- |
 | Buffer pool memory limit | 4 GB         | X         | X    | `buffer_pool_memory_limit` | 512 MB | 32 GB |
-| Blink pre-cache frames   | All loaded   |           |      | — | — | — |
-| Rayon thread count       | num_cpus - 1 |           |      | — | — | — |
+| Blink pre-cache frames   | All loaded   |           |      | —                          | —      | —     |
+| Rayon thread count       | num_cpus - 1 |           |      | —                          | —      | —     |
 
 ### 5.6 Quick Launch Settings
 
@@ -349,34 +347,32 @@ Named sets of rejection thresholds stored in the `threshold_profiles`
 table. The active profile is tracked by
 `preferences.active_threshold_profile_id`.
 
-| Setting                    | Type     | Default | Min  | Max  |
-| -------------------------- | -------- | ------- | ---- | ---- |
-| Name                       | String   | Standard | — | — |
-| Background median reject   | Sigma    | +2.5σ   | 0.5σ | 5.0σ |
-| Background std dev reject  | Sigma    | +2.5σ   | 0.5σ | 5.0σ |
-| Background gradient reject | Sigma    | +2.5σ   | 0.5σ | 5.0σ |
-| SNR estimate reject        | Sigma    | -2.5σ   | 0.5σ | 5.0σ |
-| FWHM reject                | Sigma    | +2.5σ   | 0.5σ | 5.0σ |
-| Eccentricity reject        | Absolute | 0.85    | 0.10 | 1.00 |
-| Star count reject          | Sigma    | -1.5σ   | 0.5σ | 5.0σ |
+| Setting                  | Type     | Default  | Min  | Max  |
+| ------------------------ | -------- | -------- | ---- | ---- |
+| Name                     | String   | Standard | —    | —    |
+| Background median reject | Sigma    | +2.5σ    | 0.5σ | 5.0σ |
+| SNR estimate reject      | Sigma    | -2.5σ    | 0.5σ | 5.0σ |
+| FWHM reject              | Sigma    | +2.5σ    | 0.5σ | 5.0σ |
+| Eccentricity reject      | Absolute | 0.85     | 0.10 | 1.00 |
+| Star count reject        | Sigma    | -1.5σ    | 0.5σ | 5.0σ |
 
 ### 5.8 AutoStretch Settings
 
-| Setting               | Default | Persisted | Pref | DB Key | Min  | Max  |
-| --------------------- | ------- | --------- | ---- | ------ | ---- | ---- |
-| AutoStretch enabled   | Off     |           |      | —      | —    | —    |
-| Shadow clip           | -2.8    | X         | X    | `autostretch_shadow_clip` | -5.0 | 0.0 |
-| Target background     | 0.15    | X         | X    | `autostretch_target_bg` | 0.01 | 0.50 |
+| Setting             | Default | Persisted | Pref | DB Key                    | Min  | Max  |
+| ------------------- | ------- | --------- | ---- | ------------------------- | ---- | ---- |
+| AutoStretch enabled | Off     |           |      | —                         | —    | —    |
+| Shadow clip         | -2.8    | X         | X    | `autostretch_shadow_clip` | -5.0 | 0.0  |
+| Target background   | 0.15    | X         | X    | `autostretch_target_bg`   | 0.01 | 0.50 |
 
 ### 5.9 Internal / Non-User-Facing Settings
 
 These settings are persisted but do not appear in Edit > Preferences.
 
-| Setting                      | Default | DB Key | Min | Max | Notes |
-| ---------------------------- | ------- | ------ | --- | --- | ----- |
-| Crash recovery interval      | 60s     | `crash_recovery_interval_secs` | 15 | 300 | How often recovery state is written |
-| Active threshold profile ID  | null    | `active_threshold_profile_id` | — | — | FK → threshold_profiles.id |
-| localStorage migrated        | false   | `localStorage_migrated` | — | — | One-time migration flag |
+| Setting                     | Default | DB Key                         | Min | Max | Notes                               |
+| --------------------------- | ------- | ------------------------------ | --- | --- | ----------------------------------- |
+| Crash recovery interval     | 60s     | `crash_recovery_interval_secs` | 15  | 300 | How often recovery state is written |
+| Active threshold profile ID | null    | `active_threshold_profile_id`  | —   | —   | FK → threshold_profiles.id          |
+| localStorage migrated       | false   | `localStorage_migrated`        | —   | —   | One-time migration flag             |
 
 ---
 
@@ -416,48 +412,48 @@ These settings are persisted but do not appear in Edit > Preferences.
 
 ## 7. Tauri Commands (Implemented)
 
-| Command                      | Description                                                                                                          |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `backup_database`            | Creates a timestamped ZIP backup of photyx.db in the configured backup directory                                     |
-| `check_crash_recovery`       | Returns crash recovery candidate if written_at is recent and a session is open                                       |
-| `close_session`              | Sets closed_at on the current session_history row                                                                    |
-| `debug_buffer_info`          | Returns buffer metadata including display_width and color_space                                                      |
-| `delete_macro`               | Deletes a macro and its version history from the database                                                            |
-| `dispatch_command`           | Dispatches a single pcode command to the plugin registry (legacy interactive path)                                   |
-| `get_all_preferences`        | Returns all preferences as HashMap<String, String>; called at startup to hydrate frontend                            |
-| `get_analysis_results`       | Returns per-frame metrics, flags, triggered_by, and session stats                                                    |
-| `get_autostretch_frame`      | Computes Auto-STF stretch on current frame, returns JPEG data URL; does not cache                                    |
-| `get_blink_cache_status`     | Returns blink cache build status: idle / building / ready                                                            |
-| `get_blink_frame`            | Returns a blink frame as JPEG data URL from blink cache (by index + resolution)                                      |
-| `get_current_frame`          | Returns current image as raw (unstretched) JPEG data URL, rendered on the fly                                        |
-| `get_frame_flags`            | Returns PXFLAG values for all loaded frames (used by blink overlay)                                                  |
-| `get_full_frame`             | Returns current image at full resolution with last STF params applied; cached after first call                       |
-| `get_histogram`              | Computes and returns histogram bins + stats for current frame (per-channel for RGB)                                  |
-| `get_keywords`               | Returns all keywords for current frame as a keyed map                                                                |
-| `get_macro_versions`         | Returns version history for a macro ordered newest first                                                             |
-| `get_macros`                 | Returns all macros with name, display_name, script, run_count, last_run_at                                           |
-| `get_pixel`                  | Returns raw pixel value(s) at source coordinates (x, y) from the raw image buffer                                    |
-| `get_quick_launch_buttons`   | Returns ordered list of Quick Launch button assignments                                                              |
-| `get_recent_directories`     | Returns recent directories ordered by last_used desc, trimmed to recent_directories_max                              |
-| `get_session`                | Returns current session state (directory, file list, current frame)                                                  |
-| `get_star_positions`         | Re-runs star detection on current frame; returns {cx, cy, fwhm, r} per star for annotation overlay                   |
-| `get_variable`               | Returns a pcode variable value from ctx.variables by name                                                            |
-| `increment_macro_run_count`  | Updates run_count and last_run_at for a macro after successful execution                                             |
-| `list_log_files`             | Lists available log files in the logs directory, sorted newest first                                                 |
-| `list_plugins`               | Returns list of registered plugins with name, version, and type                                                      |
-| `load_file`                  | Reads a single image file from disk, injects into session, returns JPEG data URL                                     |
-| `open_session`               | Inserts a session_history row with closed_at = NULL; returns session id                                              |
-| `read_log_file`              | Reads and parses a log file into structured {timestamp, level, module, message} lines                                |
-| `record_directory_visit`     | Upserts a directory visit; trims list to recent_directories_max                                                      |
-| `rename_macro`               | Renames a macro; validates name uniqueness                                                                           |
-| `restore_database`           | Restores photyx.db from a ZIP backup; reopens connection in-place without app restart                                |
-| `restore_macro_version`      | Restores a previous macro version as the current script                                                              |
-| `run_script`                 | Executes a pcode script string; returns ScriptResponse with results, session_changed, display_changed, client_actions |
-| `save_macro`                 | Inserts or updates a macro; saves previous version to macro_versions before overwriting                              |
-| `save_quick_launch_buttons`  | Replaces all Quick Launch button assignments                                                                         |
-| `set_preference`             | Upserts a single preference key/value; writes through AppSettings struct                                             |
-| `start_background_cache`     | Spawns background task to build blink cache JPEGs                                                                    |
-| `write_crash_recovery`       | Upserts the single crash_recovery row with current session state                                                     |
+| Command                     | Description                                                                                                           |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `backup_database`           | Creates a timestamped ZIP backup of photyx.db in the configured backup directory                                      |
+| `check_crash_recovery`      | Returns crash recovery candidate if written_at is recent and a session is open                                        |
+| `close_session`             | Sets closed_at on the current session_history row                                                                     |
+| `debug_buffer_info`         | Returns buffer metadata including display_width and color_space                                                       |
+| `delete_macro`              | Deletes a macro and its version history from the database                                                             |
+| `dispatch_command`          | Dispatches a single pcode command to the plugin registry (legacy interactive path)                                    |
+| `get_all_preferences`       | Returns all preferences as HashMap<String, String>; called at startup to hydrate frontend                             |
+| `get_analysis_results`      | Returns per-frame metrics, flags, triggered_by, and session stats                                                     |
+| `get_autostretch_frame`     | Computes Auto-STF stretch on current frame, returns JPEG data URL; does not cache                                     |
+| `get_blink_cache_status`    | Returns blink cache build status: idle / building / ready                                                             |
+| `get_blink_frame`           | Returns a blink frame as JPEG data URL from blink cache (by index + resolution)                                       |
+| `get_current_frame`         | Returns current image as raw (unstretched) JPEG data URL, rendered on the fly                                         |
+| `get_frame_flags`           | Returns PXFLAG values for all loaded frames (used by blink overlay)                                                   |
+| `get_full_frame`            | Returns current image at full resolution with last STF params applied; cached after first call                        |
+| `get_histogram`             | Computes and returns histogram bins + stats for current frame (per-channel for RGB)                                   |
+| `get_keywords`              | Returns all keywords for current frame as a keyed map                                                                 |
+| `get_macro_versions`        | Returns version history for a macro ordered newest first                                                              |
+| `get_macros`                | Returns all macros with name, display_name, script, run_count, last_run_at                                            |
+| `get_pixel`                 | Returns raw pixel value(s) at source coordinates (x, y) from the raw image buffer                                     |
+| `get_quick_launch_buttons`  | Returns ordered list of Quick Launch button assignments                                                               |
+| `get_recent_directories`    | Returns recent directories ordered by last_used desc, trimmed to recent_directories_max                               |
+| `get_session`               | Returns current session state (directory, file list, current frame)                                                   |
+| `get_star_positions`        | Re-runs star detection on current frame; returns {cx, cy, fwhm, r} per star for annotation overlay                    |
+| `get_variable`              | Returns a pcode variable value from ctx.variables by name                                                             |
+| `increment_macro_run_count` | Updates run_count and last_run_at for a macro after successful execution                                              |
+| `list_log_files`            | Lists available log files in the logs directory, sorted newest first                                                  |
+| `list_plugins`              | Returns list of registered plugins with name, version, and type                                                       |
+| `load_file`                 | Reads a single image file from disk, injects into session, returns JPEG data URL                                      |
+| `open_session`              | Inserts a session_history row with closed_at = NULL; returns session id                                               |
+| `read_log_file`             | Reads and parses a log file into structured {timestamp, level, module, message} lines                                 |
+| `record_directory_visit`    | Upserts a directory visit; trims list to recent_directories_max                                                       |
+| `rename_macro`              | Renames a macro; validates name uniqueness                                                                            |
+| `restore_database`          | Restores photyx.db from a ZIP backup; reopens connection in-place without app restart                                 |
+| `restore_macro_version`     | Restores a previous macro version as the current script                                                               |
+| `run_script`                | Executes a pcode script string; returns ScriptResponse with results, session_changed, display_changed, client_actions |
+| `save_macro`                | Inserts or updates a macro; saves previous version to macro_versions before overwriting                               |
+| `save_quick_launch_buttons` | Replaces all Quick Launch button assignments                                                                          |
+| `set_preference`            | Upserts a single preference key/value; writes through AppSettings struct                                              |
+| `start_background_cache`    | Spawns background task to build blink cache JPEGs                                                                     |
+| `write_crash_recovery`      | Upserts the single crash_recovery row with current session state                                                      |
 
 ---
 
@@ -478,48 +474,48 @@ These settings are persisted but do not appear in Edit > Preferences.
 
 All plugins are Built-in Native in the initial release. WASM user plugins are supported via the plugin framework but none are shipped by default.
 
-| Plugin              | Category        | Status      |
-| ------------------- | --------------- | ----------- |
-| AddKeyword          | Keyword         | ✅ Complete  |
-| AnalyzeFrames       | Frame Analysis  | ✅ Complete  |
-| Assert              | Scripting       | ✅ Complete  |
-| AutoStretch         | Processing      | ✅ Complete  |
-| CacheFrames         | Blink           | ✅ Complete  |
-| ClearSession        | Session         | ✅ Complete  |
-| ComputeEccentricity | Analysis        | ✅ Complete  |
-| ComputeFWHM         | Analysis        | ✅ Complete  |
-| ContourHeatmap      | Analysis        | ✅ Complete  |
-| CopyFile            | File Management | ✅ Complete  |
-| CopyKeyword         | Keyword         | ✅ Complete  |
-| CountFiles          | Scripting       | ✅ Complete  |
-| CountStars          | Analysis        | ✅ Complete  |
-| DeleteKeyword       | Keyword         | ✅ Complete  |
-| GetHistogram        | Analysis        | ✅ Complete  |
-| GetKeyword          | Scripting       | ✅ Complete  |
-| ListKeywords        | Keyword         | ✅ Complete  |
-| LoadFile            | File Management | ✅ Complete  |
-| ModifyKeyword       | Keyword         | ✅ Complete  |
-| MoveFile            | File Management | ✅ Complete  |
-| Print               | Scripting       | ✅ Complete  |
-| ReadAll             | I/O Reader      | ✅ Complete  |
-| ReadFIT             | I/O Reader      | ✅ Complete  |
-| ReadTIFF            | I/O Reader      | ✅ Complete  |
-| ReadXISF            | I/O Reader      | ✅ Complete  |
-| RunMacro            | Scripting       | ✅ Complete  |
-| SelectDirectory     | File Management | ✅ Complete  |
-| SetFrame            | Navigation      | ✅ Complete  |
-| WriteCurrent        | I/O Writer      | ✅ Complete  |
-| WriteFIT            | I/O Writer      | ✅ Complete  |
-| WriteFrame          | I/O Writer      | ✅ Complete  |
-| WriteTIFF           | I/O Writer      | ✅ Complete  |
-| WriteXISF           | I/O Writer      | ✅ Complete  |
-| BinImage            | Processing      | ⬜ Planned   |
-| CropImage           | Processing      | ⬜ Planned   |
-| DebayerImage        | Processing      | ⬜ Planned   |
-| FilterByKeyword     | File Management | ⬜ Planned   |
-| GetImageProperty    | Interrogation   | ⬜ Planned   |
-| GetSessionProperty  | Interrogation   | ⬜ Planned   |
-| ListFiles           | File Management | ⬜ Planned   |
-| MedianValue         | Analysis        | ⬜ Planned   |
-| SetZoom             | Blink & View    | ⬜ Planned   |
-| Test                | Interrogation   | ⬜ Planned   |
+| Plugin              | Category        | Status     |
+| ------------------- | --------------- | ---------- |
+| AddKeyword          | Keyword         | ✅ Complete |
+| AnalyzeFrames       | Frame Analysis  | ✅ Complete |
+| Assert              | Scripting       | ✅ Complete |
+| AutoStretch         | Processing      | ✅ Complete |
+| CacheFrames         | Blink           | ✅ Complete |
+| ClearSession        | Session         | ✅ Complete |
+| ComputeEccentricity | Analysis        | ✅ Complete |
+| ComputeFWHM         | Analysis        | ✅ Complete |
+| ContourHeatmap      | Analysis        | ✅ Complete |
+| CopyFile            | File Management | ✅ Complete |
+| CopyKeyword         | Keyword         | ✅ Complete |
+| CountFiles          | Scripting       | ✅ Complete |
+| CountStars          | Analysis        | ✅ Complete |
+| DeleteKeyword       | Keyword         | ✅ Complete |
+| GetHistogram        | Analysis        | ✅ Complete |
+| GetKeyword          | Scripting       | ✅ Complete |
+| ListKeywords        | Keyword         | ✅ Complete |
+| LoadFile            | File Management | ✅ Complete |
+| ModifyKeyword       | Keyword         | ✅ Complete |
+| MoveFile            | File Management | ✅ Complete |
+| Print               | Scripting       | ✅ Complete |
+| ReadAll             | I/O Reader      | ✅ Complete |
+| ReadFIT             | I/O Reader      | ✅ Complete |
+| ReadTIFF            | I/O Reader      | ✅ Complete |
+| ReadXISF            | I/O Reader      | ✅ Complete |
+| RunMacro            | Scripting       | ✅ Complete |
+| SelectDirectory     | File Management | ✅ Complete |
+| SetFrame            | Navigation      | ✅ Complete |
+| WriteCurrent        | I/O Writer      | ✅ Complete |
+| WriteFIT            | I/O Writer      | ✅ Complete |
+| WriteFrame          | I/O Writer      | ✅ Complete |
+| WriteTIFF           | I/O Writer      | ✅ Complete |
+| WriteXISF           | I/O Writer      | ✅ Complete |
+| BinImage            | Processing      | ⬜ Planned  |
+| CropImage           | Processing      | ⬜ Planned  |
+| DebayerImage        | Processing      | ⬜ Planned  |
+| FilterByKeyword     | File Management | ⬜ Planned  |
+| GetImageProperty    | Interrogation   | ⬜ Planned  |
+| GetSessionProperty  | Interrogation   | ⬜ Planned  |
+| ListFiles           | File Management | ⬜ Planned  |
+| MedianValue         | Analysis        | ⬜ Planned  |
+| SetZoom             | Blink & View    | ⬜ Planned  |
+| Test                | Interrogation   | ⬜ Planned  |

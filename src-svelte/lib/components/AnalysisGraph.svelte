@@ -1,27 +1,25 @@
-w<!-- AnalysisGraph.svelte — Analysis graph displayed in the viewer region. Spec §15 -->
-
+<!-- AnalysisGraph.svelte — Analysis graph displayed in the viewer region. Spec §15 -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { ui } from '../stores/ui';
+  import { notifications } from '../stores/notifications';
   import { displayFrame } from '../commands';
   import Dropdown from './Dropdown.svelte';
 
   // ── Data types ────────────────────────────────────────────────────────────
   interface FrameData {
-    index:                number;
-    filename:             string;
-    label:                string;
-    short_name:           string;
-    background_median?:   number;
-    background_stddev?:   number;
-    background_gradient?: number;
-    snr_estimate?:        number;
-    fwhm?:                number;
-    eccentricity?:        number;
-    star_count?:          number;
-    flag:                 string;
-    triggered?:           string[];
+    index:              number;
+    filename:           string;
+    label:              string;
+    short_name:         string;
+    background_median?: number;
+    snr_estimate?:      number;
+    fwhm?:              number;
+    eccentricity?:      number;
+    star_count?:        number;
+    flag:               string;
+    triggered?:         string[];
   }
 
   interface MetricStats { mean: number; stddev: number; }
@@ -32,21 +30,19 @@ w<!-- AnalysisGraph.svelte — Analysis graph displayed in the viewer region. Sp
   }
 
   interface AnalysisData {
-    frames:              FrameData[];
-    session_stats:       Record<string, MetricStats>;
-    applied_thresholds:  Record<string, AppliedThreshold> | null;
-    outlier_paths:       string[];
+    frames:             FrameData[];
+    session_stats:      Record<string, MetricStats>;
+    applied_thresholds: Record<string, AppliedThreshold> | null;
+    outlier_paths:      string[];
   }
 
   // ── Metrics ───────────────────────────────────────────────────────────────
   const METRICS = [
-    { key: 'fwhm',                label: 'FWHM (px)',           fmt: (v: number) => v.toFixed(2) },
-    { key: 'eccentricity',        label: 'Eccentricity',        fmt: (v: number) => v.toFixed(3) },
-    { key: 'snr_estimate',        label: 'SNR Estimate',        fmt: (v: number) => v.toFixed(2) },
-    { key: 'star_count',          label: 'Star Count',          fmt: (v: number) => Math.round(v).toString() },
-    { key: 'background_median',   label: 'Background Median',   fmt: (v: number) => v.toFixed(4) },
-    { key: 'background_stddev',   label: 'Background Std Dev',  fmt: (v: number) => v.toFixed(4) },
-    { key: 'background_gradient', label: 'Background Gradient', fmt: (v: number) => v.toFixed(4) },
+    { key: 'fwhm',              label: 'FWHM (px)',         fmt: (v: number) => v.toFixed(2) },
+    { key: 'eccentricity',      label: 'Eccentricity',      fmt: (v: number) => v.toFixed(3) },
+    { key: 'snr_estimate',      label: 'SNR Estimate',      fmt: (v: number) => v.toFixed(2) },
+    { key: 'star_count',        label: 'Star Count',        fmt: (v: number) => Math.round(v).toString() },
+    { key: 'background_median', label: 'Background Median', fmt: (v: number) => v.toExponential(3) },
   ];
 
   function metricDef(key: string) {
@@ -54,7 +50,6 @@ w<!-- AnalysisGraph.svelte — Analysis graph displayed in the viewer region. Sp
   }
 
   // ── Reject threshold lookup ───────────────────────────────────────────────
-  // Eccentricity is absolute; all others are sigma-based.
   const ABSOLUTE_METRICS = new Set(['eccentricity']);
 
   function getRejectThresholds(d: AnalysisData | null): Record<string, { type: 'sigma' | 'absolute'; value: number; direction: 'high' | 'low' }> | null {
@@ -104,6 +99,16 @@ w<!-- AnalysisGraph.svelte — Analysis graph displayed in the viewer region. Sp
     }
   }
 
+  async function commitResults() {
+    notifications.running('Writing PXFLAG to files…');
+    try {
+      const msg = await invoke<string>('commit_analysis_results');
+      notifications.success(msg);
+    } catch (e) {
+      notifications.error(`Commit failed: ${e}`);
+    }
+  }
+
   $effect(() => {
     if ($ui.activeView === 'analysisGraph' && !data) loadData();
   });
@@ -143,12 +148,11 @@ w<!-- AnalysisGraph.svelte — Analysis graph displayed in the viewer region. Sp
     return (f as any)[key];
   }
 
-  // Read theme colors from CSS variables at draw time
   function getThemeColors(el: HTMLCanvasElement) {
     const s = getComputedStyle(el);
     const get = (v: string) => s.getPropertyValue(v).trim() || null;
     return {
-      bg:          get('--bg-color')         ?? '#000000',
+      bg:          get('--bg-color')          ?? '#000000',
       cardBg:      get('--card-bg')           ?? '#001100',
       border:      get('--border-color')      ?? '#004400',
       borderLight: get('--border-color-light') ?? '#002200',
@@ -184,7 +188,7 @@ w<!-- AnalysisGraph.svelte — Analysis graph displayed in the viewer region. Sp
     return PT + CH - ((threshVal - lo) / (hi - lo)) * CH;
   }
 
-function drawRejectLine(
+  function drawRejectLine(
     ctx:       CanvasRenderingContext2D,
     y:         number,
     PL:        number,
@@ -194,7 +198,6 @@ function drawRejectLine(
     labelSide: 'left' | 'right',
     fontSize:  number,
   ) {
-    // Black border lines either side
     ctx.strokeStyle = 'rgba(0,0,0,0.85)';
     ctx.lineWidth = lineWidth > 2 ? 2 : 1;
     ctx.setLineDash([]);
@@ -202,14 +205,12 @@ function drawRejectLine(
     ctx.beginPath(); ctx.moveTo(PL, y - offset); ctx.lineTo(PL + CW, y - offset); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(PL, y + offset); ctx.lineTo(PL + CW, y + offset); ctx.stroke();
 
-    // Main dotted reject line
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
     ctx.setLineDash([6, 3]);
     ctx.beginPath(); ctx.moveTo(PL, y); ctx.lineTo(PL + CW, y); ctx.stroke();
     ctx.setLineDash([]);
 
-    // REJECT label with semi-opaque black background
     ctx.font = `${fontSize}px monospace`;
     const labelText = 'REJECT';
     const textW = ctx.measureText(labelText).width;
@@ -263,7 +264,6 @@ function drawRejectLine(
 
     const thresholds = getRejectThresholds(data);
 
-    // Calculate reject threshold value for metric1 so axis always includes it
     const thresh1 = thresholds?.[metric1];
     let rejectVal: number | undefined;
     if (stats1 && thresh1) {
@@ -278,7 +278,6 @@ function drawRejectLine(
 
     const r1 = calcRange(m1valid, rejectVal);
 
-    // Calculate reject threshold value for metric2 so right axis always includes it
     let rejectVal2: number | undefined;
     if (m2def && thresholds) {
       const stats2 = data.session_stats[metric2];
@@ -302,7 +301,6 @@ function drawRejectLine(
 
     // Sigma bands (metric 1 only)
     if (stats1 && stats1.stddev > 0) {
-      // Parse primary color for sigma band tinting
       [[3, 0.20], [2, 0.13], [1, 0.07]].forEach(([sigma, alpha]) => {
         const blo = Math.max(stats1.mean - sigma * stats1.stddev, r1.lo);
         const bhi = Math.min(stats1.mean + sigma * stats1.stddev, r1.hi);
@@ -324,7 +322,7 @@ function drawRejectLine(
     // Mean line (metric 1)
     if (stats1 && stats1.mean >= r1.lo && stats1.mean <= r1.hi) {
       const my = toY1(stats1.mean);
-      ctx.strokeStyle = C.primary + '73'; // ~45% opacity
+      ctx.strokeStyle = C.primary + '73';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath(); ctx.moveTo(PL, my); ctx.lineTo(PL + CW, my); ctx.stroke();
@@ -441,7 +439,6 @@ function drawRejectLine(
     }
 
     // Dots — metric 1 only
-    // Non-outlier dots drawn normally; outlier dots drawn as floaters with yellow box
     for (let i = 0; i < n; i++) {
       const f = frames[i];
       const x = toX(i);
@@ -451,12 +448,12 @@ function drawRejectLine(
   }
 
   function drawDot(
-    ctx:         CanvasRenderingContext2D,
-    x:           number,
-    y:           number,
-    flag:        string,
-    isOutlier:   boolean,
-    C:           ReturnType<typeof getThemeColors>,
+    ctx:       CanvasRenderingContext2D,
+    x:         number,
+    y:         number,
+    flag:      string,
+    isOutlier: boolean,
+    C:         ReturnType<typeof getThemeColors>,
   ) {
     const r = flag === 'REJECT' ? 8 : 4;
     ctx.fillStyle = flag === 'REJECT' ? C.error : C.primary;
@@ -528,7 +525,6 @@ function drawRejectLine(
     const val  = getVal(frame, key);
     const rect = canvas!.getBoundingClientRect();
 
-    // Line 1: metric value + flag + triggered metrics
     let flagStr = frame.flag || '—';
     if (frame.flag === 'REJECT' && frame.triggered && frame.triggered.length > 0) {
       flagStr += ` (${frame.triggered.join(', ')})`;
@@ -536,7 +532,6 @@ function drawRejectLine(
     const line1 = `${mdef.label}: ${val !== undefined ? mdef.fmt(val) : 'n/a'}  |  ${flagStr}`;
     const line2 = frame.short_name;
 
-    // Determine tooltip position region
     const pct = (e.clientX - rect.left) / rect.width;
     const region: 'left' | 'center' | 'right' =
           pct < 0.33 ? 'left' : pct > 0.66 ? 'right' : 'center';
@@ -557,7 +552,6 @@ function drawRejectLine(
     const val = getVal(frame, key);
     if (val === undefined) return;
 
-    // Check vertical distance — only navigate if click is near the dot
     const rect = canvas!.getBoundingClientRect();
     const my = (e.clientY - rect.top) * (canvas!.height / rect.height);
     const frames = data!.frames;
@@ -573,7 +567,7 @@ function drawRejectLine(
     const toY2 = (v: number) => PT + CH - ((v - r2.lo) / (r2.hi - r2.lo)) * CH;
     const dotY = which === 1 ? toY1(val) : toY2(val);
     const dotR = frame.flag === 'REJECT' ? 8 : 4;
-    const hitR = dotR + 6; // a little extra tolerance beyond the dot radius
+    const hitR = dotR + 6;
 
     if (Math.abs(my - dotY) > hitR) return;
 
@@ -594,16 +588,17 @@ function drawRejectLine(
       options={METRICS.map(m => ({ value: m.key, label: m.label }))}
       on:change={(e) => { metric1 = e.detail; }}
       />
-      <label class="ag-label">Metric 2</label>
-      <Dropdown
-        className="ag-m2"
-        value={metric2}
-        options={[{ value: 'none', label: 'None' }, ...METRICS.map(m => ({ value: m.key, label: m.label }))]}
-        on:change={(e) => { metric2 = e.detail; }}
-        />
+    <label class="ag-label">Metric 2</label>
+    <Dropdown
+      className="ag-m2"
+      value={metric2}
+      options={[{ value: 'none', label: 'None' }, ...METRICS.map(m => ({ value: m.key, label: m.label }))]}
+      on:change={(e) => { metric2 = e.detail; }}
+      />
 
-        <button class="ag-btn" onclick={loadData}>↻ Refresh</button>
-        <button class="ag-btn ag-close" onclick={() => ui.showView(null)}>✕ Close</button>
+      <button class="ag-btn" onclick={loadData}>↻ Refresh</button>
+      <button class="ag-btn" onclick={commitResults}>✓ Commit Results</button>
+      <button class="ag-btn ag-close" onclick={() => ui.showView(null)}>✕ Close</button>
   </div>
 
   <div id="ag-canvas-wrap" bind:this={wrap}>

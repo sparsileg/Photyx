@@ -111,16 +111,12 @@ fn execute_current(
     };
 
     let message = format!(
-        "Background median:   {}\n\
-         Background std dev:  {}\n\
-         Background gradient: {}\n\
-         SNR estimate:        {}\n\
-         FWHM:                {}\n\
-         Eccentricity:        {}\n\
-         Star count:          {}",
+        "Background median: {}\n\
+         SNR estimate:      {}\n\
+         FWHM:              {}\n\
+         Eccentricity:      {}\n\
+         Star count:        {}",
         fmt_opt_adu(result.background_median),
-        fmt_opt_adu(result.background_stddev),
-        fmt_opt_adu(result.background_gradient),
         result.snr_estimate.map(|v| format!("{:.1}", v)).unwrap_or_else(|| "n/a".to_string()),
         fwhm_str,
         result.eccentricity.map(|v| format!("{:.3}", v)).unwrap_or_else(|| "n/a".to_string()),
@@ -128,17 +124,15 @@ fn execute_current(
     );
 
     Ok(PluginOutput::Data(json!({
-        "plugin":               "AnalyzeFrames",
-        "scope":                "current",
-        "filename":             path,
-        "background_median":    result.background_median,
-        "background_stddev":    result.background_stddev,
-        "background_gradient":  result.background_gradient,
-        "snr_estimate":         result.snr_estimate,
-        "fwhm_pixels":          result.fwhm,
-        "eccentricity":         result.eccentricity,
-        "star_count":           result.star_count,
-        "message":              message,
+        "plugin":           "AnalyzeFrames",
+        "scope":            "current",
+        "filename":         path,
+        "background_median": result.background_median,
+        "snr_estimate":     result.snr_estimate,
+        "fwhm_pixels":      result.fwhm,
+        "eccentricity":     result.eccentricity,
+        "star_count":       result.star_count,
+        "message":          message,
     })))
 }
 
@@ -199,14 +193,12 @@ fn execute_all(
             let snr_result  = snr_estimate(&luma, width, height, &stars, &bg_config.sigma_clip);
 
             let result = AnalysisResult {
-                filename:            snap.path.clone(),
-                background_median:   Some(bg.median),
-                background_stddev:   Some(bg.stddev),
-                background_gradient: Some(bg.gradient),
-                snr_estimate:        snr_result.map(|r| r.snr),
-                fwhm:                fwhm_result.as_ref().map(|r| r.fwhm_pixels),
-                eccentricity:        ecc_result.as_ref().map(|r| r.eccentricity),
-                star_count:          fwhm_result.as_ref().map(|r| r.star_count as u32)
+                filename:          snap.path.clone(),
+                background_median: Some(bg.median),
+                snr_estimate:      snr_result.map(|r| r.snr),
+                fwhm:              fwhm_result.as_ref().map(|r| r.fwhm_pixels),
+                eccentricity:      ecc_result.as_ref().map(|r| r.eccentricity),
+                star_count:        fwhm_result.as_ref().map(|r| r.star_count as u32)
                     .or_else(|| ecc_result.as_ref().map(|r| r.star_count as u32))
                     .or_else(|| Some(stars.len() as u32)),
                 flag: None,
@@ -256,13 +248,6 @@ fn execute_all(
         result.flag = Some(flag.clone());
         result.triggered_by = triggered.clone();
 
-        // Write PXFLAG keyword to image buffer
-        if let Some(buf) = ctx.image_buffers.get_mut(&result.filename) {
-            buf.keywords.insert(
-                "PXFLAG".to_string(),
-                KeywordEntry::new("PXFLAG", flag.as_str(), Some("Photyx frame quality flag")),
-            );
-        }
 
         match flag {
             crate::analysis::PxFlag::Pass   => pass_count   += 1,
@@ -331,14 +316,12 @@ fn compute_metrics_for_image(
     let snr_result  = snr_estimate(&luma, width, height, &stars, &bg_config.sigma_clip);
 
     Ok(AnalysisResult {
-        filename:            img.filename.clone(),
-        background_median:   Some(bg.median),
-        background_stddev:   Some(bg.stddev),
-        background_gradient: Some(bg.gradient),
-        snr_estimate:        snr_result.map(|r| r.snr),
-        fwhm:                fwhm_result.as_ref().map(|r| r.fwhm_pixels),
-        eccentricity:        ecc_result.as_ref().map(|r| r.eccentricity),
-        star_count:          fwhm_result.as_ref().map(|r| r.star_count as u32)
+        filename:          img.filename.clone(),
+        background_median: Some(bg.median),
+        snr_estimate:      snr_result.map(|r| r.snr),
+        fwhm:              fwhm_result.as_ref().map(|r| r.fwhm_pixels),
+        eccentricity:      ecc_result.as_ref().map(|r| r.eccentricity),
+        star_count:        fwhm_result.as_ref().map(|r| r.star_count as u32)
             .or_else(|| ecc_result.as_ref().map(|r| r.star_count as u32))
             .or_else(|| Some(stars.len() as u32)),
         flag: None,

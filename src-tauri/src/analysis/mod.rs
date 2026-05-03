@@ -44,8 +44,6 @@ pub struct AnalysisResult {
 
     // Background metrics (background.rs)
     pub background_median:    Option<f32>,
-    pub background_stddev:    Option<f32>,
-    pub background_gradient:  Option<f32>,
 
     // Signal metrics
     pub snr_estimate:         Option<f32>,   // signal-to-noise ratio estimate

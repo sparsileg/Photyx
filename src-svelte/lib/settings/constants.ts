@@ -146,8 +146,6 @@ export interface PrefSection {
 // ── Threshold Profiles ────────────────────────────────────────────────────────
 
 export const BG_MEDIAN_SIGMA_DEFAULT  = 2.5;
-export const BG_STDDEV_SIGMA_DEFAULT  = 2.5;
-export const BG_GRADIENT_SIGMA_DEFAULT = 2.5;
 export const SNR_SIGMA_DEFAULT        = 2.5;
 export const FWHM_SIGMA_DEFAULT       = 2.5;
 export const STAR_COUNT_SIGMA_DEFAULT = 1.5;
@@ -155,7 +153,7 @@ export const ECCENTRICITY_ABS_DEFAULT = 0.85;
 export const ECCENTRICITY_ABS_MIN     = 0.10;
 export const ECCENTRICITY_ABS_MAX     = 1.00;
 export const SIGMA_MIN                = 0.5;
-export const SIGMA_MAX                = 5.0;
+export const SIGMA_MAX                = 4.0;
 export const SIGMA_STEP               = 0.5;
 
 export interface ThresholdFieldMeta {
@@ -178,26 +176,6 @@ export const THRESHOLD_FIELDS: ThresholdFieldMeta[] = [
     min:       SIGMA_MIN,
     max:       SIGMA_MAX,
     default:   BG_MEDIAN_SIGMA_DEFAULT,
-    step:      SIGMA_STEP,
-  },
-  {
-    key:       'bg_stddev_reject_sigma',
-    label:     'Background Std Dev',
-    direction: '+',
-    type:      'sigma',
-    min:       SIGMA_MIN,
-    max:       SIGMA_MAX,
-    default:   BG_STDDEV_SIGMA_DEFAULT,
-    step:      SIGMA_STEP,
-  },
-  {
-    key:       'bg_gradient_reject_sigma',
-    label:     'Background Gradient',
-    direction: '+',
-    type:      'sigma',
-    min:       SIGMA_MIN,
-    max:       SIGMA_MAX,
-    default:   BG_GRADIENT_SIGMA_DEFAULT,
     step:      SIGMA_STEP,
   },
   {
