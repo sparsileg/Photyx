@@ -259,10 +259,10 @@ pub fn run() {
 
     tauri::Builder::default()
         .setup(|app| { start_crash_recovery_timer(app) })
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::analysis::commit_analysis_results,

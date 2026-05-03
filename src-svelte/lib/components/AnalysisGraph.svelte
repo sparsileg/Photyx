@@ -2,6 +2,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
+  import { save } from '@tauri-apps/plugin-dialog';
+  import { writeFile } from '@tauri-apps/plugin-fs';
+  import { writeImage } from '@tauri-apps/plugin-clipboard-manager';
   import { ui } from '../stores/ui';
   import { notifications } from '../stores/notifications';
   import { displayFrame } from '../commands';
@@ -106,6 +109,40 @@
       notifications.success(msg);
     } catch (e) {
       notifications.error(`Commit failed: ${e}`);
+    }
+  }
+
+  async function copyCanvasToClipboard() {
+    if (!canvas) return;
+    try {
+      const ctx2d = canvas.getContext('2d');
+      if (!ctx2d) throw new Error('Could not get canvas context');
+      const { width, height } = canvas;
+      const imageData = ctx2d.getImageData(0, 0, width, height);
+      await writeImage({ rgba: Array.from(imageData.data), width, height });
+      notifications.success('Graph copied to clipboard.');
+    } catch (e) {
+      notifications.error(`Copy failed: ${e}`);
+    }
+  }
+
+  async function saveCanvasToFile() {
+    if (!canvas) return;
+    try {
+      const path = await save({
+        title: 'Save Analysis Graph',
+        defaultPath: 'analysis_graph.jpg',
+        filters: [{ name: 'JPEG', extensions: ['jpg'] }],
+      });
+      if (!path) return;
+      const blob = await new Promise<Blob>((resolve, reject) =>
+        canvas!.toBlob(b => b ? resolve(b) : reject(new Error('Canvas toBlob failed')), 'image/jpeg', 0.8)
+      );
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      await writeFile(path, bytes);
+      notifications.success('Graph saved.');
+    } catch (e) {
+      notifications.error(`Save failed: ${e}`);
     }
   }
 
@@ -598,6 +635,8 @@
 
       <button class="ag-btn" onclick={loadData}>↻ Refresh</button>
       <button class="ag-btn" onclick={commitResults}>✓ Commit Results</button>
+      <button class="ag-btn" onclick={copyCanvasToClipboard}>⎘ Copy</button>
+      <button class="ag-btn" onclick={saveCanvasToFile}>⬇ Save Image</button>
       <button class="ag-btn ag-close" onclick={() => ui.showView(null)}>✕ Close</button>
   </div>
 

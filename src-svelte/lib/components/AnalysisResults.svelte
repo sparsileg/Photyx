@@ -2,6 +2,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
+  import { save } from '@tauri-apps/plugin-dialog';
+  import { writeTextFile } from '@tauri-apps/plugin-fs';
   import { ui } from '../stores/ui';
   import { notifications } from '../stores/notifications';
 
@@ -94,6 +96,47 @@
     }
   }
 
+  const HEADERS = ['#', 'Filename', 'FWHM', 'Eccentricity', 'Stars', 'SNR', 'Bg Median', 'PXFLAG'];
+
+function buildRows(sep: string): string {
+    const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const rows = sorted.map(row => [
+      String(row.index + 1),
+      q(row.filename),
+      fmt(row.fwhm),
+      fmt(row.eccentricity),
+      fmt(row.star_count, 0),
+      fmt(row.snr_estimate),
+      fmt(row.background_median),
+      row.flag ?? '—',
+    ].join(sep));
+    return [HEADERS.map(q).join(sep), ...rows].join('\n');
+  }
+
+  async function copyToClipboard() {
+    try {
+      await navigator.clipboard.writeText(buildRows('\t'));
+      notifications.success('Results copied to clipboard.');
+    } catch (e) {
+      notifications.error(`Copy failed: ${e}`);
+    }
+  }
+
+  async function exportCsv() {
+    try {
+      const path = await save({
+        title: 'Export Analysis Results',
+        defaultPath: 'analysis_results.csv',
+        filters: [{ name: 'CSV', extensions: ['csv'] }],
+      });
+      if (!path) return;
+      await writeTextFile(path, buildRows(','));
+      notifications.success('CSV exported.');
+    } catch (e) {
+      notifications.error(`Export failed: ${e}`);
+    }
+  }
+
   onMount(loadData);
 </script>
 
@@ -102,6 +145,8 @@
     <span class="ar-title">Analysis Results</span>
     <button class="ar-btn" onclick={loadData}>↻ Refresh</button>
     <button class="ar-btn" onclick={commitResults}>✓ Commit Results</button>
+    <button class="ar-btn" onclick={copyToClipboard}>⎘ Copy</button>
+    <button class="ar-btn" onclick={exportCsv}>⬇ Export CSV</button>
     <button class="ar-close-btn" onclick={() => ui.showView(null)}>✕ Close</button>
   </div>
 

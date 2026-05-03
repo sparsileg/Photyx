@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "clipboard-manager:allow-write-image",
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-confirm",
@@ -24,6 +25,16 @@
         { "path": "$APPDATA/Photyx/**" },
         { "path": "$HOME/**" },
         { "path": "$DOCUMENT/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        { "path": "$HOME/**" },
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$PICTURE/**" }
       ]
     }
   ]
