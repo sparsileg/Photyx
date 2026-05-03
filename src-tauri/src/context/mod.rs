@@ -142,6 +142,15 @@ pub struct AppContext {
     pub last_analysis_thresholds: Option<crate::analysis::session_stats::AnalysisThresholds>,
     pub analysis_results: HashMap<String, crate::analysis::AnalysisResult>,
 
+    /// Paths of frames excluded from session stat recomputation in the last AnalyzeFrames run
+    /// (extreme outliers > OUTLIER_SIGMA_THRESHOLD σ on any metric in Pass 2a)
+    pub outlier_frame_paths: std::collections::HashSet<String>,
+
+    /// Clean session stats from the last AnalyzeFrames run (outliers excluded).
+    /// Used by get_analysis_results so the graph draws bands from the same
+    /// stats that classification actually used.
+    pub last_session_stats: Option<crate::analysis::session_stats::SessionStats>,
+
     /// Configurable log directory — if None, falls back to Tauri app data dir
     pub log_dir: Option<String>,
 
@@ -172,6 +181,26 @@ impl AppContext {
     /// Total memory used by all image buffers (placeholder — Phase 2)
     pub fn total_memory_used(&self) -> usize {
         0 // Phase 2: sum actual buffer sizes
+    }
+
+    /// Clear all session state — pixel buffers, caches, analysis results.
+    /// Active directory is preserved.
+    pub fn clear_session(&mut self) {
+        self.file_list.clear();
+        self.image_buffers.clear();
+        self.display_cache.clear();
+        self.full_res_cache.clear();
+        self.blink_cache_12.clear();
+        self.blink_cache_25.clear();
+        self.blink_cache_status = BlinkCacheStatus::Idle;
+        self.current_frame = 0;
+        self.analysis_results.clear();
+        self.outlier_frame_paths.clear();
+        self.last_session_stats = None;
+        self.last_analysis_thresholds = None;
+        self.last_stf_params = None;
+        self.last_histogram = None;
+        self.variables.clear();
     }
 
     /// Get or create the AnalysisResult entry for a file path.

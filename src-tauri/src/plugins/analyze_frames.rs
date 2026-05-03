@@ -16,7 +16,7 @@ use crate::analysis::{
     metrics::snr_estimate,
     profiles,
     session_stats::{
-        classify_frame, compute_session_stats,
+        classify_frame, compute_session_stats_iterative,
     },
     stars::detect_stars,
     AnalysisResult, BackgroundConfig, StarDetectionConfig,
@@ -235,11 +235,17 @@ fn execute_all(
         ));
     }
 
-    // ── Pass 2: session stats → classify → write PXFLAG keyword ──────────────
-    info!("AnalyzeFrames: Pass 2 — classifying {} frames", results.len());
+    // ── Pass 2: iterative sigma clipping → session stats → classify → write PXFLAG ──
+    info!("AnalyzeFrames: Pass 2 — classifying {} frames (iterative sigma clipping)", results.len());
 
     let result_refs: Vec<&AnalysisResult> = results.iter().collect();
-    let session_stats = compute_session_stats(&result_refs);
+    let (session_stats, outlier_paths) = compute_session_stats_iterative(&result_refs);
+
+    let outlier_count = outlier_paths.len();
+    if outlier_count > 0 {
+        info!("AnalyzeFrames: {} frame(s) excluded from session stats as extreme outliers", outlier_count);
+    }
+    ctx.outlier_frame_paths = outlier_paths;
 
     let mut pass_count   = 0u32;
     let mut reject_count = 0u32;
@@ -277,6 +283,7 @@ fn execute_all(
     }
 
     ctx.last_analysis_thresholds = Some(thresholds);
+    ctx.last_session_stats = Some(session_stats);
 
     let message = format!(
         "AnalyzeFrames complete: {} frames — {} PASS, {} REJECT{}",

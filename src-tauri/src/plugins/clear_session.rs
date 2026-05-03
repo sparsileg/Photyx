@@ -14,13 +14,7 @@ impl PhotonPlugin for ClearSession {
     fn parameters(&self) -> Vec<ParamSpec> { vec![] }
 
     fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        ctx.file_list.clear();
-        ctx.image_buffers.clear();
-        ctx.display_cache.clear();
-        ctx.blink_cache_12.clear();
-        ctx.blink_cache_25.clear();
-        ctx.blink_cache_status = crate::context::BlinkCacheStatus::Idle;
-        ctx.current_frame = 0;
+        ctx.clear_session();
         Ok(PluginOutput::Message("Session cleared.".to_string()))
     }
 }

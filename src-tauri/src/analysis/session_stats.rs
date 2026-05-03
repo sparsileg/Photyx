@@ -154,6 +154,83 @@ pub fn compute_session_stats(results: &[&AnalysisResult]) -> SessionStats {
     }
 }
 
+/// Two-pass iterative sigma clipping.
+///
+/// Pass 2a: compute initial stats across all frames.
+/// Pass 2b: identify frames where any metric deviates > OUTLIER_SIGMA_THRESHOLD σ
+///          from the initial mean. These are extreme outliers (clouds, satellites, etc.)
+/// Pass 2c: recompute stats excluding those outlier frames.
+///
+/// Returns (SessionStats, HashSet<filename>) where the set contains paths of
+/// outlier-excluded frames. All frames — including outliers — are still classified
+/// in Pass 2 of AnalyzeFrames; they will almost certainly be REJECT anyway.
+pub fn compute_session_stats_iterative(
+    results: &[&AnalysisResult],
+) -> (SessionStats, std::collections::HashSet<String>) {
+    use crate::settings::defaults::OUTLIER_SIGMA_THRESHOLD;
+    let threshold = OUTLIER_SIGMA_THRESHOLD as f32;
+
+    // Pass 2a — initial stats across all frames
+    let initial_stats = compute_session_stats(results);
+
+    // Pass 2b — identify outliers: any frame where any metric deviates > threshold σ
+    // Eccentricity is absolute so we skip it here — sigma clipping doesn't apply.
+    let mut outlier_paths = std::collections::HashSet::new();
+
+    for r in results {
+        let mut is_outlier = false;
+
+        macro_rules! check_outlier {
+            ($field:ident, $stats:expr) => {
+                if let Some(v) = r.$field {
+                    let s = &$stats;
+                    if s.stddev > f32::EPSILON {
+                        let dev = ((v - s.mean) / s.stddev).abs();
+                        if dev > threshold {
+                            is_outlier = true;
+                        }
+                    }
+                }
+            };
+        }
+
+        check_outlier!(background_median,   initial_stats.background_median);
+        check_outlier!(background_stddev,   initial_stats.background_stddev);
+        check_outlier!(background_gradient, initial_stats.background_gradient);
+        check_outlier!(snr_estimate,        initial_stats.snr_estimate);
+        check_outlier!(fwhm,                initial_stats.fwhm);
+
+        if let Some(sc) = r.star_count {
+            let s = &initial_stats.star_count;
+            if s.stddev > f32::EPSILON {
+                let dev = ((sc as f32 - s.mean) / s.stddev).abs();
+                if dev > threshold {
+                    is_outlier = true;
+                }
+            }
+        }
+
+        if is_outlier {
+            outlier_paths.insert(r.filename.clone());
+        }
+    }
+
+    // Pass 2c — recompute stats excluding outliers
+    // If ALL frames are outliers (degenerate session), fall back to initial stats.
+    let clean: Vec<&AnalysisResult> = results.iter()
+        .copied()
+        .filter(|r| !outlier_paths.contains(&r.filename))
+        .collect();
+
+    let final_stats = if clean.is_empty() {
+        initial_stats
+    } else {
+        compute_session_stats(&clean)
+    };
+
+    (final_stats, outlier_paths)
+}
+
 // ── Sigma deviation ───────────────────────────────────────────────────────────
 
 fn sigma_dev(value: f32, stats: &MetricStats) -> f32 {

@@ -49,10 +49,7 @@ impl PhotonPlugin for ReadFIT {
 
         let total = files.len();
 
-        ctx.file_list.clear();
-        ctx.image_buffers.clear();
-        ctx.display_cache.clear();
-        ctx.full_res_cache.clear();
+        ctx.clear_session();
 
         let mut loaded = 0;
         let mut errors = 0;

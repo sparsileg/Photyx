@@ -1,4 +1,5 @@
 w<!-- AnalysisGraph.svelte — Analysis graph displayed in the viewer region. Spec §15 -->
+
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
@@ -34,6 +35,7 @@ w<!-- AnalysisGraph.svelte — Analysis graph displayed in the viewer region. Sp
     frames:              FrameData[];
     session_stats:       Record<string, MetricStats>;
     applied_thresholds:  Record<string, AppliedThreshold> | null;
+    outlier_paths:       string[];
   }
 
   // ── Metrics ───────────────────────────────────────────────────────────────
@@ -406,52 +408,69 @@ function drawRejectLine(
       ctx.restore();
     }
 
-    // Metric 1 line (solid)
+    // Metric 1 line (solid) — outlier frames skipped; line bridges across gap
+    const outlierSet = new Set(data.outlier_paths ?? []);
     ctx.strokeStyle = C.primary;
     ctx.lineWidth = 2.5;
     ctx.setLineDash([]);
     ctx.beginPath();
-    let started = false;
+    let lineStarted = false;
     for (let i = 0; i < n; i++) {
       const v = m1vals[i];
-      if (v === undefined) { started = false; continue; }
-      started ? ctx.lineTo(toX(i), toY1(v)) : ctx.moveTo(toX(i), toY1(v));
-      started = true;
+      if (v === undefined || outlierSet.has(frames[i].filename)) continue;
+      lineStarted ? ctx.lineTo(toX(i), toY1(v)) : ctx.moveTo(toX(i), toY1(v));
+      lineStarted = true;
     }
     ctx.stroke();
 
-    // Metric 2 line (dotted)
+    // Metric 2 line (dotted) — outlier frames skipped; line bridges across gap
     if (m2def) {
       ctx.strokeStyle = C.warning;
       ctx.lineWidth = 1.0;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
-      started = false;
+      let line2Started = false;
       for (let i = 0; i < n; i++) {
         const v = m2vals[i];
-        if (v === undefined) { started = false; continue; }
-        started ? ctx.lineTo(toX(i), toY2(v)) : ctx.moveTo(toX(i), toY2(v));
-        started = true;
+        if (v === undefined || outlierSet.has(frames[i].filename)) continue;
+        line2Started ? ctx.lineTo(toX(i), toY2(v)) : ctx.moveTo(toX(i), toY2(v));
+        line2Started = true;
       }
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
     // Dots — metric 1 only
+    // Non-outlier dots drawn normally; outlier dots drawn as floaters with yellow box
     for (let i = 0; i < n; i++) {
       const f = frames[i];
       const x = toX(i);
       const v1 = m1vals[i];
-      if (v1 !== undefined) drawDot(ctx, x, toY1(v1), f.flag);
+      if (v1 !== undefined) drawDot(ctx, x, toY1(v1), f.flag, outlierSet.has(f.filename), C);
     }
   }
 
-  function drawDot(ctx: CanvasRenderingContext2D, x: number, y: number, flag: string) {
+  function drawDot(
+    ctx:         CanvasRenderingContext2D,
+    x:           number,
+    y:           number,
+    flag:        string,
+    isOutlier:   boolean,
+    C:           ReturnType<typeof getThemeColors>,
+  ) {
     const r = flag === 'REJECT' ? 8 : 4;
-    ctx.fillStyle = flag === 'REJECT' ? '#ff3030' : '#ffffff';
+    ctx.fillStyle = flag === 'REJECT' ? C.error : C.primary;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
+
+    if (isOutlier) {
+      const half = r + 4;
+      ctx.strokeStyle = C.warning;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      ctx.strokeRect(x - half, y - half, half * 2, half * 2);
+    }
   }
 
   // ── Hit test ──────────────────────────────────────────────────────────────

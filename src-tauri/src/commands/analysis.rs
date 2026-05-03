@@ -48,11 +48,13 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
         }
     }).collect();
 
-    use crate::analysis::session_stats::compute_session_stats;
-    let result_refs: Vec<&crate::analysis::AnalysisResult> = ctx.file_list.iter()
-        .filter_map(|p| ctx.analysis_results.get(p))
-        .collect();
-    let stats = compute_session_stats(&result_refs);
+    let stats = ctx.last_session_stats.clone().unwrap_or_else(|| {
+        use crate::analysis::session_stats::compute_session_stats;
+        let result_refs: Vec<&crate::analysis::AnalysisResult> = ctx.file_list.iter()
+            .filter_map(|p| ctx.analysis_results.get(p))
+            .collect();
+        compute_session_stats(&result_refs)
+    });
 
     let applied = ctx.last_analysis_thresholds.as_ref().map(|t| serde_json::json!({
         "background_median":   { "value": t.background_median.reject,   "direction": "high" },
@@ -63,6 +65,10 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
         "star_count":          { "value": t.star_count.reject,          "direction": "low"  },
         "eccentricity":        { "value": t.eccentricity.reject,        "direction": "high" },
     }));
+
+    let outlier_paths: Vec<&str> = ctx.outlier_frame_paths.iter()
+        .map(|s| s.as_str())
+        .collect();
 
     serde_json::json!({
         "frames": frames,
@@ -76,6 +82,7 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
             "star_count":          { "mean": stats.star_count.mean,          "stddev": stats.star_count.stddev },
         },
         "applied_thresholds": applied,
+        "outlier_paths": outlier_paths,
     })
 }
 

@@ -31,7 +31,7 @@
 
   function fmt(v: number | undefined, decimals = 3): string {
     if (v === undefined) return '—';
-    if (v !== 0 && Math.abs(v) < 0.001) return v.toExponential(3);
+    if (v !== 0 && Math.abs(v) < 0.1) return v.toExponential(3);
     return v.toFixed(decimals);
   }
 
