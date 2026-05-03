@@ -20,8 +20,6 @@ pub struct MetricThresholds {
 pub struct AnalysisThresholds {
     // Sigma-based (higher deviation = worse, except SNR and star count)
     pub background_median:   MetricThresholds,  // +σ
-    pub background_stddev:   MetricThresholds,  // +σ
-    pub background_gradient: MetricThresholds,  // +σ
     pub snr_estimate:        MetricThresholds,  // -σ (lower SNR = worse)
     pub fwhm:                MetricThresholds,  // +σ
     pub star_count:          MetricThresholds,  // -σ (fewer stars = worse)
@@ -34,8 +32,6 @@ impl Default for AnalysisThresholds {
     fn default() -> Self {
         Self {
             background_median:   MetricThresholds { reject: 2.5 },
-            background_stddev:   MetricThresholds { reject: 2.5 },
-            background_gradient: MetricThresholds { reject: 2.5 },
             snr_estimate:        MetricThresholds { reject: 2.5 },
             fwhm:                MetricThresholds { reject: 2.5 },
             star_count:          MetricThresholds { reject: 1.5 },
@@ -121,8 +117,6 @@ impl MetricStats {
 #[derive(Debug, Clone, Default)]
 pub struct SessionStats {
     pub background_median:   MetricStats,
-    pub background_stddev:   MetricStats,
-    pub background_gradient: MetricStats,
     pub snr_estimate:        MetricStats,
     pub fwhm:                MetricStats,
     pub eccentricity:        MetricStats,
@@ -141,8 +135,6 @@ pub fn compute_session_stats(results: &[&AnalysisResult]) -> SessionStats {
 
     SessionStats {
         background_median:   MetricStats::from_values(&collect!(background_median)),
-        background_stddev:   MetricStats::from_values(&collect!(background_stddev)),
-        background_gradient: MetricStats::from_values(&collect!(background_gradient)),
         snr_estimate:        MetricStats::from_values(&collect!(snr_estimate)),
         fwhm:                MetricStats::from_values(&collect!(fwhm)),
         eccentricity:        MetricStats::from_values(&collect!(eccentricity)),
@@ -194,11 +186,9 @@ pub fn compute_session_stats_iterative(
             };
         }
 
-        check_outlier!(background_median,   initial_stats.background_median);
-        check_outlier!(background_stddev,   initial_stats.background_stddev);
-        check_outlier!(background_gradient, initial_stats.background_gradient);
-        check_outlier!(snr_estimate,        initial_stats.snr_estimate);
-        check_outlier!(fwhm,                initial_stats.fwhm);
+        check_outlier!(background_median, initial_stats.background_median);
+        check_outlier!(snr_estimate,      initial_stats.snr_estimate);
+        check_outlier!(fwhm,              initial_stats.fwhm);
 
         if let Some(sc) = r.star_count {
             let s = &initial_stats.star_count;
@@ -274,12 +264,10 @@ pub fn classify_frame(
         };
     }
 
-    check_high!(result.background_median,   &stats.background_median,   &thresholds.background_median,   "BackgroundMedian");
-    check_high!(result.background_stddev,   &stats.background_stddev,   &thresholds.background_stddev,   "BackgroundStdDev");
-    check_high!(result.background_gradient, &stats.background_gradient, &thresholds.background_gradient, "BackgroundGradient");
-    check_high!(result.fwhm,                &stats.fwhm,                &thresholds.fwhm,                "FWHM");
-    check_low!( result.snr_estimate,        &stats.snr_estimate,        &thresholds.snr_estimate,        "SNR");
-    check_low!( result.star_count.map(|v| v as f32), &stats.star_count, &thresholds.star_count,          "StarCount");
+    check_high!(result.background_median, &stats.background_median, &thresholds.background_median, "BackgroundMedian");
+    check_high!(result.fwhm,              &stats.fwhm,              &thresholds.fwhm,              "FWHM");
+    check_low!( result.snr_estimate,      &stats.snr_estimate,      &thresholds.snr_estimate,      "SNR");
+    check_low!( result.star_count.map(|v| v as f32), &stats.star_count, &thresholds.star_count,    "StarCount");
 
     // Absolute metric
     if let Some(ecc) = result.eccentricity {
@@ -306,16 +294,14 @@ mod tests {
 
     fn make_result(filename: &str, fwhm: f32, ecc: f32, snr: f32, stars: u32, bg: f32) -> AnalysisResult {
         AnalysisResult {
-            filename:             filename.to_string(),
-            background_median:    Some(bg),
-            background_stddev:    Some(bg * 0.1),
-            background_gradient:  Some(bg * 0.05),
-            snr_estimate:         Some(snr),
-            fwhm:                 Some(fwhm),
-            eccentricity:         Some(ecc),
-            star_count:           Some(stars),
-            flag:                 None,
-            triggered_by:         vec![],
+            filename:          filename.to_string(),
+            background_median: Some(bg),
+            snr_estimate:      Some(snr),
+            fwhm:              Some(fwhm),
+            eccentricity:      Some(ecc),
+            star_count:        Some(stars),
+            flag:              None,
+            triggered_by:      vec![],
         }
     }
 

@@ -11,31 +11,27 @@ use rusqlite::Connection;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ThresholdProfile {
-    pub id:                       i64,
-    pub name:                     String,
-    pub description:              Option<String>,
-    pub bg_median_reject_sigma:   f64,
-    pub bg_stddev_reject_sigma:   f64,
-    pub bg_gradient_reject_sigma: f64,
-    pub snr_reject_sigma:         f64,
-    pub fwhm_reject_sigma:        f64,
-    pub star_count_reject_sigma:  f64,
-    pub eccentricity_reject_abs:  f64,
+    pub id:                      i64,
+    pub name:                    String,
+    pub description:             Option<String>,
+    pub bg_median_reject_sigma:  f64,
+    pub snr_reject_sigma:        f64,
+    pub fwhm_reject_sigma:       f64,
+    pub star_count_reject_sigma: f64,
+    pub eccentricity_reject_abs: f64,
 }
 
 impl ThresholdProfile {
     pub fn default_profile() -> Self {
         Self {
-            id:                       0,
-            name:                     DEFAULT_PROFILE_NAME.to_string(),
-            description:              None,
-            bg_median_reject_sigma:   DEFAULT_BG_MEDIAN_SIGMA,
-            bg_stddev_reject_sigma:   DEFAULT_BG_STDDEV_SIGMA,
-            bg_gradient_reject_sigma: DEFAULT_BG_GRADIENT_SIGMA,
-            snr_reject_sigma:         DEFAULT_SNR_SIGMA,
-            fwhm_reject_sigma:        DEFAULT_FWHM_SIGMA,
-            star_count_reject_sigma:  DEFAULT_STAR_COUNT_SIGMA,
-            eccentricity_reject_abs:  DEFAULT_ECCENTRICITY_ABS,
+            id:                      0,
+            name:                    DEFAULT_PROFILE_NAME.to_string(),
+            description:             None,
+            bg_median_reject_sigma:  DEFAULT_BG_MEDIAN_SIGMA,
+            snr_reject_sigma:        DEFAULT_SNR_SIGMA,
+            fwhm_reject_sigma:       DEFAULT_FWHM_SIGMA,
+            star_count_reject_sigma: DEFAULT_STAR_COUNT_SIGMA,
+            eccentricity_reject_abs: DEFAULT_ECCENTRICITY_ABS,
         }
     }
 }
@@ -75,8 +71,8 @@ pub struct AppSettings {
     pub crash_recovery_interval_secs: i64,   // persisted, internal
 
     // ── Active threshold profile ──────────────────────────────────────
-    pub active_threshold_profile_id: Option<i64>,       // persisted
-    pub threshold_profiles:          Vec<ThresholdProfile>, // loaded at startup, not persisted as key/value
+    pub active_threshold_profile_id: Option<i64>,           // persisted
+    pub threshold_profiles:          Vec<ThresholdProfile>, // loaded at startup
 
     // ── Non-persisted runtime constants ──────────────────────────────
     pub display_max_width_px:        u32,
@@ -186,7 +182,6 @@ impl AppSettings {
     /// Write a single persisted preference to the DB and update self.
     /// Bounds are clamped before writing.
     pub fn save_preference(&mut self, key: &str, value: &str, db: &Connection) -> Result<(), String> {
-        // Apply to self first (with clamping), then persist the clamped value
         self.apply(key, value);
         let clamped = self.get_as_string(key).unwrap_or_else(|| value.to_string());
         db.execute(
@@ -256,7 +251,7 @@ impl AppSettings {
     pub fn load_threshold_profiles(&mut self, db: &Connection) {
         let mut stmt = match db.prepare(
             "SELECT id, name, description,
-                    bg_median_reject_sigma, bg_stddev_reject_sigma, bg_gradient_reject_sigma,
+                    bg_median_reject_sigma,
                     snr_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
                     eccentricity_reject_abs
              FROM threshold_profiles ORDER BY id"
@@ -267,16 +262,14 @@ impl AppSettings {
 
         let profiles: Vec<ThresholdProfile> = stmt.query_map([], |row| {
             Ok(ThresholdProfile {
-                id:                       row.get(0)?,
-                name:                     row.get(1)?,
-                description:              row.get(2)?,
-                bg_median_reject_sigma:   row.get(3)?,
-                bg_stddev_reject_sigma:   row.get(4)?,
-                bg_gradient_reject_sigma: row.get(5)?,
-                snr_reject_sigma:         row.get(6)?,
-                fwhm_reject_sigma:        row.get(7)?,
-                star_count_reject_sigma:  row.get(8)?,
-                eccentricity_reject_abs:  row.get(9)?,
+                id:                      row.get(0)?,
+                name:                    row.get(1)?,
+                description:             row.get(2)?,
+                bg_median_reject_sigma:  row.get(3)?,
+                snr_reject_sigma:        row.get(4)?,
+                fwhm_reject_sigma:       row.get(5)?,
+                star_count_reject_sigma: row.get(6)?,
+                eccentricity_reject_abs: row.get(7)?,
             })
         })
         .map(|rows| rows.filter_map(|r| r.ok()).collect())
@@ -288,13 +281,13 @@ impl AppSettings {
             match db.execute(
                 "INSERT INTO threshold_profiles
                  (name, description,
-                  bg_median_reject_sigma, bg_stddev_reject_sigma, bg_gradient_reject_sigma,
+                  bg_median_reject_sigma,
                   snr_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
                   eccentricity_reject_abs, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
                 rusqlite::params![
                     p.name, p.description,
-                    p.bg_median_reject_sigma, p.bg_stddev_reject_sigma, p.bg_gradient_reject_sigma,
+                    p.bg_median_reject_sigma,
                     p.snr_reject_sigma, p.fwhm_reject_sigma, p.star_count_reject_sigma,
                     p.eccentricity_reject_abs, now
                 ],

@@ -14,8 +14,6 @@
     star_count?: number;
     snr_estimate?: number;
     background_median?: number;
-    background_stddev?: number;
-    background_gradient?: number;
     flag?: string;
   }
 
@@ -23,8 +21,7 @@
   let loading = $state(true);
 
   type SortCol = 'index' | 'short_name' | 'fwhm' | 'eccentricity' | 'star_count'
-  | 'snr_estimate' | 'background_median' | 'background_stddev'
-  | 'background_gradient' | 'flag';
+    | 'snr_estimate' | 'background_median' | 'flag';
 
   let sortCol = $state<SortCol>('index');
   let sortAsc = $state(true);
@@ -87,6 +84,16 @@
     }
   }
 
+  async function commitResults() {
+    notifications.running('Writing PXFLAG to files…');
+    try {
+      const msg = await invoke<string>('commit_analysis_results');
+      notifications.success(msg);
+    } catch (e) {
+      notifications.error(`Commit failed: ${e}`);
+    }
+  }
+
   onMount(loadData);
 </script>
 
@@ -94,6 +101,7 @@
   <div class="ar-toolbar">
     <span class="ar-title">Analysis Results</span>
     <button class="ar-btn" onclick={loadData}>↻ Refresh</button>
+    <button class="ar-btn" onclick={commitResults}>✓ Commit Results</button>
     <button class="ar-close-btn" onclick={() => ui.showView(null)}>✕ Close</button>
   </div>
 
@@ -111,8 +119,6 @@
             <th onclick={() => sortBy('star_count')}>Stars{arrow('star_count')}</th>
             <th onclick={() => sortBy('snr_estimate')}>SNR{arrow('snr_estimate')}</th>
             <th onclick={() => sortBy('background_median')}>Bg Median{arrow('background_median')}</th>
-            <th onclick={() => sortBy('background_stddev')}>Bg Std Dev{arrow('background_stddev')}</th>
-            <th onclick={() => sortBy('background_gradient')}>Bg Gradient{arrow('background_gradient')}</th>
             <th onclick={() => sortBy('flag')}>PXFLAG{arrow('flag')}</th>
           </tr>
         </thead>
@@ -126,8 +132,6 @@
               <td>{fmt(row.star_count, 0)}</td>
               <td>{fmt(row.snr_estimate)}</td>
               <td>{fmt(row.background_median)}</td>
-              <td>{fmt(row.background_stddev)}</td>
-              <td>{fmt(row.background_gradient)}</td>
               <td>{row.flag ?? '—'}</td>
             </tr>
           {/each}
