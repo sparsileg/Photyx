@@ -7,6 +7,7 @@
 
 use crate::analysis::stars::StarCandidate;
 use crate::analysis::background::estimate_background;
+use crate::analysis::fwhm::star_fwhm;
 use crate::analysis::SigmaClipConfig;
 
 // ── Highlight clipping ────────────────────────────────────────────────────────
@@ -30,94 +31,84 @@ pub fn highlight_clipping(luma: &[f32]) -> f32 {
 
 // ── SNR estimate ──────────────────────────────────────────────────────────────
 //
-// SNR = signal / noise
+// SNR = median(peak_i / (fwhm_i * noise))
 //
-// Signal = median of all star pixels (background-subtracted)
-//          where star pixels are all pixels belonging to detected star
-//          connected components (the same pixels used for FWHM/eccentricity).
+// Per-star SNR = peak / (fwhm * noise), where:
+//   - peak  is the background-subtracted peak pixel value stored in StarCandidate
+//   - fwhm  is computed via intensity-weighted second-order moments (same as
+//           the FWHM metric), so a bloated PSF is penalized proportionally
+//   - noise is the sigma-clipped background standard deviation
 //
-// Noise  = background standard deviation (sigma-clipped).
+// Session SNR = median of per-star SNR values (robust against outliers).
+// Stars for which fwhm cannot be computed are skipped.
 //
 // This is a relative SNR — meaningful for comparing frames within a session.
+// Frames with poor seeing produce larger FWHM values and therefore lower SNR,
+// correctly reflecting reduced signal quality regardless of integrated flux.
 
 pub struct SnrResult {
-    pub snr:            f32,
-    pub signal_median:  f32,
-    pub noise:          f32,
-    pub star_pixels:    usize,
+    pub snr:        f32,
+    pub noise:      f32,
+    pub star_count: usize,
 }
 
 /// Compute SNR estimate from a pre-detected star list and the full luminance image.
-/// Returns None if no stars were detected or all star regions are empty.
+/// Returns None if no stars were detected or no valid per-star SNR can be computed.
 pub fn snr_estimate(
-    luma:        &[f32],
-    width:       usize,
-    height:      usize,
-    stars:       &[StarCandidate],
-    sigma_clip:  &SigmaClipConfig,
+    luma:       &[f32],
+    width:      usize,
+    height:     usize,
+    stars:      &[StarCandidate],
+    sigma_clip: &SigmaClipConfig,
 ) -> Option<SnrResult> {
+    // width and height are not used directly but retained in the signature
+    // for consistency with other metric functions and future use.
+    let _ = (width, height);
+
     if stars.is_empty() || luma.is_empty() {
         return None;
     }
 
-    // Background estimate for noise and subtraction
+    // Background noise estimate
     let bg_est = estimate_background(luma, sigma_clip);
-    let bg     = bg_est.median;
     let noise  = bg_est.stddev;
 
     if noise <= 0.0 {
         return None;
     }
 
-    // Collect all star pixels (background-subtracted) from star bounding boxes
-    let mut star_pixels: Vec<f32> = Vec::new();
-
-    for star in stars {
-        let (x0, y0, x1, y1) = star.bbox;
-        let bw = x1 - x0 + 1;
-        let bh = y1 - y0 + 1;
-
-        for py in 0..bh {
-            for px in 0..bw {
-                // Only include pixels that are part of the star (patch value > 0)
-                let patch_val = star.patch[py * bw + px];
-                if patch_val > 0.0 {
-                    let ix = x0 + px;
-                    let iy = y0 + py;
-                    if ix < width && iy < height {
-                        let raw = luma[iy * width + ix];
-                        let bgsub = (raw - bg).max(0.0);
-                        star_pixels.push(bgsub);
-                    }
-                }
+    // Per-star SNR = peak / (fwhm * noise)
+    // Stars where fwhm is degenerate or peak is zero are skipped.
+    let mut per_star_snr: Vec<f32> = stars
+        .iter()
+        .filter_map(|star| {
+            let fwhm = star_fwhm(star)?;
+            if fwhm <= 0.0 || star.peak <= 0.0 {
+                return None;
             }
-        }
-    }
+            Some(star.peak / (fwhm * noise))
+        })
+        .collect();
 
-    if star_pixels.is_empty() {
+    if per_star_snr.is_empty() {
         return None;
     }
 
-    // Median of background-subtracted star pixels
-    star_pixels.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let n = star_pixels.len();
-    let signal_median = if n % 2 == 1 {
-        star_pixels[n / 2]
+    // Median across all stars — robust against outliers
+    per_star_snr.sort_unstable_by(|a, b| {
+        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let n = per_star_snr.len();
+    let snr = if n % 2 == 1 {
+        per_star_snr[n / 2]
     } else {
-        (star_pixels[n / 2 - 1] + star_pixels[n / 2]) * 0.5
+        (per_star_snr[n / 2 - 1] + per_star_snr[n / 2]) * 0.5
     };
-
-    if signal_median <= 0.0 {
-        return None;
-    }
-
-    let snr = signal_median / noise;
 
     Some(SnrResult {
         snr,
-        signal_median,
         noise,
-        star_pixels: n,
+        star_count: n,
     })
 }
 
@@ -163,52 +154,107 @@ mod tests {
         assert_eq!(highlight_clipping(&[]), 0.0);
     }
 
-    fn make_star_with_patch(
-        cx: f32, cy: f32,
-        x0: usize, y0: usize,
-        patch: Vec<f32>,
-        bw: usize, bh: usize,
-    ) -> StarCandidate {
+    /// Build a Gaussian star patch for SNR testing.
+    fn gaussian_star(cx: usize, cy: usize, sigma: f32, peak: f32) -> StarCandidate {
+        let size = (sigma * 6.0).ceil() as usize | 1;
+        let half = size / 2;
+        let mut patch = vec![0.0f32; size * size];
+        for y in 0..size {
+            for x in 0..size {
+                let dx = x as f32 - half as f32;
+                let dy = y as f32 - half as f32;
+                let r2 = dx * dx + dy * dy;
+                patch[y * size + x] = peak * (-r2 / (2.0 * sigma * sigma)).exp();
+            }
+        }
         StarCandidate {
-            cx,
-            cy,
-            peak: patch.iter().cloned().fold(0.0f32, f32::max),
-            bbox: (x0, y0, x0 + bw - 1, y0 + bh - 1),
+            cx: cx as f32,
+            cy: cy as f32,
+            peak,
+            bbox: (cx.saturating_sub(half), cy.saturating_sub(half),
+                   cx + half, cy + half),
             patch,
-            pixel_count: bw * bh,
+            pixel_count: size * size,
         }
     }
 
     #[test]
     fn test_snr_basic() {
-        // 100x100 background at 0.05, one bright star region
-        let width  = 100usize;
-        let height = 100usize;
+        // Flat background at 0.05 with one Gaussian star
+        let width  = 200usize;
+        let height = 200usize;
         let mut luma = vec![0.05f32; width * height];
 
-        // Place a 5x5 star at (45,45) with value 0.5
-        let bw = 5usize;
-        let bh = 5usize;
-        let x0 = 45usize;
-        let y0 = 45usize;
-        for py in 0..bh {
-            for px in 0..bw {
-                luma[(y0 + py) * width + (x0 + px)] = 0.5;
+        // Place star pixels into the image
+        let sigma = 2.0f32;
+        let size = (sigma * 6.0).ceil() as usize | 1;
+        let half = size / 2;
+        let cx = 100usize;
+        let cy = 100usize;
+        for y in 0..size {
+            for x in 0..size {
+                let dx = x as f32 - half as f32;
+                let dy = y as f32 - half as f32;
+                let r2 = dx * dx + dy * dy;
+                let val = 0.05 + 0.5 * (-r2 / (2.0 * sigma * sigma)).exp();
+                luma[(cy - half + y) * width + (cx - half + x)] = val;
             }
         }
 
-        let patch = vec![0.5f32 - 0.05; bw * bh]; // background-subtracted patch
-        let star = make_star_with_patch(
-            x0 as f32 + 2.0, y0 as f32 + 2.0,
-            x0, y0, patch, bw, bh,
-        );
-
+        let star = gaussian_star(cx, cy, sigma, 0.5);
         let config = SigmaClipConfig::default();
         let result = snr_estimate(&luma, width, height, &[star], &config);
         assert!(result.is_some(), "SNR should be computable");
         let r = result.unwrap();
-        assert!(r.snr > 1.0, "SNR {} should be > 1", r.snr);
-        assert!(r.noise > 0.0, "noise should be > 0");
+        assert!(r.snr > 0.0, "SNR {} should be positive", r.snr);
+        assert!(r.noise > 0.0, "noise should be positive");
+        assert_eq!(r.star_count, 1);
+    }
+
+    #[test]
+    fn test_snr_poor_seeing_scores_lower() {
+        // Two identical images but one has 2× the FWHM (worse seeing).
+        // The poor-seeing frame should score lower SNR.
+        let width  = 300usize;
+        let height = 300usize;
+        let bg = 0.05f32;
+        let peak = 0.6f32;
+
+        let make_image = |sigma: f32| -> Vec<f32> {
+            let mut luma = vec![bg; width * height];
+            let size = (sigma * 6.0).ceil() as usize | 1;
+            let half = size / 2;
+            let cx = 150usize;
+            let cy = 150usize;
+            for y in 0..size {
+                for x in 0..size {
+                    let dx = x as f32 - half as f32;
+                    let dy = y as f32 - half as f32;
+                    let r2 = dx * dx + dy * dy;
+                    let val = bg + peak * (-r2 / (2.0 * sigma * sigma)).exp();
+                    luma[(cy - half + y) * width + (cx - half + x)] = val;
+                }
+            }
+            luma
+        };
+
+        let config = SigmaClipConfig::default();
+
+        let good_luma = make_image(2.0);
+        let good_star = gaussian_star(150, 150, 2.0, peak);
+        let good_snr  = snr_estimate(&good_luma, width, height, &[good_star], &config)
+            .expect("good SNR should compute").snr;
+
+        let poor_luma = make_image(4.0);
+        let poor_star = gaussian_star(150, 150, 4.0, peak);
+        let poor_snr  = snr_estimate(&poor_luma, width, height, &[poor_star], &config)
+            .expect("poor SNR should compute").snr;
+
+        assert!(
+            good_snr > poor_snr,
+            "good seeing SNR ({:.3}) should exceed poor seeing SNR ({:.3})",
+            good_snr, poor_snr
+        );
     }
 
     #[test]
@@ -216,6 +262,12 @@ mod tests {
         let luma = vec![0.05f32; 100 * 100];
         let config = SigmaClipConfig::default();
         assert!(snr_estimate(&luma, 100, 100, &[], &config).is_none());
+    }
+
+    #[test]
+    fn test_snr_empty_image() {
+        let config = SigmaClipConfig::default();
+        assert!(snr_estimate(&[], 0, 0, &[], &config).is_none());
     }
 }
 

@@ -1,341 +1,164 @@
-# Photyx AnalyzeFrames — Metric Correlation Analysis
+# Photyx AnalyzeFrames — Cross-Session Analysis Findings
 
-## Datasets
-
-| Session   | Frames | Filter     | Altitude | Dominant driver                                |
-| --------- | ------ | ---------- | -------- | ---------------------------------------------- |
-| NGC6910-B | 80     | Broadband  | Mid      | Sky brightness declining (dew/fog?)            |
-| NGC6910-C | 80     | Broadband  | Mid      | Sky transparency arc (brightening then fading) |
-| M104      | 62     | Broadband  | Low      | Airmass (low altitude target)                  |
-| NGC7380   | 160    | Narrowband | Mid      | Airmass (star count decline over time)         |
-| M13       | 107    | Broadband  | High     | Stable — seeing and tracking only              |
-
-**Note on NGC6910:** Three sessions were collected from this field. The original
-session used in the prior two-session analysis could not be positively identified.
-NGC6910-B and NGC6910-C are the two recovered sessions; they show different
-dominant drivers and are treated as independent datasets.
-
-**Note on data precision:** All sessions were initially analyzed with display-
-truncated data (Bg Std Dev and Bg Gradient showing only 3 decimal places). This
-document uses corrected full-precision values from all sessions.
+**Date:** May 2026  
+**Sessions analyzed:** 5 broadband sessions, 753 total frames, 67 rejections (8.9%)
 
 ---
 
-## Pairwise Pearson Correlations — NGC6910-B (80 frames, broadband, mid-altitude)
+## Sessions
 
-**Session character:** Sky background declining monotonically across the session
-(Bg Median 5.274e-2 → 4.828e-2), star count rising. Likely sky transparency
-improving as session progressed, or target rising through airmass.
-
-| Metric A     | Metric B     | r      | Strength              |
-| ------------ | ------------ | ------ | --------------------- |
-| FWHM         | Eccentricity | −0.047 | Negligible            |
-| FWHM         | Star Count   | +0.240 | Weak positive         |
-| FWHM         | SNR          | +0.279 | Weak positive         |
-| FWHM         | Bg Median    | −0.449 | Moderate negative     |
-| FWHM         | Bg Std Dev   | −0.441 | Moderate negative     |
-| FWHM         | Bg Gradient  | −0.209 | Weak negative         |
-| Eccentricity | Star Count   | −0.107 | Negligible            |
-| Eccentricity | SNR          | +0.041 | Negligible            |
-| Eccentricity | Bg Median    | +0.092 | Negligible            |
-| Eccentricity | Bg Std Dev   | +0.106 | Negligible            |
-| Eccentricity | Bg Gradient  | +0.246 | Weak positive         |
-| Star Count   | SNR          | +0.461 | Moderate positive     |
-| Star Count   | Bg Median    | −0.957 | Near-perfect negative |
-| Star Count   | Bg Std Dev   | −0.958 | Near-perfect negative |
-| Star Count   | Bg Gradient  | −0.599 | Moderate negative     |
-| SNR          | Bg Median    | −0.584 | Moderate negative     |
-| SNR          | Bg Std Dev   | −0.590 | Moderate negative     |
-| SNR          | Bg Gradient  | −0.415 | Moderate negative     |
-| Bg Median    | Bg Std Dev   | +0.999 | Near-perfect positive |
-| Bg Median    | Bg Gradient  | +0.632 | Strong positive       |
-| Bg Std Dev   | Bg Gradient  | +0.640 | Strong positive       |
+| Session | Target           | Exp  | Bin | Frames | Rejects | Primary failures                                                 |
+| ------- | ---------------- | ---- | --- | ------ | ------- | ---------------------------------------------------------------- |
+| NGC7380 | Wizard Nebula    | 180s | 1×1 | 130    | 16      | Twilight ramp (start) + seeing events                            |
+| M104    | Sombrero Galaxy  | 60s  | 1×1 | 62     | 5       | Focus excursion                                                  |
+| M101    | Pinwheel Galaxy  | 180s | 2×2 | 80     | 4       | Seeing spike + dawn ramp (end)                                   |
+| M100    | Blowdryer Galaxy | 30s  | 1×1 | 335    | 26      | Cloud block + seeing spike + horizon ramp                        |
+| M82     | Cigar Galaxy     | 180s | 1×1 | 146    | 16      | Horizon seeing ramp (start) + turbulence spikes + post-gap event |
 
 ---
 
-## Pairwise Pearson Correlations — NGC6910-C (80 frames, broadband, mid-altitude)
+## Headline Finding: The Current Thresholds Are Correct
 
-**Session character:** SNR follows a strong arc — high early (7.9–8.0), dropping
-through the middle (5.4–5.7), then recovering slightly. Bg Median mirrors this
-inversely. Star count follows the same arc inversely. Likely a transparency
-episode (thin cloud or dew) mid-session.
+**Do not change the default thresholds.**
 
-| Metric A     | Metric B     | r      | Strength              |
-| ------------ | ------------ | ------ | --------------------- |
-| FWHM         | Eccentricity | −0.105 | Negligible            |
-| FWHM         | Star Count   | −0.061 | Negligible            |
-| FWHM         | SNR          | +0.257 | Weak positive         |
-| FWHM         | Bg Median    | −0.235 | Weak negative         |
-| FWHM         | Bg Std Dev   | −0.235 | Weak negative         |
-| FWHM         | Bg Gradient  | −0.157 | Negligible            |
-| Eccentricity | Star Count   | −0.385 | Weak negative         |
-| Eccentricity | SNR          | −0.444 | Moderate negative     |
-| Eccentricity | Bg Median    | +0.479 | Moderate positive     |
-| Eccentricity | Bg Std Dev   | +0.489 | Moderate positive     |
-| Eccentricity | Bg Gradient  | +0.326 | Weak positive         |
-| Star Count   | SNR          | +0.885 | Very strong positive  |
-| Star Count   | Bg Median    | −0.939 | Very strong negative  |
-| Star Count   | Bg Std Dev   | −0.931 | Very strong negative  |
-| Star Count   | Bg Gradient  | −0.399 | Weak negative         |
-| SNR          | Bg Median    | −0.964 | Near-perfect negative |
-| SNR          | Bg Std Dev   | −0.955 | Near-perfect negative |
-| SNR          | Bg Gradient  | −0.367 | Weak negative         |
-| Bg Median    | Bg Std Dev   | +0.998 | Near-perfect positive |
-| Bg Median    | Bg Gradient  | +0.443 | Moderate positive     |
-| Bg Std Dev   | Bg Gradient  | +0.454 | Moderate positive     |
+Across 67 rejections in 5 diverse sessions — different targets, seeing conditions, equipment, binning, exposure times, and sky conditions — there were **zero false positives**. Every rejected frame was genuinely inferior. The three borderline cases (NGC7380 frames 9–11, M82 frame 19, M101 frame 78) all represent real frame quality degradation. The sigma thresholds are doing exactly what they should.
+
+Current defaults to retain:
+
+| Metric            | Default           | Direction   |
+| ----------------- | ----------------- | ----------- |
+| FWHM              | +2.5σ             | High is bad |
+| Eccentricity      | > 0.85 (absolute) | High is bad |
+| Star Count        | −1.5σ             | Low is bad  |
+| SNR               | −2.5σ             | Low is bad  |
+| Background Median | +2.5σ             | High is bad |
 
 ---
 
-## Pairwise Pearson Correlations — M104 (62 frames, broadband, low altitude)
+## Metric Performance
 
-**Session character:** Airmass-dominated. Target tracked through significant
-altitude change. Contains extreme outlier frames (FWHM 8.024, 5.834) from
-likely atmospheric event near culmination.
+### FWHM
 
-| Metric A     | Metric B     | r      | Strength              |
-| ------------ | ------------ | ------ | --------------------- |
-| FWHM         | Eccentricity | −0.293 | Weak negative         |
-| FWHM         | Star Count   | −0.848 | Very strong negative  |
-| FWHM         | SNR          | +0.800 | Strong positive       |
-| FWHM         | Bg Median    | +0.653 | Strong positive       |
-| FWHM         | Bg Std Dev   | +0.650 | Strong positive       |
-| FWHM         | Bg Gradient  | +0.338 | Weak positive         |
-| Eccentricity | Star Count   | +0.101 | Negligible            |
-| Eccentricity | SNR          | −0.341 | Weak negative         |
-| Eccentricity | Bg Median    | +0.000 | Negligible            |
-| Eccentricity | Bg Std Dev   | −0.005 | Negligible            |
-| Eccentricity | Bg Gradient  | +0.052 | Negligible            |
-| Star Count   | SNR          | −0.542 | Moderate negative     |
-| Star Count   | Bg Median    | −0.898 | Very strong negative  |
-| Star Count   | Bg Std Dev   | −0.896 | Very strong negative  |
-| Star Count   | Bg Gradient  | −0.370 | Weak negative         |
-| SNR          | Bg Median    | +0.277 | Weak positive         |
-| SNR          | Bg Std Dev   | +0.282 | Weak positive         |
-| SNR          | Bg Gradient  | +0.347 | Weak positive         |
-| Bg Median    | Bg Std Dev   | +0.999 | Near-perfect positive |
-| Bg Median    | Bg Gradient  | +0.417 | Moderate positive     |
-| Bg Std Dev   | Bg Gradient  | +0.417 | Moderate positive     |
+- Fired correctly in **all 5 sessions**. Zero false positives.
+- Most universal metric — the only one present in every session's rejections.
+- The session-relative nature is a strength: M82's wide-seeing session had a large FWHM std that correctly absorbed frame 105 at 4.407px (+2.85σ), which would have been an unambiguous reject in the tight M101 session. The threshold is self-adapting to conditions.
 
----
+### Eccentricity
 
-## Pairwise Pearson Correlations — NGC7380 (160 frames, narrowband, mid-altitude)
+- Fired correctly in NGC7380 (seeing events) and M82 (horizon seeing ramp). Zero false positives.
+- Co-fires with FWHM for seeing and tracking events.
+- **Key diagnostic:** eccentricity is *lower* than normal during defocus events (symmetric circular blob vs session mean), and *higher* during seeing/tracking events (elongated stars). This directional signature distinguishes the failure type and is useful for rejection category annotation.
 
-**Session character:** Narrowband filter. Bg Median near-constant (4.297e-2 to
-4.315e-2) — sky brightness essentially suppressed by filter. Star count declines
-monotonically as target sets through airmass. Capture date: 2024-10-05.
+### Star Count
 
-| Metric A     | Metric B     | r      | Strength             |
-| ------------ | ------------ | ------ | -------------------- |
-| FWHM         | Eccentricity | +0.586 | Moderate positive    |
-| FWHM         | Star Count   | −0.641 | Strong negative      |
-| FWHM         | SNR          | +0.511 | Moderate positive    |
-| FWHM         | Bg Median    | −0.070 | Negligible           |
-| FWHM         | Bg Std Dev   | −0.123 | Negligible           |
-| FWHM         | Bg Gradient  | −0.051 | Negligible           |
-| Eccentricity | Star Count   | −0.407 | Moderate negative    |
-| Eccentricity | SNR          | +0.367 | Weak positive        |
-| Eccentricity | Bg Median    | −0.054 | Negligible           |
-| Eccentricity | Bg Std Dev   | −0.083 | Negligible           |
-| Eccentricity | Bg Gradient  | −0.103 | Negligible           |
-| Star Count   | SNR          | −0.575 | Moderate negative    |
-| Star Count   | Bg Median    | −0.313 | Weak negative        |
-| Star Count   | Bg Std Dev   | −0.265 | Weak negative        |
-| Star Count   | Bg Gradient  | +0.508 | Moderate positive    |
-| SNR          | Bg Median    | +0.108 | Negligible           |
-| SNR          | Bg Std Dev   | −0.009 | Negligible           |
-| SNR          | Bg Gradient  | −0.081 | Negligible           |
-| Bg Median    | Bg Std Dev   | +0.920 | Very strong positive |
-| Bg Median    | Bg Gradient  | +0.211 | Weak positive        |
-| Bg Std Dev   | Bg Gradient  | +0.172 | Negligible           |
+- Fired correctly in **all 5 sessions**. Zero false positives.
+- The second most important metric and the **only one that catches transparency events**.
+- Caught the entire 22-frame M100 cloud block (visually confirmed during blink review) while background median showed nothing — proving cloud attenuation can be invisible to background metrics.
+- Fires on horizon extinction before FWHM does, making it the early-warning detector for low-altitude targets (M82 opening ramp).
+- Also fires on twilight/dawn ramps in combination with background median.
+
+### SNR
+
+- Purely a corroborating metric. Never drove a rejection alone across all 5 sessions.
+- Co-fires when FWHM or transparency degradation is severe.
+- Adds confidence to multi-metric rejections but carries no unique detection capability.
+- Zero false positives.
+
+### Background Median
+
+- Fired correctly in exactly two sessions: NGC7380 (twilight startup) and M101 (dawn ending). Stayed correctly silent in M104, M100, and M82.
+- Zero false positives, though NGC7380 frames 9–11 are borderline (~2.5–2.7σ elevated but with normal optics).
+- **Key insight:** background std varies enormously across sessions (0.00041 to 0.00135) depending on sky stability. The same absolute sky brightness change can appear as very different sigma values in different sessions. This is correct behavior — a tight stable sky makes the metric more sensitive, which is appropriate.
+- The M82 horizon ramp reached +3.85σ background but star count caught the frames first, so background was not the deciding metric.
 
 ---
 
-## Pairwise Pearson Correlations — M13 (107 frames, broadband, high-altitude)
+## Three Rejection Categories
 
-**Session character:** Globular cluster near zenith. Most stable session in the
-dataset — airmass essentially constant, sky brightness barely varies (4.255e-2
-to 5.457e-2 across session start/end). Only meaningful variables are seeing and
-tracking quality. Full-precision data confirmed after display fix.
+Five sessions consistently produced three physically distinct failure modes. These are cleanly separable and have different implications for SFS integration strategy.
 
-| Metric A     | Metric B     | r      | Strength              |
-| ------------ | ------------ | ------ | --------------------- |
-| FWHM         | Eccentricity | −0.409 | Moderate negative     |
-| FWHM         | Star Count   | −0.627 | Strong negative       |
-| FWHM         | SNR          | +0.374 | Weak positive         |
-| FWHM         | Bg Median    | +0.005 | Negligible            |
-| FWHM         | Bg Std Dev   | +0.014 | Negligible            |
-| FWHM         | Bg Gradient  | −0.000 | Negligible            |
-| Eccentricity | Star Count   | +0.447 | Moderate positive     |
-| Eccentricity | SNR          | −0.232 | Weak negative         |
-| Eccentricity | Bg Median    | −0.229 | Weak negative         |
-| Eccentricity | Bg Std Dev   | −0.243 | Weak negative         |
-| Eccentricity | Bg Gradient  | −0.220 | Weak negative         |
-| Star Count   | SNR          | +0.046 | Negligible            |
-| Star Count   | Bg Median    | −0.745 | Strong negative       |
-| Star Count   | Bg Std Dev   | −0.744 | Strong negative       |
-| Star Count   | Bg Gradient  | −0.435 | Moderate negative     |
-| SNR          | Bg Median    | −0.471 | Moderate negative     |
-| SNR          | Bg Std Dev   | −0.469 | Moderate negative     |
-| SNR          | Bg Gradient  | −0.093 | Negligible            |
-| Bg Median    | Bg Std Dev   | +0.997 | Near-perfect positive |
-| Bg Median    | Bg Gradient  | +0.569 | Moderate positive     |
-| Bg Std Dev   | Bg Gradient  | +0.561 | Moderate positive     |
+### Category 1 — Optical Quality
 
----
+**Trigger metrics:** FWHM elevated (primary); eccentricity elevated or depressed (secondary)  
+**Physical causes:** Atmospheric turbulence, focus drift, tracking error  
+**SFS recoverable:** **No.** PSF distortion (bloated or elongated stars) causes halos and artifacts that persist in the integrated stack at any integration weight. These frames should be hard-excluded.  
+**Eccentricity direction:** High eccentricity = seeing or tracking (elongated); Low eccentricity = defocus (symmetric blob)  
+**Observed in:** M104 (focus excursion, ecc below normal), M82 frames 113/114/122 (turbulence spikes), M101 frame 7 (isolated seeing spike), NGC7380 frames 61/66/69/70/126
 
-## Cross-Session Summary
+### Category 2 — Transparency
 
-| Metric Pair              | NGC6910-B | NGC6910-C | M104   | NGC7380 | M13    | Consistency                                    |
-| ------------------------ | --------- | --------- | ------ | ------- | ------ | ---------------------------------------------- |
-| Bg Median vs Bg Std Dev  | +0.999    | +0.998    | +0.999 | +0.920  | +0.997 | Near-perfect in ALL five sessions              |
-| FWHM vs Star Count       | +0.240    | −0.061    | −0.848 | −0.641  | −0.627 | Session-dependent; negative in 3 of 5          |
-| FWHM vs Eccentricity     | −0.047    | −0.105    | −0.293 | +0.586  | −0.409 | Mostly negligible-to-weak; sign varies         |
-| FWHM vs SNR              | +0.279    | +0.257    | +0.800 | +0.511  | +0.374 | Consistently positive; PSF artifact confirmed  |
-| FWHM vs Bg Median        | −0.449    | −0.235    | +0.653 | −0.070  | +0.005 | Highly session-dependent; sign reverses        |
-| Star Count vs Bg Median  | −0.957    | −0.939    | −0.898 | −0.313  | −0.745 | Consistently strong negative in all sessions   |
-| Star Count vs Bg Std Dev | −0.958    | −0.931    | −0.896 | −0.265  | −0.744 | Mirrors Bg Median — confirms redundancy        |
-| Star Count vs SNR        | +0.461    | +0.885    | −0.542 | −0.575  | +0.046 | Highly session-dependent; unreliable as a pair |
-| SNR vs Bg Median         | −0.584    | −0.964    | +0.277 | +0.108  | −0.471 | Session-dependent; sign reverses with airmass  |
-| Eccentricity vs all bg   | < 0.25    | < 0.49    | < 0.05 | < 0.11  | < 0.24 | Always weak or negligible                      |
+**Trigger metrics:** Star count below threshold (primary); SNR low (secondary); background median unchanged  
+**Physical causes:** Cloud, haze, aerosols — attenuates target signal without brightening the sky background  
+**SFS recoverable:** **Partially.** SFS will correctly assign lower weights. However, severely attenuated frames contribute attenuated signal at reduced weight — their photons still count, but less. Whether to pass or hard-exclude depends on severity.  
+**Observed in:** M100 frames 278–299 (visually confirmed cloud, -3σ star count), M82 frame 138 (post-gap severe event, -5.9σ stars), M100 frames 333–335 (horizon extinction without sky brightening)
+
+### Category 3 — Sky Brightness / Horizon Effects
+
+**Trigger metrics:** Background median elevated (primary); star count low (secondary, due to elevated sky suppressing faint star detection)  
+**Physical causes:** Astronomical twilight, dawn, target near horizon (atmospheric depth), light pollution spikes  
+**SFS recoverable:** **Yes (mild) to Partially (severe).** The PSF is undamaged — stars are correctly shaped, sky is just brighter. SFS will downweight these frames. Their photons are real target photons and they contribute usable signal at reduced weight. Only the most extreme cases (>4–5σ background) represent a noise floor elevation that significantly degrades the stack.  
+**Temporal pattern:** In all 5 sessions, Category 3 rejections occurred **exclusively at session start or session end** — never mid-session. This is a reliable diagnostic for the twilight/horizon failure mode.  
+**Observed in:** NGC7380 frames 1–11 (startup twilight), M101 frames 78–80 (dawn ending), M82 frames 1–10 (horizon seeing + sky), M100 frame 1 (single startup frame)
+
+### Multi-Category Frames
+
+Some frames simultaneously satisfy multiple categories. M82's opening frames (1–10) show both elevated eccentricity/FWHM (optical — poor horizon seeing) and elevated background + suppressed stars (sky brightness — target at low altitude). Both categories should be reported, not just the worst.
 
 ---
 
-## Session Notes
+## Implications for SFS Integration Strategy
 
-### NGC6910-B
-
-Sky background declines monotonically across the session — star count and SNR
-rise as sky darkens. Strong Star Count vs Bg Median correlation (−0.957). FWHM
-is essentially independent of everything except background metrics (moderate
-negative correlation), suggesting seeing was stable while sky conditions changed.
-Eccentricity is fully orthogonal to all other metrics.
-
-### NGC6910-C
-
-The most extreme SNR variation in the dataset (5.435 to 8.087 — nearly 3× range).
-SNR vs Bg Median = −0.964 (near-perfect): as sky brightened, SNR dropped and
-star count fell. This session likely had a transparency event mid-run. Notable:
-Eccentricity correlates moderately with Bg Median (+0.479) — frames taken during
-the transparency event show slightly higher eccentricity, possibly due to
-atmospheric dispersion or guide star quality degradation during the event.
-
-### M104
-
-Airmass-dominated with extreme outlier frames. FWHM vs SNR = +0.800 — the
-strongest PSF artifact in the dataset. The extreme outlier frames (FWHM > 5)
-with anomalously high SNR (7.5) confirm that the SNR estimator rewards bloated
-star flux rather than signal quality.
-
-### NGC7380
-
-Narrowband session. Bg Median near-constant but not truly zero-variance (range
-4.297e-2 to 4.315e-2). Bg Median vs Bg Std Dev = +0.920 — lower than other
-sessions but still very strong. Star Count vs Bg Gradient sign reverses here
-(+0.508 vs negative in all broadband sessions) — Bg Gradient is measuring
-spatial field variation driven by airmass rather than sky brightness gradient.
-
-### M13
-
-Most stable session. The FWHM vs Eccentricity sign reversal (−0.409 vs positive
-in other sessions) confirms these metrics are measuring different physical
-phenomena. In stable conditions, turbulence symmetrizes the PSF (reducing
-eccentricity) in worse-seeing frames, while better-seeing frames show residual
-tracking elongation. Eccentricity is essential precisely because it is
-orthogonal to seeing in stable sessions.
+| Category                             | Hard Exclude? | Pass to SFS? | Notes                                        |
+| ------------------------------------ | ------------- | ------------ | -------------------------------------------- |
+| Optical Quality                      | Yes           | No           | Star halos survive at any weight             |
+| Transparency (mild, -2 to -3σ stars) | No            | Yes          | SFS downweights appropriately                |
+| Transparency (severe, >-3σ stars)    | Consider      | With caution | Signal attenuated >20%, limited contribution |
+| Sky Brightness (mild, 2.5–3.5σ bg)   | No            | Yes          | Undamaged PSF, SFS handles it                |
+| Sky Brightness (severe, >4σ bg)      | Consider      | With caution | Noise floor impact on stack                  |
+| Multi-category: optical + anything   | Yes           | No           | Optical damage is the deciding factor        |
 
 ---
 
-## Key Findings (Five Sessions — Final)
+## Implementation Recommendations (Priority Order)
 
-### 1. Bg Std Dev is redundant in every session — removal confirmed
+### 1. Rejection Category Annotation *(High value, fits existing architecture)*
 
-Bg Median vs Bg Std Dev: +0.920 to +0.999 across all five sessions. The lowest
-value (NGC7380, +0.920) is still very strong. In no session does Bg Std Dev
-provide information not already captured by Bg Median. **Remove from the
-analysis engine. This finding is definitive.**
+Add a `rejection_category` field to `AnalysisResult` alongside the existing `triggered_by` field. Assign category from the metric combination that triggered rejection:
 
-### 2. FWHM vs Star Count is session-dependent — not universally reliable
+| Triggered metrics         | Category                   |
+| ------------------------- | -------------------------- |
+| FWHM alone, or FWHM + Ecc | `optical`                  |
+| Stars alone (bg normal)   | `transparency`             |
+| Bg alone, or Bg + Stars   | `sky_brightness`           |
+| FWHM + Stars (bg normal)  | `optical` + `transparency` |
+| Bg + Stars + FWHM         | all three categories       |
 
-Previously assumed to be consistently strongly negative. With five sessions:
+Surface this in the UI:
 
-- Strong negative (−0.627 to −0.848): M104, NGC7380, M13
-- Weak or negligible (−0.061 to +0.240): NGC6910-B, NGC6910-C
+- **Analysis Results table:** color-coded badge (e.g. 🔴 optical, 🟡 transparency, 🔵 sky brightness)
+- **Analysis Graph:** reject dots in three colors instead of current single reject color
+- **Blink overlay:** border color on rejected frames matches category
 
-In the NGC6910 sessions, sky transparency was the dominant driver and FWHM
-varied independently of star count. **Both metrics are needed — they are not
-redundant but they are not consistently correlated either.**
+This gives the user the information needed to make the SFS vs hard-exclude decision without changing any thresholds.
 
-### 3. Eccentricity is consistently independent of background metrics
+### 2. Broadband / Narrowband Parameter *(Sound idea, needs data)*
 
-All r < 0.49 against any background metric across all five sessions, and the
-higher values (NGC6910-C: +0.479 with Bg Median) are driven by a specific
-atmospheric event, not a structural relationship. Eccentricity measures tracking
-and optical quality — phenomena no other metric reliably captures.
+Implement the `broadband` / `narrowband` argument to `AnalyzeFrames` with separate default threshold sets. Narrowband sessions have fewer detectable stars, naturally lower sky backgrounds, and smaller star fields — all of which affect what "normal" looks like for star count and background median. Specific narrowband defaults should be proposed only after analyzing narrowband session data.
 
-### 4. The SNR estimator has a confirmed PSF artifact across multiple sessions
+### 3. Temporal Monotonicity Detection *(Lower priority, more complex)*
 
-FWHM vs SNR is positive in all five sessions (+0.257 to +0.800). This is not
-a coincidence — worse-seeing frames produce bloated stars with more integrated
-flux, which the current estimator reads as higher SNR. In M104, the extreme
-outlier frames (FWHM > 5) have SNR of 7.5 vs a session mean of ~5.9. **The SNR
-estimator needs revision before this metric can be trusted for classification.**
-
-### 5. Star Count vs Bg Median is the most consistent non-trivial correlation
-
-Negative in all five sessions (−0.313 to −0.957). Even in the narrowband session
-with near-constant Bg Median, the correlation is −0.313. Higher sky background
-consistently corresponds to fewer detected stars. This is physically meaningful
-and consistent across all session types.
-
-### 6. Bg Gradient is session-dependent and unreliable cross-session
-
-Sign reverses between broadband and narrowband sessions. Moderate correlations
-with Bg Median in some sessions, negligible in others. **Should be user-
-disableable per threshold profile.**
-
-### 7. The session driver determines the correlation structure
-
-| Driver            | Sessions             | Dominant effect                                       |
-| ----------------- | -------------------- | ----------------------------------------------------- |
-| Sky transparency  | NGC6910-B, NGC6910-C | SNR/StarCount/BgMedian cluster; FWHM independent      |
-| Airmass           | M104, NGC7380        | FWHM/StarCount/BgMedian all co-vary                   |
-| Stable high-alt   | M13                  | All metrics near-independent; only BgMedian/StarCount |
-| Narrowband filter | NGC7380              | BgMedian near-constant; Bg Std Dev reduced variance   |
+Detect sessions where background rises or falls monotonically across the first or last N frames, and annotate those sky brightness rejections as the `twilight_ramp` subtype. This would allow the UI to display "sky brightness — twilight ramp" vs "sky brightness — light pollution spike," which are physically different events with different SFS implications. Useful refinement but not essential for the initial category annotation implementation.
 
 ---
 
-##### Recommendation (Five Sessions — Final)
+## Key Observations Not in the Original Spec
 
-#### Remove
+1. **Eccentricity direction matters.** The current spec treats eccentricity as a single-direction metric (high is bad). But low eccentricity on a rejected frame is diagnostic for defocus, while high eccentricity indicates seeing or tracking. This directional information should be preserved in the category annotation.
 
-| Metric      | Rationale                                                                                                                                                                                                                                                                                                |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bg Std Dev  | r = 0.920–0.999 with Bg Median across all five sessions. Redundant in every case examined. Remove from engine.                                                                                                                                                                                           |
-| Bg Gradient | Session-dependent; sign reverses between broadband and narrowband; uniquely caught failure modes (spatial gradients) are almost always constant across a session and therefore carry near-zero sigma deviation for every frame, making them unable to trigger rejection in practice. Remove from engine. |
+2. **Star count is the transparency detector.** No other metric catches cloud without background elevation. This confirms star count is not a secondary metric — it's primary for an entire class of failure modes.
 
-#### Keep without question
+3. **Background median is a differential metric, not absolute.** A session imaged entirely in heavy light pollution will have a high but stable background and produce zero background-driven rejections. This is correct behavior. The metric catches *changes* from session baseline, not absolute sky brightness.
 
-| Metric       | Rationale                                                                                                               |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| FWHM         | Primary seeing metric. Essential in all session types regardless of correlation structure.                              |
-| Eccentricity | Independent of background metrics in all sessions. Catches tracking/optical errors nothing else detects.                |
-| Star Count   | Consistent strong negative correlation with Bg Median across all sessions. Catches dropout independently of seeing.     |
-| Bg Median    | Best single representative of sky background. Consistent across all session types. Essential counterpart to Star Count. |
+4. **The 75-minute gap in M82 (frames 137→152) produced the most severe single-frame event in the dataset** — frame 138 at FWHM +4.90σ and stars −5.90σ simultaneously. Post-session-gap frames should always be reviewed carefully in blink; the optics and atmosphere reset during the gap.
 
-#### Make optional (user-disableable per threshold profile)
-
-| Metric | Rationale                                                                                                                   |
-| ------ | --------------------------------------------------------------------------------------------------------------------------- |
-| SNR    | Confirmed PSF artifact across all five sessions. Needs estimator revision. Treat with caution until revised; make optional. |
-
-#### Action items
-
-1. **Remove Bg Std Dev and Bg Gradient from the analysis engine.** Both confirmed removable across all five sessions. No further data needed to support this decision.
-2. **Revise the SNR estimator.** The current estimator rewards integrated star flux rather than signal quality. This artifact appears in all five sessions. The revised estimator should account for PSF size when computing SNR — a frame with 2× the FWHM should not score higher SNR for the same target.
-3. **Add per-metric enable/disable to threshold profiles.** Allows users to disable SNR until the estimator is revised.
-
----
-
-### Caveats
-
-Analysis is based on five sessions (409 total frames) covering broadband sky-brightness, broadband transparency variation, broadband airmass, narrowband airmass, and broadband high-altitude stable conditions. All sessions are from the same equipment setup. Correlation structure will vary with different optical systems, mount quality, and sky conditions. The core four metrics (FWHM, Eccentricity, Star Count, Bg Median) are computed for all sessions regardless of filter type or session character — they are the minimum set that provides reliable discriminating power across all conditions examined. 
+5. **Binning does not affect classification accuracy.** M101's 2×2 binned session produced the same category structure as unbinned sessions. Star counts and absolute FWHM values scale with binning but the sigma-relative thresholds adapt correctly.

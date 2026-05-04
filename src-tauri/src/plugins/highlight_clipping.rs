@@ -130,15 +130,14 @@ impl PhotonPlugin for SnrEstimatePlugin {
         }
 
         Ok(PluginOutput::Data(json!({
-            "plugin":        "SnrEstimate",
-            "filename":      path,
-            "snr":           result.snr,
-            "signal_median": result.signal_median,
-            "noise":         result.noise,
-            "star_pixels":   result.star_pixels,
+            "plugin":      "SnrEstimate",
+            "filename":    path,
+            "snr":         result.snr,
+            "noise":       result.noise,
+            "star_count":  result.star_count,
             "message": format!(
-                "SNR estimate: {:.1} (signal: {:.4}, noise: {:.4}, {} star pixels)",
-                result.snr, result.signal_median, result.noise, result.star_pixels
+                "SNR estimate: {:.1} (noise: {:.4}, {} stars)",
+                result.snr, result.noise, result.star_count
             ),
         })))
     }
