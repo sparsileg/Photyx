@@ -2,7 +2,7 @@
 <script lang="ts">
   import { ui } from '../stores/ui';
   import type { ZoomLevel } from '../stores/ui';
-
+  import { session } from '../stores/session';
   const zoomLevels: { id: ZoomLevel; label: string }[] = [
     { id: 'fit',  label: 'Fit' },
     { id: '25',   label: '25%' },
@@ -11,7 +11,6 @@
     { id: '200',  label: '200%' },
   ];
 </script>
-
 <div id="toolbar">
   <div class="toolbar-group">
     <span class="toolbar-label">Zoom</span>
@@ -22,18 +21,12 @@
         disabled={$ui.blinkTabActive}
         onclick={() => ui.setZoom(z.id)}
         >{z.label}</button>
-      {/each}
-    </div>
-
+    {/each}
+  </div>
   <div class="toolbar-sep"></div>
   <div class="toolbar-group">
-    <span class="toolbar-label">Channel</span>
-    {#each ['rgb', 'r', 'g', 'b'] as ch}
-      <button
-        class="toolbar-btn"
-        class:active={$ui.activeChannel === ch}
-        onclick={() => ui.setChannel(ch as any)}
-        >{ch.toUpperCase()}</button>
-      {/each}
-    </div>
+    <span class="toolbar-dir">
+      {$session.activeDirectory ?? 'No directory selected'}
+    </span>
+  </div>
 </div>

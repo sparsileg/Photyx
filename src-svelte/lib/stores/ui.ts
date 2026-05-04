@@ -7,6 +7,7 @@ import { db } from '../db';
 export type Theme = 'dark' | 'light' | 'matrix';
 export type ZoomLevel = 'fit' | '25' | '50' | '100' | '200';
 export type PanelId = 'files' | 'keywords' | 'macro-editor' | 'macro-lib' | 'plugins' | null;
+export type ActiveChannel = 'rgb';
 
 // ── Viewer-region view registry ───────────────────────────────────────────────
 // To add a new view: add one entry here. showView() handles the rest.
@@ -19,7 +20,7 @@ export type ViewName = typeof VIEWS[number];
 
 export interface UIState {
   aboutOpen:           boolean;
-  activeChannel:       'rgb' | 'r' | 'g' | 'b';
+  activeChannel:       ActiveChannel;
   activePanel:         PanelId;
   activeView:          ViewName | null;
   annotationToken:     number;
@@ -118,7 +119,7 @@ function createUIStore() {
                                                                   );
       return { ...s, quickLaunchVisible: next };
     }),
-    setChannel: (ch: 'rgb' | 'r' | 'g' | 'b') => update(s => ({ ...s, activeChannel: ch })),
+
     requestFrameRefresh: () => update(s => ({
       ...s,
       frameRefreshToken:   s.frameRefreshToken + 1,

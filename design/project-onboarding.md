@@ -14,9 +14,29 @@ Photyx is a high-performance desktop astrophotography application built with **T
 
 The authoritative requirements document is `photyx_spec.md` (currently v20). The implementation reference is `development_notes.md` (currently v20). The UI patterns reference is `photyx_ui_patterns.md`. I will upload these at the start of sessions where we are doing development work. **Read all three before writing any code.** Do not deviate from the spec or suggest technologies inconsistent with it. There may be other documents that I'll provide that may help you as well.
 
+### Stack Summary
+
+Tauri v2 + Svelte 5 + TypeScript frontend; Rust backend with plugin registry; SQLite via rusqlite for all persistence. Linux dev (Ubuntu), Windows 11 target. Build: `npm run tauri dev`. CSS in `static/css/. Backend in src-tauri. Frontend in src-svelte.
+
+### Architecture Overview
+
+- **Plugin host:** every operation is a `PhotonPlugin` — file I/O, analysis, keywords, stretch. Registered in `lib.rs`, dispatched via `commands/` Tauri commands or pcode interpreter.
+- **AppContext** (`context/mod.rs`): session state — `file_list`, `image_buffers`, `analysis_results`, `is_imported_session`.
+- **Display pipeline:** `image_buffers` = raw pixels (never modified); `display_cache`, `full_res_cache`, `blink_cache_12/25` = derived JPEG bytes. Caches rebuilt on demand.
+- **Analysis layer:** pure Rust in `analysis/` — no Tauri deps. `session_stats.rs` owns `classify_frame()`, `categorize_rejection()`, `compute_session_stats_iterative()`. SNR is diagnostic only — excluded from rejection.
+- **Rejection categories:** O=Optical (FWHM/Ecc), T=Transparency (StarCount), B=Sky Brightness (BgMedian). Ordering: O first, B before T. Stored as `Option<String>` on `AnalysisResult`.
+- **Commit Results** is a terminal operation: write PXFLAG → WriteCurrent → move REJECTs to `rejected/<name>.<ext>.rejected` → re-key ctx → `ui.showView(null)` + `ui.clearViewer()` + `closeSession()`.
+- **Imported sessions** (`is_imported_session=true`): populated by `load_analysis_json`; skip reclassification in `get_analysis_results`; Commit disabled.
+- **View registry:** `ui.showView('analysisGraph' | 'analysisResults' | null)` — never boolean flags.
+- **Settings:** `AppSettings` struct, populated from `defaults.rs` + SQLite `preferences` table. `ThresholdProfile` holds 5 thresholds; SNR and StarCount stored as negative values in DB.
+- **Frontend constants:** `THRESHOLD_FIELDS` min/max for negative-direction fields use actual signed values (`min: -4.0, max: -0.5`). `SNR_SIGMA_DEFAULT=-2.5`, `STAR_COUNT_SIGMA_DEFAULT=-3.0`.
+- **Session JSON:** export via `Session → Export Session JSON…`; import via `Session → Import Session JSON…`. Filenames stored as basenames for cross-platform portability.
+- **Menu structure:** File (Load Single Image, Exit) | Session (Select Dir, Close Session, Export JSON, Import JSON) | Edit | View | Analyze (separator before Contour Plot) | Tools | Help.
+- **Capabilities:** `fs:allow-read-text-file` and `fs:allow-write-text-file` needed for JSON I/O; scopes include `$HOME`, `$DESKTOP`, `$DOWNLOAD`, `$DOCUMENT`, `$APPDATA/Photyx/**`.
+
 #### Development Environment
 
-- **Platform:** Windows 11, PowerShell
+- **Platform:** Windows 11 and Ubuntu Linux
 - **Frontend:** Svelte + TypeScript in `src-svelte/`
 - **Backend:** Rust in `src-tauri/`
 - **Build tool:** Vite (hot-reloads `.svelte` and `.ts` files instantly; CSS in `static/` requires manual browser refresh; Rust changes require a full recompile)
@@ -108,6 +128,14 @@ Once I say proceed, deliver **one change at a time** using BEFORE/AFTER blocks:
 - No hardcoded fake data in panels (Macro Library, Plugin Manager, etc. — everything must come from real data sources)
 - No individual boolean flags for viewer-region visibility — use `ui.showView()`
 
-#### Current Status
+### Reference Table
 
-Phase 8 is substantially complete. Phase 9 is next: SQLite persistence, settings store, rig profiles, crash recovery, update mechanism, file associations. We are currently in a UI audit pass cleaning up menus, panels, and wiring before starting Phase 9.
+| Topic                        | Document                          |
+| ---------------------------- | --------------------------------- |
+| Full requirements            | `photyx_spec.md`                  |
+| Implementation details       | `photyx_development.md`           |
+| UI patterns & rules          | `photyx_ui_patterns.md`           |
+| Commands, keywords, settings | `photyx_reference.md`             |
+| DB schema & persistence      | `photyx_persistence_inventory.md` |
+| Plugin status table          | `photyx_reference.md`             |
+| CSS variables                | `photyx_ui_patterns.md`           |

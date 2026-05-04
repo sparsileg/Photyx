@@ -302,8 +302,6 @@ if (response.display_changed && !autoStretched) {
 }
 ```
 
-Note the defensive guard — `response.client_actions` should always be an array but a warning log is included for debugging.
-
 ### Rules
 
 - **Never** use command-name matching for display or UI side effects — use `client_actions`
@@ -362,24 +360,119 @@ Without this, clicking a dropdown menu item (which is appended to `document.body
 
 For actions that write to files from a viewer-region component toolbar, use the running/success notification pattern. No confirmation dialog is required when the action is user-initiated and the result is visible before committing.
 
+**Commit Results is a terminal operation** in Photyx. After a successful commit:
+
+1. Any locally-toggled flags are pushed to Rust via `set_frame_flag`
+2. `commit_analysis_results` writes PXFLAG, flushes files, moves REJECT files to `rejected/`
+3. Frontend calls `ui.showView(null)`, `ui.clearViewer()`, `closeSession()`
+
 ```typescript
 async function commitResults() {
-    notifications.running('Writing PXFLAG to files…');
+    const toggled = frames.filter(f => f.toggled);
+    for (const f of toggled) {
+        await invoke('set_frame_flag', { path: f.filename, flag: f.flag });
+    }
+    notifications.running('Committing results…');
     try {
         const msg = await invoke<string>('commit_analysis_results');
         notifications.success(msg);
+        ui.showView(null);
+        ui.clearViewer();
+        await closeSession();
     } catch (e) {
         notifications.error(`Commit failed: ${e}`);
     }
 }
 ```
 
+**Commit Results is disabled for imported sessions** (`is_imported` flag from `get_analysis_results`).
+
 **When to use this pattern vs Pattern 8 (inline confirmation):**
 
-- Use **Pattern 8** (inline confirmation bar) when the action is irreversible or destructive (delete, overwrite without preview)
-- Use **Pattern 21** (direct commit with notification) when the user has already reviewed the results in the UI and the action reflects exactly what they see — the preview IS the confirmation
+- Use **Pattern 8** when the action is irreversible or destructive without a preview
+- Use **Pattern 21** when the user has already reviewed results in the UI — the preview IS the confirmation
 
-**Commit Results is present in both Analysis Graph and Analysis Results toolbars** because users may make their decision from either view. Both call the same `commit_analysis_results` Tauri command.
+---
+
+## Pattern 22 — Right-Click Context Menu on Table Rows
+
+For table rows that support per-row actions (e.g. PXFLAG toggle in Analysis Results), use a floating context menu triggered by `oncontextmenu`. Close on any outside click.
+
+```typescript
+interface ContextMenu {
+    x: number;
+    y: number;
+    index: number;
+}
+let contextMenu = $state<ContextMenu | null>(null);
+
+function onRowContextMenu(e: MouseEvent, index: number) {
+    e.preventDefault();
+    contextMenu = { x: e.clientX, y: e.clientY, index };
+}
+
+function closeContextMenu() {
+    contextMenu = null;
+}
+```
+
+```svelte
+<svelte:window onclick={closeContextMenu} />
+
+<!-- On each table row -->
+<tr oncontextmenu={(e) => onRowContextMenu(e, row.index)}>
+
+<!-- Context menu overlay, outside the table -->
+{#if contextMenu}
+  <div
+    class="ar-context-menu"
+    style:left="{contextMenu.x}px"
+    style:top="{contextMenu.y}px"
+    onclick={(e) => e.stopPropagation()}
+  >
+    <div class="ar-context-item" onclick={() => doAction(contextMenu!.index)}>
+      Action Label
+    </div>
+  </div>
+{/if}
+```
+
+**CSS:** `position: fixed`, `z-index: 1000`, themed background, border, box-shadow, and hover state for items.
+
+**Key rules:**
+- `e.preventDefault()` suppresses the browser's native context menu
+- `<svelte:window onclick={closeContextMenu}>` closes the menu on any outside click
+- The menu div uses `e.stopPropagation()` so clicking inside it doesn't trigger the window handler
+- Menu label is dynamic based on the row's current state (e.g. "Set to PASS" vs "Set to REJECT")
+
+---
+
+## Pattern 23 — Two-Row Toolbar (Title + Context Row)
+
+For viewer-region components that need contextual information alongside action buttons, use a two-row toolbar.
+
+```svelte
+<div class="ar-toolbar">
+    <span class="ar-title">Component Title</span>
+    <button class="ar-btn">Action</button>
+    <button class="ar-close-btn" onclick={() => ui.showView(null)}>✕ Close</button>
+</div>
+<div class="ar-session-path">
+    {#if isImported}
+        <span class="ar-imported-badge">IMPORTED</span>
+    {/if}
+    <span class="ar-session-path-label">Session path:</span>
+    <span class="ar-session-path-value">{sessionPath || '—'}</span>
+</div>
+```
+
+**CSS rules:**
+- Both rows: `flex-shrink: 0`
+- Row 2: `border-bottom` to separate from scrollable content
+- Row 2 text: smaller (11px), `--text-secondary` for label, `--primary-color` for value
+- `ar-session-path-value`: `overflow: hidden; text-overflow: ellipsis; white-space: nowrap`
+
+**State badge:** Conditional badges (e.g. IMPORTED) appear at the start of row 2. Use a distinct color — IMPORTED uses purple (`rgba(160, 100, 200, ...)`) to distinguish from rejection category colors (red/yellow/blue).
 
 ---
 
@@ -421,9 +514,9 @@ All CSS files must use these theme variables:
 
 **Rust recompilation is required only when files in `src-tauri/` change. Svelte and TypeScript changes hot-reload instantly.**
 
-**Always use `pipeToConsole()` to write to the console from outside `Console.svelte` — never call `consolePipe.set()` directly. Direct `.set()` calls corrupt the queue and cause spread TypeErrors. See Pattern 15.**
+**Always use `pipeToConsole()` to write to the console from outside `Console.svelte` — never call `consolePipe.set()` directly. See Pattern 15.**
 
-**Dropdown components must use `value` + `on:change` — not `bind:value`. The Svelte 4/5 boundary breaks two-way binding. See Pattern 20.**
+**Dropdown components must use `value` + `on:change` — not `bind:value`. See Pattern 20.**
 
 **Modal dialogs do not close on backdrop click. Users must use Cancel, OK, or ✕. See Pattern 19.**
 
@@ -431,4 +524,8 @@ All CSS files must use these theme variables:
 
 **Fixed overlays use `position: fixed`, start at `top: 96px`, and must respect the z-index hierarchy. See Pattern 17.**
 
-**Commit Results does not require a confirmation dialog when the user has already reviewed results in the UI. Use notifications.running() + notifications.success(). See Pattern 21.**
+**Commit Results is a terminal operation — close view, clear viewer, close session after success. Disabled for imported sessions. See Pattern 21.**
+
+**Right-click context menus use `position: fixed` at mouse coordinates, closed by `<svelte:window onclick>`. See Pattern 22.**
+
+**Two-row toolbars use `flex-shrink: 0` on both rows and `border-bottom` on the second row. See Pattern 23.**

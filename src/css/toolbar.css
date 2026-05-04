@@ -99,6 +99,12 @@
     padding: 0 4px;
 }
 
+.toolbar-dir {
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 0 4px;
+}
+
 .toolbar-btn {
     display: flex;
     align-items: center;

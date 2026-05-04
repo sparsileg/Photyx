@@ -1,6 +1,6 @@
 # Photyx — Developer Notes
 
-**Version:** 27 **Last updated:** 3 May 2026 **Status:** Active development — Phase 9 sub-phase E in progress
+**Version:** 28 **Last updated:** 4 May 2026 **Status:** Active development — Phase 9 in progress
 
 ---
 
@@ -10,8 +10,8 @@
 Photyx/
 ├── src-svelte/           ← Svelte frontend (target stack)
 │   ├── lib/
-│   │   ├── commands.ts   ← Shared backend command helpers (selectDirectory, loadFiles, displayFrame, etc.)
-│   │   ├── pcodeCommands.ts   ← Single source of truth for all pcode command names (imported by Console and MacroEditor)
+│   │   ├── commands.ts   ← Shared backend command helpers (selectDirectory, loadFiles, displayFrame, closeSession, etc.)
+│   │   ├── pcodeCommands.ts   ← Single source of truth for all pcode command names
 │   │   ├── components/   ← Svelte UI components
 │   │   │   ├── panels/   ← Sliding panel components
 │   │   │   │   ├── FileBrowser.svelte
@@ -35,9 +35,9 @@ Photyx/
 │   │   │   ├── ThresholdProfilesDialog.svelte
 │   │   │   ├── Toolbar.svelte
 │   │   │   └── Viewer.svelte
-│   │   ├── settings/     ← Frontend settings constants (mirrors defaults.rs)
-│   │   │   └── constants.ts
-│   │   └── stores/       ← Svelte writable stores
+│   │   ├── settings/
+│   │   │   └── constants.ts  ← Frontend mirror of defaults.rs; THRESHOLD_FIELDS uses actual signed min/max
+│   │   └── stores/
 │   │       ├── consoleHistory.ts
 │   │       ├── notifications.ts
 │   │       ├── quickLaunch.ts
@@ -49,18 +49,18 @@ Photyx/
 │       └── +page.svelte  ← Main application shell
 ├── src-tauri/            ← Rust backend
 │   └── src/
-│       ├── lib.rs        ← Tauri entry point, command handlers
-│       ├── logging.rs    ← Rolling file logger (tracing + tracing-appender)
-│       ├── utils.rs      ← Shared utilities: resolve_path, get_log_dir, get_macros_dir
-│       ├── settings/     ← AppSettings global object and defaults
-│       │   ├── mod.rs    ← AppSettings struct; ThresholdProfile struct; load_from_db(); load_threshold_profiles(); save_preference()
-│       │   └── defaults.rs ← Single source of truth for all hard-coded values and bounds
-│       ├── plugin/       ← Plugin host infrastructure
-│       │   ├── mod.rs    ← PhotonPlugin trait, ArgMap, PluginOutput, PluginError, ParamSpec
-│       │   └── registry.rs ← Plugin registry: register, lookup, dispatch, list_with_details
+│       ├── lib.rs
+│       ├── logging.rs
+│       ├── utils.rs
+│       ├── settings/
+│       │   ├── mod.rs
+│       │   └── defaults.rs
+│       ├── plugin/
+│       │   ├── mod.rs
+│       │   └── registry.rs
 │       ├── context/
-│       │   └── mod.rs    ← AppContext, ImageBuffer, PixelData, KeywordEntry, BlinkCacheStatus
-│       ├── analysis/     ← Pure computation modules (no Tauri dependencies)
+│       │   └── mod.rs
+│       ├── analysis/
 │       │   ├── mod.rs
 │       │   ├── background.rs
 │       │   ├── eccentricity.rs
@@ -69,10 +69,10 @@ Photyx/
 │       │   ├── profiles.rs
 │       │   ├── session_stats.rs
 │       │   └── stars.rs
-│       ├── pcode/        ← pcode interpreter
+│       ├── pcode/
 │       │   ├── mod.rs
 │       │   └── tokenizer.rs
-│       └── plugins/      ← Built-in native plugin implementations
+│       └── plugins/
 │           ├── mod.rs
 │           ├── analyze_frames.rs
 │           ├── auto_stretch.rs
@@ -101,10 +101,10 @@ Photyx/
 │           ├── write_frame.rs
 │           ├── write_tiff.rs
 │           └── write_xisf.rs
-├── crates/               ← Workspace crates
+├── crates/
 │   └── photyx-xisf/      ← XISF reader/writer crate (MIT OR Apache-2.0)
-├── static/               ← Static assets served by Vite
-│   ├── css/              ← Module CSS files (theme-neutral)
+├── static/
+│   ├── css/
 │   │   ├── analysisgraph.css
 │   │   ├── analysisresults.css
 │   │   ├── console.css
@@ -120,10 +120,9 @@ Photyx/
 │   │   ├── thresholdprofiles.css
 │   │   ├── toolbar.css
 │   │   └── viewer.css
-│   └── themes/           ← Theme CSS files (dark, light, matrix)
-├── Cargo.toml            ← Workspace root
-├── .cargo/
-│   └── config.toml       ← Sets PKG_CONFIG env vars for cfitsio
+│   └── themes/
+├── Cargo.toml
+├── .cargo/config.toml    ← PKG_CONFIG env vars for cfitsio
 ├── svelte.config.js
 ├── vite.config.js
 ├── package.json
@@ -149,9 +148,8 @@ Photyx/
 # Development (hot reload for Svelte, Rust recompiles on change)
 npm run tauri dev
 
-# Frontend only (no Tauri IPC — for UI layout work)
+# Frontend only (no Tauri IPC)
 npm run dev
-# then open http://localhost:1420
 
 # Run photyx-xisf tests
 cargo test -p photyx-xisf -- --nocapture
@@ -180,129 +178,128 @@ Design rule: **display plugins read from `image_buffers` and write to caches. Th
 
 ### 3.3 AutoStretch Performance
 
-AutoStretch operates on a dynamic display-resolution downsampled copy of the image. ~50x reduction in pixel count vs operating on the full buffer.
+AutoStretch operates on a dynamic display-resolution downsampled copy. ~50x reduction in pixel count vs operating on the full buffer.
 
 ### 3.4 Full-Resolution Cache
 
-`get_full_frame` encodes the full-resolution raw buffer as JPEG at quality 90, applying the same STF stretch parameters that AutoStretch computed. RGB images are handled correctly — each channel is stretched using the stored STF params.
+`get_full_frame` encodes the full-resolution raw buffer as JPEG at quality 90, applying the same STF stretch parameters that AutoStretch computed.
 
 ### 3.5 Canvas-Based Image Display
 
-The image viewer uses an HTML5 canvas element (`#viewer-image-canvas`) rather than an `<img>` tag. This eliminates layout shifts caused by image src swaps during blink playback.
+The image viewer uses an HTML5 canvas element rather than an `<img>` tag. Eliminates layout shifts during blink playback.
 
 ### 3.6 Zoom Implementation
 
-Zoom levels are implemented via `drawImage()` math in `Viewer.svelte`. The canvas is always viewport-sized; zoom is achieved by scaling the drawn image dimensions.
+Zoom levels implemented via `drawImage()` math in `Viewer.svelte`. Canvas is always viewport-sized; zoom achieved by scaling drawn image dimensions.
 
 ### 3.7 Pan Implementation
 
-Panning is implemented as `panX`/`panY` offsets applied to the centered draw position in `getDrawRect()`. Pan only active at zoom levels above Fit. Momentum with friction on mouse release.
+`panX`/`panY` offsets applied to centered draw position in `getDrawRect()`. Pan only active above Fit zoom. Momentum with friction on mouse release.
 
 ### 3.8 Pixel Tracking
 
-Mouse pixel tracking is always-on when the viewer has an image. Coordinates flow `Viewer.svelte` → `+page.svelte` → `InfoPanel.svelte` as props rather than through the `ui` store (avoids reactive storm).
+Always-on when viewer has an image. Coordinates flow `Viewer.svelte` → `+page.svelte` → `InfoPanel.svelte` as props (avoids reactive storm).
 
 ### 3.9 Blink State Management
 
-Multiple blink-related fields live in the `ui` store. `blinkModeActive` is distinct from `blinkPlaying` — remains true while blink is paused so the viewer maintains the blink scale.
+`blinkModeActive` is distinct from `blinkPlaying` — remains true while paused so viewer maintains blink scale.
 
 ### 3.10 Blink UI Jitter — Known Issue
 
-Toolbar/Quick Launch chrome jitters during blink. DevTools CLS = 0.01, culprit undetected after canvas switch; suspected Tauri WebView compositor artifact on Windows; deferred.
+Suspected Tauri WebView compositor artifact on Windows; deferred.
 
 ### 3.28 pcode Interpreter
 
-- `If <expr> / Else / EndIf` — conditional blocks with `==`, `!=`, `<`, `>`, `<=`, `>=` operators
+- `If <expr> / Else / EndIf` — conditionals with `==`, `!=`, `<`, `>`, `<=`, `>=`
 - `For varname = N to M / EndFor` — numeric loop
 - `GetKeyword` result auto-stored into `$KEYWORDNAME`
 
 ### 3.29 Console Expansion
 
-The pcode console expands to a full-width overlay (60vh, 85% opacity) when the header is clicked.
+Expands to full-width overlay (60vh, 85% opacity) when header is clicked.
 
 ### 3.30 Macro Editor Architecture
 
-The Macro Editor is rendered at the `#content-area` level in `+page.svelte` rather than inside `#panel-container`. Entry points: clicking Edit or New in the Macro Library panel.
+Rendered at `#content-area` level in `+page.svelte` rather than inside `#panel-container`.
 
 ### 3.31 Inline Confirmation Bar Pattern
 
-Native OS dialogs are not reliably available in Tauri WebView. The established pattern for destructive action confirmation is an inline bar within the component. Always add `e.stopPropagation()` to prevent click-through to parent handlers.
+Native OS dialogs not reliably available in Tauri WebView. Use inline bars within the component. Always `e.stopPropagation()`.
 
 ### 3.32 WriteCurrent Atomic Writes
 
-All write plugins use a write-to-temp-then-rename pattern. File written to `<path>.tmp` first, then atomically renamed over the original.
+Write-to-temp-then-rename pattern. File written to `<path>.tmp` first, then atomically renamed over the original.
 
 ### 3.33 pcodeCommands.ts
 
-Single source of truth for all valid pcode command names. Both `Console.svelte` (tab completion) and `MacroEditor.svelte` (syntax highlighting) import from this file.
+Single source of truth for all valid pcode command names. Both `Console.svelte` and `MacroEditor.svelte` import from this file.
 
 ### 3.34 WriteFITS U16 Sign Conversion
 
-FITS `BITPIX=16` is signed. When writing u16 pixel data, subtract 32768 before casting to i16, then write `BZERO=32768`. Fixed from `v as i16` to `(v as i32 - 32768) as i16`.
+FITS `BITPIX=16` is signed. Subtract 32768 before casting to i16, write `BZERO=32768`.
 
 ### 3.35 Analysis Layer Architecture
 
-Analysis code lives in `src-tauri/src/analysis/` as pure computation modules with no Tauri or plugin dependencies.
+Analysis code lives in `src-tauri/src/analysis/` as pure computation modules — no Tauri or plugin dependencies.
 
 ### 3.36 AnalyzeFrames Classification
 
-**PASS / REJECT only** — SUSPECT classification was removed. A frame is REJECT if any single metric exceeds its threshold. `triggered_by` records which metrics caused the REJECT.
+**PASS / REJECT only.** A frame is REJECT if any single metric (excluding SNR) exceeds its threshold. `triggered_by` records which metrics caused the REJECT.
+
+**SNR excluded from rejection classification.** Retained in `AnalysisResult` and displayed as diagnostic only. Cross-session analysis confirmed a PSF artifact where worse-seeing frames produce higher SNR due to bloated star flux. SNR never drove a unique rejection not already caught by FWHM or Star Count.
 
 ### 3.37 Analysis Graph
 
-Viewer-region component replacing the image viewer when `$ui.activeView === 'analysisGraph'`. Key features:
+Viewer-region component when `$ui.activeView === 'analysisGraph'`. Key implementation details:
 
-- 5 metrics in Metric 1 dropdown; Metric 2 defaults to None
-- Reject lines drawn via `drawRejectLine()` helper — primary (red, left-aligned), secondary (warning color, right-aligned, thinner)
-- Both reject lines outlined in black on both sides for visibility against any background
-- Reject threshold values come from `applied_thresholds` in `get_analysis_results` response — always reflects current active thresholds since reclassification happens on every call
-- Outlier frames displayed as disconnected floating dots with warning-color square outline; line graph bridges across outlier positions
-- When both metrics are the same, Y-scales are forced equal
-- Dot click navigates to frame only if click is within dot radius + 6px vertically
-- **✓ Commit Results** button writes PXFLAG to all files via `commit_analysis_results`
+- SNR excluded from `applied_thresholds` — no reject line drawn for it
+- Dot appearance: all dots have 2px black border; PASS=white; O=red (#dc3232); T=yellow (#d4a820); B=blue (#3478dc)
+- Multi-category dots: split semicircle (left half = first color, right half = second color), slightly larger radius, black dividing line
+- `drawDot()` uses `categoryColors()` to extract ordered colors from category string
+- Legend: `drawLegend()` called at end of `drawChart()`; fixed top-left corner (PL+8, PT+8); always visible; 4 entries
+- Commit Results disabled for imported sessions (`is_imported` from `get_analysis_results`)
 
 ### 3.38 Star Annotation Overlay
 
-`ComputeFWHM` triggers a star annotation overlay. `drawStarAnnotations()` (Rust fetch) must NEVER be called from `renderBitmap()` — only `paintStarAnnotations()` (cache-only, synchronous).
+`drawStarAnnotations()` (Rust fetch) must NEVER be called from `renderBitmap()` — only `paintStarAnnotations()` (cache-only, synchronous).
 
 ### 3.39 consolePipe Store
 
-**Always use `pipeToConsole()` — never call `consolePipe.set()` directly.** `consolePipe` is a queue (`ConsoleLine[]`). Direct `.set()` calls corrupt the queue and cause spread errors on the next `pipeToConsole()` call (the spread over a non-array throws a TypeError). This applies everywhere outside `Console.svelte`: `QuickLaunch.svelte`, `MacroLibrary.svelte`, `MenuBar.svelte`.
+**Always use `pipeToConsole()` — never call `consolePipe.set()` directly.** Direct `.set()` corrupts the queue and causes spread TypeErrors.
 
 ### 3.40 View Registry (showView)
 
-Viewer-region component visibility managed through a central registry in `ui.ts`. All viewer-region visibility controlled exclusively via `ui.showView()`.
+All viewer-region visibility controlled exclusively via `ui.showView()`. Never individual boolean flags.
 
 ### 3.41 Analysis Results
 
-Sortable, scrollable table with Refresh and Commit Results buttons. `loadData()` is extracted as a named function called from both `onMount` and the Refresh button. **✓ Commit Results** writes PXFLAG to all files via `commit_analysis_results`.
+Two-row toolbar. Row 1: buttons. Row 2: session path display + optional IMPORTED badge.
+
+**PXFLAG toggle:** Right-click context menu shows "Set to PASS" or "Set to REJECT". Local state only until Commit. Toggled rows render with `.ar-row-toggled` (amber left border). All metric data preserved regardless of direction — category badge stays visible on REJECT→PASS toggles.
+
+**Imported sessions:** `is_imported: true` in response → IMPORTED badge shown, Commit disabled.
+
+**Commit sequence:** sync toggled flags → `commit_analysis_results` → on success: `ui.showView(null)`, `ui.clearViewer()`, `closeSession()`. Terminal operation.
 
 ### 3.42 notifications.running() — Pulse Animation + Expanded Bar
 
-The `running` notification type triggers:
-
-1. A CSS pulse animation on the status bar text and icon
-2. The status bar expands to 3× its normal height (66px from 22px) with 33px font, overlaying content above it via `position: absolute`
-3. Background becomes `rgba(0,0,0,0.85)` for readability
-4. Transitions back smoothly when the next notification replaces it
-
-`#app` must have `position: relative` for the absolute-positioned expanded bar to anchor correctly.
+`running` triggers: CSS pulse, 3× height expansion (66px), dark overlay, smooth transition back. `#app` must have `position: relative`.
 
 ### 3.43 Log Viewer
 
-Modal overlay triggered from Tools > Log Viewer. Auto-tail: polls `read_log_file` every 2 seconds.
+Modal overlay from Tools > Log Viewer. Auto-tail polls `read_log_file` every 2 seconds.
 
 ### 3.44 Macro Library
 
-Macros stored in SQLite (`photyx.db`) rather than as files on disk.
+Macros stored in SQLite (`photyx.db`).
 
 ### 3.47 Keyword Editor
 
-Inline editing model. Keyword name is read-only — renaming requires delete + add. Write Changes button calls `WriteFrame` (not `WriteCurrent`).
+Keyword name is read-only — renaming requires delete + add. Write Changes calls `WriteFrame`.
 
 ### 3.48 WriteFrame Plugin
 
-Writes the currently active frame back to its source file. Distinct from `WriteCurrent` which writes all loaded frames.
+Writes currently active frame only. Distinct from `WriteCurrent` which writes all loaded frames.
 
 ### 3.49 utils.rs — Shared Path Utilities
 
@@ -310,21 +307,19 @@ Writes the currently active frame back to its source file. Distinct from `WriteC
 
 ### 3.51 pcode Implementation Details
 
-Variables are resolved inside the evaluator via a `HashMap` parameter — **never pre-substituted**. `Print` and `Assert` are handled as special cases in `execute_line`.
+Variables resolved inside the evaluator via `HashMap` — never pre-substituted. `Print` and `Assert` handled as special cases in `execute_line`.
 
 ### 3.52 ContourHeatmap Algorithm
 
-Spatial FWHM heatmap. Star detection → adaptive grid → IDW interpolation → bicubic upscale → colormap. Output stored in `ctx.variables["NEW_FILE"]`.
+Star detection → adaptive grid → IDW interpolation → bicubic upscale → colormap. Output in `ctx.variables["NEW_FILE"]`.
 
 ### 3.53 Blink Review Workflow
 
-1. Fast blink pass — PXFLAG red border overlay (after Commit Results)
+1. Fast blink pass — PXFLAG red border overlay (after Commit)
 2. Deliberate review — P/R keys write PXFLAG immediately
 3. Delete confirmed rejects
 
 ### 3.54 client_actions — Cross-Boundary Side Effects
-
-When a plugin needs the frontend to perform an action after execution, it declares this by emitting a `client_action` string in its `PluginOutput::Data` JSON.
 
 | Action                | Emitted by   | Frontend effect                 |
 | --------------------- | ------------ | ------------------------------- |
@@ -334,160 +329,194 @@ When a plugin needs the frontend to perform an action after execution, it declar
 
 ### 3.55 AppSettings Architecture
 
-All application settings held in a single `AppSettings` struct stored in `PhotoxState` behind a `Mutex`. Two-source population: `defaults.rs` (hard-coded) + `preferences` table (persisted).
+Single `AppSettings` struct in `PhotoxState` behind `Mutex`. Two-source: `defaults.rs` + `preferences` table.
 
-**Startup sequence:**
-
-1. `AppSettings::new()` — initializes from `defaults.rs`
-2. `load_from_db()` — overwrites persisted fields from `preferences` table
-3. `load_threshold_profiles()` — loads threshold profiles; seeds "Default" profile if table empty
-4. `AppContext` initialized with autostretch and analysis threshold values from `AppSettings`
-5. `PhotoxState` constructed with `Mutex<AppSettings>`
+**Startup:** `new()` → `load_from_db()` → `load_threshold_profiles()` → populate `AppContext` → construct `PhotoxState`.
 
 ### 3.56 Threshold Profile Architecture
 
-`ThresholdProfile` struct in `settings/mod.rs` holds 5 rejection thresholds (Bg Median, SNR, FWHM, Star Count, Eccentricity). `AppSettings` holds `threshold_profiles: Vec<ThresholdProfile>` and `active_threshold_profile_id: Option<i64>`.
+`ThresholdProfile` in `settings/mod.rs`. 5 rejection thresholds.
 
-**Profile name:** Default profile is seeded with name "Default" (not "Standard").
-
-**Sigma direction:** SNR and Star Count are `-σ` metrics (reject if below threshold). Their defaults and clamp bounds are negative:
-
+**Sigma direction:** SNR and Star Count are `−σ`. Stored as negative values in DB and frontend:
 - `DEFAULT_SNR_SIGMA = -2.5`, clamped to `[-SNR_SIGMA_MAX, -SNR_SIGMA_MIN]`
-- `DEFAULT_STAR_COUNT_SIGMA = -1.5`, clamped to `[-STAR_COUNT_SIGMA_MAX, -STAR_COUNT_SIGMA_MIN]`
+- `DEFAULT_STAR_COUNT_SIGMA = -3.0`, clamped to `[-STAR_COUNT_SIGMA_MAX, -STAR_COUNT_SIGMA_MIN]`
 
-**Flow:** Dialog → `save_threshold_profile` → DB + in-memory vec → `set_active_threshold_profile` → DB + `ctx.analysis_thresholds` immediately propagated → `get_analysis_results` reclassifies using new thresholds on next call.
+**Frontend `THRESHOLD_FIELDS`:** `min`/`max` for negative-direction fields use actual signed values (e.g. `min: -4.0, max: -0.5`). No helper functions needed. `SNR_SIGMA_DEFAULT = -2.5`, `STAR_COUNT_SIGMA_DEFAULT = -3.0` in `constants.ts`.
 
-**DB schema note:** The `threshold_profiles` table still contains `bg_stddev_reject_sigma` and `bg_gradient_reject_sigma` columns as orphaned data from when those metrics were removed. The Rust code ignores these columns. A schema migration to drop them is deferred.
+**SNR in AppContext:** Stored as positive (`.abs()` applied on save) but excluded from `classify_frame()` and `applied_thresholds`.
 
-**Delete behavior:** Any profile including the last one can be deleted. If all profiles are deleted, a "Default" profile is re-seeded and made active.
+**Flow:** Dialog → `save_threshold_profile` → DB + vec → `set_active_threshold_profile` → DB + `ctx.analysis_thresholds` → `get_analysis_results` reclassifies on next call.
+
+**DB orphaned columns:** `bg_stddev_reject_sigma` and `bg_gradient_reject_sigma` remain in schema; Rust ignores them. Migration deferred.
+
+**Delete:** Any profile including last can be deleted; Default re-seeded if all deleted.
 
 ### 3.57 Dropdown Component (Dropdown.svelte)
 
-Custom CSS-friendly select component that escapes the stacking context by appending its menu to `document.body`.
+Appends menu to `document.body` to escape stacking contexts.
 
-**Critical implementation rules:**
-
-- Document click listener uses **bubble phase** (`false`), not capture phase (`true`). Capture phase caused the listener to fire before menu item `onclick` handlers, breaking selection.
-- Uses `createEventDispatcher` to emit `'change'` events. Parents must use `value={x} on:change={(e) => { x = e.detail; }}` — NOT `bind:value`. The Svelte 4/5 boundary means `bind:value` does not reliably propagate changes back to Svelte 5 parent components.
-- `IconSidebar.svelte` outside-click handler includes `.dropdown-menu` in its exclusion list so clicking a menu item appended to `document.body` does not close the sliding panel.
-- `ui.setBlinkResolution()` must be called explicitly when `blinkResolution` changes in `InfoPanel.svelte` so `Viewer.svelte` uses the correct scale factor.
+- Document click listener: **bubble phase** (`false`), not capture
+- Use `value={x} on:change={(e) => { x = e.detail; }}` — NOT `bind:value`
+- `IconSidebar.svelte` outside-click handler excludes `.dropdown-menu`
+- `ui.setBlinkResolution()` must be called explicitly after resolution changes
 
 ### 3.58 Analysis Graph — Applied Thresholds
 
-The reject threshold lines on the Analysis Graph always reflect the current active profile thresholds, since `get_analysis_results` reclassifies on every call. After `commit_analysis_results`, `ctx.last_analysis_thresholds` is updated to match the committed thresholds.
+Always reflects current active profile thresholds. SNR excluded from `applied_thresholds`. After commit, `ctx.last_analysis_thresholds` updated.
 
 ### 3.59 AnalyzeFrames — Metric Correlation Analysis
 
-Cross-session Pearson correlation analysis (five sessions: NGC6910-B 80 frames, NGC6910-C 80 frames, M104 62 frames, NGC7380 160 frames, M13 107 frames) shows:
+Cross-session analysis (5 sessions, 489 frames total):
+- Bg Std Dev: r = 0.92–0.999 with Bg Median — **removed**
+- Bg Gradient: session-dependent sign reversal — **removed**
+- Eccentricity: orthogonal to background metrics — **essential**
+- FWHM + Star Count: strongest discriminators (r = −0.63 to −0.96)
+- SNR: PSF artifact confirmed — **excluded from rejection classification**
 
-- **Bg Std Dev** is near-perfectly correlated with Bg Median (r = 0.92–0.999) across all five sessions — **removed from analysis engine**
-- **Bg Gradient** is session-dependent with sign reversal between broadband and narrowband sessions — **removed from analysis engine**
-- **Eccentricity** is orthogonal to all background metrics in all sessions — essential
-- **FWHM** and **Star Count** are consistently the strongest quality discriminators (r = −0.63 to −0.96)
-- **SNR** has a confirmed PSF artifact — worse-seeing frames produce higher SNR readings due to bloated star flux; estimator revision planned
-
-Both `BackgroundStdDev` and `BackgroundGradient` pcode commands are retained as deprecated stubs for script compatibility but no longer write to `AnalysisResult` fields.
+Both `BackgroundStdDev` and `BackgroundGradient` pcode commands retained as deprecated stubs.
 
 ### 3.60 AnalyzeFrames — Two-Pass Iterative Sigma Clipping
 
-`compute_session_stats_iterative()` in `session_stats.rs` implements two-pass outlier exclusion:
+`compute_session_stats_iterative()` in `session_stats.rs`:
 
-- **Pass 2a** — compute initial stats across all frames
-- **Pass 2b** — identify outliers: frames where any metric deviates > `OUTLIER_SIGMA_THRESHOLD` (4.0) σ from the initial mean. Eccentricity (absolute metric) is excluded from outlier detection.
-- **Pass 2c** — recompute clean stats excluding outlier frames; fall back to initial stats if all frames are outliers
+- **Pass 2a** — initial stats across all frames
+- **Pass 2b** — identify outliers: any metric > 4.0σ from initial mean (eccentricity excluded)
+- **Pass 2c** — recompute stats excluding outliers; fall back to initial if all outliers
 
-Returns `(SessionStats, HashSet<String>)` — clean stats + set of outlier filenames.
-
-Outlier frames are stored in `ctx.outlier_frame_paths` and returned in `get_analysis_results` as `outlier_paths`. The Analysis Graph draws these as disconnected floating dots with a warning-color square outline; the line bridges across them.
+Returns `(SessionStats, HashSet<String>)`.
 
 ### 3.61 AnalyzeFrames — On-the-Fly Reclassification
 
-`get_analysis_results` in `commands/analysis.rs` takes a `&mut` context lock and reclassifies all frames on every call:
+`get_analysis_results` reclassifies on every call for live sessions. Skipped if `ctx.is_imported_session` is true.
 
-1. Returns empty if `ctx.analysis_results` is empty (AnalyzeFrames hasn't run)
-2. Runs `compute_session_stats_iterative` on cached metrics
-3. Stores updated `last_session_stats` and `outlier_frame_paths` back into ctx
-4. Reclassifies each frame using current `ctx.analysis_thresholds`
-5. Updates `flag` and `triggered_by` in `ctx.analysis_results` in place
-6. Returns fresh results including `applied_thresholds` from current active profile
+1. Returns empty if `ctx.analysis_results` is empty
+2. Skips if `is_imported_session`
+3. Runs `compute_session_stats_iterative`; updates ctx
+4. Reclassifies each frame; calls `categorize_rejection()` for REJECTs
+5. Updates `flag`, `triggered_by`, `rejection_category` in place
+6. Returns results + `applied_thresholds` (SNR excluded) + `session_path` + `is_imported`
 
-This means threshold changes take effect immediately on the next Refresh — no need to rerun AnalyzeFrames.
+### 3.62 Commit Results — Enhanced Pattern
 
-### 3.62 Commit Results — PXFLAG Write Pattern
+`commit_analysis_results` — terminal operation:
 
-`commit_analysis_results` Tauri command:
+1. Guard: error if `is_imported_session`
+2. Write PXFLAG to all buffers in memory
+3. Drop lock
+4. Dispatch `WriteCurrent` — flush all to disk atomically
+5. Create `<active_directory>/rejected/` if absent
+6. Move each REJECT file: `<path>` → `<dir>/rejected/<name>.<ext>.rejected`
+7. Re-key `file_list`, `image_buffers`, `analysis_results` to new paths
+8. Return success message
 
-1. Iterates `ctx.file_list`, writes PXFLAG keyword to each `image_buffers` entry based on current `ctx.analysis_results` flag
-2. Drops the context lock
-3. Dispatches `WriteCurrent` via the plugin registry to flush all buffers to disk atomically
-4. Sets `ctx.last_analysis_thresholds = Some(ctx.analysis_thresholds.clone())`
+**Order matters:** WriteCurrent must run before file moves — it looks up buffers by original path.
 
-**PXFLAG is never written automatically** — only by explicit user action via Commit Results. This decouples metric computation and classification from file writes.
+**Frontend:** sync toggled flags → `commit_analysis_results` → success: `ui.showView(null)`, `ui.clearViewer()`, `closeSession()`.
 
 ### 3.63 AppContext.clear_session()
 
-`clear_session()` is the single authoritative method for clearing all session state. Called by all four read plugins (`ReadFIT`, `ReadXISF`, `ReadTIFF`, `ReadAll`) and `ClearSession`. Clears:
+Clears all session state. Resets `is_imported_session` to `false`. Preserves `active_directory`.
 
-- `file_list`, `image_buffers`, `display_cache`, `full_res_cache`
-- `blink_cache_12`, `blink_cache_25`, `blink_cache_status`
-- `analysis_results`, `outlier_frame_paths`, `last_session_stats`, `last_analysis_thresholds`
-- `last_stf_params`, `last_histogram`, `variables`
-- `current_frame` reset to 0
+### 3.64 Rejection Categories
 
-`active_directory` is preserved.
+`categorize_rejection()` in `session_stats.rs`:
+
+| Triggered                                | Category |
+| ---------------------------------------- | -------- |
+| FWHM and/or Eccentricity only            | O        |
+| StarCount only (no BackgroundMedian)     | T        |
+| BackgroundMedian only                    | B        |
+| FWHM/Ecc + StarCount                     | OT       |
+| FWHM/Ecc + BackgroundMedian             | OB       |
+| BackgroundMedian + StarCount            | BT       |
+| FWHM/Ecc + BackgroundMedian + StarCount | OBT      |
+
+O always leads (least recoverable). B leads T when both present (B is root cause of T). Unknown trigger → "O" fallback.
+
+`rejection_category: Option<String>` in `AnalysisResult`. `None` for PASS; initialized to `None` in both `AnalyzeFrames` struct initializers.
+
+### 3.65 Session JSON Export/Import
+
+**Export (`exportSessionJson()` in `MenuBar.svelte`):**
+- Calls `get_analysis_results` + `get_threshold_profiles`
+- Default filename: `<target>_<YYYYMMDD>.json` from first frame basename (`Light_<target>_..._<YYYYMMDD>-...`)
+- All filenames stored as basenames
+- JSON: `photyx_version`, `exported_at`, `active_directory`, `threshold_profile_name`, `thresholds`, `session_stats`, `outlier_paths[]`, `frames[]`
+- `writeTextFile` requires `fs:allow-write-text-file` capability
+
+**Import (`importSessionJson()` in `MenuBar.svelte`):**
+- `readTextFile` → validate → `load_analysis_json` Tauri command
+- Rust: clears session, sets `active_directory`, reconstructs full paths (dir + "/" + basename), populates analysis state, sets `is_imported_session = true`
+- Frontend: opens Analysis Results automatically
+- No images loaded — display only
+
+**Capability requirements:** `fs:allow-read-text-file` and `fs:allow-write-text-file` with `$HOME`, `$DESKTOP`, `$DOWNLOAD`, `$DOCUMENT`, `$APPDATA/Photyx/**`.
+
+### 3.66 PXFLAG Toggle in Analysis Results
+
+Right-click context menu. "Set to PASS" or "Set to REJECT" based on current flag. Local state only until Commit.
+
+- `toggled: boolean` on `FrameResult` interface
+- `.ar-row-toggled` class: amber left border, subtle background
+- All data preserved regardless of direction; badge stays visible on REJECT→PASS toggles
+- Before commit: `invoke('set_frame_flag', { path, flag })` for each toggled frame
+
+`set_frame_flag`: updates `ctx.analysis_results[path].flag` directly. No reclassification side effects.
 
 ---
 
 ## 4. Tauri Commands (Implemented)
 
-| Command                           | Description                                                                                                   |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `dispatch_command`                | Dispatches a single pcode command (legacy interactive path)                                                   |
-| `run_script`                      | Executes a pcode script string; returns ScriptResponse                                                        |
-| `debug_buffer_info`               | Returns buffer metadata                                                                                       |
-| `commit_analysis_results`         | Writes PXFLAG to all image buffers, flushes to disk via WriteCurrent, updates last_analysis_thresholds        |
-| `get_analysis_results`            | Reclassifies all frames on the fly using cached metrics + current thresholds; returns frames, stats, outliers |
-| `get_active_threshold_profile_id` | Returns the currently active threshold profile id                                                             |
-| `get_autostretch_frame`           | Computes Auto-STF stretch on current frame, returns JPEG data URL                                             |
-| `get_blink_cache_status`          | Returns blink cache build status                                                                              |
-| `get_blink_frame`                 | Returns a blink frame as JPEG data URL                                                                        |
-| `get_current_frame`               | Returns current image as raw JPEG data URL                                                                    |
-| `get_full_frame`                  | Returns current image at full resolution with STF applied                                                     |
-| `get_histogram`                   | Computes histogram bins + stats for current frame                                                             |
-| `get_keywords`                    | Returns all keywords for current frame                                                                        |
-| `get_pixel`                       | Returns raw pixel value(s) at source coordinates                                                              |
-| `get_session`                     | Returns current session state                                                                                 |
-| `get_star_positions`              | Re-runs star detection, returns positions for annotation overlay                                              |
-| `get_threshold_profiles`          | Returns all threshold profiles from AppSettings                                                               |
-| `get_variable`                    | Returns a pcode variable value                                                                                |
-| `list_log_files`                  | Lists available log files                                                                                     |
-| `list_macros`                     | Lists macros from DB                                                                                          |
-| `list_plugins`                    | Returns list of registered plugins                                                                            |
-| `load_file`                       | Reads a single image file, injects into session                                                               |
-| `read_log_file`                   | Reads and parses a log file                                                                                   |
-| `save_threshold_profile`          | Insert or update a threshold profile                                                                          |
-| `delete_threshold_profile`        | Delete a threshold profile; re-seeds Default if last one deleted                                              |
-| `set_active_threshold_profile`    | Sets active profile id; propagates thresholds into AppContext immediately                                     |
-| `start_background_cache`          | Spawns background task to build blink cache JPEGs                                                             |
-| `check_crash_recovery`            | Returns crash recovery candidate if present                                                                   |
-| `close_session`                   | Marks current session as closed                                                                               |
-| `open_session`                    | Records session open in session_history                                                                       |
-| `write_crash_recovery`            | Writes crash recovery state                                                                                   |
-| `backup_database`                 | Creates timestamped ZIP backup of photyx.db                                                                   |
-| `restore_database`                | Restores photyx.db from ZIP backup                                                                            |
-| `delete_macro`                    | Deletes a macro from the DB                                                                                   |
-| `get_macros`                      | Returns all macros from DB                                                                                    |
-| `get_macro_versions`              | Returns version history for a macro                                                                           |
-| `increment_macro_run_count`       | Increments run_count for a macro                                                                              |
-| `rename_macro`                    | Renames a macro                                                                                               |
-| `restore_macro_version`           | Restores a macro to a previous version                                                                        |
-| `save_macro`                      | Saves (insert or update) a macro                                                                              |
-| `get_all_preferences`             | Returns all preferences as key/value map                                                                      |
-| `set_preference`                  | Writes a single preference to DB and AppSettings                                                              |
-| `get_quick_launch_buttons`        | Returns Quick Launch button assignments                                                                       |
-| `save_quick_launch_buttons`       | Saves Quick Launch button assignments                                                                         |
-| `get_recent_directories`          | Returns recent directory history                                                                              |
-| `record_directory_visit`          | Records a directory visit                                                                                     |
+| Command                           | Description                                                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `dispatch_command`                | Dispatches a single pcode command (legacy interactive path)                                                                     |
+| `run_script`                      | Executes a pcode script string; returns ScriptResponse                                                                          |
+| `debug_buffer_info`               | Returns buffer metadata                                                                                                         |
+| `commit_analysis_results`         | Writes PXFLAG to buffers, flushes via WriteCurrent, moves REJECT files to rejected/, re-keys ctx. Terminal operation.           |
+| `get_analysis_results`            | Reclassifies frames (skipped for imported); returns frames, stats, outliers, session_path, is_imported                          |
+| `get_active_threshold_profile_id` | Returns active threshold profile id                                                                                             |
+| `get_autostretch_frame`           | Computes Auto-STF stretch, returns JPEG data URL                                                                                |
+| `get_blink_cache_status`          | Returns blink cache build status                                                                                                |
+| `get_blink_frame`                 | Returns blink frame as JPEG data URL                                                                                            |
+| `get_current_frame`               | Returns current image as raw JPEG data URL                                                                                      |
+| `get_full_frame`                  | Returns current image at full resolution with STF applied                                                                       |
+| `get_histogram`                   | Computes histogram bins + stats                                                                                                 |
+| `get_keywords`                    | Returns all keywords for current frame                                                                                          |
+| `get_pixel`                       | Returns raw pixel value(s) at source coordinates                                                                                |
+| `get_session`                     | Returns current session state                                                                                                   |
+| `get_star_positions`              | Re-runs star detection, returns positions for annotation overlay                                                                |
+| `get_threshold_profiles`          | Returns all threshold profiles from AppSettings                                                                                 |
+| `get_variable`                    | Returns a pcode variable value                                                                                                  |
+| `list_log_files`                  | Lists available log files                                                                                                       |
+| `list_macros`                     | Lists macros from DB                                                                                                            |
+| `list_plugins`                    | Returns list of registered plugins                                                                                              |
+| `load_analysis_json`              | Clears session; populates analysis state from JSON payload; sets is_imported_session = true                                     |
+| `load_file`                       | Reads a single image file, injects into session                                                                                 |
+| `read_log_file`                   | Reads and parses a log file                                                                                                     |
+| `save_threshold_profile`          | Insert or update a threshold profile                                                                                            |
+| `delete_threshold_profile`        | Delete a threshold profile; re-seeds Default if last deleted                                                                    |
+| `set_active_threshold_profile`    | Sets active profile; propagates thresholds into AppContext immediately                                                          |
+| `set_frame_flag`                  | Updates PASS/REJECT flag for a single frame in ctx.analysis_results by path                                                     |
+| `start_background_cache`          | Spawns background task to build blink cache JPEGs                                                                               |
+| `check_crash_recovery`            | Returns crash recovery candidate if present                                                                                     |
+| `close_session`                   | Marks session closed in DB; resets is_imported_session                                                                          |
+| `open_session`                    | Records session open in session_history                                                                                         |
+| `write_crash_recovery`            | Writes crash recovery state                                                                                                     |
+| `backup_database`                 | Creates timestamped ZIP backup of photyx.db                                                                                     |
+| `restore_database`                | Restores photyx.db from ZIP backup                                                                                              |
+| `delete_macro`                    | Deletes a macro from DB                                                                                                         |
+| `get_macros`                      | Returns all macros from DB                                                                                                      |
+| `get_macro_versions`              | Returns version history for a macro                                                                                             |
+| `increment_macro_run_count`       | Increments run_count for a macro                                                                                                |
+| `rename_macro`                    | Renames a macro                                                                                                                 |
+| `restore_macro_version`           | Restores a macro to a previous version                                                                                          |
+| `save_macro`                      | Saves (insert or update) a macro                                                                                                |
+| `get_all_preferences`             | Returns all preferences as key/value map                                                                                        |
+| `set_preference`                  | Writes a single preference to DB and AppSettings                                                                                |
+| `get_quick_launch_buttons`        | Returns Quick Launch button assignments                                                                                         |
+| `save_quick_launch_buttons`       | Saves Quick Launch button assignments                                                                                           |
+| `get_recent_directories`          | Returns recent directory history                                                                                                |
+| `record_directory_visit`          | Records a directory visit                                                                                                       |
 
 ---
 
@@ -504,9 +533,9 @@ See §3.35 and `photyx_reference.md` §9 for plugin status table.
 | `aboutOpen`              | Whether the About modal is open                                     |
 | `activePanel`            | Currently open sidebar panel                                        |
 | `activeView`             | Currently active viewer-region view (null = image viewer)           |
-| `analysisParametersOpen` | Whether the Analysis Parameters (threshold profiles) dialog is open |
+| `analysisParametersOpen` | Whether the Analysis Parameters dialog is open                      |
 | `annotationToken`        | Positive = show annotations, negative = clear annotations           |
-| `autostretchImageUrl`    | Data URL of AutoStretch result                                      |
+| `autostretchImageUrl`    | Data URL of AutoStretch result                                       |
 | `blinkCached`            | Whether blink cache has been built                                  |
 | `blinkCaching`           | Whether blink cache build is in progress                            |
 | `blinkImageUrl`          | Current blink frame data URL                                        |
@@ -534,46 +563,47 @@ See §3.35 and `photyx_reference.md` §9 for plugin status table.
 
 | Issue                                         | Notes                                                                                                                                    |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| cfitsio parallel loading crashes              | Thread-safety issue — sequential loading used for now                                                                                    |
+| cfitsio parallel loading crashes              | Thread-safety — sequential loading used                                                                                                  |
 | Blink UI jitter                               | Suspected Tauri WebView compositor artifact on Windows; deferred                                                                         |
-| Full-res frames are JPEG not lossless         | Disclosed via disclaimer bar; pixel readout always uses raw buffer                                                                       |
-| Long-running commands block UI                | pcode invoke awaits Rust response, freezing JS; fix requires Tauri event system; deferred                                                |
-| Zoom is approximate at high levels            | Full-res cache uses AutoStretch STF params computed on display-res downsample                                                            |
-| XISF Vector/Matrix properties                 | Read as placeholder string, skipped on write; deferred                                                                                   |
-| Rayon thread count not user-configurable      | Hardcoded to num_cpus-1; setting exists but not yet wired                                                                                |
-| stderr log output in dev mode                 | Duplicated to terminal via fmt::layer(); remove when no longer needed                                                                    |
-| Sidebar icon tooltips clipped by Quick Launch | CSS stacking context issue; deferred                                                                                                     |
-| Plugin boilerplate is verbose                 | Deferred to Phase 10 or later                                                                                                            |
+| Full-res frames are JPEG not lossless         | Disclosed via disclaimer bar; pixel readout uses raw buffer                                                                              |
+| Long-running commands block UI                | Requires Tauri event system; deferred                                                                                                    |
+| Zoom approximate at high levels               | Full-res cache uses STF params from display-res downsample                                                                               |
+| XISF Vector/Matrix properties                 | Read as placeholder, skipped on write; deferred                                                                                          |
+| Rayon thread count not configurable           | Hardcoded to num_cpus-1                                                                                                                  |
+| stderr log output in dev mode                 | Duplicated to terminal; remove when no longer needed                                                                                     |
+| Sidebar icon tooltips clipped by Quick Launch | CSS stacking context; deferred                                                                                                           |
+| Plugin boilerplate is verbose                 | Deferred to Phase 10                                                                                                                     |
 | Single file load blink isolation              | Files loaded via LoadFile included in ctx.file_list                                                                                      |
 | AutoStretch performance in dev mode           | 3–5 seconds for RGB 9MP in debug build; near-instant in release                                                                          |
 | AutoStretch lost on Pixels tab switch         | Viewer reverts to raw display; deferred                                                                                                  |
-| SNR estimator PSF artifact                    | Worse-seeing frames produce higher SNR readings due to bloated star flux; confirmed across multiple sessions; estimator revision planned |
-| AnalyzeFrames progress reporting              | No per-frame progress; requires Tauri event system; deferred with all async dispatch work                                                |
-| threshold_profiles table orphaned columns     | bg_stddev_reject_sigma and bg_gradient_reject_sigma remain in DB schema; schema migration to drop them deferred                          |
+| SNR estimator PSF artifact                    | Worse-seeing frames produce higher SNR; confirmed across sessions; excluded from rejection; estimator revision planned                    |
+| AnalyzeFrames progress reporting              | No per-frame progress; requires Tauri event system; deferred                                                                             |
+| threshold_profiles orphaned columns           | bg_stddev_reject_sigma and bg_gradient_reject_sigma remain in schema; migration deferred                                                 |
+| Memory leak suspected                         | 103GB virtual / 20GB RSS observed after multiple sessions; audit deferred                                                                |
 
 ---
 
 ## 8. Phase Completion Status
 
-| Phase    | Status                   | Notes                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| -------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 1  | ✅ Complete               | Scaffold, plugin host, FITS reader, notification bar, logging                                                                                                                                                                                                                                                                                                                                                                |
-| Phase 2  | ✅ Complete               | Display cache, AutoStretch, blink engine, histogram, keywords, UI file browser, pixel tracking, WCS, zoom, pan, full-res cache, canvas viewer                                                                                                                                                                                                                                                                                |
-| Phase 3  | ✅ Complete               | photyx-xisf crate, ReadAllXISFFiles, WriteAllXISFFiles, ReadAllTIFFFiles, ReadAllFiles, RGB display/histogram, background display cache                                                                                                                                                                                                                                                                                      |
-| Phase 4  | ✅ Complete               | Keyword plugins, WriteAllFITFiles, WriteAllTIFFFiles, WriteCurrentFiles, AstroTIFF keyword round-trip, FITS signed/unsigned 16-bit, blink cache quality, relative path resolution, window resize fix, pwd command                                                                                                                                                                                                            |
-| Phase 5  | ✅ Complete               | pcode interpreter with If/Else/EndIf and For/EndFor; Macro Editor UI with syntax highlighting; Quick Launch panel with store persistence and context menu; command rename refactor; scope parameter on keyword commands; WriteCurrent atomic writes; ScriptResponse flags; pcodeCommands.ts single source of truth                                                                                                           |
-| Phase 6  | ✅ Complete               | UI cleanup complete                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Phase 7  | ✅ Complete               | AnalyzeFrames with 5 native metrics; two-pass iterative sigma clipping; PASS/REJECT classification; on-the-fly reclassification in get_analysis_results; Commit Results pattern; Analysis Graph viewer-region component; star annotation overlay; consolePipe store; blink red border overlay; viewer filename overlay; theme-aware chart colors                                                                             |
-| Phase 8  | ✅ Substantially complete | Moment-based FWHM; 8×8 background gradient grid; 5-pixel minimum star filter; WriteFITS U16 sign conversion fix; histogram canvas width fix; UI audit pass; ContourHeatmap plugin; display pipeline refactor; image_reader.rs; load_file Tauri command; LoadFile pcode command; DispatchResponse.data field; histogram hover readout                                                                                         |
-| Phase 9  | 🔄 In progress           | Embedded SQLite (✅), Quick Launch persistence (✅), session history (✅), crash recovery (✅), macros migrated to SQLite (✅), AppSettings global object (✅), Preferences dialog (✅), threshold profiles (✅ complete — ThresholdProfilesDialog, 5 Tauri commands, DB persistence, wired to AnalyzeFrames and Analysis Graph); remaining: analysis results persistence, console history persistence, status bar profile indicator |
-| Phase 10 | ⬜ Not started            | User plugin loading, plugin manifest system, macro library, plugin directory, Plugin Manager UI                                                                                                                                                                                                                                                                                                                              |
-| Deferred | ⏸ Parked                 | Full keyword management UI, PNG/JPEG readers and writers, debayering, async dispatch, REST API (Axum), CLI access, WASM analysis plugins                                                                                                                                                                                                                                                                                     |
+| Phase    | Status                   | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| -------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 1  | ✅ Complete               | Scaffold, plugin host, FITS reader, notification bar, logging                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Phase 2  | ✅ Complete               | Display cache, AutoStretch, blink engine, histogram, keywords, UI file browser, pixel tracking, WCS, zoom, pan, full-res cache, canvas viewer                                                                                                                                                                                                                                                                                                                       |
+| Phase 3  | ✅ Complete               | photyx-xisf crate, ReadXISF, WriteXISF, ReadTIFF, ReadAll, RGB display/histogram, background display cache                                                                                                                                                                                                                                                                                                                                                          |
+| Phase 4  | ✅ Complete               | Keyword plugins, WriteFIT, WriteTIFF, WriteCurrent, AstroTIFF round-trip, FITS u16 fix, path resolution                                                                                                                                                                                                                                                                                                                                                             |
+| Phase 5  | ✅ Complete               | pcode interpreter, Macro Editor, Quick Launch, GetKeyword, RunMacro, atomic writes                                                                                                                                                                                                                                                                                                                                                                                  |
+| Phase 6  | ✅ Complete               | UI cleanup                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Phase 7  | ✅ Complete               | AnalyzeFrames, PXFLAG, Analysis Graph, star annotations, consolePipe, blink overlay                                                                                                                                                                                                                                                                                                                                                                                 |
+| Phase 8  | ✅ Substantially complete | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                                                                                                                                                                                                                                                                                                                                          |
+| Phase 9  | 🔄 In progress           | SQLite (✅), Quick Launch (✅), session history (✅), crash recovery (✅), macros in SQLite (✅), AppSettings (✅), Preferences (✅), threshold profiles (✅), rejection categories O/T/B (✅), SNR excluded from classification (✅), star count −3.0σ (✅), Session menu + JSON export/import (✅), commit file move to rejected/ (✅), PXFLAG toggle via right-click (✅); remaining: analysis results persistence, console history persistence, status bar profile indicator |
+| Phase 10 | ⬜ Not started            | User plugin loading, plugin manifest system, Plugin Manager UI                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Deferred | ⏸ Parked                 | Full keyword management UI, PNG/JPEG readers/writers, debayering, async dispatch, REST API, CLI, WASM plugins, memory audit, AnalyzeFrames CLI binary                                                                                                                                                                                                                                                                                                                |
 
 ## 9. Settings Persistence (Phase 9)
 
-All settings persistence is driven by the SQLite database (`photyx.db`) via `rusqlite`. The authoritative reference for the schema, persistence tiers, and implementation plan is `photyx_persistence_inventory.md`. The authoritative reference for which settings exist, their defaults, and their persistence/user-pref classification is `photyx_reference.md` §5.
+All persistence via SQLite (`photyx.db`). See `photyx_persistence_inventory.md` for schema and `photyx_reference.md` §5 for settings tables.
 
-The `AppSettings` struct is the global in-memory settings object. Loaded at startup from `defaults.rs` and the `preferences` table, then `load_threshold_profiles()` loads threshold profiles (seeding "Default" if the table is empty). All reads come from the struct; writes go to both the struct and the DB simultaneously via `save_preference()`. See §3.55 for the full architecture.
+`AppSettings` is the global in-memory settings object. Loaded from `defaults.rs` + `preferences` table; `load_threshold_profiles()` seeds "Default" if table empty. All reads from struct; writes to struct + DB via `save_preference()`.
 
 Settings that remain in localStorage: none — migration complete as of Phase 9 sub-phase B.
 
@@ -581,4 +611,4 @@ Settings that remain in localStorage: none — migration complete as of Phase 9 
 
 ## 10. Database Schema
 
-See `photyx_persistence_inventory.md` for the full DDL and schema documentation. All tables live in `APPDATA/Photyx/photyx.db`.
+See `photyx_persistence_inventory.md` for full DDL. All tables live in `APPDATA/Photyx/photyx.db`.

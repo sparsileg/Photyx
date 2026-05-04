@@ -249,20 +249,22 @@ verbatim in the FITSKeyword block only.
 
 ### 4.1 Metrics
 
-| Metric             | Description                                             | Threshold Type           | Default Reject |
-| ------------------ | ------------------------------------------------------- | ------------------------ | -------------- |
-| Background std dev | Noise floor estimate                                    | Sigma (session-relative) | > +2.5σ        |
-| SNR estimate       | Star signal / background noise                          | Sigma (session-relative) | < -2.5σ        |
-| FWHM               | Median FWHM via intensity-weighted second-order moments | Sigma (session-relative) | > +2.5σ        |
-| Eccentricity       | Median eccentricity via second-order moments            | Absolute                 | > 0.85         |
-| Star count         | Stars detected (minimum 5 connected pixels)             | Sigma (session-relative) | < -1.5σ        |
+| Metric             | Description                                             | Threshold Type           | Default Reject | Rejection Driver        |
+| ------------------ | ------------------------------------------------------- | ------------------------ | -------------- | ----------------------- |
+| Background median  | Sigma-clipped sky background level                      | Sigma (session-relative) | > +2.5σ        | ✓                       |
+| SNR estimate       | Star signal / background noise                          | Sigma (session-relative) | < -2.5σ        | ✗ diagnostic only       |
+| FWHM               | Median FWHM via intensity-weighted second-order moments | Sigma (session-relative) | > +2.5σ        | ✓                       |
+| Eccentricity       | Median eccentricity via second-order moments            | Absolute                 | > 0.85         | ✓                       |
+| Star count         | Stars detected (minimum 5 connected pixels)             | Sigma (session-relative) | < -3.0σ        | ✓                       |
 
 ### 4.2 Classification
 
 - **PASS / REJECT only** — no SUSPECT classification
-- A frame is REJECT if any single metric exceeds its threshold
+- A frame is REJECT if any single metric (excluding SNR) exceeds its threshold
 - `triggered_by` records which metrics caused the REJECT (visible in Analysis Graph tooltip)
-- PXFLAG keyword is written to each file immediately when AnalyzeFrames completes
+- Each REJECT frame is assigned a rejection category: O (Optical), T (Transparency), B (Sky Brightness), or combinations (OT, OB, BT, OBT)
+- PXFLAG keyword is written to files on Commit Results (not automatically on AnalyzeFrames completion)
+- On Commit: REJECT files are moved to a `rejected/` subfolder and renamed `<name>.<ext>.rejected`
 
 ### 4.3 PXFLAG Keyword
 
@@ -347,14 +349,14 @@ Named sets of rejection thresholds stored in the `threshold_profiles`
 table. The active profile is tracked by
 `preferences.active_threshold_profile_id`.
 
-| Setting                  | Type     | Default  | Min  | Max  |
-| ------------------------ | -------- | -------- | ---- | ---- |
-| Name                     | String   | Standard | —    | —    |
-| Background median reject | Sigma    | +2.5σ    | 0.5σ | 5.0σ |
-| SNR estimate reject      | Sigma    | -2.5σ    | 0.5σ | 5.0σ |
-| FWHM reject              | Sigma    | +2.5σ    | 0.5σ | 5.0σ |
-| Eccentricity reject      | Absolute | 0.85     | 0.10 | 1.00 |
-| Star count reject        | Sigma    | -1.5σ    | 0.5σ | 5.0σ |
+| Setting                  | Type     | Default | Min    | Max    | Notes                        |
+| ------------------------ | -------- | ------- | ------ | ------ | ---------------------------- |
+| Name                     | String   | Default | —      | —      |                              |
+| Background median reject | Sigma    | +2.5σ   | +0.5σ  | +4.0σ  |                              |
+| SNR estimate reject      | Sigma    | -2.5σ   | -4.0σ  | -0.5σ  | Diagnostic only — not a rejection driver |
+| FWHM reject              | Sigma    | +2.5σ   | +0.5σ  | +4.0σ  |                              |
+| Eccentricity reject      | Absolute | 0.85    | 0.10   | 1.00   |                              |
+| Star count reject        | Sigma    | -3.0σ   | -4.0σ  | -0.5σ  | Raised from -1.5σ            |
 
 ### 5.8 AutoStretch Settings
 
@@ -441,6 +443,7 @@ These settings are persisted but do not appear in Edit > Preferences.
 | `increment_macro_run_count` | Updates run_count and last_run_at for a macro after successful execution                                              |
 | `list_log_files`            | Lists available log files in the logs directory, sorted newest first                                                  |
 | `list_plugins`              | Returns list of registered plugins with name, version, and type                                                       |
+| `load_analysis_json`        | Clears session; populates analysis_results, session_stats, thresholds from JSON payload; sets is_imported_session = true |
 | `load_file`                 | Reads a single image file from disk, injects into session, returns JPEG data URL                                      |
 | `open_session`              | Inserts a session_history row with closed_at = NULL; returns session id                                               |
 | `read_log_file`             | Reads and parses a log file into structured {timestamp, level, module, message} lines                                 |
@@ -451,6 +454,7 @@ These settings are persisted but do not appear in Edit > Preferences.
 | `run_script`                | Executes a pcode script string; returns ScriptResponse with results, session_changed, display_changed, client_actions |
 | `save_macro`                | Inserts or updates a macro; saves previous version to macro_versions before overwriting                               |
 | `save_quick_launch_buttons` | Replaces all Quick Launch button assignments                                                                          |
+| `set_frame_flag`            | Updates PASS/REJECT flag for a single frame in ctx.analysis_results by path; used before Commit to sync toggled flags |
 | `set_preference`            | Upserts a single preference key/value; writes through AppSettings struct                                              |
 | `start_background_cache`    | Spawns background task to build blink cache JPEGs                                                                     |
 | `write_crash_recovery`      | Upserts the single crash_recovery row with current session state                                                      |

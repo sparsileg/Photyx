@@ -1,6 +1,6 @@
 # Photyx — Specification & Requirements Document
 
-**Version:** 22 **Date:** 3 May 2026 **Status:** Active Development — Phase 9 in progress
+**Version:** 23 **Date:** 4 May 2026 **Status:** Active Development — Phase 9 in progress
 
 ---
 
@@ -143,7 +143,43 @@ Content Area contains: Icon Sidebar (40px) | Viewer Region (flex: 1). The Quick 
 
 ### 8.2 Menu Bar
 
-Standard application menu. File, Edit, View, Tools, Help.
+Standard application menu with six top-level menus: File, Session, Edit, View, Analyze, Tools, Help.
+
+**File menu:**
+- Load Single Image…
+- ─────────────
+- Exit
+
+**Session menu:**
+- Select Directory… (Ctrl+O)
+- Close Session
+- ─────────────
+- Export Session JSON…
+- Import Session JSON…
+
+**Edit menu:**
+- Preferences
+- Analysis Parameters
+
+**View menu:**
+- Theme: Dark / Light / Matrix
+
+**Analyze menu:**
+- Analyze Frames
+- Analysis Results
+- Analysis Graph
+- ─────────────
+- Contour Plot
+
+**Tools menu:**
+- Backup Database
+- Restore Database
+- ─────────────
+- Log Viewer
+
+**Help menu:**
+- About Photyx
+- Documentation
 
 ### 8.3 Toolbar
 
@@ -177,13 +213,48 @@ Collapsible panel at the bottom of the viewer region. Expands to 60vh full-width
 
 Viewer-region component. Two-metric line chart with sigma bands, mean line, and reject threshold lines. Click dot to navigate to frame. Metric dropdowns for Metric 1 and Metric 2.
 
-**Toolbar:** Metric 1 dropdown | Metric 2 dropdown | ↻ Refresh | ✓ Commit Results | ✕ Close
+**Toolbar:** Metric 1 dropdown | Metric 2 dropdown | ↻ Refresh | ✓ Commit Results | ⎘ Copy | ⬇ Save Image | ✕ Close
+
+**Dot appearance:**
+- All dots have a 2px black border for visibility against any background color
+- PASS: white fill
+- REJECT — Optical (O): red fill
+- REJECT — Transparency (T): yellow fill
+- REJECT — Sky Brightness (B): blue fill
+- REJECT — Multi-category: split semicircle in respective colors, slightly larger radius
+
+**Legend:** Fixed in top-left corner of the graph canvas. Always visible. Shows: Pass, Reject — Optical, Reject — Transparency, Reject — Sky Brightness, with corresponding dot appearance.
+
+**Commit Results** is disabled for imported sessions.
 
 ### 8.11 Analysis Results
 
-Viewer-region component. Sortable table of per-frame metrics and PXFLAG values. Click column headers to sort.
+Viewer-region component. Sortable table of per-frame metrics, PXFLAG values, and rejection categories.
 
-**Toolbar:** ↻ Refresh | ✓ Commit Results | ✕ Close
+**Toolbar row 1:** Analysis Results title | ↻ Refresh | ✓ Commit Results | ⎘ Copy | ✕ Close
+
+**Toolbar row 2:** [IMPORTED badge if applicable] Session path: `<active directory>`
+
+**Columns:** # | Filename | FWHM | Eccentricity | Stars | SNR | Bg Median | PXFLAG | Category
+
+**Category column:** Shows rejection category badge for REJECT frames (O, T, B, OT, OB, BT, OBT). Centered. Color-coded: O=red, T=yellow, B=blue, multi=purple.
+
+**PXFLAG toggle:** Right-click any row to show a context menu:
+- REJECT row → "Set to PASS"
+- PASS row → "Set to REJECT"
+
+Toggled rows are highlighted with an amber left border and subtle background tint. All underlying metric data (triggered_by, rejection_category) is preserved regardless of toggle direction so the user can toggle back if needed.
+
+**Commit Results behavior:** Terminal operation. On success:
+1. Toggled flag changes are pushed to Rust
+2. PXFLAG written to all buffers and flushed to disk
+3. `rejected/` subfolder created in the active directory (if absent)
+4. All REJECT-flagged files moved to `rejected/<name>.<ext>.rejected`
+5. View closes, viewer clears, session closes
+
+After commit, re-opening the directory will show only PASS files.
+
+**Imported sessions:** When loaded via Session → Import Session JSON…, an IMPORTED badge appears in the session path row and Commit Results is disabled. All display functionality works normally.
 
 ### 8.12 Info Panel
 
@@ -205,17 +276,17 @@ Modal dialog (400px wide). Manages named sets of AnalyzeFrames rejection thresho
 
 **Active profile indicator:** "Active profile: [name]" line below the selector row, updated on OK/Apply.
 
-**Threshold fields:** 5 fields in label/direction/input layout:
+**Threshold fields:** 5 fields in label/direction/input/unit layout:
 
 - Background Median: > +σ (0.5–4.0, default 2.5)
-- SNR Estimate: < −σ (−0.5 to −4.0, default −2.5)
+- SNR Estimate: < −σ (−0.5 to −4.0, default −2.5) — stored and displayed; not a rejection driver
 - FWHM: > +σ (0.5–4.0, default 2.5)
-- Star Count: < −σ (−0.5 to −4.0, default −1.5)
+- Star Count: < −σ (−0.5 to −4.0, default −3.0)
 - Eccentricity: > absolute (0.10–1.00, default 0.85)
 
 **Unsaved changes:** Switching profiles with unsaved edits shows inline confirmation bar.
 
-**OK/Apply:** Saves profile to DB and sets it as the active profile (propagated to AppContext immediately). Classification in the Analysis Graph and Results table updates automatically on next refresh — no need to rerun AnalyzeFrames.
+**OK/Apply:** Saves profile to DB and sets it as the active profile (propagated to AppContext immediately).
 
 Clicking outside the dialog does NOT close it.
 
@@ -230,6 +301,16 @@ Modal overlay. File picker → log content with level filters (ERROR/WARN/INFO/D
 ### 8.17 Blink Tab
 
 Play/pause/step controls. Resolution dropdown (12.5% / 25%). Min Delay dropdown. Highlight Rejected toggle (red border overlay on REJECT frames). Cache built on first play; invalidated when resolution changes or file list changes.
+
+### 8.18 Session JSON Export/Import
+
+**Export (Session → Export Session JSON…):**
+
+Exports the current session's analysis results as a portable JSON archive. Default filename derived from the first frame: `<target>_<YYYYMMDD>.json` (e.g. `Light_M82_..._20240206-190228_....fit` → `M82_20240206.json`). JSON contains: `photyx_version`, `exported_at`, `active_directory`, `threshold_profile_name`, `thresholds`, `session_stats`, `outlier_paths`, and `frames[]` (per-frame: basename, all 5 raw metric values, flag, triggered_by, rejection_category). All filenames stored as basenames for cross-platform portability.
+
+**Import (Session → Import Session JSON…):**
+
+Clears the current session and loads analysis results from a JSON file. No images are loaded — display only. The session path from the JSON is shown in the Analysis Results toolbar row with an IMPORTED badge. Commit Results is disabled. On import, the Analysis Results view opens automatically.
 
 ---
 
@@ -264,58 +345,54 @@ Photyx flags obvious disasters only. Borderline frames are left for downstream t
 
 Five metrics are computed for each frame:
 
-| Metric            | Type     | Direction          | Default threshold |
-| ----------------- | -------- | ------------------ | ----------------- |
-| Background Median | Sigma    | +σ (high is worse) | 2.5σ              |
-| SNR Estimate      | Sigma    | −σ (low is worse)  | −2.5σ             |
-| FWHM              | Sigma    | +σ (high is worse) | 2.5σ              |
-| Star Count        | Sigma    | −σ (low is worse)  | −1.5σ             |
-| Eccentricity      | Absolute | > threshold        | 0.85              |
+| Metric            | Type     | Direction          | Default threshold | Rejection driver |
+| ----------------- | -------- | ------------------ | ----------------- | ---------------- |
+| Background Median | Sigma    | +σ (high is worse) | 2.5σ              | ✓                |
+| SNR Estimate      | Sigma    | −σ (low is worse)  | −2.5σ             | ✗ (diagnostic)   |
+| FWHM              | Sigma    | +σ (high is worse) | 2.5σ              | ✓                |
+| Star Count        | Sigma    | −σ (low is worse)  | −3.0σ             | ✓                |
+| Eccentricity      | Absolute | > threshold        | 0.85              | ✓                |
 
-**Removed metrics:** Background Std Dev (r = 0.92–0.999 with Bg Median across all sessions — redundant in every case examined) and Background Gradient (session-dependent with sign reversal between broadband and narrowband — unreliable as a general metric). Both pcode commands (`BackgroundStdDev`, `BackgroundGradient`) are retained as deprecated stubs for script compatibility.
+**SNR note:** SNR is computed and displayed as a diagnostic metric but does not drive PASS/REJECT classification. Cross-session analysis confirmed a PSF artifact — worse-seeing frames produce higher SNR due to bloated star flux; SNR never drove a unique rejection not already caught by FWHM or Star Count.
 
-Thresholds are user-configurable via named profiles (Edit > Analysis Parameters). The active profile's thresholds are applied on every `get_analysis_results` call.
+**Star Count threshold:** Raised from −1.5σ to −3.0σ. Mild transparency events are better handled by SubframeSelector weighting than hard rejection; only severe star count drops warrant culling.
+
+**Removed metrics:** Background Std Dev (r = 0.92–0.999 with Bg Median) and Background Gradient (session-dependent with sign reversal). Both pcode commands retained as deprecated stubs for script compatibility.
 
 ### 11.3 Classification
 
-PASS / REJECT only — no SUSPECT. A frame is REJECT if any single metric exceeds its threshold. `triggered_by` records which metrics caused the REJECT.
+PASS / REJECT only — no SUSPECT. A frame is REJECT if any single metric (excluding SNR) exceeds its threshold. `triggered_by` records which metrics caused the REJECT.
 
-### 11.4 Session Statistics & Iterative Sigma Clipping
+### 11.4 Rejection Categories
 
-Classification is session-relative. `AnalyzeFrames` computes stats across all loaded frames using two-pass iterative sigma clipping:
+Every REJECT frame is assigned one or more rejection categories:
 
-- **Pass 1** — compute raw per-frame metrics for all frames
-- **Pass 2a** — compute initial session stats (mean + std dev per metric) across all frames
-- **Pass 2b** — identify extreme outliers (> 4σ from initial mean on any metric); these frames are excluded from stat recomputation but still classified
-- **Pass 2c** — recompute clean session stats excluding outlier frames; classify all frames against clean stats
+| Category | Label          | Triggered by                               |
+| -------- | -------------- | ------------------------------------------ |
+| O        | Optical        | FWHM and/or Eccentricity                   |
+| T        | Transparency   | Star Count (without Background Median)     |
+| B        | Sky Brightness | Background Median                          |
 
-Outlier-excluded frames are displayed as disconnected floating dots in the Analysis Graph with a warning-color square outline. The line graph bridges across outlier positions.
+**Multi-category ordering:** O always leads. When B and T are both present, B leads T (sky brightness is the root cause of star suppression). Examples: OT, OB, BT, OBT.
 
-### 11.5 On-the-Fly Reclassification
+### 11.5 Session Statistics & Iterative Sigma Clipping
 
-`get_analysis_results` reclassifies all frames on every call using cached metrics from `ctx.analysis_results` and current `ctx.analysis_thresholds`. This means:
+Classification is session-relative. `AnalyzeFrames` uses two-pass iterative sigma clipping — see `development_notes.md` §3.60 for implementation details.
 
-- Changing a threshold profile and refreshing the Analysis Graph or Results table immediately shows updated flags — no need to rerun AnalyzeFrames
-- The sigma bands and reject lines in the Analysis Graph always reflect the current active thresholds
-- Iterative sigma clipping is rerun on every refresh using the cached metrics
+### 11.6 Committing Results
 
-### 11.6 Committing Results (Writing PXFLAG)
+PXFLAG is **not** written automatically. Commit Results is a terminal operation — see §8.11 for the full commit sequence including file moves to `rejected/`.
 
-PXFLAG is **not** written to files automatically. The user must explicitly commit results:
+### 11.7 On-the-Fly Reclassification
 
-1. Review results in the Analysis Graph or Results table
-2. Adjust threshold profiles if needed and refresh to see updated classification
-3. Click **✓ Commit Results** in either toolbar when satisfied
-4. Commit writes PXFLAG to all image buffers and flushes to disk via `WriteCurrent`
-5. `ctx.last_analysis_thresholds` is updated to reflect the committed thresholds
+`get_analysis_results` reclassifies all frames on every call using cached metrics + current thresholds. Threshold changes take effect immediately on next Refresh without rerunning AnalyzeFrames. Skipped for imported sessions.
 
-### 11.7 Blink Review Workflow
+### 11.8 Blink Review Workflow
 
-1. Run `AnalyzeFrames` — computes metrics and stores results; no file writes
+1. Run `AnalyzeFrames`
 2. Review in Analysis Graph / Results table; adjust thresholds and refresh as needed
-3. Click **✓ Commit Results** when satisfied — writes PXFLAG to all files
-4. Fast blink pass — red border overlay on REJECT frames
-5. Deliberate review — P / R keys override any frame's PXFLAG (written immediately)
+3. Optionally toggle individual frame flags via right-click context menu
+4. Click **✓ Commit Results** — terminal operation; moves rejects to `rejected/`, closes session
 
 ---
 
@@ -327,18 +404,18 @@ Local HTTP REST server via Axum. Deferred to post-Phase 9.
 
 ## 13. Development Phases
 
-| Phase       | Status                   | Focus                                                                                                                                                                                                                                                            |
-| ----------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 1     | ✅ Complete               | Scaffold, plugin host, FITS reader, viewer, logging                                                                                                                                                                                                              |
-| Phase 2     | ✅ Complete               | Blink engine, Auto-STF, zoom, pan, pixel tracking, Info Panel                                                                                                                                                                                                    |
-| Phase 3     | ✅ Complete               | photyx-xisf crate, XISF read/write, TIFF read/write, RGB display, background cache                                                                                                                                                                               |
-| Phase 4     | ✅ Complete               | Keyword plugins, write plugins, AstroTIFF round-trip, FITS u16 fix, path resolution                                                                                                                                                                              |
-| Phase 5     | ✅ Complete               | pcode interpreter (If/For/variables), Macro Editor, Quick Launch, GetKeyword, RunMacro, atomic writes                                                                                                                                                            |
-| Phase 6     | ✅ Complete               | UI audit and cleanup                                                                                                                                                                                                                                             |
-| Phase 7     | ✅ Complete               | AnalyzeFrames (5 metrics), PXFLAG, Analysis Graph, star annotations, consolePipe, blink overlay                                                                                                                                                                  |
-| Phase 8     | ✅ Substantially complete | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                                                                                                                                       |
-| **Phase 9** | 🔄 In Progress           | SQLite (✅), Quick Launch persistence (✅), session history (✅), crash recovery (✅), macros in SQLite (✅), AppSettings (✅), Preferences dialog (✅), threshold profiles (✅); remaining: analysis results persistence, console history, status bar profile indicator |
-| Phase 10    | ⬜ Planned                | UI audit pass                                                                                                                                                                                                                                                    |
+| Phase       | Status                   | Focus                                                                                                                                                                                                                                                                                                                                              |
+| ----------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 1     | ✅ Complete               | Scaffold, plugin host, FITS reader, viewer, logging                                                                                                                                                                                                                                                                                                |
+| Phase 2     | ✅ Complete               | Blink engine, Auto-STF, zoom, pan, pixel tracking, Info Panel                                                                                                                                                                                                                                                                                      |
+| Phase 3     | ✅ Complete               | photyx-xisf crate, XISF read/write, TIFF read/write, RGB display, background cache                                                                                                                                                                                                                                                                 |
+| Phase 4     | ✅ Complete               | Keyword plugins, write plugins, AstroTIFF round-trip, FITS u16 fix, path resolution                                                                                                                                                                                                                                                                |
+| Phase 5     | ✅ Complete               | pcode interpreter (If/For/variables), Macro Editor, Quick Launch, GetKeyword, RunMacro, atomic writes                                                                                                                                                                                                                                              |
+| Phase 6     | ✅ Complete               | UI audit and cleanup                                                                                                                                                                                                                                                                                                                               |
+| Phase 7     | ✅ Complete               | AnalyzeFrames (5 metrics), PXFLAG, Analysis Graph, star annotations, consolePipe, blink overlay                                                                                                                                                                                                                                                    |
+| Phase 8     | ✅ Substantially complete | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                                                                                                                                                                                                                         |
+| **Phase 9** | 🔄 In Progress           | SQLite (✅), Quick Launch (✅), session history (✅), crash recovery (✅), macros in SQLite (✅), AppSettings (✅), Preferences (✅), threshold profiles (✅), rejection categories (✅), Session JSON export/import (✅), commit file move (✅), PXFLAG toggle (✅); remaining: analysis results persistence, console history, status bar profile indicator |
+| Phase 10    | ⬜ Planned                | UI audit pass                                                                                                                                                                                                                                                                                                                                      |
 
 ### 13.1 Deferred Items
 
@@ -354,7 +431,9 @@ Local HTTP REST server via Axum. Deferred to post-Phase 9.
 - buffer_pool_bytes — persisted but unwired
 - console_history_size — persisted but unwired
 - AnalyzeFrames progress reporting (requires async dispatch)
-- SNR estimator revision (current estimator rewards PSF spreading; confirmed artifact across multiple sessions)
+- SNR estimator revision (PSF artifact confirmed across multiple sessions)
+- Memory audit (103GB virtual / 20GB RSS observed after multiple sessions)
+- AnalyzeFrames standalone CLI binary / external API access
 
 ---
 
@@ -365,4 +444,4 @@ Local HTTP REST server via Axum. Deferred to post-Phase 9.
 
 ---
 
-*Previous version: 21 — Next review: Upon completion of Phase 9*
+*Previous version: 22 — Next review: Upon completion of Phase 9*
