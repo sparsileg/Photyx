@@ -123,14 +123,11 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
 
 #[derive(Debug, serde::Deserialize)]
 pub struct AnalysisJsonPayload {
-    pub photyx_version:         String,
-    pub exported_at:            String,
-    pub active_directory:       String,
-    pub threshold_profile_name: String,
-    pub thresholds:             ThresholdPayload,
-    pub session_stats:          SessionStatsPayload,
-    pub outlier_paths:          Vec<String>,
-    pub frames:                 Vec<FramePayload>,
+    pub active_directory: String,
+    pub thresholds:       ThresholdPayload,
+    pub session_stats:    SessionStatsPayload,
+    pub outlier_paths:    Vec<String>,
+    pub frames:           Vec<FramePayload>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -252,18 +249,20 @@ pub fn load_analysis_json(
 
 // ── commit_analysis_results ───────────────────────────────────────────────────
 
+/// Write PXFLAG keywords to all image buffers, flush to disk via WriteCurrent,
+/// then move REJECT files to a `rejected/` subfolder with `.rejected` appended.
 #[tauri::command]
 pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String, String> {
     use crate::context::KeywordEntry;
     use crate::plugin::ArgMap;
 
-    {
+    // ── Step 1: write PXFLAG into all buffers ────────────────────────────────
+    let ( _paths, reject_paths, pass_count, reject_count) = {
         let mut ctx = state.context.lock().expect("context lock poisoned");
 
         if ctx.analysis_results.is_empty() {
             return Err("No analysis results to commit. Run AnalyzeFrames first.".to_string());
         }
-
         if ctx.is_imported_session {
             return Err("Cannot commit an imported session — no images are loaded.".to_string());
         }
@@ -272,6 +271,7 @@ pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String,
         let paths: Vec<String> = ctx.file_list.clone();
         let mut pass_count   = 0u32;
         let mut reject_count = 0u32;
+        let mut reject_paths: Vec<String> = Vec::new();
 
         for path in &paths {
             if let Some(result) = ctx.analysis_results.get(path) {
@@ -279,7 +279,10 @@ pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String,
                     let flag_str = flag.as_str().to_string();
                     match flag {
                         crate::analysis::PxFlag::Pass   => pass_count   += 1,
-                        crate::analysis::PxFlag::Reject => reject_count += 1,
+                        crate::analysis::PxFlag::Reject => {
+                            reject_count += 1;
+                            reject_paths.push(path.clone());
+                        }
                     }
                     if let Some(buf) = ctx.image_buffers.get_mut(path) {
                         buf.keywords.insert(
@@ -293,22 +296,100 @@ pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String,
 
         ctx.last_analysis_thresholds = Some(thresholds);
         tracing::info!("CommitResults: {} PASS, {} REJECT — writing to disk", pass_count, reject_count);
-    }
+        (paths, reject_paths, pass_count, reject_count)
+    };
 
+    // ── Step 2: flush all files to disk via WriteCurrent ─────────────────────
     let args = ArgMap::new();
     state.registry
         .dispatch(&mut state.context.lock().expect("context lock poisoned"), "WriteCurrent", &args)
-        .map(|output| match output {
-            crate::plugin::PluginOutput::Message(m) => m,
-            crate::plugin::PluginOutput::Data(d) => d
-                .get("message")
-                .and_then(|m| m.as_str())
-                .unwrap_or("Committed.")
-                .to_string(),
-            _ => "Committed.".to_string(),
-        })
-        .map_err(|e| e.message)
+        .map_err(|e| e.message)?;
+
+    // ── Step 3: move REJECT files to rejected/ subfolder ─────────────────────
+    let mut move_errors: Vec<String> = Vec::new();
+    let mut moved_count = 0u32;
+
+    // Collect renames: old_path → new_path
+    let mut renames: Vec<(String, String)> = Vec::new();
+
+    for old_path in &reject_paths {
+        let p = std::path::Path::new(old_path);
+
+        // Destination: <parent>/rejected/<filename>.rejected
+        let parent = match p.parent() {
+            Some(d) => d,
+            None    => { move_errors.push(format!("No parent dir: {}", old_path)); continue; }
+        };
+        let rejected_dir = parent.join("rejected");
+
+        if !rejected_dir.exists() {
+            if let Err(e) = std::fs::create_dir_all(&rejected_dir) {
+                move_errors.push(format!("Cannot create rejected/: {}", e));
+                continue;
+            }
+        }
+
+        let filename = match p.file_name() {
+            Some(f) => f,
+            None    => { move_errors.push(format!("No filename: {}", old_path)); continue; }
+        };
+
+        let new_filename = format!("{}.rejected", filename.to_string_lossy());
+        let new_path     = rejected_dir.join(&new_filename);
+        let new_path_str = new_path.to_string_lossy().replace('\\', "/");
+
+        match std::fs::rename(old_path, &new_path) {
+            Ok(()) => {
+                tracing::info!("CommitResults: moved {} → {}", old_path, new_path_str);
+                renames.push((old_path.clone(), new_path_str));
+                moved_count += 1;
+            }
+            Err(e) => {
+                move_errors.push(format!("{}: {}", filename.to_string_lossy(), e));
+            }
+        }
+    }
+
+    // ── Step 4: update AppContext to reflect new paths ────────────────────────
+    if !renames.is_empty() {
+        let mut ctx = state.context.lock().expect("context lock poisoned");
+
+        for (old, new) in &renames {
+            // Re-key image_buffers
+            if let Some(mut buf) = ctx.image_buffers.remove(old) {
+                buf.filename = new.clone();
+                ctx.image_buffers.insert(new.clone(), buf);
+            }
+            // Re-key analysis_results
+            if let Some(mut result) = ctx.analysis_results.remove(old) {
+                result.filename = new.clone();
+                ctx.analysis_results.insert(new.clone(), result);
+            }
+        }
+
+        // Update file_list preserving order
+        for path in ctx.file_list.iter_mut() {
+            if let Some((_, new)) = renames.iter().find(|(old, _)| old == path) {
+                *path = new.clone();
+            }
+        }
+    }
+
+    // ── Build result message ──────────────────────────────────────────────────
+    let mut msg = format!(
+        "Committed: {} PASS, {} REJECT ({} moved to rejected/).",
+        pass_count, reject_count, moved_count
+    );
+    if !move_errors.is_empty() {
+        msg.push_str(&format!(" {} move error(s).", move_errors.len()));
+        for e in &move_errors {
+            tracing::warn!("CommitResults move error: {}", e);
+        }
+    }
+
+    Ok(msg)
 }
+
 
 pub fn extract_frame_label(filename: &str) -> String {
     let stem = filename.rsplit('.').nth(1).unwrap_or(filename);
@@ -340,6 +421,24 @@ pub fn get_frame_flags(state: State<Arc<PhotoxState>>) -> Vec<String> {
         }
         String::new()
     }).collect()
+}
+
+#[tauri::command]
+pub fn set_frame_flag(
+    path:  String,
+    flag:  String,
+    state: State<Arc<PhotoxState>>,
+) -> Result<(), String> {
+    use crate::analysis::PxFlag;
+    let mut ctx = state.context.lock().expect("context lock poisoned");
+    if let Some(result) = ctx.analysis_results.get_mut(&path) {
+        result.flag = match flag.as_str() {
+            "PASS"   => Some(PxFlag::Pass),
+            "REJECT" => Some(PxFlag::Reject),
+            _        => return Err(format!("Unknown flag value: {}", flag)),
+        };
+    }
+    Ok(())
 }
 
 #[tauri::command]

@@ -4,6 +4,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { ui } from '../stores/ui';
   import { notifications } from '../stores/notifications';
+  import { closeSession } from '../commands';
 
   interface FrameResult {
     index: number;
@@ -16,6 +17,8 @@
     background_median?: number;
     flag?: string;
     rejection_category?: string;
+    triggered?: string[];
+    toggled?: boolean;
   }
 
   interface AnalysisResponse {
@@ -29,6 +32,39 @@
   let isImported  = $state(false);
   let loading     = $state(true);
 
+  // ── Context menu state ────────────────────────────────────────────────────
+  interface ContextMenu {
+    x:     number;
+    y:     number;
+    index: number;
+  }
+  let contextMenu = $state<ContextMenu | null>(null);
+
+  function onRowContextMenu(e: MouseEvent, index: number) {
+    e.preventDefault();
+    contextMenu = { x: e.clientX, y: e.clientY, index };
+  }
+
+  function closeContextMenu() {
+    contextMenu = null;
+  }
+
+  function toggleFlag(index: number) {
+    closeContextMenu();
+    frames = frames.map(f => {
+      if (f.index !== index) return f;
+      const newFlag = f.flag === 'REJECT' ? 'PASS' : 'REJECT';
+      return { ...f, flag: newFlag, toggled: true };
+    });
+  }
+
+  function contextMenuLabel(index: number): string {
+    const f = frames.find(f => f.index === index);
+    if (!f) return '';
+    return f.flag === 'REJECT' ? 'Set to PASS' : 'Set to REJECT';
+  }
+
+  // ── Sort ──────────────────────────────────────────────────────────────────
   type SortCol = 'index' | 'short_name' | 'fwhm' | 'eccentricity' | 'star_count'
     | 'snr_estimate' | 'background_median' | 'flag' | 'rejection_category';
 
@@ -89,11 +125,12 @@
     return 'ar-cat-badge ar-cat-multi';
   }
 
+  // ── Load data ─────────────────────────────────────────────────────────────
   async function loadData() {
     loading = true;
     try {
       const data = await invoke<AnalysisResponse>('get_analysis_results');
-      frames      = data.frames;
+      frames      = data.frames.map(f => ({ ...f, toggled: false }));
       sessionPath = data.session_path ?? '';
       isImported  = data.is_imported ?? false;
     } catch (e) {
@@ -103,20 +140,40 @@
     }
   }
 
+  // ── Commit ────────────────────────────────────────────────────────────────
   async function commitResults() {
     if (isImported) {
       notifications.error('Cannot commit an imported session — no images are loaded.');
       return;
     }
-    notifications.running('Writing PXFLAG to files…');
+
+    // Push any local flag toggles back to Rust before committing
+    const toggled = frames.filter(f => f.toggled);
+    if (toggled.length > 0) {
+      try {
+        for (const f of toggled) {
+          await invoke('set_frame_flag', { path: f.filename, flag: f.flag });
+        }
+      } catch (e) {
+        notifications.error(`Failed to sync flag changes: ${e}`);
+        return;
+      }
+    }
+
+    // Commit is terminal — close view, clear displayed image, close session
+    notifications.running('Committing results…');
     try {
       const msg = await invoke<string>('commit_analysis_results');
       notifications.success(msg);
+      ui.showView(null);
+      ui.clearViewer();
+      await closeSession();
     } catch (e) {
       notifications.error(`Commit failed: ${e}`);
     }
   }
 
+  // ── Clipboard copy ────────────────────────────────────────────────────────
   const HEADERS = ['#', 'Filename', 'FWHM', 'Eccentricity', 'Stars', 'SNR', 'Bg Median', 'PXFLAG', 'Category'];
 
   function buildRows(sep: string): string {
@@ -146,6 +203,9 @@
 
   onMount(loadData);
 </script>
+
+<!-- Close context menu on any click outside -->
+<svelte:window onclick={closeContextMenu} />
 
 <div id="analysis-results">
   <div class="ar-toolbar">
@@ -188,7 +248,10 @@
         </thead>
         <tbody>
           {#each sorted as row (row.index)}
-            <tr>
+            <tr
+              class:ar-row-toggled={row.toggled}
+              oncontextmenu={(e) => onRowContextMenu(e, row.index)}
+            >
               <td>{row.index + 1}</td>
               <td class="ar-filename">{fmtFilename(row.short_name)}</td>
               <td>{fmt(row.fwhm)}</td>
@@ -209,3 +272,20 @@
     </div>
   {/if}
 </div>
+
+<!-- Context menu -->
+{#if contextMenu}
+  <div
+    class="ar-context-menu"
+    style:left="{contextMenu.x}px"
+    style:top="{contextMenu.y}px"
+    onclick={(e) => e.stopPropagation()}
+  >
+    <div
+      class="ar-context-item"
+      onclick={() => toggleFlag(contextMenu!.index)}
+    >
+      {contextMenuLabel(contextMenu.index)}
+    </div>
+  </div>
+{/if}

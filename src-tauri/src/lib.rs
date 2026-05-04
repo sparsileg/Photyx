@@ -270,6 +270,7 @@ pub fn run() {
             commands::analysis::get_frame_flags,
             commands::analysis::get_star_positions,
             commands::analysis::load_analysis_json,
+            commands::analysis::set_frame_flag,
             commands::backup::backup_database,
             commands::backup::restore_database,
             commands::display::get_autostretch_frame,

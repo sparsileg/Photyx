@@ -180,6 +180,44 @@
     background: var(--card-hover);
 }
 
+/* ── Context menu ────────────────────────────────────────────────────────── */
+
+.ar-context-menu {
+    position: fixed;
+    z-index: 1000;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 2px;
+    padding: 2px 0;
+    min-width: 130px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+.ar-context-item {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-family: monospace;
+    color: var(--text-color);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.ar-context-item:hover {
+    background: var(--card-hover);
+    color: var(--primary-color);
+}
+
+/* ── Manually toggled rows ───────────────────────────────────────────────── */
+
+.ar-row-toggled {
+    border-left: 3px solid rgba(210, 160, 30, 0.80);
+    background: rgba(210, 160, 30, 0.06);
+}
+
+.ar-row-toggled:hover {
+    background: rgba(210, 160, 30, 0.12);
+}
+
 /* ── Rejection category badges ────────────────────────────────────────────── */
 
 .ar-cat-badge {
