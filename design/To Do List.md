@@ -20,11 +20,13 @@
 12- **Redo Menu Structure**
      - Export Session JSON (replaces Export CSV)
      - Import Session JSON (loads full session including images)
-     - Session menu (new) — moves Select Directory, Close Session, adds Export/Import JSON
+     - Please separator between Analyze > Analysis Graph and Analyze > Contour Plot
+     - Session menu (new) — moves Select Directory, Close Session from File, adds Export/Import JSON
      - File menu restructured — Read Single Image + Exit only
 13- **Commit Enhancement**
      - Commit enhancement — move rejected files to `rejected/` subfolder with `.rejected` appended
      - CSV import removed (superseded by JSON)
+     - Toggle PXFLAG value in Results Table and be able to save the result, if desired, when the Commit button is pressed
 14- **Deferred:**
      - Memory audit
      - AnalyzeFrames CLI standalone binary

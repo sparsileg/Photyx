@@ -29,15 +29,15 @@ pub fn debug_buffer_info(state: State<Arc<PhotoxState>>) -> serde_json::Value {
     let path = ctx.file_list.get(ctx.current_frame).cloned();
     let buffer_info = path.as_ref().and_then(|p| ctx.image_buffers.get(p)).map(|b| {
         serde_json::json!({
-            "filename":    b.filename,
-            "width":       b.width,
-            "height":      b.height,
+            "filename":      b.filename,
+            "width":         b.width,
+            "height":        b.height,
             "display_width": b.display_width,
-            "bit_depth":   format!("{:?}", b.bit_depth),
-            "color_space": format!("{:?}", b.color_space),
-            "channels":    b.channels,
-            "has_pixels":  b.pixels.is_some(),
-            "pixel_type":  b.pixels.as_ref().map(|p| match p {
+            "bit_depth":     format!("{:?}", b.bit_depth),
+            "color_space":   format!("{:?}", b.color_space),
+            "channels":      b.channels,
+            "has_pixels":    b.pixels.is_some(),
+            "pixel_type":    b.pixels.as_ref().map(|p| match p {
                 crate::context::PixelData::U8(_)  => "U8",
                 crate::context::PixelData::U16(_) => "U16",
                 crate::context::PixelData::F32(_) => "F32",
@@ -77,6 +77,11 @@ pub fn close_session(state: State<Arc<PhotoxState>>) -> Result<(), String> {
         "UPDATE session_history SET closed_at = ?1 WHERE closed_at IS NULL",
         rusqlite::params![now],
     ).map_err(|e| e.to_string())?;
+
+    // Reset imported session flag so a fresh live session can begin
+    let mut ctx = state.context.lock().expect("context lock poisoned");
+    ctx.is_imported_session = false;
+
     Ok(())
 }
 

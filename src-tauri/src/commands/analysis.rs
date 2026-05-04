@@ -8,50 +8,57 @@ use crate::PhotoxState;
 pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value {
     let mut ctx = state.context.lock().expect("context lock poisoned");
 
+    let session_path = ctx.active_directory.clone().unwrap_or_default();
+    let is_imported  = ctx.is_imported_session;
+
     // If no cached metrics exist, return empty — AnalyzeFrames hasn't run yet.
     if ctx.analysis_results.is_empty() {
         return serde_json::json!({
-            "frames": [],
-            "session_stats": {},
+            "frames":             [],
+            "session_stats":      {},
             "applied_thresholds": null,
-            "outlier_paths": [],
+            "outlier_paths":      [],
+            "session_path":       session_path,
+            "is_imported":        is_imported,
         });
     }
 
-    // Reclassify all frames on the fly using cached metrics + current thresholds.
-    // This allows threshold changes to take effect without rerunning AnalyzeFrames.
     use crate::analysis::session_stats::{
         categorize_rejection, classify_frame, compute_session_stats_iterative, AnalysisThresholds,
     };
 
     let thresholds: AnalysisThresholds = ctx.analysis_thresholds.clone();
 
-    let result_refs: Vec<&crate::analysis::AnalysisResult> = ctx.file_list.iter()
-        .filter_map(|p| ctx.analysis_results.get(p))
-        .collect();
+    // For imported sessions, classifications are already authoritative — skip reclassification.
+    // For live sessions, reclassify on the fly so threshold changes take effect immediately.
+    if !is_imported {
+        let result_refs: Vec<&crate::analysis::AnalysisResult> = ctx.file_list.iter()
+            .filter_map(|p| ctx.analysis_results.get(p))
+            .collect();
 
-    let (session_stats, outlier_paths) = compute_session_stats_iterative(&result_refs);
+        let (session_stats, outlier_paths) = compute_session_stats_iterative(&result_refs);
+        ctx.last_session_stats  = Some(session_stats.clone());
+        ctx.outlier_frame_paths = outlier_paths.clone();
 
-    // Store updated stats and outliers back into ctx so blink overlay etc. stays consistent
-    ctx.last_session_stats = Some(session_stats.clone());
-    ctx.outlier_frame_paths = outlier_paths.clone();
-
-    // Reclassify each frame and update stored results (including rejection_category)
-    let paths: Vec<String> = ctx.file_list.clone();
-    for path in &paths {
-        if let Some(result) = ctx.analysis_results.get(path).cloned() {
-            let (flag, triggered) = classify_frame(&result, &session_stats, &thresholds);
-            let category = match flag {
-                crate::analysis::PxFlag::Reject => categorize_rejection(&triggered),
-                crate::analysis::PxFlag::Pass   => None,
-            };
-            if let Some(r) = ctx.analysis_results.get_mut(path) {
-                r.flag               = Some(flag);
-                r.triggered_by       = triggered;
-                r.rejection_category = category;
+        let paths: Vec<String> = ctx.file_list.clone();
+        for path in &paths {
+            if let Some(result) = ctx.analysis_results.get(path).cloned() {
+                let (flag, triggered) = classify_frame(&result, &session_stats, &thresholds);
+                let category = match flag {
+                    crate::analysis::PxFlag::Reject => categorize_rejection(&triggered),
+                    crate::analysis::PxFlag::Pass   => None,
+                };
+                if let Some(r) = ctx.analysis_results.get_mut(path) {
+                    r.flag               = Some(flag);
+                    r.triggered_by       = triggered;
+                    r.rejection_category = category;
+                }
             }
         }
     }
+
+    let session_stats = ctx.last_session_stats.clone().unwrap_or_default();
+    let outlier_paths = ctx.outlier_frame_paths.clone();
 
     let frames: Vec<serde_json::Value> = ctx.file_list.iter().enumerate().map(|(i, path)| {
         let short = path.rsplit(['/', '\\']).next().unwrap_or(path);
@@ -86,8 +93,7 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
         }
     }).collect();
 
-    // SNR is excluded from applied_thresholds — it is no longer a rejection metric.
-    // It remains in session_stats for display on the graph when selected as a metric.
+    // SNR excluded — not a rejection driver.
     let applied = serde_json::json!({
         "background_median": { "value": thresholds.background_median.reject, "direction": "high" },
         "fwhm":              { "value": thresholds.fwhm.reject,              "direction": "high" },
@@ -95,9 +101,7 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
         "eccentricity":      { "value": thresholds.eccentricity.reject,      "direction": "high" },
     });
 
-    let outlier_path_strs: Vec<&str> = outlier_paths.iter()
-        .map(|s| s.as_str())
-        .collect();
+    let outlier_path_strs: Vec<&str> = outlier_paths.iter().map(|s| s.as_str()).collect();
 
     serde_json::json!({
         "frames": frames,
@@ -109,12 +113,145 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
             "star_count":        { "mean": session_stats.star_count.mean,        "stddev": session_stats.star_count.stddev },
         },
         "applied_thresholds": applied,
-        "outlier_paths": outlier_path_strs,
+        "outlier_paths":      outlier_path_strs,
+        "session_path":       session_path,
+        "is_imported":        is_imported,
     })
 }
 
-/// Write PXFLAG keywords to all image buffers and flush to disk via WriteCurrent.
-/// Updates last_analysis_thresholds to match the thresholds used for the committed results.
+// ── JSON import payload types ─────────────────────────────────────────────────
+
+#[derive(Debug, serde::Deserialize)]
+pub struct AnalysisJsonPayload {
+    pub photyx_version:         String,
+    pub exported_at:            String,
+    pub active_directory:       String,
+    pub threshold_profile_name: String,
+    pub thresholds:             ThresholdPayload,
+    pub session_stats:          SessionStatsPayload,
+    pub outlier_paths:          Vec<String>,
+    pub frames:                 Vec<FramePayload>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ThresholdPayload {
+    pub bg_median_reject_sigma:  f64,
+    pub snr_reject_sigma:        f64,
+    pub fwhm_reject_sigma:       f64,
+    pub star_count_reject_sigma: f64,
+    pub eccentricity_reject_abs: f64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct MetricStatsPayload {
+    pub mean:   f32,
+    pub stddev: f32,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct SessionStatsPayload {
+    pub background_median: MetricStatsPayload,
+    pub snr_estimate:      MetricStatsPayload,
+    pub fwhm:              MetricStatsPayload,
+    pub eccentricity:      MetricStatsPayload,
+    pub star_count:        MetricStatsPayload,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct FramePayload {
+    pub filename:           String,
+    pub fwhm:               Option<f32>,
+    pub eccentricity:       Option<f32>,
+    pub star_count:         Option<u32>,
+    pub snr_estimate:       Option<f32>,
+    pub background_median:  Option<f32>,
+    pub flag:               String,
+    pub triggered_by:       Vec<String>,
+    pub rejection_category: Option<String>,
+}
+
+// ── load_analysis_json command ────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn load_analysis_json(
+    payload: AnalysisJsonPayload,
+    state:   State<Arc<PhotoxState>>,
+) -> Result<(), String> {
+    use crate::analysis::{AnalysisResult, PxFlag};
+    use crate::analysis::session_stats::{
+        AnalysisThresholds, MetricThresholds, SessionStats, MetricStats,
+    };
+
+    let mut ctx = state.context.lock().expect("context lock poisoned");
+
+    ctx.clear_session();
+
+    ctx.active_directory = Some(payload.active_directory.clone());
+
+    let dir = payload.active_directory.trim_end_matches('/').trim_end_matches('\\');
+
+    for frame in &payload.frames {
+        let full_path = format!("{}/{}", dir, frame.filename);
+        ctx.file_list.push(full_path.clone());
+
+        let flag = match frame.flag.as_str() {
+            "REJECT" => Some(PxFlag::Reject),
+            _        => Some(PxFlag::Pass),
+        };
+
+        let result = AnalysisResult {
+            filename:           full_path.clone(),
+            background_median:  frame.background_median,
+            snr_estimate:       frame.snr_estimate,
+            fwhm:               frame.fwhm,
+            eccentricity:       frame.eccentricity,
+            star_count:         frame.star_count,
+            flag,
+            triggered_by:       frame.triggered_by.clone(),
+            rejection_category: frame.rejection_category.clone(),
+        };
+
+        ctx.analysis_results.insert(full_path, result);
+    }
+
+    // Outlier paths in JSON are basenames — reconstruct full paths
+    ctx.outlier_frame_paths = payload.outlier_paths.iter()
+        .map(|f| format!("{}/{}", dir, f))
+        .collect();
+
+    // Restore session stats
+    ctx.last_session_stats = Some(SessionStats {
+        background_median: MetricStats { mean: payload.session_stats.background_median.mean, stddev: payload.session_stats.background_median.stddev },
+        snr_estimate:      MetricStats { mean: payload.session_stats.snr_estimate.mean,      stddev: payload.session_stats.snr_estimate.stddev },
+        fwhm:              MetricStats { mean: payload.session_stats.fwhm.mean,              stddev: payload.session_stats.fwhm.stddev },
+        eccentricity:      MetricStats { mean: payload.session_stats.eccentricity.mean,      stddev: payload.session_stats.eccentricity.stddev },
+        star_count:        MetricStats { mean: payload.session_stats.star_count.mean,        stddev: payload.session_stats.star_count.stddev },
+    });
+
+    // Restore thresholds — apply as both last_analysis_thresholds and active thresholds
+    let restored_thresholds = AnalysisThresholds {
+        background_median: MetricThresholds { reject: payload.thresholds.bg_median_reject_sigma as f32 },
+        snr_estimate:      MetricThresholds { reject: payload.thresholds.snr_reject_sigma.abs() as f32 },
+        fwhm:              MetricThresholds { reject: payload.thresholds.fwhm_reject_sigma as f32 },
+        star_count:        MetricThresholds { reject: payload.thresholds.star_count_reject_sigma.abs() as f32 },
+        eccentricity:      MetricThresholds { reject: payload.thresholds.eccentricity_reject_abs as f32 },
+    };
+    ctx.last_analysis_thresholds = Some(restored_thresholds.clone());
+    ctx.analysis_thresholds      = restored_thresholds;
+
+    ctx.is_imported_session = true;
+
+    tracing::info!(
+        "load_analysis_json: imported {} frames from {}",
+        ctx.file_list.len(),
+        payload.active_directory
+    );
+
+    Ok(())
+}
+
+// ── commit_analysis_results ───────────────────────────────────────────────────
+
 #[tauri::command]
 pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String, String> {
     use crate::context::KeywordEntry;
@@ -127,12 +264,15 @@ pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String,
             return Err("No analysis results to commit. Run AnalyzeFrames first.".to_string());
         }
 
+        if ctx.is_imported_session {
+            return Err("Cannot commit an imported session — no images are loaded.".to_string());
+        }
+
         let thresholds = ctx.analysis_thresholds.clone();
         let paths: Vec<String> = ctx.file_list.clone();
         let mut pass_count   = 0u32;
         let mut reject_count = 0u32;
 
-        // Write PXFLAG to image buffers in memory
         for path in &paths {
             if let Some(result) = ctx.analysis_results.get(path) {
                 if let Some(flag) = &result.flag {
@@ -151,29 +291,21 @@ pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String,
             }
         }
 
-        // Update last_analysis_thresholds to reflect what was committed
         ctx.last_analysis_thresholds = Some(thresholds);
-
-        tracing::info!(
-            "CommitResults: {} PASS, {} REJECT — writing to disk",
-            pass_count, reject_count
-        );
+        tracing::info!("CommitResults: {} PASS, {} REJECT — writing to disk", pass_count, reject_count);
     }
 
-    // Flush to disk via WriteCurrent — drop ctx lock first so registry can reacquire it
     let args = ArgMap::new();
     state.registry
         .dispatch(&mut state.context.lock().expect("context lock poisoned"), "WriteCurrent", &args)
-        .map(|output| {
-            match output {
-                crate::plugin::PluginOutput::Message(m) => m,
-                crate::plugin::PluginOutput::Data(d) => d
-                    .get("message")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("Committed.")
-                    .to_string(),
-                _ => "Committed.".to_string(),
-            }
+        .map(|output| match output {
+            crate::plugin::PluginOutput::Message(m) => m,
+            crate::plugin::PluginOutput::Data(d) => d
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Committed.")
+                .to_string(),
+            _ => "Committed.".to_string(),
         })
         .map_err(|e| e.message)
 }

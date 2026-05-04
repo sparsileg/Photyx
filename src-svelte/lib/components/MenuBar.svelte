@@ -6,7 +6,8 @@
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { invoke } from '@tauri-apps/api/core';
   import { notifications } from '../stores/notifications';
-  import { open } from '@tauri-apps/plugin-dialog';
+  import { open, save } from '@tauri-apps/plugin-dialog';
+  import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
   import { quickLaunch } from '../stores/quickLaunch';
   import { selectDirectory, closeSession, applyAutoStretch, loadFile } from '../commands';
   import { ui } from '../stores/ui';
@@ -24,27 +25,29 @@
   function action(a: string) {
     close();
     switch (a) {
-    case 'about':             ui.openAbout(); break;
+    case 'about':               ui.openAbout(); break;
     case 'analysis-parameters': ui.openAnalysisParameters(); break;
-    case 'preferences':       ui.openPreferences(); break;
-    case 'analysis-graph':    ui.showView('analysisGraph'); break;
-    case 'analysis-results':  ui.showView('analysisResults'); break;
-    case 'analyze-frames':    runAnalyzeFrames(); break;
-    case 'backup-database':   backupDatabase(); break;
-    case 'close-session':     closeSession(); break;
-    case 'contour-plot':      runContourHeatmap(); break;
-    case 'exit':              db.closeSession().catch(() => {}).finally(() => getCurrentWindow().close()); break;
-    case 'keywords':          ui.togglePanel('keywords'); break;
-    case 'load-single-image': loadSingleImage(); break;
-    case 'log-viewer':        ui.openLogViewer(); break;
-    case 'macro-library':     ui.togglePanel('macro-lib'); break;
-    case 'plugin-manager':    ui.togglePanel('plugins'); break;
-    case 'restore-database':  restoreDatabase(); break;
-    case 'run-macro':         ui.togglePanel('macro-editor'); break;
-    case 'select-directory':  selectDirectory(); break;
-    case 'theme-dark':        ui.setTheme('dark'); break;
-    case 'theme-light':       ui.setTheme('light'); break;
-    case 'theme-matrix':      ui.setTheme('matrix'); break;
+    case 'preferences':         ui.openPreferences(); break;
+    case 'analysis-graph':      ui.showView('analysisGraph'); break;
+    case 'analysis-results':    ui.showView('analysisResults'); break;
+    case 'analyze-frames':      runAnalyzeFrames(); break;
+    case 'backup-database':     backupDatabase(); break;
+    case 'close-session':       closeSession(); break;
+    case 'contour-plot':        runContourHeatmap(); break;
+    case 'exit':                db.closeSession().catch(() => {}).finally(() => getCurrentWindow().close()); break;
+    case 'export-session-json': exportSessionJson(); break;
+    case 'import-session-json': importSessionJson(); break;
+    case 'keywords':            ui.togglePanel('keywords'); break;
+    case 'load-single-image':   loadSingleImage(); break;
+    case 'log-viewer':          ui.openLogViewer(); break;
+    case 'macro-library':       ui.togglePanel('macro-lib'); break;
+    case 'plugin-manager':      ui.togglePanel('plugins'); break;
+    case 'restore-database':    restoreDatabase(); break;
+    case 'run-macro':           ui.togglePanel('macro-editor'); break;
+    case 'select-directory':    selectDirectory(); break;
+    case 'theme-dark':          ui.setTheme('dark'); break;
+    case 'theme-light':         ui.setTheme('light'); break;
+    case 'theme-matrix':        ui.setTheme('matrix'); break;
     default: notifications.info(`${a} — not yet implemented`);
     }
   }
@@ -183,6 +186,163 @@
       notifications.error(msg);
     }
   }
+
+  // ── Session JSON export ───────────────────────────────────────────────────
+
+  async function exportSessionJson() {
+    // Fetch current analysis results from Rust
+    let data: any;
+    try {
+      data = await invoke('get_analysis_results');
+    } catch (e) {
+      notifications.error(`Export failed: could not load analysis results: ${e}`);
+      return;
+    }
+
+    if (!data.frames || data.frames.length === 0) {
+      notifications.error('No analysis results to export. Run AnalyzeFrames first.');
+      return;
+    }
+
+    // Fetch current threshold profile for metadata
+    let activeProfileId: number | null = null;
+    let profileName = 'Default';
+    let thresholds: any = {};
+    try {
+      activeProfileId = await invoke('get_active_threshold_profile_id');
+      const profiles: any[] = await invoke('get_threshold_profiles');
+      const active = profiles.find((p: any) => p.id === activeProfileId);
+      if (active) {
+        profileName = active.name;
+        thresholds = {
+          bg_median_reject_sigma:  active.bg_median_reject_sigma,
+          snr_reject_sigma:        active.snr_reject_sigma,
+          fwhm_reject_sigma:       active.fwhm_reject_sigma,
+          star_count_reject_sigma: active.star_count_reject_sigma,
+          eccentricity_reject_abs: active.eccentricity_reject_abs,
+        };
+      }
+    } catch (e) {
+      // Non-fatal — continue with empty thresholds
+    }
+
+    // Build per-frame array using basenames only for portability
+    const frames = data.frames.map((f: any) => ({
+      filename:           f.short_name,
+      fwhm:               f.fwhm,
+      eccentricity:       f.eccentricity,
+      star_count:         f.star_count,
+      snr_estimate:       f.snr_estimate,
+      background_median:  f.background_median,
+      flag:               f.flag || 'PASS',
+      triggered_by:       f.triggered ?? [],
+      rejection_category: f.rejection_category ?? null,
+    }));
+
+    // Outlier paths — strip to basenames
+    const outlierPaths = (data.outlier_paths ?? []).map((p: string) => {
+      return p.split('/').pop() ?? p.split('\\').pop() ?? p;
+    });
+
+    const json = {
+      photyx_version:         '1.0.0',
+      exported_at:            new Date().toISOString(),
+      active_directory:       data.session_path ?? '',
+      threshold_profile_name: profileName,
+      thresholds,
+      session_stats:          data.session_stats ?? {},
+      outlier_paths:          outlierPaths,
+      frames,
+    };
+
+    // Derive default filename from the first frame: Light_<target>_..._<YYYYMMDD>-######_...
+    // e.g. Light_M82_180.0s_Bin1_gain101_20240206-190228_-20.0C_0001.fit → M82_20240206.json
+    let defName = 'session.json';
+    if (data.frames.length > 0) {
+      const first = (data.frames[0].short_name as string) ?? '';
+      const targetMatch = first.match(/^Light_([^_]+)_/);
+      const dateMatch   = first.match(/(\d{8})-\d{6}/);
+      if (targetMatch && dateMatch) {
+        defName = `${targetMatch[1]}_${dateMatch[1]}.json`;
+      } else if (targetMatch) {
+        defName = `${targetMatch[1]}.json`;
+      }
+    }
+
+    let savePath: string | null;
+    try {
+      savePath = await save({
+        title:       'Export Session JSON',
+        defaultPath: defName,
+        filters:     [{ name: 'Photyx Session JSON', extensions: ['json'] }],
+      });
+    } catch (e) {
+      notifications.error(`Export cancelled: ${e}`);
+      return;
+    }
+    if (!savePath) return;
+
+    try {
+      await writeTextFile(savePath, JSON.stringify(json, null, 2));
+      notifications.success('Session exported.');
+    } catch (e) {
+      notifications.error(`Export failed: ${e}`);
+    }
+  }
+
+  // ── Session JSON import ───────────────────────────────────────────────────
+
+  async function importSessionJson() {
+    let selected: string | string[] | null;
+    try {
+      selected = await open({
+        multiple: false,
+        filters:  [{ name: 'Photyx Session JSON', extensions: ['json'] }],
+      });
+    } catch (e) {
+      notifications.error(`Import cancelled: ${e}`);
+      return;
+    }
+    if (!selected) return;
+    const filePath = typeof selected === 'string' ? selected : selected[0];
+    if (!filePath) return;
+
+    let raw: string;
+    try {
+      raw = await readTextFile(filePath);
+    } catch (e) {
+      notifications.error(`Could not read file: ${e}`);
+      return;
+    }
+
+    let payload: any;
+    try {
+      payload = JSON.parse(raw);
+    } catch (e) {
+      notifications.error(`Invalid JSON file: ${e}`);
+      return;
+    }
+
+    // Basic validation
+    if (!payload.frames || !Array.isArray(payload.frames)) {
+      notifications.error('Invalid session JSON: missing frames array.');
+      return;
+    }
+    if (!payload.active_directory) {
+      notifications.error('Invalid session JSON: missing active_directory.');
+      return;
+    }
+
+    notifications.running('Importing session…');
+    try {
+      await invoke('load_analysis_json', { payload });
+      notifications.success(`Session imported — ${payload.frames.length} frames from ${payload.active_directory}`);
+      // Open the results view so the user sees the imported data immediately
+      ui.showView('analysisResults');
+    } catch (e) {
+      notifications.error(`Import failed: ${e}`);
+    }
+  }
 </script>
 
 <svelte:window onclick={close} />
@@ -190,11 +350,16 @@
 <div id="menu-bar">
   {#each [
     { name: 'File', items: [
-      { label: 'Select Directory…',  action: 'select-directory', shortcut: 'Ctrl+O' },
       { label: 'Load Single Image…', action: 'load-single-image' },
-      { label: 'Close Session',      action: 'close-session' },
       { sep: true },
       { label: 'Exit',               action: 'exit' },
+    ]},
+    { name: 'Session', items: [
+      { label: 'Select Directory…',    action: 'select-directory', shortcut: 'Ctrl+O' },
+      { label: 'Close Session',        action: 'close-session' },
+      { sep: true },
+      { label: 'Export Session JSON…', action: 'export-session-json' },
+      { label: 'Import Session JSON…', action: 'import-session-json' },
     ]},
     { name: 'Edit', items: [
       { label: 'Preferences',         action: 'preferences' },
@@ -209,6 +374,7 @@
       { label: 'Analyze Frames',   action: 'analyze-frames' },
       { label: 'Analysis Results', action: 'analysis-results' },
       { label: 'Analysis Graph',   action: 'analysis-graph' },
+      { sep: true },
       { label: 'Contour Plot',     action: 'contour-plot' },
     ]},
     { name: 'Tools', items: [

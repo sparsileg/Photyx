@@ -46,6 +46,15 @@
     color: var(--primary-color);
     border-color: var(--primary-hover);
 }
+.ar-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.ar-btn:disabled:hover {
+    background: var(--input-bg);
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+}
 .ar-close-btn {
     background: none;
     border: 1px solid var(--border-color);
@@ -61,6 +70,44 @@
     background: var(--card-hover);
     border-color: var(--error-color);
     opacity: 1;
+}
+
+/* ── Session path row ────────────────────────────────────────────────────── */
+
+.ar-session-path {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 12px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.ar-session-path-label {
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.ar-session-path-value {
+    color: var(--primary-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ar-imported-badge {
+    font-size: 10px;
+    font-weight: bold;
+    padding: 1px 5px;
+    border-radius: 2px;
+    background: rgba(160, 100, 200, 0.20);
+    border: 1px solid rgba(160, 100, 200, 0.60);
+    color: #b070d0;
+    white-space: nowrap;
+    letter-spacing: 0.05em;
 }
 
 .ar-loading {
@@ -146,7 +193,7 @@
     letter-spacing: 0.05em;
 }
 
-/* O — Optical: red — least recoverable */
+/* O — Optical: red */
 .ar-cat-o {
     background: rgba(220, 50, 50, 0.20);
     border-color: rgba(220, 50, 50, 0.60);
@@ -160,14 +207,14 @@
     color: #d4b020;
 }
 
-/* B — Sky brightness: blue — most recoverable */
+/* B — Sky brightness: blue */
 .ar-cat-b {
     background: rgba(60, 120, 220, 0.20);
     border-color: rgba(60, 120, 220, 0.60);
     color: #5090e0;
 }
 
-/* Multi-category: neutral with slightly stronger border */
+/* Multi-category: purple */
 .ar-cat-multi {
     background: rgba(160, 100, 200, 0.20);
     border-color: rgba(160, 100, 200, 0.60);

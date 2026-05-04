@@ -16,7 +16,9 @@
       "allow": [
         { "path": "$APPDATA/Photyx/**" },
         { "path": "$HOME/**" },
-        { "path": "$DOCUMENT/**" }
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$DOWNLOAD/**" }
       ]
     },
     {
@@ -24,12 +26,15 @@
       "allow": [
         { "path": "$APPDATA/Photyx/**" },
         { "path": "$HOME/**" },
-        { "path": "$DOCUMENT/**" }
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$DOWNLOAD/**" }
       ]
     },
     {
       "identifier": "fs:allow-write-file",
       "allow": [
+        { "path": "$APPDATA/Photyx/**" },
         { "path": "$HOME/**" },
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },

@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
-// ── Image buffer (placeholder for Phase 2 buffer pool) ───────────────────────
+// ── Image buffer ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ColorSpace {
@@ -28,7 +28,6 @@ pub enum PixelData {
 }
 
 impl PixelData {
-    /// Normalize a pixel value to 0.0–1.0 range
     pub fn normalize_value(val: f64, bit_depth: &BitDepth) -> f64 {
         match bit_depth {
             BitDepth::U8  => val / 255.0,
@@ -131,7 +130,6 @@ pub struct AppContext {
     pub last_stf_params: Option<(f32, f32)>,
 
     /// AutoStretch defaults — loaded from AppSettings at startup and on preference change
-    /// AutoStretch defaults — loaded from AppSettings at startup and on preference change
     pub autostretch_shadow_clip: f32,
     pub autostretch_target_bg:   f32,
 
@@ -143,12 +141,9 @@ pub struct AppContext {
     pub analysis_results: HashMap<String, crate::analysis::AnalysisResult>,
 
     /// Paths of frames excluded from session stat recomputation in the last AnalyzeFrames run
-    /// (extreme outliers > OUTLIER_SIGMA_THRESHOLD σ on any metric in Pass 2a)
     pub outlier_frame_paths: std::collections::HashSet<String>,
 
     /// Clean session stats from the last AnalyzeFrames run (outliers excluded).
-    /// Used by get_analysis_results so the graph draws bands from the same
-    /// stats that classification actually used.
     pub last_session_stats: Option<crate::analysis::session_stats::SessionStats>,
 
     /// Configurable log directory — if None, falls back to Tauri app data dir
@@ -156,6 +151,11 @@ pub struct AppContext {
 
     /// Current session ID in session_history table — set by open_session, cleared by close_session
     pub current_session_id: Option<i64>,
+
+    /// True when analysis results were loaded from a JSON import rather than a live
+    /// AnalyzeFrames run. Disables Commit in the frontend and skips reclassification
+    /// in get_analysis_results (imported classifications are authoritative).
+    pub is_imported_session: bool,
 }
 
 impl AppContext {
@@ -166,21 +166,18 @@ impl AppContext {
         ctx
     }
 
-    /// Get a loaded image by index into the file list
     pub fn current_image(&self) -> Option<&ImageBuffer> {
         let filename = self.file_list.get(self.current_frame)?;
         self.image_buffers.get(filename)
     }
 
-    /// Get a mutable reference to the current image
     pub fn current_image_mut(&mut self) -> Option<&mut ImageBuffer> {
         let filename = self.file_list.get(self.current_frame)?.clone();
         self.image_buffers.get_mut(&filename)
     }
 
-    /// Total memory used by all image buffers (placeholder — Phase 2)
     pub fn total_memory_used(&self) -> usize {
-        0 // Phase 2: sum actual buffer sizes
+        0
     }
 
     /// Clear all session state — pixel buffers, caches, analysis results.
@@ -201,9 +198,9 @@ impl AppContext {
         self.last_stf_params = None;
         self.last_histogram = None;
         self.variables.clear();
+        self.is_imported_session = false;
     }
 
-    /// Get or create the AnalysisResult entry for a file path.
     pub fn analysis_result_for(&mut self, path: &str) -> &mut crate::analysis::AnalysisResult {
         self.analysis_results
             .entry(path.to_string())

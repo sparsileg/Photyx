@@ -2,8 +2,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
-  import { save } from '@tauri-apps/plugin-dialog';
-  import { writeTextFile } from '@tauri-apps/plugin-fs';
   import { ui } from '../stores/ui';
   import { notifications } from '../stores/notifications';
 
@@ -20,8 +18,16 @@
     rejection_category?: string;
   }
 
-  let frames = $state<FrameResult[]>([]);
-  let loading = $state(true);
+  interface AnalysisResponse {
+    frames:       FrameResult[];
+    session_path: string;
+    is_imported:  boolean;
+  }
+
+  let frames      = $state<FrameResult[]>([]);
+  let sessionPath = $state('');
+  let isImported  = $state(false);
+  let loading     = $state(true);
 
   type SortCol = 'index' | 'short_name' | 'fwhm' | 'eccentricity' | 'star_count'
     | 'snr_estimate' | 'background_median' | 'flag' | 'rejection_category';
@@ -75,8 +81,6 @@
     return sortAsc ? ' ▲' : ' ▼';
   }
 
-  // Returns the CSS class for a rejection category badge.
-  // Single-letter categories get their own color; multi-category gets neutral purple.
   function catClass(cat: string | undefined): string {
     if (!cat) return '';
     if (cat === 'O') return 'ar-cat-badge ar-cat-o';
@@ -88,8 +92,10 @@
   async function loadData() {
     loading = true;
     try {
-      const data = await invoke<{ frames: FrameResult[] }>('get_analysis_results');
-      frames = data.frames;
+      const data = await invoke<AnalysisResponse>('get_analysis_results');
+      frames      = data.frames;
+      sessionPath = data.session_path ?? '';
+      isImported  = data.is_imported ?? false;
     } catch (e) {
       notifications.error(`Analysis Results: ${e}`);
     } finally {
@@ -98,6 +104,10 @@
   }
 
   async function commitResults() {
+    if (isImported) {
+      notifications.error('Cannot commit an imported session — no images are loaded.');
+      return;
+    }
     notifications.running('Writing PXFLAG to files…');
     try {
       const msg = await invoke<string>('commit_analysis_results');
@@ -134,21 +144,6 @@
     }
   }
 
-  async function exportCsv() {
-    try {
-      const path = await save({
-        title: 'Export Analysis Results',
-        defaultPath: 'analysis_results.csv',
-        filters: [{ name: 'CSV', extensions: ['csv'] }],
-      });
-      if (!path) return;
-      await writeTextFile(path, buildRows(','));
-      notifications.success('CSV exported.');
-    } catch (e) {
-      notifications.error(`Export failed: ${e}`);
-    }
-  }
-
   onMount(loadData);
 </script>
 
@@ -156,10 +151,21 @@
   <div class="ar-toolbar">
     <span class="ar-title">Analysis Results</span>
     <button class="ar-btn" onclick={loadData}>↻ Refresh</button>
-    <button class="ar-btn" onclick={commitResults}>✓ Commit Results</button>
+    <button
+      class="ar-btn"
+      onclick={commitResults}
+      disabled={isImported}
+      title={isImported ? 'Cannot commit an imported session' : ''}
+    >✓ Commit Results</button>
     <button class="ar-btn" onclick={copyToClipboard}>⎘ Copy</button>
-    <button class="ar-btn" onclick={exportCsv}>⬇ Export CSV</button>
     <button class="ar-close-btn" onclick={() => ui.showView(null)}>✕ Close</button>
+  </div>
+  <div class="ar-session-path">
+    {#if isImported}
+      <span class="ar-imported-badge">IMPORTED</span>
+    {/if}
+    <span class="ar-session-path-label">Session path:</span>
+    <span class="ar-session-path-value">{sessionPath || '—'}</span>
   </div>
 
   {#if loading}

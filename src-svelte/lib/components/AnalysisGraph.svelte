@@ -38,6 +38,8 @@
     session_stats:      Record<string, MetricStats>;
     applied_thresholds: Record<string, AppliedThreshold> | null;
     outlier_paths:      string[];
+    session_path:       string;
+    is_imported:        boolean;
   }
 
   // ── Metrics ───────────────────────────────────────────────────────────────
