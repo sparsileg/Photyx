@@ -1,5 +1,3 @@
-
-
 <!-- ThresholdProfilesDialog.svelte — Edit > Analysis Parameters modal. -->
 <!-- Manages threshold profiles for AnalyzeFrames. -->
 
@@ -127,7 +125,7 @@
         bg_median_reject_sigma:  2.5,
         snr_reject_sigma:        -2.5,
         fwhm_reject_sigma:       2.5,
-        star_count_reject_sigma: -1.5,
+        star_count_reject_sigma: -3.0,
         eccentricity_reject_abs: 0.85,
       };
       const saved = await thresholdProfiles.saveProfile(base);
@@ -356,8 +354,8 @@
                   oninput={(e) => onFieldInput(
                     field.key,
                     (e.target as HTMLInputElement).value,
-                    fieldMin(field),
-                    fieldMax(field)
+                    field.min,
+                    field.max
                   )}
                 />
                 {#if field.type === 'sigma'}

@@ -17,13 +17,14 @@
     snr_estimate?: number;
     background_median?: number;
     flag?: string;
+    rejection_category?: string;
   }
 
   let frames = $state<FrameResult[]>([]);
   let loading = $state(true);
 
   type SortCol = 'index' | 'short_name' | 'fwhm' | 'eccentricity' | 'star_count'
-    | 'snr_estimate' | 'background_median' | 'flag';
+    | 'snr_estimate' | 'background_median' | 'flag' | 'rejection_category';
 
   let sortCol = $state<SortCol>('index');
   let sortAsc = $state(true);
@@ -74,6 +75,16 @@
     return sortAsc ? ' ▲' : ' ▼';
   }
 
+  // Returns the CSS class for a rejection category badge.
+  // Single-letter categories get their own color; multi-category gets neutral purple.
+  function catClass(cat: string | undefined): string {
+    if (!cat) return '';
+    if (cat === 'O') return 'ar-cat-badge ar-cat-o';
+    if (cat === 'T') return 'ar-cat-badge ar-cat-t';
+    if (cat === 'B') return 'ar-cat-badge ar-cat-b';
+    return 'ar-cat-badge ar-cat-multi';
+  }
+
   async function loadData() {
     loading = true;
     try {
@@ -96,9 +107,9 @@
     }
   }
 
-  const HEADERS = ['#', 'Filename', 'FWHM', 'Eccentricity', 'Stars', 'SNR', 'Bg Median', 'PXFLAG'];
+  const HEADERS = ['#', 'Filename', 'FWHM', 'Eccentricity', 'Stars', 'SNR', 'Bg Median', 'PXFLAG', 'Category'];
 
-function buildRows(sep: string): string {
+  function buildRows(sep: string): string {
     const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
     const rows = sorted.map(row => [
       String(row.index + 1),
@@ -109,6 +120,7 @@ function buildRows(sep: string): string {
       fmt(row.snr_estimate),
       fmt(row.background_median),
       row.flag ?? '—',
+      row.rejection_category ?? '—',
     ].join(sep));
     return [HEADERS.map(q).join(sep), ...rows].join('\n');
   }
@@ -165,6 +177,7 @@ function buildRows(sep: string): string {
             <th onclick={() => sortBy('snr_estimate')}>SNR{arrow('snr_estimate')}</th>
             <th onclick={() => sortBy('background_median')}>Bg Median{arrow('background_median')}</th>
             <th onclick={() => sortBy('flag')}>PXFLAG{arrow('flag')}</th>
+            <th onclick={() => sortBy('rejection_category')}>Category{arrow('rejection_category')}</th>
           </tr>
         </thead>
         <tbody>
@@ -178,6 +191,11 @@ function buildRows(sep: string): string {
               <td>{fmt(row.snr_estimate)}</td>
               <td>{fmt(row.background_median)}</td>
               <td>{row.flag ?? '—'}</td>
+              <td>
+                {#if row.rejection_category}
+                  <span class={catClass(row.rejection_category)}>{row.rejection_category}</span>
+                {/if}
+              </td>
             </tr>
           {/each}
         </tbody>

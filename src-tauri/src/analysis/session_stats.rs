@@ -20,7 +20,7 @@ pub struct MetricThresholds {
 pub struct AnalysisThresholds {
     // Sigma-based (higher deviation = worse, except SNR and star count)
     pub background_median:   MetricThresholds,  // +σ
-    pub snr_estimate:        MetricThresholds,  // -σ (lower SNR = worse)
+    pub snr_estimate:        MetricThresholds,  // retained for display; not used in classification
     pub fwhm:                MetricThresholds,  // +σ
     pub star_count:          MetricThresholds,  // -σ (fewer stars = worse)
 
@@ -34,7 +34,9 @@ impl Default for AnalysisThresholds {
             background_median:   MetricThresholds { reject: 2.5 },
             snr_estimate:        MetricThresholds { reject: 2.5 },
             fwhm:                MetricThresholds { reject: 2.5 },
-            star_count:          MetricThresholds { reject: 1.5 },
+            // Raised from 1.5 to 3.0: mild transparency events are better handled
+            // by SFS weighting than hard rejection.
+            star_count:          MetricThresholds { reject: 3.0 },
             eccentricity:        MetricThresholds { reject: 0.85 },
         }
     }
@@ -235,6 +237,11 @@ fn sigma_dev(value: f32, stats: &MetricStats) -> f32 {
 /// Classify a single frame — PASS or REJECT only.
 /// Returns (PxFlag, Vec<String>) where the Vec contains names of metrics that
 /// triggered REJECT (empty for PASS).
+///
+/// NOTE: SNR is intentionally excluded from rejection classification.
+/// It is retained in AnalysisResult for diagnostic display only.
+/// Cross-session analysis showed SNR never drove a unique rejection
+/// not already caught by FWHM or StarCount.
 pub fn classify_frame(
     result:     &AnalysisResult,
     stats:      &SessionStats,
@@ -266,7 +273,7 @@ pub fn classify_frame(
 
     check_high!(result.background_median, &stats.background_median, &thresholds.background_median, "BackgroundMedian");
     check_high!(result.fwhm,              &stats.fwhm,              &thresholds.fwhm,              "FWHM");
-    check_low!( result.snr_estimate,      &stats.snr_estimate,      &thresholds.snr_estimate,      "SNR");
+    // SNR deliberately excluded — see function doc comment above
     check_low!( result.star_count.map(|v| v as f32), &stats.star_count, &thresholds.star_count,    "StarCount");
 
     // Absolute metric
@@ -285,6 +292,53 @@ pub fn classify_frame(
     (flag, triggered)
 }
 
+// ── Rejection category ────────────────────────────────────────────────────────
+
+/// Derive a rejection category string from the triggered metric names.
+///
+/// Three categories, ordered by severity / recoverability (least recoverable first):
+///   O = Optical quality  — FWHM or Eccentricity triggered
+///   B = Sky brightness   — BackgroundMedian triggered (dominates StarCount)
+///   T = Transparency     — StarCount triggered without BackgroundMedian
+///
+/// Ordering rules:
+///   O always leads when present (optical damage is the decisive factor).
+///   When both B and T are present, B leads (sky brightness causes star suppression,
+///   so B is the root cause).
+///   Multi-category strings are concatenated: "O", "T", "B", "OT", "OB", "BT", "OBT"
+///
+/// Returns None for PASS frames (empty triggered list).
+pub fn categorize_rejection(triggered: &[String]) -> Option<String> {
+    if triggered.is_empty() {
+        return None;
+    }
+
+    let has_optical = triggered.iter().any(|t| t == "FWHM" || t == "Eccentricity");
+    let has_bg      = triggered.iter().any(|t| t == "BackgroundMedian");
+    let has_stars   = triggered.iter().any(|t| t == "StarCount");
+
+    let mut cat = String::new();
+
+    if has_optical { cat.push('O'); }
+
+    if has_bg && has_stars {
+        // Sky brightness is the root cause of star suppression → B leads T
+        cat.push('B');
+        cat.push('T');
+    } else if has_bg {
+        cat.push('B');
+    } else if has_stars {
+        cat.push('T');
+    }
+
+    if cat.is_empty() {
+        // Fallback: triggered by something unexpected — mark as Optical
+        Some("O".to_string())
+    } else {
+        Some(cat)
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -294,14 +348,15 @@ mod tests {
 
     fn make_result(filename: &str, fwhm: f32, ecc: f32, snr: f32, stars: u32, bg: f32) -> AnalysisResult {
         AnalysisResult {
-            filename:          filename.to_string(),
-            background_median: Some(bg),
-            snr_estimate:      Some(snr),
-            fwhm:              Some(fwhm),
-            eccentricity:      Some(ecc),
-            star_count:        Some(stars),
-            flag:              None,
-            triggered_by:      vec![],
+            filename:           filename.to_string(),
+            background_median:  Some(bg),
+            snr_estimate:       Some(snr),
+            fwhm:               Some(fwhm),
+            eccentricity:       Some(ecc),
+            star_count:         Some(stars),
+            flag:               None,
+            triggered_by:       vec![],
+            rejection_category: None,
         }
     }
 
@@ -343,15 +398,31 @@ mod tests {
     }
 
     #[test]
+    fn test_snr_does_not_trigger_rejection() {
+        // SNR far below session mean should NOT cause rejection
+        let g1 = make_result("g1", 2.4, 0.4, 6.0, 600, 0.05);
+        let g2 = make_result("g2", 2.5, 0.4, 6.0, 600, 0.05);
+        let g3 = make_result("g3", 2.6, 0.4, 6.0, 600, 0.05);
+        let g4 = make_result("g4", 2.5, 0.4, 6.0, 600, 0.05);
+        let g5 = make_result("g5", 2.4, 0.4, 6.0, 600, 0.05);
+        // Very low SNR — should still PASS since SNR is not a rejection metric
+        let low_snr = make_result("low", 2.5, 0.4, 0.1, 600, 0.05);
+        let results = vec![&g1, &g2, &g3, &g4, &g5];
+        let stats = compute_session_stats(&results);
+        let thresholds = AnalysisThresholds::default();
+        let (flag, triggered) = classify_frame(&low_snr, &stats, &thresholds);
+        assert_eq!(flag, PxFlag::Pass);
+        assert!(!triggered.contains(&"SNR".to_string()));
+    }
+
+    #[test]
     fn test_triggered_by_populated() {
-        // Good frames have some variance so stddev > 0
         let g1 = make_result("g1", 2.4, 0.4, 6.0, 600, 0.05);
         let g2 = make_result("g2", 2.5, 0.4, 6.0, 600, 0.05);
         let g3 = make_result("g3", 2.6, 0.4, 6.0, 600, 0.05);
         let g4 = make_result("g4", 2.5, 0.4, 6.0, 600, 0.05);
         let g5 = make_result("g5", 2.4, 0.4, 6.0, 600, 0.05);
         // Bad frame with FWHM far above the session mean
-        // mean=2.48, stddev≈0.07, so 10.0 is ~107σ above mean
         let bad = make_result("bad", 10.0, 0.4, 6.0, 600, 0.05);
         let good_results = vec![&g1, &g2, &g3, &g4, &g5];
         let stats = compute_session_stats(&good_results);
@@ -378,5 +449,66 @@ mod tests {
         assert_eq!(w_ircut.star_count,     2.0);
         assert_eq!(w_none.star_count,      2.0);
         assert_eq!(w_duo_upper.star_count, 0.0);
+    }
+
+    // ── Category tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_category_optical_only() {
+        assert_eq!(categorize_rejection(&["FWHM".to_string()]), Some("O".to_string()));
+        assert_eq!(categorize_rejection(&["Eccentricity".to_string()]), Some("O".to_string()));
+        assert_eq!(categorize_rejection(&["FWHM".to_string(), "Eccentricity".to_string()]), Some("O".to_string()));
+    }
+
+    #[test]
+    fn test_category_transparency_only() {
+        assert_eq!(categorize_rejection(&["StarCount".to_string()]), Some("T".to_string()));
+    }
+
+    #[test]
+    fn test_category_sky_brightness_only() {
+        assert_eq!(categorize_rejection(&["BackgroundMedian".to_string()]), Some("B".to_string()));
+    }
+
+    #[test]
+    fn test_category_sky_brightness_with_stars() {
+        // B dominates T when both present
+        assert_eq!(
+            categorize_rejection(&["BackgroundMedian".to_string(), "StarCount".to_string()]),
+            Some("BT".to_string())
+        );
+    }
+
+    #[test]
+    fn test_category_optical_with_transparency() {
+        assert_eq!(
+            categorize_rejection(&["FWHM".to_string(), "StarCount".to_string()]),
+            Some("OT".to_string())
+        );
+    }
+
+    #[test]
+    fn test_category_optical_with_sky_brightness() {
+        assert_eq!(
+            categorize_rejection(&["FWHM".to_string(), "BackgroundMedian".to_string()]),
+            Some("OB".to_string())
+        );
+    }
+
+    #[test]
+    fn test_category_all_three() {
+        assert_eq!(
+            categorize_rejection(&[
+                "FWHM".to_string(),
+                "BackgroundMedian".to_string(),
+                "StarCount".to_string(),
+            ]),
+            Some("OBT".to_string())
+        );
+    }
+
+    #[test]
+    fn test_category_none_for_pass() {
+        assert_eq!(categorize_rejection(&[]), None);
     }
 }

@@ -22,7 +22,7 @@
      - Import Session JSON (loads full session including images)
      - Session menu (new) — moves Select Directory, Close Session, adds Export/Import JSON
      - File menu restructured — Read Single Image + Exit only
-13- **Commt Enhancement***
+13- **Commit Enhancement**
      - Commit enhancement — move rejected files to `rejected/` subfolder with `.rejected` appended
      - CSV import removed (superseded by JSON)
 14- **Deferred:**

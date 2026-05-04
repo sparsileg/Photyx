@@ -203,6 +203,7 @@ fn execute_all(
                     .or_else(|| Some(stars.len() as u32)),
                 flag: None,
                 triggered_by: vec![],
+                rejection_category: None,
             };
 
             info!("AnalyzeFrames: {} — done", short_name(&snap.path));
@@ -326,6 +327,7 @@ fn compute_metrics_for_image(
             .or_else(|| Some(stars.len() as u32)),
         flag: None,
         triggered_by: vec![],
+        rejection_category: None,
     })
 }
 

@@ -30,6 +30,8 @@ impl ThresholdProfile {
             bg_median_reject_sigma:  DEFAULT_BG_MEDIAN_SIGMA,
             snr_reject_sigma:        DEFAULT_SNR_SIGMA,
             fwhm_reject_sigma:       DEFAULT_FWHM_SIGMA,
+            // Star count raised from -1.5 to -3.0: mild transparency events
+            // are better handled by SFS weighting than hard rejection.
             star_count_reject_sigma: DEFAULT_STAR_COUNT_SIGMA,
             eccentricity_reject_abs: DEFAULT_ECCENTRICITY_ABS,
         }

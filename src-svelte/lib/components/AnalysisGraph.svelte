@@ -23,6 +23,7 @@
     star_count?:        number;
     flag:               string;
     triggered?:         string[];
+    rejection_category?: string;
   }
 
   interface MetricStats { mean: number; stddev: number; }
@@ -68,6 +69,28 @@
         }
       ])
     );
+  }
+
+  // ── Category colors ───────────────────────────────────────────────────────
+  // O = Optical  → red
+  // T = Transparency → yellow
+  // B = Sky brightness → blue
+  const CAT_COLORS: Record<string, string> = {
+    O: '#dc3232',
+    T: '#d4a820',
+    B: '#3478dc',
+  };
+
+  // Returns the one or two colors to draw for a given rejection_category string.
+  // Single-letter → one color. Multi-letter → two colors (split dot).
+  function categoryColors(cat: string | undefined): string[] {
+    if (!cat) return [];
+    const unique: string[] = [];
+    for (const ch of cat) {
+      const c = CAT_COLORS[ch];
+      if (c && !unique.includes(c)) unique.push(c);
+    }
+    return unique;
   }
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -259,6 +282,183 @@
     ctx.fillRect(rectX, labelY - fontSize, textW + 6, fontSize + 4);
     ctx.fillStyle = color;
     ctx.fillText(labelText, labelX, labelY);
+  }
+
+  // ── Dot drawing ───────────────────────────────────────────────────────────
+
+  function drawDot(
+    ctx:       CanvasRenderingContext2D,
+    x:         number,
+    y:         number,
+    flag:      string,
+    category:  string | undefined,
+    isOutlier: boolean,
+    C:         ReturnType<typeof getThemeColors>,
+  ) {
+    if (flag === 'REJECT') {
+      const colors = categoryColors(category);
+      const isMulti = colors.length > 1;
+      // Slightly larger dot for multi-category rejects
+      const r = isMulti ? 10 : 8;
+
+      if (isMulti) {
+        // Draw left half with first color, right half with second color
+        // Black border first (slightly larger circle)
+        ctx.beginPath();
+        ctx.arc(x, y, r + 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+
+        // Left half
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.arc(x, y, r, Math.PI / 2, -Math.PI / 2, true);
+        ctx.closePath();
+        ctx.fillStyle = colors[0];
+        ctx.fill();
+
+        // Right half
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.arc(x, y, r, -Math.PI / 2, Math.PI / 2, true);
+        ctx.closePath();
+        ctx.fillStyle = colors[1];
+        ctx.fill();
+
+        // Dividing line between halves
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x, y + r);
+        ctx.stroke();
+      } else {
+        // Single-category reject — solid color with black border
+        // Black border
+        ctx.beginPath();
+        ctx.arc(x, y, r + 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+        // Fill
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = colors.length > 0 ? colors[0] : C.error;
+        ctx.fill();
+      }
+    } else {
+      // PASS dot — white with black border for visibility across all themes
+      const r = 4;
+      ctx.beginPath();
+      ctx.arc(x, y, r + 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#000000';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+    }
+
+    // Outlier marker (square bracket around dot)
+    if (isOutlier) {
+      const dotR = flag === 'REJECT' ? (categoryColors(category).length > 1 ? 10 : 8) : 4;
+      const half = dotR + 4;
+      ctx.strokeStyle = C.warning;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      ctx.strokeRect(x - half, y - half, half * 2, half * 2);
+    }
+  }
+
+  // ── Legend ────────────────────────────────────────────────────────────────
+
+  function drawLegend(
+    ctx: CanvasRenderingContext2D,
+    W:   number,
+    PT:  number,
+    PL:  number,
+    C:   ReturnType<typeof getThemeColors>,
+  ) {
+    const items = [
+      { label: 'Pass',                  colors: ['#ffffff'] },
+      { label: 'Reject — Optical',      colors: [CAT_COLORS.O] },
+      { label: 'Reject — Transparency', colors: [CAT_COLORS.T] },
+      { label: 'Reject — Sky Brightness',  colors: [CAT_COLORS.B] },
+    ];
+
+    const fontSize    = 13;
+    const dotR        = 6;
+    const lineH       = 22;
+    const padX        = 12;
+    const padY        = 10;
+    const dotTextGap  = 7;
+
+    // Measure widest label
+    ctx.font = `${fontSize}px monospace`;
+    const maxLabelW = Math.max(...items.map(it => ctx.measureText(it.label).width));
+    const boxW = padX * 2 + (dotR + 2) * 2 + dotTextGap + maxLabelW;
+    const boxH = padY * 2 + items.length * lineH - (lineH - fontSize);
+
+    const bx = PL + 8;
+    const by = PT + 8;
+
+    // Background
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(bx, by, boxW, boxH);
+    ctx.strokeStyle = C.border;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx, by, boxW, boxH);
+
+    items.forEach((item, i) => {
+      const cx = bx + padX + dotR + 2;
+      const cy = by + padY + i * lineH + dotR;
+
+      // Draw dot
+      if (item.colors.length === 1) {
+        // Black border
+        ctx.beginPath();
+        ctx.arc(cx, cy, dotR + 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+        // Fill
+        ctx.beginPath();
+        ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
+        ctx.fillStyle = item.colors[0];
+        ctx.fill();
+      } else {
+        // Split dot
+        ctx.beginPath();
+        ctx.arc(cx, cy, dotR + 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, dotR, Math.PI / 2, -Math.PI / 2, true);
+        ctx.closePath();
+        ctx.fillStyle = item.colors[0];
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, dotR, -Math.PI / 2, Math.PI / 2, true);
+        ctx.closePath();
+        ctx.fillStyle = item.colors[1];
+        ctx.fill();
+
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - dotR);
+        ctx.lineTo(cx, cy + dotR);
+        ctx.stroke();
+      }
+
+      // Label
+      ctx.fillStyle = C.secondary;
+      ctx.font = `${fontSize}px monospace`;
+      ctx.textAlign = 'left';
+      ctx.fillText(item.label, cx + dotR + 2 + dotTextGap, cy + fontSize / 2 - 1);
+    });
   }
 
   function drawChart() {
@@ -475,36 +675,18 @@
       ctx.setLineDash([]);
     }
 
-    // Dots — metric 1 only
+    // Dots — metric 1 only, drawn last so they sit on top of lines
     for (let i = 0; i < n; i++) {
       const f = frames[i];
       const x = toX(i);
       const v1 = m1vals[i];
-      if (v1 !== undefined) drawDot(ctx, x, toY1(v1), f.flag, outlierSet.has(f.filename), C);
+      if (v1 !== undefined) {
+        drawDot(ctx, x, toY1(v1), f.flag, f.rejection_category, outlierSet.has(f.filename), C);
+      }
     }
-  }
 
-  function drawDot(
-    ctx:       CanvasRenderingContext2D,
-    x:         number,
-    y:         number,
-    flag:      string,
-    isOutlier: boolean,
-    C:         ReturnType<typeof getThemeColors>,
-  ) {
-    const r = flag === 'REJECT' ? 8 : 4;
-    ctx.fillStyle = flag === 'REJECT' ? C.error : C.primary;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-
-    if (isOutlier) {
-      const half = r + 4;
-      ctx.strokeStyle = C.warning;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([]);
-      ctx.strokeRect(x - half, y - half, half * 2, half * 2);
-    }
+    // Legend — always visible, top-left corner
+    drawLegend(ctx, W, PT, PL, C);
   }
 
   // ── Hit test ──────────────────────────────────────────────────────────────
@@ -563,8 +745,11 @@
     const rect = canvas!.getBoundingClientRect();
 
     let flagStr = frame.flag || '—';
-    if (frame.flag === 'REJECT' && frame.triggered && frame.triggered.length > 0) {
-      flagStr += ` (${frame.triggered.join(', ')})`;
+    if (frame.flag === 'REJECT') {
+      if (frame.rejection_category) flagStr += ` [${frame.rejection_category}]`;
+      if (frame.triggered && frame.triggered.length > 0) {
+        flagStr += ` (${frame.triggered.join(', ')})`;
+      }
     }
     const line1 = `${mdef.label}: ${val !== undefined ? mdef.fmt(val) : 'n/a'}  |  ${flagStr}`;
     const line2 = frame.short_name;
@@ -603,7 +788,9 @@
     const toY1 = (v: number) => PT + CH - ((v - r1.lo) / (r1.hi - r1.lo)) * CH;
     const toY2 = (v: number) => PT + CH - ((v - r2.lo) / (r2.hi - r2.lo)) * CH;
     const dotY = which === 1 ? toY1(val) : toY2(val);
-    const dotR = frame.flag === 'REJECT' ? 8 : 4;
+    // Use larger hit radius for multi-category dots
+    const isMulti = frame.rejection_category !== undefined && frame.rejection_category.length > 1;
+    const dotR = frame.flag === 'REJECT' ? (isMulti ? 10 : 8) : 4;
     const hitR = dotR + 6;
 
     if (Math.abs(my - dotY) > hitR) return;

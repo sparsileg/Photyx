@@ -45,17 +45,26 @@ pub struct AnalysisResult {
     // Background metrics (background.rs)
     pub background_median:    Option<f32>,
 
-    // Signal metrics
-    pub snr_estimate:         Option<f32>,   // signal-to-noise ratio estimate
+    // Signal metrics — SNR is retained as diagnostic information only.
+    // It does NOT drive PXFLAG rejection. See session_stats::classify_frame.
+    pub snr_estimate:         Option<f32>,
 
     // Star quality metrics (stars.rs)
     pub fwhm:                 Option<f32>,   // mean FWHM in pixels
     pub eccentricity:         Option<f32>,   // mean eccentricity (0 = circular, 1 = line)
     pub star_count:           Option<u32>,   // number of detected stars
 
-    // Final classification (set by AnalyzeFrames)
-    pub flag:          Option<PxFlag>,
-    pub triggered_by:  Vec<String>,
+    // Final classification (set by AnalyzeFrames / get_analysis_results)
+    pub flag:                 Option<PxFlag>,
+    pub triggered_by:         Vec<String>,
+
+    // Rejection category — only populated for REJECT frames.
+    // One of: "O", "T", "B", "OT", "OB", "BT", "OBT"
+    // O = Optical quality (FWHM/Eccentricity)
+    // T = Transparency (star count, background unchanged)
+    // B = Sky brightness (background median elevated)
+    // Ordering: O first (least recoverable), B before T when both present.
+    pub rejection_category:   Option<String>,
 }
 
 impl AnalysisResult {

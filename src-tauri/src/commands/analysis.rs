@@ -21,7 +21,7 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
     // Reclassify all frames on the fly using cached metrics + current thresholds.
     // This allows threshold changes to take effect without rerunning AnalyzeFrames.
     use crate::analysis::session_stats::{
-        classify_frame, compute_session_stats_iterative, AnalysisThresholds,
+        categorize_rejection, classify_frame, compute_session_stats_iterative, AnalysisThresholds,
     };
 
     let thresholds: AnalysisThresholds = ctx.analysis_thresholds.clone();
@@ -36,14 +36,19 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
     ctx.last_session_stats = Some(session_stats.clone());
     ctx.outlier_frame_paths = outlier_paths.clone();
 
-    // Reclassify each frame and update stored results
+    // Reclassify each frame and update stored results (including rejection_category)
     let paths: Vec<String> = ctx.file_list.clone();
     for path in &paths {
         if let Some(result) = ctx.analysis_results.get(path).cloned() {
             let (flag, triggered) = classify_frame(&result, &session_stats, &thresholds);
+            let category = match flag {
+                crate::analysis::PxFlag::Reject => categorize_rejection(&triggered),
+                crate::analysis::PxFlag::Pass   => None,
+            };
             if let Some(r) = ctx.analysis_results.get_mut(path) {
-                r.flag = Some(flag);
-                r.triggered_by = triggered;
+                r.flag               = Some(flag);
+                r.triggered_by       = triggered;
+                r.rejection_category = category;
             }
         }
     }
@@ -55,33 +60,36 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
         if let Some(r) = ctx.analysis_results.get(path) {
             let flag = r.flag.as_ref().map(|f| f.as_str().to_string()).unwrap_or_default();
             serde_json::json!({
-                "index":             i,
-                "filename":          path,
-                "label":             label,
-                "short_name":        short,
-                "background_median": r.background_median,
-                "snr_estimate":      r.snr_estimate,
-                "fwhm":              r.fwhm,
-                "eccentricity":      r.eccentricity,
-                "star_count":        r.star_count,
-                "flag":              flag,
-                "triggered":         r.triggered_by,
+                "index":              i,
+                "filename":           path,
+                "label":              label,
+                "short_name":         short,
+                "background_median":  r.background_median,
+                "snr_estimate":       r.snr_estimate,
+                "fwhm":               r.fwhm,
+                "eccentricity":       r.eccentricity,
+                "star_count":         r.star_count,
+                "flag":               flag,
+                "triggered":          r.triggered_by,
+                "rejection_category": r.rejection_category,
             })
         } else {
             serde_json::json!({
-                "index":      i,
-                "filename":   path,
-                "label":      label,
-                "short_name": short,
-                "flag":       "",
-                "triggered":  [],
+                "index":              i,
+                "filename":           path,
+                "label":              label,
+                "short_name":         short,
+                "flag":               "",
+                "triggered":          [],
+                "rejection_category": null,
             })
         }
     }).collect();
 
+    // SNR is excluded from applied_thresholds — it is no longer a rejection metric.
+    // It remains in session_stats for display on the graph when selected as a metric.
     let applied = serde_json::json!({
         "background_median": { "value": thresholds.background_median.reject, "direction": "high" },
-        "snr_estimate":      { "value": thresholds.snr_estimate.reject,      "direction": "low"  },
         "fwhm":              { "value": thresholds.fwhm.reject,              "direction": "high" },
         "star_count":        { "value": thresholds.star_count.reject,        "direction": "low"  },
         "eccentricity":      { "value": thresholds.eccentricity.reject,      "direction": "high" },

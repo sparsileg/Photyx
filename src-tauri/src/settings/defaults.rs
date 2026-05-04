@@ -63,7 +63,10 @@ pub const SNR_SIGMA_MAX:                     f64  = 5.0;
 pub const DEFAULT_FWHM_SIGMA:                f64  = 2.5;
 pub const FWHM_SIGMA_MIN:                    f64  = 0.5;
 pub const FWHM_SIGMA_MAX:                    f64  = 4.0;
-pub const DEFAULT_STAR_COUNT_SIGMA:          f64  = -1.5;
+// Star count threshold raised from -1.5 to -3.0 per cross-session analysis:
+// mild transparency events (cloud, haze) are better handled by SFS weighting
+// than hard rejection; only severe star count drops warrant culling.
+pub const DEFAULT_STAR_COUNT_SIGMA:          f64  = -3.0;
 pub const STAR_COUNT_SIGMA_MIN:              f64  = 0.5;
 pub const STAR_COUNT_SIGMA_MAX:              f64  = 5.0;
 pub const DEFAULT_ECCENTRICITY_ABS:          f64  = 0.85;

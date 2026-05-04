@@ -146,9 +146,9 @@ export interface PrefSection {
 // ── Threshold Profiles ────────────────────────────────────────────────────────
 
 export const BG_MEDIAN_SIGMA_DEFAULT  = 2.5;
-export const SNR_SIGMA_DEFAULT        = 2.5;
+export const SNR_SIGMA_DEFAULT        = -2.5;
+export const STAR_COUNT_SIGMA_DEFAULT = -3.0;
 export const FWHM_SIGMA_DEFAULT       = 2.5;
-export const STAR_COUNT_SIGMA_DEFAULT = 1.5;
 export const ECCENTRICITY_ABS_DEFAULT = 0.85;
 export const ECCENTRICITY_ABS_MIN     = 0.10;
 export const ECCENTRICITY_ABS_MAX     = 1.00;
@@ -183,9 +183,19 @@ export const THRESHOLD_FIELDS: ThresholdFieldMeta[] = [
     label:     'SNR Estimate',
     direction: '-',
     type:      'sigma',
-    min:       SIGMA_MIN,
-    max:       SIGMA_MAX,
+    min:       -4.0,
+    max:       -0.5,
     default:   SNR_SIGMA_DEFAULT,
+    step:      SIGMA_STEP,
+  },
+  {
+    key:       'star_count_reject_sigma',
+    label:     'Star Count',
+    direction: '-',
+    type:      'sigma',
+    min:       -4.0,
+    max:       -0.5,
+    default:   STAR_COUNT_SIGMA_DEFAULT,
     step:      SIGMA_STEP,
   },
   {
@@ -196,16 +206,6 @@ export const THRESHOLD_FIELDS: ThresholdFieldMeta[] = [
     min:       SIGMA_MIN,
     max:       SIGMA_MAX,
     default:   FWHM_SIGMA_DEFAULT,
-    step:      SIGMA_STEP,
-  },
-  {
-    key:       'star_count_reject_sigma',
-    label:     'Star Count',
-    direction: '-',
-    type:      'sigma',
-    min:       SIGMA_MIN,
-    max:       SIGMA_MAX,
-    default:   STAR_COUNT_SIGMA_DEFAULT,
     step:      SIGMA_STEP,
   },
   {

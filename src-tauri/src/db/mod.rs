@@ -33,7 +33,7 @@ pub fn open_db(app_data_dir: PathBuf) -> Result<Connection> {
 fn seed_defaults(conn: &Connection) -> Result<()> {
     let now = now_unix();
 
-    // Default "Standard" threshold profile
+    // Default "Default" threshold profile
     conn.execute(
         "INSERT OR IGNORE INTO threshold_profiles
             (name, description,
@@ -41,7 +41,7 @@ fn seed_defaults(conn: &Connection) -> Result<()> {
              snr_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
              eccentricity_reject_abs, created_at, updated_at)
          VALUES (?1, ?2, 2.5, 2.5, 2.5, 2.5, 2.5, 1.5, 0.85, ?3, ?3)",
-        rusqlite::params!["Standard", "Default rejection thresholds", now],
+        rusqlite::params!["Default", "Default rejection thresholds", now],
     )?;
 
     // Algorithm set version 1

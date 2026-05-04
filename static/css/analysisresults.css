@@ -100,6 +100,10 @@
     text-align: left;
 }
 
+.ar-table th:last-child {
+    text-align: center;
+}
+
 .ar-table th:hover {
     background: var(--card-hover);
 }
@@ -115,6 +119,10 @@
     text-align: left;
 }
 
+.ar-table td:last-child {
+    text-align: center;
+}
+
 .ar-filename {
     max-width: 280px;
     overflow: hidden;
@@ -123,4 +131,45 @@
 
 .ar-table tbody tr:hover {
     background: var(--card-hover);
+}
+
+/* ── Rejection category badges ────────────────────────────────────────────── */
+
+.ar-cat-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-family: monospace;
+    font-weight: bold;
+    padding: 1px 5px;
+    border-radius: 2px;
+    border: 1px solid transparent;
+    letter-spacing: 0.05em;
+}
+
+/* O — Optical: red — least recoverable */
+.ar-cat-o {
+    background: rgba(220, 50, 50, 0.20);
+    border-color: rgba(220, 50, 50, 0.60);
+    color: #e05050;
+}
+
+/* T — Transparency: yellow */
+.ar-cat-t {
+    background: rgba(220, 180, 30, 0.20);
+    border-color: rgba(220, 180, 30, 0.60);
+    color: #d4b020;
+}
+
+/* B — Sky brightness: blue — most recoverable */
+.ar-cat-b {
+    background: rgba(60, 120, 220, 0.20);
+    border-color: rgba(60, 120, 220, 0.60);
+    color: #5090e0;
+}
+
+/* Multi-category: neutral with slightly stronger border */
+.ar-cat-multi {
+    background: rgba(160, 100, 200, 0.20);
+    border-color: rgba(160, 100, 200, 0.60);
+    color: #b070d0;
 }
