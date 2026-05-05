@@ -70,6 +70,34 @@
     100% { opacity: 1; }
 }
 
+#status-bar.status-alert {
+    background: rgba(255, 0, 0, 0.85);
+    border-top-color: #ffffff;
+    color: #ffffff;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 66px;
+    font-size: 33px;
+    padding: 12px 16px;
+    z-index: 400;
+    transition: height 0.3s ease, font-size 0.3s ease, padding 0.3s ease;
+}
+
+#status-bar.status-alert #status-text,
+#status-bar.status-alert #status-icon {
+    animation: status-pulse 1.2s ease-in-out infinite;
+}
+
+#status-bar.status-alert #status-icon {
+    font-size: 36px;
+}
+
+#notif-history.alert {
+    bottom: 66px;
+}
+
 #status-icon {
     font-size: 12px;
     flex: 0 0 auto;

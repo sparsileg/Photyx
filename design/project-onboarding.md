@@ -4,15 +4,11 @@
 
 My name is Stan. I am the sole developer of Photyx. I will refer to myself in the first person throughout our collaboration.
 
-### Purpose of documents
-
-In addition to this onboarding document, I will also upload documents that define the architecture, the patterns we use for UI and internal code, and how you will collaborate with me. Read them carefully and follow what they say. However, don't be afraid to ask me questions or suggest improvements, particularly if I'm diverging from the documents.
-
-#### What Photyx Is
+### What Photyx Is
 
 Photyx is a high-performance desktop astrophotography application built with **Tauri v2 + Svelte + Rust**. It is emphatically **not** an Electron app and will never become one. The target stack is Tauri, period.
 
-The authoritative requirements document is `photyx_spec.md` (currently v20). The implementation reference is `development_notes.md` (currently v20). The UI patterns reference is `photyx_ui_patterns.md`. I will upload these at the start of sessions where we are doing development work. **Read all three before writing any code.** Do not deviate from the spec or suggest technologies inconsistent with it. There may be other documents that I'll provide that may help you as well.
+The authoritative requirements document is `photyx_spec.md` . The implementation reference is `development_notes.md` . The UI patterns reference is `photyx_ui_patterns.md`. Do not deviate from the spec or suggest technologies inconsistent with it. There may be other documents that I'll provide that may help you as well.
 
 ### Stack Summary
 
@@ -20,19 +16,11 @@ Tauri v2 + Svelte 5 + TypeScript frontend; Rust backend with plugin registry; SQ
 
 ### Architecture Overview
 
-- **Plugin host:** every operation is a `PhotonPlugin` — file I/O, analysis, keywords, stretch. Registered in `lib.rs`, dispatched via `commands/` Tauri commands or pcode interpreter.
-- **AppContext** (`context/mod.rs`): session state — `file_list`, `image_buffers`, `analysis_results`, `is_imported_session`.
-- **Display pipeline:** `image_buffers` = raw pixels (never modified); `display_cache`, `full_res_cache`, `blink_cache_12/25` = derived JPEG bytes. Caches rebuilt on demand.
-- **Analysis layer:** pure Rust in `analysis/` — no Tauri deps. `session_stats.rs` owns `classify_frame()`, `categorize_rejection()`, `compute_session_stats_iterative()`. SNR is diagnostic only — excluded from rejection.
-- **Rejection categories:** O=Optical (FWHM/Ecc), T=Transparency (StarCount), B=Sky Brightness (BgMedian). Ordering: O first, B before T. Stored as `Option<String>` on `AnalysisResult`.
-- **Commit Results** is a terminal operation: write PXFLAG → WriteCurrent → move REJECTs to `rejected/<name>.<ext>.rejected` → re-key ctx → `ui.showView(null)` + `ui.clearViewer()` + `closeSession()`.
-- **Imported sessions** (`is_imported_session=true`): populated by `load_analysis_json`; skip reclassification in `get_analysis_results`; Commit disabled.
-- **View registry:** `ui.showView('analysisGraph' | 'analysisResults' | null)` — never boolean flags.
-- **Settings:** `AppSettings` struct, populated from `defaults.rs` + SQLite `preferences` table. `ThresholdProfile` holds 5 thresholds; SNR and StarCount stored as negative values in DB.
-- **Frontend constants:** `THRESHOLD_FIELDS` min/max for negative-direction fields use actual signed values (`min: -4.0, max: -0.5`). `SNR_SIGMA_DEFAULT=-2.5`, `STAR_COUNT_SIGMA_DEFAULT=-3.0`.
-- **Session JSON:** export via `Session → Export Session JSON…`; import via `Session → Import Session JSON…`. Filenames stored as basenames for cross-platform portability.
-- **Menu structure:** File (Load Single Image, Exit) | Session (Select Dir, Close Session, Export JSON, Import JSON) | Edit | View | Analyze (separator before Contour Plot) | Tools | Help.
-- **Capabilities:** `fs:allow-read-text-file` and `fs:allow-write-text-file` needed for JSON I/O; scopes include `$HOME`, `$DESKTOP`, `$DOWNLOAD`, `$DOCUMENT`, `$APPDATA/Photyx/**`.
+- 7:18 PM
+  
+  ## Claude responded: Photyx is a desktop astrophotography frame analysis tool built on Tauri v2 (Rust backend, Svelte 5 frontend).
+  
+  Photyx is a desktop astrophotography frame analysis tool built on Tauri v2 (Rust backend, Svelte 5 frontend). The frontend communicates with the backend exclusively via Tauri `invoke()` calls. All backend operations are implemented as `PhotonPlugin` trait objects registered in a plugin registry and dispatched either interactively via the pcode console or programmatically via the script runner. Session state — file lists, raw pixel buffers, derived caches, and analysis results — lives in a single `AppContext` struct protected by a Mutex. Raw pixel buffers are loaded once and never modified; all display representations (display cache, full-res cache, blink caches) are derived JPEG copies. Frame quality analysis runs in parallel via Rayon, computing five metrics per frame, then classifies each frame as PASS or REJECT using iterative sigma clipping against session statistics. Results are written back to source files as PXFLAG keywords. The frontend is organized around a viewer region managed by a view registry (`ui.showView()`), a pcode console, sliding side panels, and a Quick Launch bar. All persistence is via SQLite through `rusqlite`. Supported formats are FITS (via cfitsio), XISF (via the custom `photyx-xisf` crate), and TIFF.
 
 #### Development Environment
 
@@ -77,12 +65,11 @@ Once I say proceed, deliver **one change at a time** using BEFORE/AFTER blocks:
 
 - The spec is non-negotiable. If something I ask for conflicts with the spec, flag it before proceeding.
 - If I ask for something that isn't in the spec but should be, suggest adding it to the spec first.
-- Never suggest technologies not in the stack (no Electron, no alternative frameworks, no unapproved crates without discussion).
 
 **Document maintenance:**
 
 - `photyx_spec.md`, `development_notes.md`, and `photyx_ui_patterns.md` must be kept current.
-- At natural milestones (before commits), I will ask for updated versions of these documents. Produce them as complete file replacements, not patch lists.
+- At natural milestones (before commits), I will ask for updated versions of these documents.
 
 **Commit messages:**
 
@@ -114,7 +101,7 @@ Once I say proceed, deliver **one change at a time** using BEFORE/AFTER blocks:
 **CSS variables:**
 
 - Always use the theme variables: `--bg-color`, `--text-color`, `--primary-color`, `--border-color`, `--card-bg`, `--card-hover`, etc.
-- Never invent variables like `--color-bg` or `--color-text` — these don't exist in the theme files and will break the Light and Dark themes.
+- Never invent or use variables that don't exist in the theme files.
 - Never use CSS inline. I want all CSS design elements to be in their own separate CSS files, usually with each major module of the project that is user facing with its own CSS file.
 
 **Summary responses:**
@@ -123,7 +110,7 @@ Once I say proceed, deliver **one change at a time** using BEFORE/AFTER blocks:
 
 #### What We Do Not Do
 
-- No temporary localStorage hacks that need to be unwound later (Phase 9 will handle persistence properly via `tauri-plugin-store`)
+- Generally, do not do temporary hacks to get around a problem with the hope that a better solution will occur later.
 - No `window.confirm()` or `window.prompt()` for anything destructive — inline UI patterns only
 - No hardcoded fake data in panels (Macro Library, Plugin Manager, etc. — everything must come from real data sources)
 - No individual boolean flags for viewer-region visibility — use `ui.showView()`

@@ -232,10 +232,14 @@
             result.message,
             result.data,
           );
-        } else {
+          } else {
           const msg = result.message ?? 'Unknown error';
           append(msg, 'error');
-          notifications.error(msg);
+          if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
+            notifications.alert('Too many files to load', msg, 10000);
+          } else {
+            notifications.error(msg);
+          }
         }
       }
       // Dispatch client actions returned by Rust — no command-name matching needed
@@ -251,9 +255,13 @@
         if (action === 'open_keyword_modal')  ui.openKeywordModal();
       }
     } catch (err) {
-      const msg = `Invoke error: ${err}`;
+      const msg = String(err);
       append(msg, 'error');
-      notifications.error(msg);
+      if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
+        notifications.alert('Too many files to load', msg, 10000);
+      } else {
+        notifications.error(msg);
+      }
     }
   }
 

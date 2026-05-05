@@ -49,6 +49,34 @@ impl PhotonPlugin for ReadFIT {
 
         let total = files.len();
 
+        // ── Memory estimate and limit check ───────────────────────────────────
+        let estimated_bytes = if let Some(first) = files.first() {
+            peek_fits_dimensions(first).map(|(w, h, c, bpp)| {
+                (w as i64) * (h as i64) * (c as i64) * (bpp as i64)
+                    * (files.len() as i64)
+            })
+        } else {
+            None
+        };
+
+        if let Some(raw_bytes) = estimated_bytes {
+            let peak_bytes = (raw_bytes as f64 * 2.1) as i64;
+            if peak_bytes > ctx.buffer_pool_bytes {
+                return Err(PluginError::new(
+                    "MEMORY_LIMIT_EXCEEDED",
+                    &format!(
+                        "Load cancelled: {} files require ~{:.1} GB of memory. Preferences limit is set to {:.1} GB.",
+                        files.len(),
+                        peak_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                        ctx.buffer_pool_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                    ),
+                ));
+            }
+        }
+
+        let raw_mb = estimated_bytes.unwrap_or(0) / (1024 * 1024);
+        let peak_mb = (estimated_bytes.unwrap_or(0) as f64 * 2.1) as i64 / (1024 * 1024);
+
         ctx.clear_session();
 
         let mut loaded = 0;
@@ -72,12 +100,42 @@ impl PhotonPlugin for ReadFIT {
         ctx.current_frame = 0;
 
         let msg = if errors > 0 {
-            format!("Loaded {}/{} FITS files ({} errors)", loaded, total, errors)
+            format!(
+                "Loaded {}/{} FIT files (~{} MB raw, ~{} MB peak with analysis) ({} errors)",
+                loaded, total, raw_mb, peak_mb, errors
+            )
         } else {
-            format!("Loaded {} FITS file(s)", loaded)
+            format!(
+                "Loaded {} FIT file(s) (~{} MB raw, ~{} MB peak with analysis)",
+                loaded, raw_mb, peak_mb
+            )
         };
 
         Ok(PluginOutput::Message(msg))
+    }
+}
+
+/// Peek at a FITS file header to get dimensions, channels, and bit depth
+/// without reading pixel data. Returns (width, height, channels, bytes_per_pixel).
+pub fn peek_fits_dimensions(path: &str) -> Option<(u32, u32, u8, usize)> {
+    let mut fitsfile = FitsFile::open(path).ok()?;
+    let hdu = fitsfile.primary_hdu().ok()?;
+    match &hdu.info {
+        HduInfo::ImageInfo { shape, image_type } => {
+            let (w, h, c) = match shape.as_slice() {
+                [h, w]    => (*w as u32, *h as u32, 1u8),
+                [_, h, w] => (*w as u32, *h as u32, 3u8),
+                _         => return None,
+            };
+            let bpp = match image_type {
+                ImageType::UnsignedByte => 1,
+                ImageType::Float        => 4,
+                ImageType::Double       => 4, // downcast to f32
+                _                       => 2, // Short, UnsignedShort, Long → U16
+            };
+            Some((w, h, c, bpp))
+        }
+        _ => None,
     }
 }
 

@@ -88,7 +88,12 @@ export async function loadFiles(filter: FormatFilter) {
     );
 
     if (!result.success) {
-      notifications.error(result.error ?? `${command} failed`);
+      const msg = result.error ?? `${command} failed`;
+      if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
+        notifications.alert('Too many files to load', msg, 10000);
+      } else {
+        notifications.error(msg);
+      }
       return;
     }
 

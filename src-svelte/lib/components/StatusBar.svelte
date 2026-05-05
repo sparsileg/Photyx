@@ -11,6 +11,7 @@
     warning: { icon: '⚠', cls: 'status-warning' },
     error:   { icon: '✕', cls: 'status-error' },
     running: { icon: '◎', cls: 'status-running' },
+    alert:   { icon: '✕', cls: 'status-alert' },
   };
 
   let meta = $derived(
@@ -32,7 +33,7 @@
 
 <!-- Notification history overlay -->
 {#if historyOpen}
-  <div id="notif-history" class="open" class:running={$latestNotification?.type === 'running'}>
+  <div id="notif-history" class="open" class:running={$latestNotification?.type === 'running' || $latestNotification?.type === 'alert'}>
     <div class="notif-history-header">
       Notification History
       <span class="notif-close" onclick={() => historyOpen = false}>✕</span>

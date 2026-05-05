@@ -5,7 +5,7 @@
 3. ~~**Remove channel switching** — remove R/G/B channel buttons from toolbar, delete `activeChannel` from `ui.ts` and all related code (`$ui.activeChannel`, any channel extraction logic)~~
 4. ~~~~The first is Copy to Clipboard. This would be the entire table, including headers with the numbers represented at max precision. ~~~~
 5. ~~The second would be Save as CVS. Similar as we include the numbers at max precision, but in CSV format.~~
-6. SNR estimator revision. The current estimator rewards integrated star flux rather than signal quality. The revised estimator should account for PSF size when computing SNR — a frame with 2× the FWHM should not score higher SNR for the same target.
+6. ~~SNR estimator revision. The current estimator rewards integrated star flux rather than signal quality. The revised estimator should account for PSF size when computing SNR — a frame with 2× the FWHM should not score higher SNR for the same target.~~
 7. Pulse the "Cache is being built" notification via `notifications.running()`
 8. ~~Bg Std Dev and Bg Gradient removal from the analysis engine~~
 9. ~~**Enhance AnalyzeFrames:**~~

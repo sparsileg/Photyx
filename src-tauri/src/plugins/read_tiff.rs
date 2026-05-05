@@ -54,6 +54,34 @@ impl PhotonPlugin for ReadTIFF {
 
         info!("ReadTIFF: loading {} files from {}", tiff_files.len(), dir);
 
+        // ── Memory estimate and limit check ───────────────────────────────────
+        let estimated_bytes = if let Some(first) = tiff_files.first() {
+            peek_tiff_dimensions(first).map(|(w, h, c, bpp)| {
+                (w as i64) * (h as i64) * (c as i64) * (bpp as i64)
+                    * (tiff_files.len() as i64)
+            })
+        } else {
+            None
+        };
+
+        if let Some(raw_bytes) = estimated_bytes {
+            let peak_bytes = (raw_bytes as f64 * 2.1) as i64;
+            if peak_bytes > ctx.buffer_pool_bytes {
+                return Err(PluginError::new(
+                    "MEMORY_LIMIT_EXCEEDED",
+                    &format!(
+                        "Load cancelled: {} files require ~{:.1} GB of memory. Preferences limit is set to {:.1} GB.",
+                        tiff_files.len(),
+                        peak_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                        ctx.buffer_pool_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                    ),
+                ));
+            }
+        }
+
+        let raw_mb  = estimated_bytes.unwrap_or(0) / (1024 * 1024);
+        let peak_mb = (estimated_bytes.unwrap_or(0) as f64 * 2.1) as i64 / (1024 * 1024);
+
         ctx.clear_session();
 
         let mut loaded = 0;
@@ -77,13 +105,38 @@ impl PhotonPlugin for ReadTIFF {
         ctx.current_frame = 0;
 
         let msg = if errors > 0 {
-            format!("Loaded {}/{} TIFF file(s) ({} errors)", loaded, tiff_files.len(), errors)
+            format!(
+                "Loaded {}/{} TIFF files (~{} MB raw, ~{} MB peak with analysis) ({} errors)",
+                loaded, tiff_files.len(), raw_mb, peak_mb, errors
+            )
         } else {
-            format!("Loaded {} TIFF file(s)", loaded)
+            format!(
+                "Loaded {} TIFF file(s) (~{} MB raw, ~{} MB peak with analysis)",
+                loaded, raw_mb, peak_mb
+            )
         };
 
         Ok(PluginOutput::Message(msg))
     }
+}
+
+/// Peek at a TIFF file header to get dimensions, channels, and bytes per pixel
+/// without reading pixel data. Returns (width, height, channels, bytes_per_pixel).
+pub fn peek_tiff_dimensions(path: &str) -> Option<(u32, u32, u8, usize)> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut decoder = tiff::decoder::Decoder::new(file).ok()?;
+    let (width, height) = decoder.dimensions().ok()?;
+    let color_type = decoder.colortype().ok()?;
+    let (channels, bpp): (u8, usize) = match color_type {
+        tiff::ColorType::Gray(8)   => (1, 1),
+        tiff::ColorType::Gray(16)  => (1, 2),
+        tiff::ColorType::Gray(32)  => (1, 4),
+        tiff::ColorType::RGB(8)    => (3, 1),
+        tiff::ColorType::RGB(16)   => (3, 2),
+        tiff::ColorType::RGB(32)   => (3, 4),
+        _                          => (1, 2), // fallback
+    };
+    Some((width, height, channels, bpp))
 }
 
 pub fn read_tiff_file(path: &str) -> Result<ImageBuffer, String> {

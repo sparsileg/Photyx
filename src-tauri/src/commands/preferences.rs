@@ -25,17 +25,9 @@ pub fn set_preference(key: String, value: String, state: State<Arc<PhotoxState>>
     let mut settings = state.settings.lock().expect("settings lock poisoned");
     settings.save_preference(&key, &value, &db)?;
 
-    // Propagate autostretch settings into AppContext immediately
-    if key == "autostretch_shadow_clip" {
-        if let Ok(v) = value.parse::<f32>() {
-            let mut ctx = state.context.lock().expect("context lock poisoned");
-            ctx.autostretch_shadow_clip = v;
-        }
-    } else if key == "autostretch_target_bg" {
-        if let Ok(v) = value.parse::<f32>() {
-            let mut ctx = state.context.lock().expect("context lock poisoned");
-            ctx.autostretch_target_bg = v;
-        }
+    {
+        let mut ctx = state.context.lock().expect("context lock poisoned");
+        ctx.sync_from_settings(&settings);
     }
 
     Ok(())

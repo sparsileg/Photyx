@@ -149,6 +149,10 @@ pub struct AppContext {
     /// Configurable log directory — if None, falls back to Tauri app data dir
     pub log_dir: Option<String>,
 
+    /// Buffer pool memory limit in bytes — copied from AppSettings at startup
+    /// and on preference change. Used by read plugins to gate loading.
+    pub buffer_pool_bytes: i64,
+
     /// Current session ID in session_history table — set by open_session, cleared by close_session
     pub current_session_id: Option<i64>,
 
@@ -159,10 +163,20 @@ pub struct AppContext {
 }
 
 impl AppContext {
+    /// Sync all fields that mirror AppSettings into AppContext.
+    /// Call this at startup and whenever any preference changes.
+    /// This is the single source of truth for settings → context propagation.
+    pub fn sync_from_settings(&mut self, settings: &crate::settings::AppSettings) {
+        self.autostretch_shadow_clip = settings.autostretch_shadow_clip as f32;
+        self.autostretch_target_bg   = settings.autostretch_target_bg as f32;
+        self.buffer_pool_bytes       = settings.buffer_pool_bytes;
+    }
+
     pub fn new() -> Self {
         let mut ctx = Self::default();
         ctx.autostretch_shadow_clip = crate::settings::defaults::DEFAULT_AUTOSTRETCH_SHADOW_CLIP as f32;
         ctx.autostretch_target_bg   = crate::settings::defaults::DEFAULT_AUTOSTRETCH_TARGET_BG as f32;
+        ctx.buffer_pool_bytes       = crate::settings::defaults::DEFAULT_BUFFER_POOL_BYTES;
         ctx
     }
 
@@ -177,7 +191,14 @@ impl AppContext {
     }
 
     pub fn total_memory_used(&self) -> usize {
-        0
+        self.image_buffers.values().map(|buf| {
+            match &buf.pixels {
+                Some(PixelData::U8(v))  => v.len(),
+                Some(PixelData::U16(v)) => v.len() * 2,
+                Some(PixelData::F32(v)) => v.len() * 4,
+                None => 0,
+            }
+        }).sum()
     }
 
     /// Clear all session state — pixel buffers, caches, analysis results.

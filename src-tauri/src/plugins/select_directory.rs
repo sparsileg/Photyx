@@ -48,10 +48,8 @@ impl PhotonPlugin for SelectDirectory {
             ));
         }
 
+        ctx.clear_session();
         ctx.active_directory = Some(normalised.clone());
-        ctx.file_list.clear();
-        ctx.image_buffers.clear();
-        ctx.current_frame = 0;
 
         info!("Active directory set to: {}", normalised);
         Ok(PluginOutput::Message(format!("Active directory: {}", normalised)))

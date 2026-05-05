@@ -5,9 +5,9 @@
 use tracing::{info, warn};
 use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
-use super::read_fits::read_fits_file;
-use super::read_xisf::read_xisf_file;
-use super::read_tiff::read_tiff_file;
+use super::read_fits::{read_fits_file, peek_fits_dimensions};
+use super::read_xisf::{read_xisf_file, peek_xisf_dimensions};
+use super::read_tiff::{read_tiff_file, peek_tiff_dimensions};
 
 pub struct ReadAll;
 
@@ -61,6 +61,46 @@ impl PhotonPlugin for ReadAll {
             return Ok(PluginOutput::Message(format!("No supported image files found in '{}'", dir)));
         }
 
+        // ── Memory estimate and limit check ───────────────────────────────────
+        // Peek the first file of whichever type appears first to get dimensions.
+        let first_fits = fits_files.first();
+        let first_xisf = xisf_files.first();
+        let first_tiff = tiff_files.first();
+
+        let estimated_bytes = if let Some(path) = first_fits {
+            peek_fits_dimensions(path).map(|(w, h, c, bpp)| {
+                (w as i64) * (h as i64) * (c as i64) * (bpp as i64) * (total as i64)
+            })
+        } else if let Some(path) = first_xisf {
+            peek_xisf_dimensions(path).map(|(w, h, c, bpp)| {
+                (w as i64) * (h as i64) * (c as i64) * (bpp as i64) * (total as i64)
+            })
+        } else if let Some(path) = first_tiff {
+            peek_tiff_dimensions(path).map(|(w, h, c, bpp)| {
+                (w as i64) * (h as i64) * (c as i64) * (bpp as i64) * (total as i64)
+            })
+        } else {
+            None
+        };
+
+        if let Some(raw_bytes) = estimated_bytes {
+            let peak_bytes = (raw_bytes as f64 * 2.1) as i64;
+            if peak_bytes > ctx.buffer_pool_bytes {
+                return Err(PluginError::new(
+                    "MEMORY_LIMIT_EXCEEDED",
+                    &format!(
+                        "Load cancelled: {} files require ~{:.1} GB of memory. Preferences limit is set to {:.1} GB.",
+                        total,
+                        peak_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                        ctx.buffer_pool_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                    ),
+                ));
+            }
+        }
+
+        let raw_mb  = estimated_bytes.unwrap_or(0) / (1024 * 1024);
+        let peak_mb = (estimated_bytes.unwrap_or(0) as f64 * 2.1) as i64 / (1024 * 1024);
+
         ctx.clear_session();
 
         let mut loaded = 0;
@@ -95,11 +135,15 @@ impl PhotonPlugin for ReadAll {
         ctx.current_frame = 0;
 
         let msg = if errors > 0 {
-            format!("Loaded {}/{} files ({} FITS, {} XISF, {} TIFF, {} errors)",
-                    loaded, total, fits_files.len(), xisf_files.len(), tiff_files.len(), errors)
+            format!(
+                "Loaded {}/{} files ({} FITS, {} XISF, {} TIFF) (~{} MB raw, ~{} MB peak with analysis) ({} errors)",
+                loaded, total, fits_files.len(), xisf_files.len(), tiff_files.len(), raw_mb, peak_mb, errors
+            )
         } else {
-            format!("Loaded {} file(s) ({} FITS, {} XISF, {} TIFF)",
-                    loaded, fits_files.len(), xisf_files.len(), tiff_files.len())
+            format!(
+                "Loaded {} file(s) ({} FITS, {} XISF, {} TIFF) (~{} MB raw, ~{} MB peak with analysis)",
+                loaded, fits_files.len(), xisf_files.len(), tiff_files.len(), raw_mb, peak_mb
+            )
         };
 
         Ok(PluginOutput::Message(msg))

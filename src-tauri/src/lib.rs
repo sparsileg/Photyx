@@ -234,8 +234,7 @@ pub fn run() {
     app_settings.load_threshold_profiles(&db_conn);
 
     let mut app_context = AppContext::new();
-    app_context.autostretch_shadow_clip = app_settings.autostretch_shadow_clip as f32;
-    app_context.autostretch_target_bg   = app_settings.autostretch_target_bg as f32;
+    app_context.sync_from_settings(&app_settings);
 
     // Load active threshold profile into AppContext
     if let Some(active_id) = app_settings.active_threshold_profile_id {

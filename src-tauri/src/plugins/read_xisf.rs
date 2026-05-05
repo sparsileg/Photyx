@@ -45,6 +45,34 @@ impl PhotonPlugin for ReadXISF {
 
         let total = files.len();
 
+        // ── Memory estimate and limit check ───────────────────────────────────
+        let estimated_bytes = if let Some(first) = files.first() {
+            peek_xisf_dimensions(first).map(|(w, h, c, bpp)| {
+                (w as i64) * (h as i64) * (c as i64) * (bpp as i64)
+                    * (files.len() as i64)
+            })
+        } else {
+            None
+        };
+
+        if let Some(raw_bytes) = estimated_bytes {
+            let peak_bytes = (raw_bytes as f64 * 2.1) as i64;
+            if peak_bytes > ctx.buffer_pool_bytes {
+                return Err(PluginError::new(
+                    "MEMORY_LIMIT_EXCEEDED",
+                    &format!(
+                        "Load cancelled: {} files require ~{:.1} GB of memory. Preferences limit is set to {:.1} GB.",
+                        files.len(),
+                        peak_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                        ctx.buffer_pool_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                    ),
+                ));
+            }
+        }
+
+        let raw_mb  = estimated_bytes.unwrap_or(0) / (1024 * 1024);
+        let peak_mb = (estimated_bytes.unwrap_or(0) as f64 * 2.1) as i64 / (1024 * 1024);
+
         ctx.clear_session();
 
         let mut loaded = 0;
@@ -68,13 +96,33 @@ impl PhotonPlugin for ReadXISF {
         ctx.current_frame = 0;
 
         let msg = if errors > 0 {
-            format!("Loaded {}/{} XISF files ({} errors)", loaded, total, errors)
+            format!(
+                "Loaded {}/{} XISF files (~{} MB raw, ~{} MB peak with analysis) ({} errors)", loaded, total, raw_mb, peak_mb, errors
+            )
         } else {
-            format!("Loaded {} XISF file(s)", loaded)
+            format!(
+                "Loaded {} XISF file(s) (~{} MB raw, ~{} MB peak with analysis)", loaded, raw_mb, peak_mb
+            )
         };
 
         Ok(PluginOutput::Message(msg))
     }
+}
+
+/// Peek at an XISF file header to get dimensions, channels, and bytes per pixel
+/// without reading pixel data. Returns (width, height, channels, bytes_per_pixel).
+pub fn peek_xisf_dimensions(path: &str) -> Option<(u32, u32, u8, usize)> {
+    let reader = XisfReader::open(path).ok()?;
+    if reader.image_count() == 0 { return None; }
+    let meta = reader.image_meta(0).ok()?;
+    let bpp = match meta.sample_format {
+        SampleFormat::UInt8   => 1,
+        SampleFormat::UInt16  => 2,
+        SampleFormat::UInt32  => 2, // downcast to u16
+        SampleFormat::Float32 => 4,
+        SampleFormat::Float64 => 4, // downcast to f32
+    };
+    Some((meta.width, meta.height, meta.channels as u8, bpp))
 }
 
 pub fn read_xisf_file(path: &str) -> Result<ImageBuffer, String> {
