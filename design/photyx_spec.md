@@ -146,11 +146,13 @@ Content Area contains: Icon Sidebar (40px) | Viewer Region (flex: 1). The Quick 
 Standard application menu with six top-level menus: File, Session, Edit, View, Analyze, Tools, Help.
 
 **File menu:**
+
 - Load Single Image…
 - ─────────────
 - Exit
 
 **Session menu:**
+
 - Select Directory… (Ctrl+O)
 - Close Session
 - ─────────────
@@ -158,13 +160,16 @@ Standard application menu with six top-level menus: File, Session, Edit, View, A
 - Import Session JSON…
 
 **Edit menu:**
+
 - Preferences
 - Analysis Parameters
 
 **View menu:**
+
 - Theme: Dark / Light / Matrix
 
 **Analyze menu:**
+
 - Analyze Frames
 - Analysis Results
 - Analysis Graph
@@ -172,12 +177,14 @@ Standard application menu with six top-level menus: File, Session, Edit, View, A
 - Contour Plot
 
 **Tools menu:**
+
 - Backup Database
 - Restore Database
 - ─────────────
 - Log Viewer
 
 **Help menu:**
+
 - About Photyx
 - Documentation
 
@@ -216,6 +223,7 @@ Viewer-region component. Two-metric line chart with sigma bands, mean line, and 
 **Toolbar:** Metric 1 dropdown | Metric 2 dropdown | ↻ Refresh | ✓ Commit Results | ⎘ Copy | ⬇ Save Image | ✕ Close
 
 **Dot appearance:**
+
 - All dots have a 2px black border for visibility against any background color
 - PASS: white fill
 - REJECT — Optical (O): red fill
@@ -240,12 +248,14 @@ Viewer-region component. Sortable table of per-frame metrics, PXFLAG values, and
 **Category column:** Shows rejection category badge for REJECT frames (O, T, B, OT, OB, BT, OBT). Centered. Color-coded: O=red, T=yellow, B=blue, multi=purple.
 
 **PXFLAG toggle:** Right-click any row to show a context menu:
+
 - REJECT row → "Set to PASS"
 - PASS row → "Set to REJECT"
 
 Toggled rows are highlighted with an amber left border and subtle background tint. All underlying metric data (triggered_by, rejection_category) is preserved regardless of toggle direction so the user can toggle back if needed.
 
 **Commit Results behavior:** Terminal operation. On success:
+
 1. Toggled flag changes are pushed to Rust
 2. PXFLAG written to all buffers and flushed to disk
 3. `rejected/` subfolder created in the active directory (if absent)
@@ -367,11 +377,11 @@ PASS / REJECT only — no SUSPECT. A frame is REJECT if any single metric (exclu
 
 Every REJECT frame is assigned one or more rejection categories:
 
-| Category | Label          | Triggered by                               |
-| -------- | -------------- | ------------------------------------------ |
-| O        | Optical        | FWHM and/or Eccentricity                   |
-| T        | Transparency   | Star Count (without Background Median)     |
-| B        | Sky Brightness | Background Median                          |
+| Category | Label          | Triggered by                           |
+| -------- | -------------- | -------------------------------------- |
+| O        | Optical        | FWHM and/or Eccentricity               |
+| T        | Transparency   | Star Count (without Background Median) |
+| B        | Sky Brightness | Background Median                      |
 
 **Multi-category ordering:** O always leads. When B and T are both present, B leads T (sky brightness is the root cause of star suppression). Examples: OT, OB, BT, OBT.
 
@@ -404,36 +414,28 @@ Local HTTP REST server via Axum. Deferred to post-Phase 9.
 
 ## 13. Development Phases
 
-| Phase       | Status                   | Focus                                                                                                                                                                                                                                                                                                                                              |
-| ----------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 1     | ✅ Complete               | Scaffold, plugin host, FITS reader, viewer, logging                                                                                                                                                                                                                                                                                                |
-| Phase 2     | ✅ Complete               | Blink engine, Auto-STF, zoom, pan, pixel tracking, Info Panel                                                                                                                                                                                                                                                                                      |
-| Phase 3     | ✅ Complete               | photyx-xisf crate, XISF read/write, TIFF read/write, RGB display, background cache                                                                                                                                                                                                                                                                 |
-| Phase 4     | ✅ Complete               | Keyword plugins, write plugins, AstroTIFF round-trip, FITS u16 fix, path resolution                                                                                                                                                                                                                                                                |
-| Phase 5     | ✅ Complete               | pcode interpreter (If/For/variables), Macro Editor, Quick Launch, GetKeyword, RunMacro, atomic writes                                                                                                                                                                                                                                              |
-| Phase 6     | ✅ Complete               | UI audit and cleanup                                                                                                                                                                                                                                                                                                                               |
-| Phase 7     | ✅ Complete               | AnalyzeFrames (5 metrics), PXFLAG, Analysis Graph, star annotations, consolePipe, blink overlay                                                                                                                                                                                                                                                    |
-| Phase 8     | ✅ Substantially complete | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                                                                                                                                                                                                                         |
+| Phase       | Status                   | Focus                                                                                                                                                                                                                                                                                                                                            |
+| ----------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Phase 1     | ✅ Complete               | Scaffold, plugin host, FITS reader, viewer, logging                                                                                                                                                                                                                                                                                              |
+| Phase 2     | ✅ Complete               | Blink engine, Auto-STF, zoom, pan, pixel tracking, Info Panel                                                                                                                                                                                                                                                                                    |
+| Phase 3     | ✅ Complete               | photyx-xisf crate, XISF read/write, TIFF read/write, RGB display, background cache                                                                                                                                                                                                                                                               |
+| Phase 4     | ✅ Complete               | Keyword plugins, write plugins, AstroTIFF round-trip, FITS u16 fix, path resolution                                                                                                                                                                                                                                                              |
+| Phase 5     | ✅ Complete               | pcode interpreter (If/For/variables), Macro Editor, Quick Launch, GetKeyword, RunMacro, atomic writes                                                                                                                                                                                                                                            |
+| Phase 6     | ✅ Complete               | UI audit and cleanup                                                                                                                                                                                                                                                                                                                             |
+| Phase 7     | ✅ Complete               | AnalyzeFrames (5 metrics), PXFLAG, Analysis Graph, star annotations, consolePipe, blink overlay                                                                                                                                                                                                                                                  |
+| Phase 8     | ✅ Substantially complete | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                                                                                                                                                                                                                       |
 | **Phase 9** | 🔄 In Progress           | SQLite (✅), Quick Launch (✅), session history (✅), crash recovery (✅), macros in SQLite (✅), AppSettings (✅), Preferences (✅), threshold profiles (✅), rejection categories (✅), Session JSON export/import (✅), commit file move (✅), PXFLAG toggle (✅); remaining: analysis results persistence, console history, status bar profile indicator |
-| Phase 10    | ⬜ Planned                | UI audit pass                                                                                                                                                                                                                                                                                                                                      |
+| Phase 10    | ⬜ Planned                | UI audit pass                                                                                                                                                                                                                                                                                                                                    |
 
 ### 13.1 Deferred Items
 
-- PNG/JPEG readers/writers
-- Debayering
 - Async dispatch (long-running commands block UI; requires Tauri event system)
-- REST API
-- WASM analysis plugins
-- User plugin loading, plugin manifest system, Plugin Manager UI
-- Channel switching (R/G/B buttons)
-- Recent Directories UI
-- jpeg_quality — persisted but unwired
 - buffer_pool_bytes — persisted but unwired
 - console_history_size — persisted but unwired
 - AnalyzeFrames progress reporting (requires async dispatch)
 - SNR estimator revision (PSF artifact confirmed across multiple sessions)
 - Memory audit (103GB virtual / 20GB RSS observed after multiple sessions)
-- AnalyzeFrames standalone CLI binary / external API access
+- AnalyzeFrames standalone CLI binary / external API access / REST API to enable batch processing
 
 ---
 
