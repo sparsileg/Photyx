@@ -6,6 +6,7 @@
   import { notifications } from '../stores/notifications';
   import { ui } from '../stores/ui';
   import { consoleHistory, consolePipe } from '../stores/consoleHistory';
+  import { settings } from '../stores/settings';
 
   interface ConsoleLine {
     id: number;
@@ -124,7 +125,9 @@
   }
 
   function append(text: string, type: ConsoleLine['type']) {
-    lines = [...lines, { id: nextId++, text, type }];
+    const limit = $settings.console_history_size ?? 500;
+    const next = [...lines, { id: nextId++, text, type }];
+    lines = next.length > limit ? next.slice(next.length - limit) : next;
     consoleHistory.set(lines);
     scrollToBottom();
   }

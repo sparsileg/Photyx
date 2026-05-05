@@ -50,6 +50,7 @@ export interface PrefFieldMeta {
   type: 'integer' | 'float' | 'path';
   min?: number;
   max?: number;
+  step?: number;
   default: number | string;
   unit?: string;  // displayed after the input
 }
@@ -90,6 +91,7 @@ export const PREF_FIELDS: PrefFieldMeta[] = [
     type: 'integer',
     min: CONSOLE_HISTORY_MIN,
     max: CONSOLE_HISTORY_MAX,
+    step: 100,
     default: CONSOLE_HISTORY_DEFAULT,
   },
   {
@@ -110,6 +112,7 @@ export const PREF_FIELDS: PrefFieldMeta[] = [
     type: 'float',
     min: BUFFER_POOL_MIN_GB,
     max: BUFFER_POOL_MAX_GB,
+    step: 0.1,
     default: BUFFER_POOL_DEFAULT_GB,
     unit: 'GB',
   },
@@ -129,7 +132,7 @@ export const PREF_FIELDS: PrefFieldMeta[] = [
     label: 'AutoStretch Target Background',
     helper: 'Target background level for Auto-STF (0.01–0.50). Default is 0.15.',
     type: 'float',
-    step: 0.05,
+    step: 0.01,
     min: TARGET_BG_MIN,
     max: TARGET_BG_MAX,
     default: TARGET_BG_DEFAULT,
