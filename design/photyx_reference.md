@@ -1,7 +1,6 @@
 # Photyx — Reference Document
 
-**Version:** 2 **Last updated:** 30 April 2026 **Status:** Active —
-updated as commands, keywords, and settings are added
+**Version:** 3 **Last updated:** 10 May 2026
 
 This document is the authoritative lookup reference for pcode
 commands, interrogation properties, keyword mappings, analysis
@@ -249,18 +248,18 @@ verbatim in the FITSKeyword block only.
 
 ### 4.1 Metrics
 
-| Metric             | Description                                             | Threshold Type           | Default Reject | Rejection Driver        |
-| ------------------ | ------------------------------------------------------- | ------------------------ | -------------- | ----------------------- |
-| Background median  | Sigma-clipped sky background level                      | Sigma (session-relative) | > +2.5σ        | ✓                       |
-| SNR estimate       | Star signal / background noise                          | Sigma (session-relative) | < -2.5σ        | ✗ diagnostic only       |
-| FWHM               | Median FWHM via intensity-weighted second-order moments | Sigma (session-relative) | > +2.5σ        | ✓                       |
-| Eccentricity       | Median eccentricity via second-order moments            | Absolute                 | > 0.85         | ✓                       |
-| Star count         | Stars detected (minimum 5 connected pixels)             | Sigma (session-relative) | < -3.0σ        | ✓                       |
+| Metric            | Description                                                                                | Threshold Type           | Default Reject | Rejection Driver |
+| ----------------- | ------------------------------------------------------------------------------------------ | ------------------------ | -------------- | ---------------- |
+| Background Median | Sigma-clipped sky background level                                                         | Sigma (session-relative) | > +2.5σ        | ✓                |
+| FWHM              | Median FWHM derived from elliptical Moffat PSF fitting                                     | Sigma (session-relative) | > +2.5σ        | ✓                |
+| Eccentricity      | Median eccentricity derived from Moffat PSF fitted ellipse semi-axes: e = sqrt(1 − (b/a)²) | Absolute                 | > 0.85         | ✓                |
+| Star Count        | Stars accepted by Moffat PSF fitting (replaces connected-pixel detection)                  | Sigma (session-relative) | < -3.0σ        | ✓                |
+| Signal Weight     | PSF-based signal quality: A² / (A + B·π·a·b); derived from Moffat fit parameters           | Sigma (session-relative) | < -2.5σ        | ✓                |
 
 ### 4.2 Classification
 
 - **PASS / REJECT only** — no SUSPECT classification
-- A frame is REJECT if any single metric (excluding SNR) exceeds its threshold
+- A frame is REJECT if any single metric exceeds its threshold
 - `triggered_by` records which metrics caused the REJECT (visible in Analysis Graph tooltip)
 - Each REJECT frame is assigned a rejection category: O (Optical), T (Transparency), B (Sky Brightness), or combinations (OT, OB, BT, OBT)
 - PXFLAG keyword is written to files on Commit Results (not automatically on AnalyzeFrames completion)
@@ -349,14 +348,14 @@ Named sets of rejection thresholds stored in the `threshold_profiles`
 table. The active profile is tracked by
 `preferences.active_threshold_profile_id`.
 
-| Setting                  | Type     | Default | Min    | Max    | Notes                        |
-| ------------------------ | -------- | ------- | ------ | ------ | ---------------------------- |
-| Name                     | String   | Default | —      | —      |                              |
-| Background median reject | Sigma    | +2.5σ   | +0.5σ  | +4.0σ  |                              |
-| SNR estimate reject      | Sigma    | -2.5σ   | -4.0σ  | -0.5σ  | Diagnostic only — not a rejection driver |
-| FWHM reject              | Sigma    | +2.5σ   | +0.5σ  | +4.0σ  |                              |
-| Eccentricity reject      | Absolute | 0.85    | 0.10   | 1.00   |                              |
-| Star count reject        | Sigma    | -3.0σ   | -4.0σ  | -0.5σ  | Raised from -1.5σ            |
+| Setting                  | Type     | Default | Min   | Max   | Notes |
+| ------------------------ | -------- | ------- | ----- | ----- | ----- |
+| Name                     | String   | Default | —     | —     |       |
+| Background Median reject | Sigma    | +2.5σ   | +0.5σ | +4.0σ |       |
+| FWHM reject              | Sigma    | +2.5σ   | +0.5σ | +4.0σ |       |
+| Eccentricity reject      | Absolute | 0.85    | 0.10  | 1.00  |       |
+| Star Count reject        | Sigma    | -3.0σ   | -4.0σ | -0.5σ |       |
+| Signal Weight reject     | Sigma    | -2.5σ   | -4.0σ | -0.5σ |       |
 
 ### 5.8 AutoStretch Settings
 
@@ -414,50 +413,50 @@ These settings are persisted but do not appear in Edit > Preferences.
 
 ## 7. Tauri Commands (Implemented)
 
-| Command                     | Description                                                                                                           |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `backup_database`           | Creates a timestamped ZIP backup of photyx.db in the configured backup directory                                      |
-| `check_crash_recovery`      | Returns crash recovery candidate if written_at is recent and a session is open                                        |
-| `close_session`             | Sets closed_at on the current session_history row                                                                     |
-| `debug_buffer_info`         | Returns buffer metadata including display_width and color_space                                                       |
-| `delete_macro`              | Deletes a macro and its version history from the database                                                             |
-| `dispatch_command`          | Dispatches a single pcode command to the plugin registry (legacy interactive path)                                    |
-| `get_all_preferences`       | Returns all preferences as HashMap<String, String>; called at startup to hydrate frontend                             |
-| `get_analysis_results`      | Returns per-frame metrics, flags, triggered_by, and session stats                                                     |
-| `get_autostretch_frame`     | Computes Auto-STF stretch on current frame, returns JPEG data URL; does not cache                                     |
-| `get_blink_cache_status`    | Returns blink cache build status: idle / building / ready                                                             |
-| `get_blink_frame`           | Returns a blink frame as JPEG data URL from blink cache (by index + resolution)                                       |
-| `get_current_frame`         | Returns current image as raw (unstretched) JPEG data URL, rendered on the fly                                         |
-| `get_frame_flags`           | Returns PXFLAG values for all loaded frames (used by blink overlay)                                                   |
-| `get_full_frame`            | Returns current image at full resolution with last STF params applied; cached after first call                        |
-| `get_histogram`             | Computes and returns histogram bins + stats for current frame (per-channel for RGB)                                   |
-| `get_keywords`              | Returns all keywords for current frame as a keyed map                                                                 |
-| `get_macro_versions`        | Returns version history for a macro ordered newest first                                                              |
-| `get_macros`                | Returns all macros with name, display_name, script, run_count, last_run_at                                            |
-| `get_pixel`                 | Returns raw pixel value(s) at source coordinates (x, y) from the raw image buffer                                     |
-| `get_quick_launch_buttons`  | Returns ordered list of Quick Launch button assignments                                                               |
-| `get_recent_directories`    | Returns recent directories ordered by last_used desc, trimmed to recent_directories_max                               |
-| `get_session`               | Returns current session state (directory, file list, current frame)                                                   |
-| `get_star_positions`        | Re-runs star detection on current frame; returns {cx, cy, fwhm, r} per star for annotation overlay                    |
-| `get_variable`              | Returns a pcode variable value from ctx.variables by name                                                             |
-| `increment_macro_run_count` | Updates run_count and last_run_at for a macro after successful execution                                              |
-| `list_log_files`            | Lists available log files in the logs directory, sorted newest first                                                  |
-| `list_plugins`              | Returns list of registered plugins with name, version, and type                                                       |
+| Command                     | Description                                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `backup_database`           | Creates a timestamped ZIP backup of photyx.db in the configured backup directory                                         |
+| `check_crash_recovery`      | Returns crash recovery candidate if written_at is recent and a session is open                                           |
+| `close_session`             | Sets closed_at on the current session_history row                                                                        |
+| `debug_buffer_info`         | Returns buffer metadata including display_width and color_space                                                          |
+| `delete_macro`              | Deletes a macro and its version history from the database                                                                |
+| `dispatch_command`          | Dispatches a single pcode command to the plugin registry (legacy interactive path)                                       |
+| `get_all_preferences`       | Returns all preferences as HashMap<String, String>; called at startup to hydrate frontend                                |
+| `get_analysis_results`      | Returns per-frame metrics, flags, triggered_by, and session stats                                                        |
+| `get_autostretch_frame`     | Computes Auto-STF stretch on current frame, returns JPEG data URL; does not cache                                        |
+| `get_blink_cache_status`    | Returns blink cache build status: idle / building / ready                                                                |
+| `get_blink_frame`           | Returns a blink frame as JPEG data URL from blink cache (by index + resolution)                                          |
+| `get_current_frame`         | Returns current image as raw (unstretched) JPEG data URL, rendered on the fly                                            |
+| `get_frame_flags`           | Returns PXFLAG values for all loaded frames (used by blink overlay)                                                      |
+| `get_full_frame`            | Returns current image at full resolution with last STF params applied; cached after first call                           |
+| `get_histogram`             | Computes and returns histogram bins + stats for current frame (per-channel for RGB)                                      |
+| `get_keywords`              | Returns all keywords for current frame as a keyed map                                                                    |
+| `get_macro_versions`        | Returns version history for a macro ordered newest first                                                                 |
+| `get_macros`                | Returns all macros with name, display_name, script, run_count, last_run_at                                               |
+| `get_pixel`                 | Returns raw pixel value(s) at source coordinates (x, y) from the raw image buffer                                        |
+| `get_quick_launch_buttons`  | Returns ordered list of Quick Launch button assignments                                                                  |
+| `get_recent_directories`    | Returns recent directories ordered by last_used desc, trimmed to recent_directories_max                                  |
+| `get_session`               | Returns current session state (directory, file list, current frame)                                                      |
+| `get_star_positions`        | Re-runs star detection on current frame; returns {cx, cy, fwhm, r} per star for annotation overlay                       |
+| `get_variable`              | Returns a pcode variable value from ctx.variables by name                                                                |
+| `increment_macro_run_count` | Updates run_count and last_run_at for a macro after successful execution                                                 |
+| `list_log_files`            | Lists available log files in the logs directory, sorted newest first                                                     |
+| `list_plugins`              | Returns list of registered plugins with name, version, and type                                                          |
 | `load_analysis_json`        | Clears session; populates analysis_results, session_stats, thresholds from JSON payload; sets is_imported_session = true |
-| `load_file`                 | Reads a single image file from disk, injects into session, returns JPEG data URL                                      |
-| `open_session`              | Inserts a session_history row with closed_at = NULL; returns session id                                               |
-| `read_log_file`             | Reads and parses a log file into structured {timestamp, level, module, message} lines                                 |
-| `record_directory_visit`    | Upserts a directory visit; trims list to recent_directories_max                                                       |
-| `rename_macro`              | Renames a macro; validates name uniqueness                                                                            |
-| `restore_database`          | Restores photyx.db from a ZIP backup; reopens connection in-place without app restart                                 |
-| `restore_macro_version`     | Restores a previous macro version as the current script                                                               |
-| `run_script`                | Executes a pcode script string; returns ScriptResponse with results, session_changed, display_changed, client_actions |
-| `save_macro`                | Inserts or updates a macro; saves previous version to macro_versions before overwriting                               |
-| `save_quick_launch_buttons` | Replaces all Quick Launch button assignments                                                                          |
-| `set_frame_flag`            | Updates PASS/REJECT flag for a single frame in ctx.analysis_results by path; used before Commit to sync toggled flags |
-| `set_preference`            | Upserts a single preference key/value; writes through AppSettings struct                                              |
-| `start_background_cache`    | Spawns background task to build blink cache JPEGs                                                                     |
-| `write_crash_recovery`      | Upserts the single crash_recovery row with current session state                                                      |
+| `load_file`                 | Reads a single image file from disk, injects into session, returns JPEG data URL                                         |
+| `open_session`              | Inserts a session_history row with closed_at = NULL; returns session id                                                  |
+| `read_log_file`             | Reads and parses a log file into structured {timestamp, level, module, message} lines                                    |
+| `record_directory_visit`    | Upserts a directory visit; trims list to recent_directories_max                                                          |
+| `rename_macro`              | Renames a macro; validates name uniqueness                                                                               |
+| `restore_database`          | Restores photyx.db from a ZIP backup; reopens connection in-place without app restart                                    |
+| `restore_macro_version`     | Restores a previous macro version as the current script                                                                  |
+| `run_script`                | Executes a pcode script string; returns ScriptResponse with results, session_changed, display_changed, client_actions    |
+| `save_macro`                | Inserts or updates a macro; saves previous version to macro_versions before overwriting                                  |
+| `save_quick_launch_buttons` | Replaces all Quick Launch button assignments                                                                             |
+| `set_frame_flag`            | Updates PASS/REJECT flag for a single frame in ctx.analysis_results by path; used before Commit to sync toggled flags    |
+| `set_preference`            | Upserts a single preference key/value; writes through AppSettings struct                                                 |
+| `start_background_cache`    | Spawns background task to build blink cache JPEGs                                                                        |
+| `write_crash_recovery`      | Upserts the single crash_recovery row with current session state                                                         |
 
 ---
 

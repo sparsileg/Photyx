@@ -1,6 +1,6 @@
 # Photyx — Specification & Requirements Document
 
-**Version:** 23 **Date:** 4 May 2026 **Status:** Active Development — Phase 9 in progress
+**Version:** 24 **Date:** 10 May 2026 **Status:** Active Development — Phase 9 in progress
 
 ---
 
@@ -243,7 +243,7 @@ Viewer-region component. Sortable table of per-frame metrics, PXFLAG values, and
 
 **Toolbar row 2:** [IMPORTED badge if applicable] Session path: `<active directory>`
 
-**Columns:** # | Filename | FWHM | Eccentricity | Stars | SNR | Bg Median | PXFLAG | Category
+**Columns:** # | Filename | FWHM | Eccentricity | Stars | Signal Weight | Bg Median | PXFLAG | Category
 
 **Category column:** Shows rejection category badge for REJECT frames (O, T, B, OT, OB, BT, OBT). Centered. Color-coded: O=red, T=yellow, B=blue, multi=purple.
 
@@ -289,10 +289,10 @@ Modal dialog (400px wide). Manages named sets of AnalyzeFrames rejection thresho
 **Threshold fields:** 5 fields in label/direction/input/unit layout:
 
 - Background Median: > +σ (0.5–4.0, default 2.5)
-- SNR Estimate: < −σ (−0.5 to −4.0, default −2.5) — stored and displayed; not a rejection driver
 - FWHM: > +σ (0.5–4.0, default 2.5)
-- Star Count: < −σ (−0.5 to −4.0, default −3.0)
 - Eccentricity: > absolute (0.10–1.00, default 0.85)
+- Star Count: < −σ (−0.5 to −4.0, default −3.0)
+- Signal Weight: < −σ (−0.5 to −4.0, default −2.5)
 
 **Unsaved changes:** Switching profiles with unsaved edits shows inline confirmation bar.
 
@@ -358,10 +358,18 @@ Five metrics are computed for each frame:
 | Metric            | Type     | Direction          | Default threshold | Rejection driver |
 | ----------------- | -------- | ------------------ | ----------------- | ---------------- |
 | Background Median | Sigma    | +σ (high is worse) | 2.5σ              | ✓                |
-| SNR Estimate      | Sigma    | −σ (low is worse)  | −2.5σ             | ✗ (diagnostic)   |
 | FWHM              | Sigma    | +σ (high is worse) | 2.5σ              | ✓                |
-| Star Count        | Sigma    | −σ (low is worse)  | −3.0σ             | ✓                |
 | Eccentricity      | Absolute | > threshold        | 0.85              | ✓                |
+| Star Count        | Sigma    | −σ (low is worse)  | −3.0σ             | ✓                |
+| Signal Weight     | Sigma    | −σ (low is worse)  | −2.5σ             | ✓                |
+
+**Algorithm:** All metrics except Background Median are derived from elliptical 2D Moffat PSF fitting per detected star. FWHM and Eccentricity replace prior intensity-weighted second-order moment calculations. Star Count now counts only stars that pass Moffat PSF acceptance criteria (replaces lenient connected-pixel detection). Signal Weight is a PSF-based signal quality measure: A² / (A + B·π·a·b), where A is fitted peak amplitude, B is local background, and π·a·b is effective PSF area. PSF Residual is computed internally as the star acceptance gate but is not user-facing.
+
+**Signal Weight:** Promoted to rejection metric. Catches transparency and thin-cloud events that Star Count misses, and correctly signals problems on frames where Star Count is inflated (e.g. satellite trails). Signal Weight rejections are assigned category T (Transparency).
+
+**Star Count threshold:** −3.0σ. Mild transparency events are better handled by SubframeSelector weighting than hard rejection; only severe star count drops warrant culling.
+
+**Removed metrics:** Background Std Dev (r = 0.92–0.999 with Bg Median) and Background Gradient (session-dependent with sign reversal). Both pcode commands retained as deprecated stubs for script compatibility. SNR Estimate removed as a user-facing metric; superseded by Signal Weight.
 
 **SNR note:** SNR is computed and displayed as a diagnostic metric but does not drive PASS/REJECT classification. Cross-session analysis confirmed a PSF artifact — worse-seeing frames produce higher SNR due to bloated star flux; SNR never drove a unique rejection not already caught by FWHM or Star Count.
 
@@ -371,7 +379,7 @@ Five metrics are computed for each frame:
 
 ### 11.3 Classification
 
-PASS / REJECT only — no SUSPECT. A frame is REJECT if any single metric (excluding SNR) exceeds its threshold. `triggered_by` records which metrics caused the REJECT.
+PASS / REJECT only — no SUSPECT. A frame is REJECT if any single metric exceeds its threshold. `triggered_by` records which metrics caused the REJECT.
 
 ### 11.4 Rejection Categories
 
