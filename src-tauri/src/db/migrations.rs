@@ -6,7 +6,7 @@
 use rusqlite::{Connection, Result};
 use crate::db::schema;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     let version = get_version(conn)?;
@@ -14,6 +14,7 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
 
     let migrations: Vec<fn(&Connection) -> Result<()>> = vec![
         migrate_v1,  // version 0 → 1: create all tables
+        migrate_v2,  // version 1 → 2: rename snr_reject_sigma → signal_weight_reject_sigma
     ];
 
     for (i, migration) in migrations.iter().enumerate() {
@@ -35,6 +36,13 @@ fn get_version(conn: &Connection) -> Result<u32> {
 
 fn set_version(conn: &Connection, version: u32) -> Result<()> {
     conn.execute_batch(&format!("PRAGMA user_version = {}", version))
+}
+
+fn migrate_v2(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "ALTER TABLE threshold_profiles
+         RENAME COLUMN snr_reject_sigma TO signal_weight_reject_sigma;"
+    )
 }
 
 fn migrate_v1(conn: &Connection) -> Result<()> {

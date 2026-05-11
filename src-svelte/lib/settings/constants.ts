@@ -148,8 +148,8 @@ export interface PrefSection {
 
 // ── Threshold Profiles ────────────────────────────────────────────────────────
 
-export const BG_MEDIAN_SIGMA_DEFAULT  = 2.5;
-export const SNR_SIGMA_DEFAULT        = -2.5;
+export const BG_MEDIAN_SIGMA_DEFAULT       = 2.5;
+export const SIGNAL_WEIGHT_SIGMA_DEFAULT   = -2.5;
 export const STAR_COUNT_SIGMA_DEFAULT = -3.0;
 export const FWHM_SIGMA_DEFAULT       = 2.5;
 export const ECCENTRICITY_ABS_DEFAULT = 0.85;
@@ -182,13 +182,13 @@ export const THRESHOLD_FIELDS: ThresholdFieldMeta[] = [
     step:      SIGMA_STEP,
   },
   {
-    key:       'snr_reject_sigma',
-    label:     'SNR Estimate',
+    key:       'signal_weight_reject_sigma',
+    label:     'Signal Weight',
     direction: '-',
     type:      'sigma',
     min:       -4.0,
     max:       -0.5,
-    default:   SNR_SIGMA_DEFAULT,
+    default:   SIGNAL_WEIGHT_SIGMA_DEFAULT,
     step:      SIGMA_STEP,
   },
   {

@@ -28,19 +28,19 @@ pub fn save_threshold_profile(
 
     // Clamp all values before writing
     let p = ThresholdProfile {
-        id:                      profile.id,
-        name:                    profile.name.trim().to_string(),
-        description:             profile.description,
-        bg_median_reject_sigma:  profile.bg_median_reject_sigma
-                                    .clamp(BG_MEDIAN_SIGMA_MIN, BG_MEDIAN_SIGMA_MAX),
-        snr_reject_sigma:        profile.snr_reject_sigma
-                                    .clamp(-SNR_SIGMA_MAX, -SNR_SIGMA_MIN),
-        fwhm_reject_sigma:       profile.fwhm_reject_sigma
-                                    .clamp(FWHM_SIGMA_MIN, FWHM_SIGMA_MAX),
-        star_count_reject_sigma: profile.star_count_reject_sigma
-                                    .clamp(-STAR_COUNT_SIGMA_MAX, -STAR_COUNT_SIGMA_MIN),
-        eccentricity_reject_abs: profile.eccentricity_reject_abs
-                                    .clamp(ECCENTRICITY_ABS_MIN, ECCENTRICITY_ABS_MAX),
+        id:                         profile.id,
+        name:                       profile.name.trim().to_string(),
+        description:                profile.description,
+        bg_median_reject_sigma:     profile.bg_median_reject_sigma
+                                        .clamp(BG_MEDIAN_SIGMA_MIN, BG_MEDIAN_SIGMA_MAX),
+        signal_weight_reject_sigma: profile.signal_weight_reject_sigma
+                                        .clamp(-SIGNAL_WEIGHT_SIGMA_MAX, -SIGNAL_WEIGHT_SIGMA_MIN),
+        fwhm_reject_sigma:          profile.fwhm_reject_sigma
+                                        .clamp(FWHM_SIGMA_MIN, FWHM_SIGMA_MAX),
+        star_count_reject_sigma:    profile.star_count_reject_sigma
+                                        .clamp(-STAR_COUNT_SIGMA_MAX, -STAR_COUNT_SIGMA_MIN),
+        eccentricity_reject_abs:    profile.eccentricity_reject_abs
+                                        .clamp(ECCENTRICITY_ABS_MIN, ECCENTRICITY_ABS_MAX),
     };
 
     if p.name.is_empty() {
@@ -55,13 +55,13 @@ pub fn save_threshold_profile(
             "INSERT INTO threshold_profiles
              (name, description,
               bg_median_reject_sigma,
-              snr_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
+              signal_weight_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
               eccentricity_reject_abs, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
             rusqlite::params![
                 p.name, p.description,
                 p.bg_median_reject_sigma,
-                p.snr_reject_sigma, p.fwhm_reject_sigma, p.star_count_reject_sigma,
+                p.signal_weight_reject_sigma, p.fwhm_reject_sigma, p.star_count_reject_sigma,
                 p.eccentricity_reject_abs, now
             ],
         ).map_err(|e| e.to_string())?;
@@ -74,19 +74,19 @@ pub fn save_threshold_profile(
         // Existing profile — update
         db.execute(
             "UPDATE threshold_profiles SET
-                name                    = ?1,
-                description             = ?2,
-                bg_median_reject_sigma  = ?3,
-                snr_reject_sigma        = ?4,
-                fwhm_reject_sigma       = ?5,
-                star_count_reject_sigma = ?6,
-                eccentricity_reject_abs = ?7,
-                updated_at              = ?8
+                name                       = ?1,
+                description                = ?2,
+                bg_median_reject_sigma     = ?3,
+                signal_weight_reject_sigma = ?4,
+                fwhm_reject_sigma          = ?5,
+                star_count_reject_sigma    = ?6,
+                eccentricity_reject_abs    = ?7,
+                updated_at                 = ?8
              WHERE id = ?9",
             rusqlite::params![
                 p.name, p.description,
                 p.bg_median_reject_sigma,
-                p.snr_reject_sigma, p.fwhm_reject_sigma, p.star_count_reject_sigma,
+                p.signal_weight_reject_sigma, p.fwhm_reject_sigma, p.star_count_reject_sigma,
                 p.eccentricity_reject_abs, now, p.id
             ],
         ).map_err(|e| e.to_string())?;
@@ -125,13 +125,13 @@ pub fn delete_threshold_profile(
             "INSERT INTO threshold_profiles
              (name, description,
               bg_median_reject_sigma,
-              snr_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
+              signal_weight_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
               eccentricity_reject_abs, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
             rusqlite::params![
                 p.name, p.description,
                 p.bg_median_reject_sigma,
-                p.snr_reject_sigma, p.fwhm_reject_sigma, p.star_count_reject_sigma,
+                p.signal_weight_reject_sigma, p.fwhm_reject_sigma, p.star_count_reject_sigma,
                 p.eccentricity_reject_abs, now
             ],
         ).map_err(|e| e.to_string())?;
@@ -174,7 +174,7 @@ pub fn set_active_threshold_profile(
     let mut ctx = state.context.lock().expect("context lock poisoned");
     ctx.analysis_thresholds = crate::analysis::session_stats::AnalysisThresholds {
         background_median: crate::analysis::session_stats::MetricThresholds { reject: profile.bg_median_reject_sigma as f32 },
-        signal_weight:     crate::analysis::session_stats::MetricThresholds { reject: profile.snr_reject_sigma.abs() as f32 },
+        signal_weight:     crate::analysis::session_stats::MetricThresholds { reject: profile.signal_weight_reject_sigma.abs() as f32 },
         fwhm:              crate::analysis::session_stats::MetricThresholds { reject: profile.fwhm_reject_sigma as f32 },
         star_count:        crate::analysis::session_stats::MetricThresholds { reject: profile.star_count_reject_sigma.abs() as f32 },
         eccentricity:      crate::analysis::session_stats::MetricThresholds { reject: profile.eccentricity_reject_abs as f32 },

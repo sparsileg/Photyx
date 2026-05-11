@@ -15,7 +15,7 @@ pub struct ThresholdProfile {
     pub name:                    String,
     pub description:             Option<String>,
     pub bg_median_reject_sigma:  f64,
-    pub snr_reject_sigma:        f64,
+    pub signal_weight_reject_sigma: f64,
     pub fwhm_reject_sigma:       f64,
     pub star_count_reject_sigma: f64,
     pub eccentricity_reject_abs: f64,
@@ -28,7 +28,7 @@ impl ThresholdProfile {
             name:                    DEFAULT_PROFILE_NAME.to_string(),
             description:             None,
             bg_median_reject_sigma:  DEFAULT_BG_MEDIAN_SIGMA,
-            snr_reject_sigma:        DEFAULT_SNR_SIGMA,
+            signal_weight_reject_sigma: DEFAULT_SIGNAL_WEIGHT_SIGMA,
             fwhm_reject_sigma:       DEFAULT_FWHM_SIGMA,
             // Star count raised from -1.5 to -3.0: mild transparency events
             // are better handled by SFS weighting than hard rejection.
@@ -254,7 +254,7 @@ impl AppSettings {
         let mut stmt = match db.prepare(
             "SELECT id, name, description,
                     bg_median_reject_sigma,
-                    snr_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
+                    signal_weight_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
                     eccentricity_reject_abs
              FROM threshold_profiles ORDER BY id"
         ) {
@@ -268,7 +268,7 @@ impl AppSettings {
                 name:                    row.get(1)?,
                 description:             row.get(2)?,
                 bg_median_reject_sigma:  row.get(3)?,
-                snr_reject_sigma:        row.get(4)?,
+                signal_weight_reject_sigma: row.get(4)?,
                 fwhm_reject_sigma:       row.get(5)?,
                 star_count_reject_sigma: row.get(6)?,
                 eccentricity_reject_abs: row.get(7)?,
@@ -284,13 +284,13 @@ impl AppSettings {
                 "INSERT INTO threshold_profiles
                  (name, description,
                   bg_median_reject_sigma,
-                  snr_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
+                  signal_weight_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
                   eccentricity_reject_abs, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
                 rusqlite::params![
                     p.name, p.description,
                     p.bg_median_reject_sigma,
-                    p.snr_reject_sigma, p.fwhm_reject_sigma, p.star_count_reject_sigma,
+                    p.signal_weight_reject_sigma, p.fwhm_reject_sigma, p.star_count_reject_sigma,
                     p.eccentricity_reject_abs, now
                 ],
             ) {

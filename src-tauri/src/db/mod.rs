@@ -38,7 +38,7 @@ fn seed_defaults(conn: &Connection) -> Result<()> {
         "INSERT OR IGNORE INTO threshold_profiles
             (name, description,
              bg_median_reject_sigma, bg_stddev_reject_sigma, bg_gradient_reject_sigma,
-             snr_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
+             signal_weight_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
              eccentricity_reject_abs, created_at, updated_at)
          VALUES (?1, ?2, 2.5, 2.5, 2.5, 2.5, 2.5, 1.5, 0.85, ?3, ?3)",
         rusqlite::params!["Default", "Default rejection thresholds", now],

@@ -7,14 +7,14 @@ import { writable } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 
 export interface ThresholdProfile {
-  id:                      number;
-  name:                    string;
-  description:             string | null;
-  bg_median_reject_sigma:  number;
-  snr_reject_sigma:        number;
-  fwhm_reject_sigma:       number;
-  star_count_reject_sigma: number;
-  eccentricity_reject_abs: number;
+  id:                         number;
+  name:                       string;
+  description:                string | null;
+  bg_median_reject_sigma:     number;
+  signal_weight_reject_sigma: number;
+  fwhm_reject_sigma:          number;
+  star_count_reject_sigma:    number;
+  eccentricity_reject_abs:    number;
 }
 
 export interface ThresholdProfilesState {
