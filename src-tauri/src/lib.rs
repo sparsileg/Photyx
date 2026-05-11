@@ -196,7 +196,6 @@ pub fn run() {
     registry.register(Arc::new(plugins::compute_fwhm::ComputeFWHM));
     registry.register(Arc::new(plugins::contour_heatmap::ContourHeatmap));
     registry.register(Arc::new(plugins::get_histogram::GetHistogram));
-    registry.register(Arc::new(plugins::highlight_clipping::SnrEstimatePlugin));
     registry.register(Arc::new(plugins::keywords::AddKeyword));
     registry.register(Arc::new(plugins::keywords::CopyKeyword));
     registry.register(Arc::new(plugins::keywords::DeleteKeyword));
@@ -241,7 +240,7 @@ pub fn run() {
         if let Some(profile) = app_settings.threshold_profiles.iter().find(|p| p.id == active_id) {
             app_context.analysis_thresholds = crate::analysis::session_stats::AnalysisThresholds {
                 background_median: crate::analysis::session_stats::MetricThresholds { reject: profile.bg_median_reject_sigma as f32 },
-                snr_estimate:      crate::analysis::session_stats::MetricThresholds { reject: profile.snr_reject_sigma.abs() as f32 },
+                signal_weight:     crate::analysis::session_stats::MetricThresholds { reject: profile.snr_reject_sigma.abs() as f32 },
                 fwhm:              crate::analysis::session_stats::MetricThresholds { reject: profile.fwhm_reject_sigma as f32 },
                 star_count:        crate::analysis::session_stats::MetricThresholds { reject: profile.star_count_reject_sigma.abs() as f32 },
                 eccentricity:      crate::analysis::session_stats::MetricThresholds { reject: profile.eccentricity_reject_abs as f32 },

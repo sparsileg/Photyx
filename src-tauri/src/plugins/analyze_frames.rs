@@ -13,7 +13,7 @@ use crate::analysis::{
     background::compute_background_metrics,
     eccentricity::compute_eccentricity,
     fwhm::compute_fwhm,
-    metrics::snr_estimate,
+    metrics::compute_signal_weight,
     profiles,
     session_stats::{
         classify_frame, compute_session_stats_iterative,
@@ -112,12 +112,12 @@ fn execute_current(
 
     let message = format!(
         "Background median: {}\n\
-         SNR estimate:      {}\n\
+         Signal Weight:     {}\n\
          FWHM:              {}\n\
          Eccentricity:      {}\n\
          Star count:        {}",
         fmt_opt_adu(result.background_median),
-        result.snr_estimate.map(|v| format!("{:.1}", v)).unwrap_or_else(|| "n/a".to_string()),
+        result.signal_weight.map(|v| format!("{:.4}", v)).unwrap_or_else(|| "n/a".to_string()),
         fwhm_str,
         result.eccentricity.map(|v| format!("{:.3}", v)).unwrap_or_else(|| "n/a".to_string()),
         result.star_count.map(|v| v.to_string()).unwrap_or_else(|| "n/a".to_string()),
@@ -128,7 +128,7 @@ fn execute_current(
         "scope":            "current",
         "filename":         path,
         "background_median": result.background_median,
-        "snr_estimate":     result.snr_estimate,
+        "signal_weight":    result.signal_weight,
         "fwhm_pixels":      result.fwhm,
         "eccentricity":     result.eccentricity,
         "star_count":       result.star_count,
@@ -187,15 +187,15 @@ fn execute_all(
             let bg_config = BackgroundConfig::default();
             let bg        = compute_background_metrics(&luma, width, height, &bg_config);
             let stars     = detect_stars(&luma, width, height, det_config_ref);
-            let plate_scale = derive_plate_scale(&snap.keywords);
-            let fwhm_result = compute_fwhm(&stars, plate_scale);
-            let ecc_result  = compute_eccentricity(&stars);
-            let snr_result  = snr_estimate(&luma, width, height, &stars, &bg_config.sigma_clip);
+            let plate_scale   = derive_plate_scale(&snap.keywords);
+            let fwhm_result   = compute_fwhm(&stars, plate_scale);
+            let ecc_result    = compute_eccentricity(&stars);
+            let sw_result     = compute_signal_weight(&stars);
 
             let result = AnalysisResult {
                 filename:          snap.path.clone(),
                 background_median: Some(bg.median),
-                snr_estimate:      snr_result.map(|r| r.snr),
+                signal_weight:     sw_result.map(|r| r.signal_weight),
                 fwhm:              fwhm_result.as_ref().map(|r| r.fwhm_pixels),
                 eccentricity:      ecc_result.as_ref().map(|r| r.eccentricity),
                 star_count:        fwhm_result.as_ref().map(|r| r.star_count as u32)
@@ -256,13 +256,13 @@ fn execute_all(
         }
 
         frame_summaries.push(json!({
-            "filename":    short_name(&result.filename),
-            "flag":        result.flag.as_ref().map(|f| f.as_str()).unwrap_or("?"),
-            "triggered":   triggered,
-            "fwhm":        result.fwhm,
-            "ecc":         result.eccentricity,
-            "snr":         result.snr_estimate,
-            "stars":       result.star_count,
+            "filename":       short_name(&result.filename),
+            "flag":           result.flag.as_ref().map(|f| f.as_str()).unwrap_or("?"),
+            "triggered":      triggered,
+            "fwhm":           result.fwhm,
+            "ecc":            result.eccentricity,
+            "signal_weight":  result.signal_weight,
+            "stars":          result.star_count,
         }));
 
         ctx.analysis_results.insert(result.filename.clone(), result.clone());
@@ -314,12 +314,12 @@ fn compute_metrics_for_image(
     let plate_scale = derive_plate_scale(&img.keywords);
     let fwhm_result = compute_fwhm(&stars, plate_scale);
     let ecc_result  = compute_eccentricity(&stars);
-    let snr_result  = snr_estimate(&luma, width, height, &stars, &bg_config.sigma_clip);
+    let sw_result   = compute_signal_weight(&stars);
 
     Ok(AnalysisResult {
         filename:          img.filename.clone(),
         background_median: Some(bg.median),
-        snr_estimate:      snr_result.map(|r| r.snr),
+        signal_weight:     sw_result.map(|r| r.signal_weight),
         fwhm:              fwhm_result.as_ref().map(|r| r.fwhm_pixels),
         eccentricity:      ecc_result.as_ref().map(|r| r.eccentricity),
         star_count:        fwhm_result.as_ref().map(|r| r.star_count as u32)

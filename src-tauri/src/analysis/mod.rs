@@ -5,6 +5,7 @@ pub mod background;
 pub mod eccentricity;
 pub mod fwhm;
 pub mod metrics;
+pub mod moffat;
 pub mod profiles;
 pub mod session_stats;
 pub mod stars;
@@ -45,9 +46,9 @@ pub struct AnalysisResult {
     // Background metrics (background.rs)
     pub background_median:    Option<f32>,
 
-    // Signal metrics — SNR is retained as diagnostic information only.
-    // It does NOT drive PXFLAG rejection. See session_stats::classify_frame.
-    pub snr_estimate:         Option<f32>,
+    // Signal Weight — PSF-based signal quality metric (rejection metric).
+    // Derived from Moffat fit: A² / (A + B·π·a·b). See session_stats::classify_frame.
+    pub signal_weight:        Option<f32>,
 
     // Star quality metrics (stars.rs)
     pub fwhm:                 Option<f32>,   // mean FWHM in pixels
