@@ -13,7 +13,7 @@
     fwhm?: number;
     eccentricity?: number;
     star_count?: number;
-    snr_estimate?: number;
+    signal_weight?: number;
     background_median?: number;
     flag?: string;
     rejection_category?: string;
@@ -66,7 +66,7 @@
 
   // ── Sort ──────────────────────────────────────────────────────────────────
   type SortCol = 'index' | 'short_name' | 'fwhm' | 'eccentricity' | 'star_count'
-    | 'snr_estimate' | 'background_median' | 'flag' | 'rejection_category';
+    | 'signal_weight' | 'background_median' | 'flag' | 'rejection_category';
 
   let sortCol = $state<SortCol>('index');
   let sortAsc = $state(true);
@@ -174,7 +174,7 @@
   }
 
   // ── Clipboard copy ────────────────────────────────────────────────────────
-  const HEADERS = ['#', 'Filename', 'FWHM', 'Eccentricity', 'Stars', 'SNR', 'Bg Median', 'PXFLAG', 'Category'];
+  const HEADERS = ['#', 'Filename', 'FWHM', 'Eccentricity', 'Stars', 'Signal Weight', 'Bg Median', 'PXFLAG', 'Category'];
 
   function buildRows(sep: string): string {
     const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
@@ -184,7 +184,7 @@
       fmt(row.fwhm),
       fmt(row.eccentricity),
       fmt(row.star_count, 0),
-      fmt(row.snr_estimate),
+      fmt(row.signal_weight),
       fmt(row.background_median),
       row.flag ?? '—',
       row.rejection_category ?? '—',
@@ -240,7 +240,7 @@
             <th onclick={() => sortBy('fwhm')}>FWHM{arrow('fwhm')}</th>
             <th onclick={() => sortBy('eccentricity')}>Eccentricity{arrow('eccentricity')}</th>
             <th onclick={() => sortBy('star_count')}>Stars{arrow('star_count')}</th>
-            <th onclick={() => sortBy('snr_estimate')}>SNR{arrow('snr_estimate')}</th>
+            <th onclick={() => sortBy('signal_weight')}>Sig. Weight{arrow('signal_weight')}</th>
             <th onclick={() => sortBy('background_median')}>Bg Median{arrow('background_median')}</th>
             <th onclick={() => sortBy('flag')}>PXFLAG{arrow('flag')}</th>
             <th onclick={() => sortBy('rejection_category')}>Category{arrow('rejection_category')}</th>
@@ -257,7 +257,7 @@
               <td>{fmt(row.fwhm)}</td>
               <td>{fmt(row.eccentricity)}</td>
               <td>{fmt(row.star_count, 0)}</td>
-              <td>{fmt(row.snr_estimate)}</td>
+              <td>{fmt(row.signal_weight)}</td>
               <td>{fmt(row.background_median)}</td>
               <td>{row.flag ?? '—'}</td>
               <td>

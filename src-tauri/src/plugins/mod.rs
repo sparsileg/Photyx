@@ -10,7 +10,6 @@ pub mod compute_eccentricity;
 pub mod compute_fwhm;
 pub mod contour_heatmap;
 pub mod get_histogram;
-pub mod highlight_clipping;
 pub mod image_reader;
 pub mod keywords;
 pub mod list_keywords;
