@@ -174,7 +174,7 @@ pub fn set_active_threshold_profile(
     let mut ctx = state.context.lock().expect("context lock poisoned");
     ctx.analysis_thresholds = crate::analysis::session_stats::AnalysisThresholds {
         background_median: crate::analysis::session_stats::MetricThresholds { reject: profile.bg_median_reject_sigma as f32 },
-        snr_estimate:      crate::analysis::session_stats::MetricThresholds { reject: profile.snr_reject_sigma.abs() as f32 },
+        signal_weight:     crate::analysis::session_stats::MetricThresholds { reject: profile.snr_reject_sigma.abs() as f32 },
         fwhm:              crate::analysis::session_stats::MetricThresholds { reject: profile.fwhm_reject_sigma as f32 },
         star_count:        crate::analysis::session_stats::MetricThresholds { reject: profile.star_count_reject_sigma.abs() as f32 },
         eccentricity:      crate::analysis::session_stats::MetricThresholds { reject: profile.eccentricity_reject_abs as f32 },

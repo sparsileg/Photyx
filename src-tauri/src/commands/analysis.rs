@@ -72,7 +72,7 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
                 "label":              label,
                 "short_name":         short,
                 "background_median":  r.background_median,
-                "snr_estimate":       r.snr_estimate,
+                "signal_weight":      r.signal_weight,
                 "fwhm":               r.fwhm,
                 "eccentricity":       r.eccentricity,
                 "star_count":         r.star_count,
@@ -93,10 +93,10 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
         }
     }).collect();
 
-    // SNR excluded — not a rejection driver.
     let applied = serde_json::json!({
         "background_median": { "value": thresholds.background_median.reject, "direction": "high" },
         "fwhm":              { "value": thresholds.fwhm.reject,              "direction": "high" },
+        "signal_weight":     { "value": thresholds.signal_weight.reject,     "direction": "low"  },
         "star_count":        { "value": thresholds.star_count.reject,        "direction": "low"  },
         "eccentricity":      { "value": thresholds.eccentricity.reject,      "direction": "high" },
     });
@@ -107,7 +107,7 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
         "frames": frames,
         "session_stats": {
             "background_median": { "mean": session_stats.background_median.mean, "stddev": session_stats.background_median.stddev },
-            "snr_estimate":      { "mean": session_stats.snr_estimate.mean,      "stddev": session_stats.snr_estimate.stddev },
+            "signal_weight":     { "mean": session_stats.signal_weight.mean,     "stddev": session_stats.signal_weight.stddev },
             "fwhm":              { "mean": session_stats.fwhm.mean,              "stddev": session_stats.fwhm.stddev },
             "eccentricity":      { "mean": session_stats.eccentricity.mean,      "stddev": session_stats.eccentricity.stddev },
             "star_count":        { "mean": session_stats.star_count.mean,        "stddev": session_stats.star_count.stddev },
@@ -132,11 +132,11 @@ pub struct AnalysisJsonPayload {
 
 #[derive(Debug, serde::Deserialize)]
 pub struct ThresholdPayload {
-    pub bg_median_reject_sigma:  f64,
-    pub snr_reject_sigma:        f64,
-    pub fwhm_reject_sigma:       f64,
-    pub star_count_reject_sigma: f64,
-    pub eccentricity_reject_abs: f64,
+    pub bg_median_reject_sigma:      f64,
+    pub signal_weight_reject_sigma:  f64,
+    pub fwhm_reject_sigma:           f64,
+    pub star_count_reject_sigma:     f64,
+    pub eccentricity_reject_abs:     f64,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -148,7 +148,7 @@ pub struct MetricStatsPayload {
 #[derive(Debug, serde::Deserialize)]
 pub struct SessionStatsPayload {
     pub background_median: MetricStatsPayload,
-    pub snr_estimate:      MetricStatsPayload,
+    pub signal_weight:     MetricStatsPayload,
     pub fwhm:              MetricStatsPayload,
     pub eccentricity:      MetricStatsPayload,
     pub star_count:        MetricStatsPayload,
@@ -160,7 +160,7 @@ pub struct FramePayload {
     pub fwhm:               Option<f32>,
     pub eccentricity:       Option<f32>,
     pub star_count:         Option<u32>,
-    pub snr_estimate:       Option<f32>,
+    pub signal_weight:      Option<f32>,
     pub background_median:  Option<f32>,
     pub flag:               String,
     pub triggered_by:       Vec<String>,
@@ -199,7 +199,7 @@ pub fn load_analysis_json(
         let result = AnalysisResult {
             filename:           full_path.clone(),
             background_median:  frame.background_median,
-            snr_estimate:       frame.snr_estimate,
+            signal_weight:      frame.signal_weight,
             fwhm:               frame.fwhm,
             eccentricity:       frame.eccentricity,
             star_count:         frame.star_count,
@@ -219,7 +219,7 @@ pub fn load_analysis_json(
     // Restore session stats
     ctx.last_session_stats = Some(SessionStats {
         background_median: MetricStats { mean: payload.session_stats.background_median.mean, stddev: payload.session_stats.background_median.stddev },
-        snr_estimate:      MetricStats { mean: payload.session_stats.snr_estimate.mean,      stddev: payload.session_stats.snr_estimate.stddev },
+        signal_weight:     MetricStats { mean: payload.session_stats.signal_weight.mean,     stddev: payload.session_stats.signal_weight.stddev },
         fwhm:              MetricStats { mean: payload.session_stats.fwhm.mean,              stddev: payload.session_stats.fwhm.stddev },
         eccentricity:      MetricStats { mean: payload.session_stats.eccentricity.mean,      stddev: payload.session_stats.eccentricity.stddev },
         star_count:        MetricStats { mean: payload.session_stats.star_count.mean,        stddev: payload.session_stats.star_count.stddev },
@@ -228,7 +228,7 @@ pub fn load_analysis_json(
     // Restore thresholds — apply as both last_analysis_thresholds and active thresholds
     let restored_thresholds = AnalysisThresholds {
         background_median: MetricThresholds { reject: payload.thresholds.bg_median_reject_sigma as f32 },
-        snr_estimate:      MetricThresholds { reject: payload.thresholds.snr_reject_sigma.abs() as f32 },
+        signal_weight:     MetricThresholds { reject: payload.thresholds.signal_weight_reject_sigma.abs() as f32 },
         fwhm:              MetricThresholds { reject: payload.thresholds.fwhm_reject_sigma as f32 },
         star_count:        MetricThresholds { reject: payload.thresholds.star_count_reject_sigma.abs() as f32 },
         eccentricity:      MetricThresholds { reject: payload.thresholds.eccentricity_reject_abs as f32 },

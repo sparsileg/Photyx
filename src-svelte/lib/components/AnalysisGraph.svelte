@@ -17,7 +17,7 @@
     label:              string;
     short_name:         string;
     background_median?: number;
-    snr_estimate?:      number;
+    signal_weight?:     number;
     fwhm?:              number;
     eccentricity?:      number;
     star_count?:        number;
@@ -46,7 +46,7 @@
   const METRICS = [
     { key: 'fwhm',              label: 'FWHM (px)',         fmt: (v: number) => v.toFixed(2) },
     { key: 'eccentricity',      label: 'Eccentricity',      fmt: (v: number) => v.toFixed(3) },
-    { key: 'snr_estimate',      label: 'SNR Estimate',      fmt: (v: number) => v.toFixed(2) },
+    { key: 'signal_weight',     label: 'Signal Weight',     fmt: (v: number) => v.toFixed(4) },
     { key: 'star_count',        label: 'Star Count',        fmt: (v: number) => Math.round(v).toString() },
     { key: 'background_median', label: 'Background Median', fmt: (v: number) => v.toExponential(3) },
   ];
