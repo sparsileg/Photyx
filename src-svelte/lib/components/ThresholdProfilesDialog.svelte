@@ -118,14 +118,14 @@
     const name = newName.trim();
     if (!name) return;
     try {
-      const base: ThresholdProfile = {
+    const base: ThresholdProfile = {
         id:                         0,
         name,
         description:                null,
         bg_median_reject_sigma:     2.5,
-        signal_weight_reject_sigma: -2.5,
+        signal_weight_reject_sigma: 2.5,
         fwhm_reject_sigma:          2.5,
-        star_count_reject_sigma:    -3.0,
+        star_count_reject_sigma:    1.5,
         eccentricity_reject_abs:    0.85,
       };
       const saved = await thresholdProfiles.saveProfile(base);

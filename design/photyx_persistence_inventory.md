@@ -125,10 +125,11 @@ Threshold profiles are fully implemented as of 2 May 2026. The following items f
 **Important threshold notes:**
 
 - Default profile name is "Default" (not "Standard")
-- SNR and Star Count are `-σ` metrics — their defaults and clamp bounds are negative
-- `DEFAULT_SNR_SIGMA = -2.5`, `DEFAULT_STAR_COUNT_SIGMA = -1.5`
-- Clamp bounds: `snr_reject_sigma.clamp(-SNR_SIGMA_MAX, -SNR_SIGMA_MIN)` etc.
-- HTML `min`/`max` attributes are omitted from threshold inputs to prevent browser clamping of negative values
+- All thresholds stored and displayed as positive values. Signal Weight and Star Count are `-σ` metrics — negation is applied at classification time in `check_low!()`, not at storage time.
+- `DEFAULT_SIGNAL_WEIGHT_SIGMA = 2.5`, `DEFAULT_STAR_COUNT_SIGMA = 1.5`
+- Clamp bounds: `signal_weight_reject_sigma.clamp(SIGNAL_WEIGHT_SIGMA_MIN, SIGNAL_WEIGHT_SIGMA_MAX)` etc.
+- Star Count uses bimodal-aware anchoring — the 1.5σ threshold is relative to the clear-sky upper cluster, not the full mixed population.
+- `THRESHOLD_FIELDS` in `constants.ts` uses positive `min`/`max` bounds for all fields; the `direction` field (`+` or `-`) controls the `>` or `<` indicator shown in the dialog.
 
 ---
 

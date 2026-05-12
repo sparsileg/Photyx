@@ -71,8 +71,8 @@
   let sortCol = $state<SortCol>('index');
   let sortAsc = $state(true);
 
-  function fmt(v: number | undefined, decimals = 3): string {
-    if (v === undefined) return '—';
+  function fmt(v: number | null | undefined, decimals = 3): string {
+    if (v === undefined || v === null) return '—';
     if (v !== 0 && Math.abs(v) < 0.1) return v.toExponential(3);
     return v.toFixed(decimals);
   }

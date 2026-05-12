@@ -337,15 +337,21 @@ Single `AppSettings` struct in `PhotoxState` behind `Mutex`. Two-source: `defaul
 
 `ThresholdProfile` in `settings/mod.rs`. 5 rejection thresholds.
 
-**Sigma direction:** SNR and Star Count are `−σ`. Stored as negative values in DB and frontend:
-- `DEFAULT_SNR_SIGMA = -2.5`, clamped to `[-SNR_SIGMA_MAX, -SNR_SIGMA_MIN]`
-- `DEFAULT_STAR_COUNT_SIGMA = -3.0`, clamped to `[-STAR_COUNT_SIGMA_MAX, -STAR_COUNT_SIGMA_MIN]`
+**Sigma direction:** All thresholds stored and displayed as positive
+values. Signal Weight and Star Count are `−σ` metrics — the negation is
+applied at classification time in `check_low!()` in `classify_frame()`, not
+at storage time.
+- `DEFAULT_SIGNAL_WEIGHT_SIGMA = 2.5`, clamped to `[SIGNAL_WEIGHT_SIGMA_MIN, SIGNAL_WEIGHT_SIGMA_MAX]`
+- `DEFAULT_STAR_COUNT_SIGMA = 1.5`, clamped to `[STAR_COUNT_SIGMA_MIN, STAR_COUNT_SIGMA_MAX]`
 
-**Frontend `THRESHOLD_FIELDS`:** `min`/`max` for negative-direction fields use actual signed values (e.g. `min: -4.0, max: -0.5`). No helper functions needed. `SNR_SIGMA_DEFAULT = -2.5`, `STAR_COUNT_SIGMA_DEFAULT = -3.0` in `constants.ts`.
+**Frontend `THRESHOLD_FIELDS`:** All fields use positive `min`/`max`
+bounds. `SIGNAL_WEIGHT_SIGMA_DEFAULT = 2.5`, `STAR_COUNT_SIGMA_DEFAULT =
+1.5` in `constants.ts`. The `direction` field (`+` or `-`) is display-only
+— controls the `>` or `<` indicator shown in the dialog.
 
-**SNR in AppContext:** Stored as positive (`.abs()` applied on save) but excluded from `classify_frame()` and `applied_thresholds`.
-
-**Flow:** Dialog → `save_threshold_profile` → DB + vec → `set_active_threshold_profile` → DB + `ctx.analysis_thresholds` → `get_analysis_results` reclassifies on next call.
+**Flow:** Dialog → `save_threshold_profile` → DB + vec →
+`set_active_threshold_profile` → DB + `ctx.analysis_thresholds` →
+`get_analysis_results` reclassifies on next call.
 
 **DB orphaned columns:** `bg_stddev_reject_sigma` and `bg_gradient_reject_sigma` remain in schema; Rust ignores them. Migration deferred.
 
@@ -375,15 +381,39 @@ Cross-session analysis (5 sessions, 489 frames total):
 
 Both `BackgroundStdDev` and `BackgroundGradient` pcode commands retained as deprecated stubs.
 
-### 3.60 AnalyzeFrames — Two-Pass Iterative Sigma Clipping
+### 3.60 AnalyzeFrames — Two-Pass Iterative Sigma Clipping with Bimodal Star Count Anchoring
 
 `compute_session_stats_iterative()` in `session_stats.rs`:
 
-- **Pass 2a** — initial stats across all frames
-- **Pass 2b** — identify outliers: any metric > 4.0σ from initial mean (eccentricity excluded)
-- **Pass 2c** — recompute stats excluding outliers; fall back to initial if all outliers
+- **Pass 2a** — initial stats across all frames. Star count uses
+  `compute_metric_stats(..., use_bimodal: true)`: if BC > 0.555 (bimodality
+  coefficient threshold), the valley between the two histogram peaks is
+  located and mean/stddev are anchored to the upper cluster only. This
+  prevents a large block of cloudy frames from dragging the session mean
+  down and collapsing the reject threshold. All other metrics use plain
+  mean/stddev.
+- **Pass 2b** — identify outliers: any metric > 4.0σ from initial mean
+  (eccentricity excluded)
+- **Pass 2c** — recompute stats on cleaned subset using
+  `compute_session_stats_plain()` (no bimodal detection) for all metrics
+  except star count, whose bimodal anchor from Pass 2a is carried through
+  unchanged. This ensures classification is deterministic regardless of
+  which frames are excluded as outliers.
 
 Returns `(SessionStats, HashSet<String>)`.
+
+**`compute_metric_stats(values, use_bimodal, higher_is_better)`** —
+generalized stat computation. When `use_bimodal: true` and bimodality is
+detected, anchors to the upper cluster (`values > valley` when
+`higher_is_better`). Falls back to plain mean/stddev when unimodal or
+insufficient data. To enable bimodal detection for additional metrics in
+future, pass `use_bimodal: true` in `compute_session_stats()`.
+
+**Bimodality coefficient (BC):** `(skew² + 1) / (kurt + 3(n−1)² /
+((n−2)(n−3)))`. BC > 0.555 indicates bimodality (Pfister et
+al. 2013). Requires n ≥ 4. Valley located via 20-bin smoothed histogram
+between the two largest peaks.
+
 
 ### 3.61 AnalyzeFrames — On-the-Fly Reclassification
 
@@ -595,7 +625,7 @@ See §3.35 and `photyx_reference.md` §9 for plugin status table.
 | Phase 6  | ✅ Complete               | UI cleanup                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | Phase 7  | ✅ Complete               | AnalyzeFrames, PXFLAG, Analysis Graph, star annotations, consolePipe, blink overlay                                                                                                                                                                                                                                                                                                                                                                                 |
 | Phase 8  | ✅ Substantially complete | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                                                                                                                                                                                                                                                                                                                                          |
-| Phase 9  | 🔄 In progress           | SQLite (✅), Quick Launch (✅), session history (✅), crash recovery (✅), macros in SQLite (✅), AppSettings (✅), Preferences (✅), threshold profiles (✅), rejection categories O/T/B (✅), SNR excluded from classification (✅), star count −3.0σ (✅), Session menu + JSON export/import (✅), commit file move to rejected/ (✅), PXFLAG toggle via right-click (✅); remaining: analysis results persistence, console history persistence, status bar profile indicator |
+| Phase 9  | 🔄 In progress           | SQLite (✅), Quick Launch (✅), session history (✅), crash recovery (✅), macros in SQLite (✅), AppSettings (✅), Preferences (✅), threshold profiles (✅), rejection categories O/T/B (✅), SNR excluded from classification (✅), bimodal star count anchoring (✅), star count 1.5σ (✅), threshold sign convention standardized to positive (✅), Session menu + JSON export/import (✅), commit file move to rejected/ (✅), PXFLAG toggle via right-click (✅); remaining: analysis results persistence, console history persistence, status bar profile indicator |
 | Phase 10 | ⬜ Not started            | User plugin loading, plugin manifest system, Plugin Manager UI                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Deferred | ⏸ Parked                 | Full keyword management UI, PNG/JPEG readers/writers, debayering, async dispatch, REST API, CLI, WASM plugins, memory audit, AnalyzeFrames CLI binary                                                                                                                                                                                                                                                                                                                |
 

@@ -149,8 +149,8 @@ export interface PrefSection {
 // ── Threshold Profiles ────────────────────────────────────────────────────────
 
 export const BG_MEDIAN_SIGMA_DEFAULT       = 2.5;
-export const SIGNAL_WEIGHT_SIGMA_DEFAULT   = -2.5;
-export const STAR_COUNT_SIGMA_DEFAULT = -3.0;
+export const SIGNAL_WEIGHT_SIGMA_DEFAULT   = 2.5;
+export const STAR_COUNT_SIGMA_DEFAULT = 1.5;
 export const FWHM_SIGMA_DEFAULT       = 2.5;
 export const ECCENTRICITY_ABS_DEFAULT = 0.85;
 export const ECCENTRICITY_ABS_MIN     = 0.10;
@@ -186,8 +186,8 @@ export const THRESHOLD_FIELDS: ThresholdFieldMeta[] = [
     label:     'Signal Weight',
     direction: '-',
     type:      'sigma',
-    min:       -4.0,
-    max:       -0.5,
+    min:       SIGMA_MIN,
+    max:       SIGMA_MAX,
     default:   SIGNAL_WEIGHT_SIGMA_DEFAULT,
     step:      SIGMA_STEP,
   },
@@ -196,8 +196,8 @@ export const THRESHOLD_FIELDS: ThresholdFieldMeta[] = [
     label:     'Star Count',
     direction: '-',
     type:      'sigma',
-    min:       -4.0,
-    max:       -0.5,
+    min:       SIGMA_MIN,
+    max:       SIGMA_MAX,
     default:   STAR_COUNT_SIGMA_DEFAULT,
     step:      SIGMA_STEP,
   },

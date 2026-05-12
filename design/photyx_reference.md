@@ -253,8 +253,8 @@ verbatim in the FITSKeyword block only.
 | Background Median | Sigma-clipped sky background level                                                         | Sigma (session-relative) | > +2.5σ        | ✓                |
 | FWHM              | Median FWHM derived from elliptical Moffat PSF fitting                                     | Sigma (session-relative) | > +2.5σ        | ✓                |
 | Eccentricity      | Median eccentricity derived from Moffat PSF fitted ellipse semi-axes: e = sqrt(1 − (b/a)²) | Absolute                 | > 0.85         | ✓                |
-| Star Count        | Stars accepted by Moffat PSF fitting (replaces connected-pixel detection)                  | Sigma (session-relative) | < -3.0σ        | ✓                |
-| Signal Weight     | PSF-based signal quality: A² / (A + B·π·a·b); derived from Moffat fit parameters           | Sigma (session-relative) | < -2.5σ        | ✓                |
+| Star Count        | Stars accepted by Moffat PSF fitting; bimodal-aware anchoring applied when cloud-induced population split detected | Sigma (session-relative) | < 1.5σ         | ✓                |
+| Signal Weight     | PSF-based signal quality: A² / (A + B·π·a·b); derived from Moffat fit parameters                                  | Sigma (session-relative) | < 2.5σ         | ✓                |
 
 ### 4.2 Classification
 
@@ -354,8 +354,8 @@ table. The active profile is tracked by
 | Background Median reject | Sigma    | +2.5σ   | +0.5σ | +4.0σ |       |
 | FWHM reject              | Sigma    | +2.5σ   | +0.5σ | +4.0σ |       |
 | Eccentricity reject      | Absolute | 0.85    | 0.10  | 1.00  |       |
-| Star Count reject        | Sigma    | -3.0σ   | -4.0σ | -0.5σ |       |
-| Signal Weight reject     | Sigma    | -2.5σ   | -4.0σ | -0.5σ |       |
+| Star Count reject        | Sigma    | 1.5σ    | 0.5σ  | 5.0σ  | Bimodal-anchored; 1.5σ relative to clear-sky cluster |
+| Signal Weight reject     | Sigma    | 2.5σ    | 0.5σ  | 5.0σ  |       |
 
 ### 5.8 AutoStretch Settings
 

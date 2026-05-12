@@ -211,15 +211,15 @@
     try {
       activeProfileId = await invoke('get_active_threshold_profile_id');
       const profiles: any[] = await invoke('get_threshold_profiles');
-      const active = profiles.find((p: any) => p.id === activeProfileId);
+      const active = profiles.find((p: any) => p.id === activeProfileId) ?? profiles[0];
       if (active) {
         profileName = active.name;
         thresholds = {
-          bg_median_reject_sigma:  active.bg_median_reject_sigma,
-          snr_reject_sigma:        active.snr_reject_sigma,
-          fwhm_reject_sigma:       active.fwhm_reject_sigma,
-          star_count_reject_sigma: active.star_count_reject_sigma,
-          eccentricity_reject_abs: active.eccentricity_reject_abs,
+          bg_median_reject_sigma:      active.bg_median_reject_sigma,
+          signal_weight_reject_sigma:  active.signal_weight_reject_sigma,
+          fwhm_reject_sigma:           active.fwhm_reject_sigma,
+          star_count_reject_sigma:     active.star_count_reject_sigma,
+          eccentricity_reject_abs:     active.eccentricity_reject_abs,
         };
       }
     } catch (e) {
@@ -232,7 +232,7 @@
       fwhm:               f.fwhm,
       eccentricity:       f.eccentricity,
       star_count:         f.star_count,
-      snr_estimate:       f.snr_estimate,
+      signal_weight:      f.signal_weight,
       background_median:  f.background_median,
       flag:               f.flag || 'PASS',
       triggered_by:       f.triggered ?? [],

@@ -34,11 +34,11 @@ pub fn save_threshold_profile(
         bg_median_reject_sigma:     profile.bg_median_reject_sigma
                                         .clamp(BG_MEDIAN_SIGMA_MIN, BG_MEDIAN_SIGMA_MAX),
         signal_weight_reject_sigma: profile.signal_weight_reject_sigma
-                                        .clamp(-SIGNAL_WEIGHT_SIGMA_MAX, -SIGNAL_WEIGHT_SIGMA_MIN),
+                                        .clamp(SIGNAL_WEIGHT_SIGMA_MIN, SIGNAL_WEIGHT_SIGMA_MAX),
         fwhm_reject_sigma:          profile.fwhm_reject_sigma
                                         .clamp(FWHM_SIGMA_MIN, FWHM_SIGMA_MAX),
         star_count_reject_sigma:    profile.star_count_reject_sigma
-                                        .clamp(-STAR_COUNT_SIGMA_MAX, -STAR_COUNT_SIGMA_MIN),
+                                        .clamp(STAR_COUNT_SIGMA_MIN, STAR_COUNT_SIGMA_MAX),
         eccentricity_reject_abs:    profile.eccentricity_reject_abs
                                         .clamp(ECCENTRICITY_ABS_MIN, ECCENTRICITY_ABS_MAX),
     };
@@ -174,9 +174,9 @@ pub fn set_active_threshold_profile(
     let mut ctx = state.context.lock().expect("context lock poisoned");
     ctx.analysis_thresholds = crate::analysis::session_stats::AnalysisThresholds {
         background_median: crate::analysis::session_stats::MetricThresholds { reject: profile.bg_median_reject_sigma as f32 },
-        signal_weight:     crate::analysis::session_stats::MetricThresholds { reject: profile.signal_weight_reject_sigma.abs() as f32 },
+        signal_weight:     crate::analysis::session_stats::MetricThresholds { reject: profile.signal_weight_reject_sigma as f32 },
         fwhm:              crate::analysis::session_stats::MetricThresholds { reject: profile.fwhm_reject_sigma as f32 },
-        star_count:        crate::analysis::session_stats::MetricThresholds { reject: profile.star_count_reject_sigma.abs() as f32 },
+        star_count:        crate::analysis::session_stats::MetricThresholds { reject: profile.star_count_reject_sigma as f32 },
         eccentricity:      crate::analysis::session_stats::MetricThresholds { reject: profile.eccentricity_reject_abs as f32 },
     };
 
