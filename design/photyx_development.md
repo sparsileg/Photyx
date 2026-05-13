@@ -373,6 +373,7 @@ Always reflects current active profile thresholds. SNR excluded from `applied_th
 ### 3.59 AnalyzeFrames — Metric Correlation Analysis
 
 Cross-session analysis (5 sessions, 489 frames total):
+
 - Bg Std Dev: r = 0.92–0.999 with Bg Median — **removed**
 - Bg Gradient: session-dependent sign reversal — **removed**
 - Eccentricity: orthogonal to background metrics — **essential**
@@ -451,12 +452,12 @@ Clears all session state. Resets `is_imported_session` to `false`. Preserves `ac
 
 `categorize_rejection()` in `session_stats.rs`:
 
-| Triggered                                | Category |
-| ---------------------------------------- | -------- |
-| FWHM and/or Eccentricity only            | O        |
-| StarCount only (no BackgroundMedian)     | T        |
-| BackgroundMedian only                    | B        |
-| FWHM/Ecc + StarCount                     | OT       |
+| Triggered                               | Category |
+| --------------------------------------- | -------- |
+| FWHM and/or Eccentricity only           | O        |
+| StarCount only (no BackgroundMedian)    | T        |
+| BackgroundMedian only                   | B        |
+| FWHM/Ecc + StarCount                    | OT       |
 | FWHM/Ecc + BackgroundMedian             | OB       |
 | BackgroundMedian + StarCount            | BT       |
 | FWHM/Ecc + BackgroundMedian + StarCount | OBT      |
@@ -468,6 +469,7 @@ O always leads (least recoverable). B leads T when both present (B is root cause
 ### 3.65 Session JSON Export/Import
 
 **Export (`exportSessionJson()` in `MenuBar.svelte`):**
+
 - Calls `get_analysis_results` + `get_threshold_profiles`
 - Default filename: `<target>_<YYYYMMDD>.json` from first frame basename (`Light_<target>_..._<YYYYMMDD>-...`)
 - All filenames stored as basenames
@@ -475,6 +477,7 @@ O always leads (least recoverable). B leads T when both present (B is root cause
 - `writeTextFile` requires `fs:allow-write-text-file` capability
 
 **Import (`importSessionJson()` in `MenuBar.svelte`):**
+
 - `readTextFile` → validate → `load_analysis_json` Tauri command
 - Rust: clears session, sets `active_directory`, reconstructs full paths (dir + "/" + basename), populates analysis state, sets `is_imported_session = true`
 - Frontend: opens Analysis Results automatically
@@ -497,56 +500,56 @@ Right-click context menu. "Set to PASS" or "Set to REJECT" based on current flag
 
 ## 4. Tauri Commands (Implemented)
 
-| Command                           | Description                                                                                                                     |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `dispatch_command`                | Dispatches a single pcode command (legacy interactive path)                                                                     |
-| `run_script`                      | Executes a pcode script string; returns ScriptResponse                                                                          |
-| `debug_buffer_info`               | Returns buffer metadata                                                                                                         |
-| `commit_analysis_results`         | Writes PXFLAG to buffers, flushes via WriteCurrent, moves REJECT files to rejected/, re-keys ctx. Terminal operation.           |
-| `get_analysis_results`            | Reclassifies frames (skipped for imported); returns frames, stats, outliers, session_path, is_imported                          |
-| `get_active_threshold_profile_id` | Returns active threshold profile id                                                                                             |
-| `get_autostretch_frame`           | Computes Auto-STF stretch, returns JPEG data URL                                                                                |
-| `get_blink_cache_status`          | Returns blink cache build status                                                                                                |
-| `get_blink_frame`                 | Returns blink frame as JPEG data URL                                                                                            |
-| `get_current_frame`               | Returns current image as raw JPEG data URL                                                                                      |
-| `get_full_frame`                  | Returns current image at full resolution with STF applied                                                                       |
-| `get_histogram`                   | Computes histogram bins + stats                                                                                                 |
-| `get_keywords`                    | Returns all keywords for current frame                                                                                          |
-| `get_pixel`                       | Returns raw pixel value(s) at source coordinates                                                                                |
-| `get_session`                     | Returns current session state                                                                                                   |
-| `get_star_positions`              | Re-runs star detection, returns positions for annotation overlay                                                                |
-| `get_threshold_profiles`          | Returns all threshold profiles from AppSettings                                                                                 |
-| `get_variable`                    | Returns a pcode variable value                                                                                                  |
-| `list_log_files`                  | Lists available log files                                                                                                       |
-| `list_macros`                     | Lists macros from DB                                                                                                            |
-| `list_plugins`                    | Returns list of registered plugins                                                                                              |
-| `load_analysis_json`              | Clears session; populates analysis state from JSON payload; sets is_imported_session = true                                     |
-| `load_file`                       | Reads a single image file, injects into session                                                                                 |
-| `read_log_file`                   | Reads and parses a log file                                                                                                     |
-| `save_threshold_profile`          | Insert or update a threshold profile                                                                                            |
-| `delete_threshold_profile`        | Delete a threshold profile; re-seeds Default if last deleted                                                                    |
-| `set_active_threshold_profile`    | Sets active profile; propagates thresholds into AppContext immediately                                                          |
-| `set_frame_flag`                  | Updates PASS/REJECT flag for a single frame in ctx.analysis_results by path                                                     |
-| `start_background_cache`          | Spawns background task to build blink cache JPEGs                                                                               |
-| `check_crash_recovery`            | Returns crash recovery candidate if present                                                                                     |
-| `close_session`                   | Marks session closed in DB; resets is_imported_session                                                                          |
-| `open_session`                    | Records session open in session_history                                                                                         |
-| `write_crash_recovery`            | Writes crash recovery state                                                                                                     |
-| `backup_database`                 | Creates timestamped ZIP backup of photyx.db                                                                                     |
-| `restore_database`                | Restores photyx.db from ZIP backup                                                                                              |
-| `delete_macro`                    | Deletes a macro from DB                                                                                                         |
-| `get_macros`                      | Returns all macros from DB                                                                                                      |
-| `get_macro_versions`              | Returns version history for a macro                                                                                             |
-| `increment_macro_run_count`       | Increments run_count for a macro                                                                                                |
-| `rename_macro`                    | Renames a macro                                                                                                                 |
-| `restore_macro_version`           | Restores a macro to a previous version                                                                                          |
-| `save_macro`                      | Saves (insert or update) a macro                                                                                                |
-| `get_all_preferences`             | Returns all preferences as key/value map                                                                                        |
-| `set_preference`                  | Writes a single preference to DB and AppSettings                                                                                |
-| `get_quick_launch_buttons`        | Returns Quick Launch button assignments                                                                                         |
-| `save_quick_launch_buttons`       | Saves Quick Launch button assignments                                                                                           |
-| `get_recent_directories`          | Returns recent directory history                                                                                                |
-| `record_directory_visit`          | Records a directory visit                                                                                                       |
+| Command                           | Description                                                                                                           |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `dispatch_command`                | Dispatches a single pcode command (legacy interactive path)                                                           |
+| `run_script`                      | Executes a pcode script string; returns ScriptResponse                                                                |
+| `debug_buffer_info`               | Returns buffer metadata                                                                                               |
+| `commit_analysis_results`         | Writes PXFLAG to buffers, flushes via WriteCurrent, moves REJECT files to rejected/, re-keys ctx. Terminal operation. |
+| `get_analysis_results`            | Reclassifies frames (skipped for imported); returns frames, stats, outliers, session_path, is_imported                |
+| `get_active_threshold_profile_id` | Returns active threshold profile id                                                                                   |
+| `get_autostretch_frame`           | Computes Auto-STF stretch, returns JPEG data URL                                                                      |
+| `get_blink_cache_status`          | Returns blink cache build status                                                                                      |
+| `get_blink_frame`                 | Returns blink frame as JPEG data URL                                                                                  |
+| `get_current_frame`               | Returns current image as raw JPEG data URL                                                                            |
+| `get_full_frame`                  | Returns current image at full resolution with STF applied                                                             |
+| `get_histogram`                   | Computes histogram bins + stats                                                                                       |
+| `get_keywords`                    | Returns all keywords for current frame                                                                                |
+| `get_pixel`                       | Returns raw pixel value(s) at source coordinates                                                                      |
+| `get_session`                     | Returns current session state                                                                                         |
+| `get_star_positions`              | Re-runs star detection, returns positions for annotation overlay                                                      |
+| `get_threshold_profiles`          | Returns all threshold profiles from AppSettings                                                                       |
+| `get_variable`                    | Returns a pcode variable value                                                                                        |
+| `list_log_files`                  | Lists available log files                                                                                             |
+| `list_macros`                     | Lists macros from DB                                                                                                  |
+| `list_plugins`                    | Returns list of registered plugins                                                                                    |
+| `load_analysis_json`              | Clears session; populates analysis state from JSON payload; sets is_imported_session = true                           |
+| `load_file`                       | Reads a single image file, injects into session                                                                       |
+| `read_log_file`                   | Reads and parses a log file                                                                                           |
+| `save_threshold_profile`          | Insert or update a threshold profile                                                                                  |
+| `delete_threshold_profile`        | Delete a threshold profile; re-seeds Default if last deleted                                                          |
+| `set_active_threshold_profile`    | Sets active profile; propagates thresholds into AppContext immediately                                                |
+| `set_frame_flag`                  | Updates PASS/REJECT flag for a single frame in ctx.analysis_results by path                                           |
+| `start_background_cache`          | Spawns background task to build blink cache JPEGs                                                                     |
+| `check_crash_recovery`            | Returns crash recovery candidate if present                                                                           |
+| `close_session`                   | Marks session closed in DB; resets is_imported_session                                                                |
+| `open_session`                    | Records session open in session_history                                                                               |
+| `write_crash_recovery`            | Writes crash recovery state                                                                                           |
+| `backup_database`                 | Creates timestamped ZIP backup of photyx.db                                                                           |
+| `restore_database`                | Restores photyx.db from ZIP backup                                                                                    |
+| `delete_macro`                    | Deletes a macro from DB                                                                                               |
+| `get_macros`                      | Returns all macros from DB                                                                                            |
+| `get_macro_versions`              | Returns version history for a macro                                                                                   |
+| `increment_macro_run_count`       | Increments run_count for a macro                                                                                      |
+| `rename_macro`                    | Renames a macro                                                                                                       |
+| `restore_macro_version`           | Restores a macro to a previous version                                                                                |
+| `save_macro`                      | Saves (insert or update) a macro                                                                                      |
+| `get_all_preferences`             | Returns all preferences as key/value map                                                                              |
+| `set_preference`                  | Writes a single preference to DB and AppSettings                                                                      |
+| `get_quick_launch_buttons`        | Returns Quick Launch button assignments                                                                               |
+| `save_quick_launch_buttons`       | Saves Quick Launch button assignments                                                                                 |
+| `get_recent_directories`          | Returns recent directory history                                                                                      |
+| `record_directory_visit`          | Records a directory visit                                                                                             |
 
 ---
 
@@ -558,58 +561,58 @@ See §3.35 and `photyx_reference.md` §9 for plugin status table.
 
 ## 6. UI State Store (`ui.ts`) — Key Fields
 
-| Field                    | Purpose                                                             |
-| ------------------------ | ------------------------------------------------------------------- |
-| `aboutOpen`              | Whether the About modal is open                                     |
-| `activePanel`            | Currently open sidebar panel                                        |
-| `activeView`             | Currently active viewer-region view (null = image viewer)           |
-| `analysisParametersOpen` | Whether the Analysis Parameters dialog is open                      |
-| `annotationToken`        | Positive = show annotations, negative = clear annotations           |
-| `autostretchImageUrl`    | Data URL of AutoStretch result                                       |
-| `blinkCached`            | Whether blink cache has been built                                  |
-| `blinkCaching`           | Whether blink cache build is in progress                            |
-| `blinkImageUrl`          | Current blink frame data URL                                        |
-| `blinkModeActive`        | Whether viewer is in blink display mode                             |
-| `blinkPlaying`           | Whether blink is actively playing                                   |
-| `blinkResolution`        | Currently selected blink resolution ('12' or '25')                  |
-| `blinkTabActive`         | Whether the Blink tab is currently selected                         |
-| `consoleExpanded`        | Whether console is expanded                                         |
-| `currentBlinkFlag`       | PXFLAG value for the currently displayed blink frame                |
-| `displayImageUrl`        | Data URL of temporary display image                                 |
-| `frameRefreshToken`      | Incremented to trigger viewer frame reload                          |
-| `keywordModalOpen`       | Whether the keyword modal is open                                   |
-| `logViewerOpen`          | Whether the Log Viewer modal is open                                |
-| `macroEditorFile`        | File currently open in Macro Editor                                 |
-| `preferencesOpen`        | Whether the Preferences dialog is open                              |
-| `quickLaunchVisible`     | Whether the Quick Launch bar is visible                             |
-| `showQualityFlags`       | Whether PXFLAG reject borders are shown during blink                |
-| `theme`                  | Active theme (dark / light / matrix)                                |
-| `viewerClearToken`       | Incremented to clear viewer and restore starfield                   |
-| `zoomLevel`              | Current zoom level                                                  |
+| Field                    | Purpose                                                   |
+| ------------------------ | --------------------------------------------------------- |
+| `aboutOpen`              | Whether the About modal is open                           |
+| `activePanel`            | Currently open sidebar panel                              |
+| `activeView`             | Currently active viewer-region view (null = image viewer) |
+| `analysisParametersOpen` | Whether the Analysis Parameters dialog is open            |
+| `annotationToken`        | Positive = show annotations, negative = clear annotations |
+| `autostretchImageUrl`    | Data URL of AutoStretch result                            |
+| `blinkCached`            | Whether blink cache has been built                        |
+| `blinkCaching`           | Whether blink cache build is in progress                  |
+| `blinkImageUrl`          | Current blink frame data URL                              |
+| `blinkModeActive`        | Whether viewer is in blink display mode                   |
+| `blinkPlaying`           | Whether blink is actively playing                         |
+| `blinkResolution`        | Currently selected blink resolution ('12' or '25')        |
+| `blinkTabActive`         | Whether the Blink tab is currently selected               |
+| `consoleExpanded`        | Whether console is expanded                               |
+| `currentBlinkFlag`       | PXFLAG value for the currently displayed blink frame      |
+| `displayImageUrl`        | Data URL of temporary display image                       |
+| `frameRefreshToken`      | Incremented to trigger viewer frame reload                |
+| `keywordModalOpen`       | Whether the keyword modal is open                         |
+| `logViewerOpen`          | Whether the Log Viewer modal is open                      |
+| `macroEditorFile`        | File currently open in Macro Editor                       |
+| `preferencesOpen`        | Whether the Preferences dialog is open                    |
+| `quickLaunchVisible`     | Whether the Quick Launch bar is visible                   |
+| `showQualityFlags`       | Whether PXFLAG reject borders are shown during blink      |
+| `theme`                  | Active theme (dark / light / matrix)                      |
+| `viewerClearToken`       | Incremented to clear viewer and restore starfield         |
+| `zoomLevel`              | Current zoom level                                        |
 
 ---
 
 ## 7. Known Issues & Deferred Items
 
-| Issue                                         | Notes                                                                                                                                    |
-| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| cfitsio parallel loading crashes              | Thread-safety — sequential loading used                                                                                                  |
-| Blink UI jitter                               | Suspected Tauri WebView compositor artifact on Windows; deferred                                                                         |
-| Full-res frames are JPEG not lossless         | Disclosed via disclaimer bar; pixel readout uses raw buffer                                                                              |
-| Long-running commands block UI                | Requires Tauri event system; deferred                                                                                                    |
-| Zoom approximate at high levels               | Full-res cache uses STF params from display-res downsample                                                                               |
-| XISF Vector/Matrix properties                 | Read as placeholder, skipped on write; deferred                                                                                          |
-| Rayon thread count not configurable           | Hardcoded to num_cpus-1                                                                                                                  |
-| stderr log output in dev mode                 | Duplicated to terminal; remove when no longer needed                                                                                     |
-| Sidebar icon tooltips clipped by Quick Launch | CSS stacking context; deferred                                                                                                           |
-| Plugin boilerplate is verbose                 | Deferred to Phase 10                                                                                                                     |
-| Single file load blink isolation              | Files loaded via LoadFile included in ctx.file_list                                                                                      |
-| AutoStretch performance in dev mode           | 3–5 seconds for RGB 9MP in debug build; near-instant in release                                                                          |
-| AutoStretch lost on Pixels tab switch         | Viewer reverts to raw display; deferred                                                                                                  |
-| SNR estimator PSF artifact                    | Worse-seeing frames produce higher SNR; confirmed across sessions; excluded from rejection; estimator revision planned                    |
-| AnalyzeFrames progress reporting              | No per-frame progress; requires Tauri event system; deferred                                                                             |
-| threshold_profiles orphaned columns           | bg_stddev_reject_sigma and bg_gradient_reject_sigma remain in schema; migration deferred                                                 |
-| Memory leak suspected                         | 103GB virtual / 20GB RSS observed after multiple sessions; audit deferred                                                                |
+| Issue                                         | Notes                                                                                                                  |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| cfitsio parallel loading crashes              | Thread-safety — sequential loading used                                                                                |
+| Blink UI jitter                               | Suspected Tauri WebView compositor artifact on Windows; deferred                                                       |
+| Full-res frames are JPEG not lossless         | Disclosed via disclaimer bar; pixel readout uses raw buffer                                                            |
+| Long-running commands block UI                | Requires Tauri event system; deferred                                                                                  |
+| Zoom approximate at high levels               | Full-res cache uses STF params from display-res downsample                                                             |
+| XISF Vector/Matrix properties                 | Read as placeholder, skipped on write; deferred                                                                        |
+| Rayon thread count not configurable           | Hardcoded to num_cpus-1                                                                                                |
+| stderr log output in dev mode                 | Duplicated to terminal; remove when no longer needed                                                                   |
+| Sidebar icon tooltips clipped by Quick Launch | CSS stacking context; deferred                                                                                         |
+| Plugin boilerplate is verbose                 | Deferred to Phase 10                                                                                                   |
+| Single file load blink isolation              | Files loaded via LoadFile included in ctx.file_list                                                                    |
+| AutoStretch performance in dev mode           | 3–5 seconds for RGB 9MP in debug build; near-instant in release                                                        |
+| AutoStretch lost on Pixels tab switch         | Viewer reverts to raw display; deferred                                                                                |
+| SNR estimator PSF artifact                    | Worse-seeing frames produce higher SNR; confirmed across sessions; excluded from rejection; estimator revision planned |
+| AnalyzeFrames progress reporting              | No per-frame progress; requires Tauri event system; deferred                                                           |
+| threshold_profiles orphaned columns           | bg_stddev_reject_sigma and bg_gradient_reject_sigma remain in schema; migration deferred                               |
+| Memory leak suspected                         | 103GB virtual / 20GB RSS observed after multiple sessions; audit deferred                                              |
 
 ---
 

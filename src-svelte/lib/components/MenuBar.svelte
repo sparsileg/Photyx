@@ -35,8 +35,8 @@
     case 'close-session':       closeSession(); break;
     case 'contour-plot':        runContourHeatmap(); break;
     case 'exit':                db.closeSession().catch(() => {}).finally(() => getCurrentWindow().close()); break;
-    case 'export-session-json': exportSessionJson(); break;
-    case 'import-session-json': importSessionJson(); break;
+    case 'export-analysis-results': exportSessionJson(); break;
+    case 'import-analysis-results': importSessionJson(); break;
     case 'keywords':            ui.togglePanel('keywords'); break;
     case 'load-single-image':   loadSingleImage(); break;
     case 'log-viewer':          ui.openLogViewer(); break;
@@ -355,11 +355,8 @@
       { label: 'Exit',               action: 'exit' },
     ]},
     { name: 'Session', items: [
-      { label: 'Select Directory…',    action: 'select-directory', shortcut: 'Ctrl+O' },
-      { label: 'Close Session',        action: 'close-session' },
-      { sep: true },
-      { label: 'Export Session JSON…', action: 'export-session-json' },
-      { label: 'Import Session JSON…', action: 'import-session-json' },
+      { label: 'Select Directory ', action: 'select-directory', shortcut: 'Ctrl+O' },
+      { label: 'Close Session',     action: 'close-session' },
     ]},
     { name: 'Edit', items: [
       { label: 'Preferences',         action: 'preferences' },
@@ -371,11 +368,14 @@
       { label: 'Theme: Matrix', action: 'theme-matrix' },
     ]},
     { name: 'Analyze', items: [
-      { label: 'Analyze Frames',   action: 'analyze-frames' },
-      { label: 'Analysis Results', action: 'analysis-results' },
-      { label: 'Analysis Graph',   action: 'analysis-graph' },
+      { label: 'Analyze Frames',          action: 'analyze-frames' },
+      { label: 'Analysis Results',        action: 'analysis-results' },
+      { label: 'Analysis Graph',          action: 'analysis-graph' },
       { sep: true },
-      { label: 'Contour Plot',     action: 'contour-plot' },
+      { label: 'Export Analysis Results', action: 'export-analysis-results' },
+      { label: 'Import Analysis Results', action: 'import-analysis-results' },
+      { sep: true },
+      { label: 'Contour Plot',            action: 'contour-plot' },
     ]},
     { name: 'Tools', items: [
       { label: 'Backup Database',  action: 'backup-database' },

@@ -771,34 +771,10 @@
   async function onClick(e: MouseEvent) {
     const hit = hitTest(e);
     if (!hit) return;
-    const { frame, which } = hit;
-    const key = which === 1 ? metric1 : metric2;
-    const val = getVal(frame, key);
-    if (val === undefined) return;
+    const { frame } = hit;
 
-    const rect = canvas!.getBoundingClientRect();
-    const my = (e.clientY - rect.top) * (canvas!.height / rect.height);
-    const frames = data!.frames;
-    const n = frames.length;
-    const PL = 72, PR = metric2 !== 'none' ? 72 : 24, PT = 30, PB = 50;
-    const CW = canvas!.width - PL - PR;
-    const CH = canvas!.height - PT - PB;
-    const m1valid = frames.map(f => getVal(f, metric1)).filter(v => v !== undefined) as number[];
-    const m2valid = metric2 !== 'none' ? frames.map(f => getVal(f, metric2)).filter(v => v !== undefined) as number[] : [];
-    const r1 = (() => { if (!m1valid.length) return { lo: 0, hi: 1 }; const mn = Math.min(...m1valid), mx = Math.max(...m1valid); const pad = (mx - mn) * 0.15 || 0.1; return { lo: mn - pad, hi: mx + pad }; })();
-    const r2 = metric1 === metric2 ? r1 : (() => { if (!m2valid.length) return { lo: 0, hi: 1 }; const mn = Math.min(...m2valid), mx = Math.max(...m2valid); const pad = (mx - mn) * 0.15 || 0.1; return { lo: mn - pad, hi: mx + pad }; })();
-    const toY1 = (v: number) => PT + CH - ((v - r1.lo) / (r1.hi - r1.lo)) * CH;
-    const toY2 = (v: number) => PT + CH - ((v - r2.lo) / (r2.hi - r2.lo)) * CH;
-    const dotY = which === 1 ? toY1(val) : toY2(val);
-    // Use larger hit radius for multi-category dots
-    const isMulti = frame.rejection_category !== undefined && frame.rejection_category.length > 1;
-    const dotR = frame.flag === 'REJECT' ? (isMulti ? 10 : 8) : 4;
-    const hitR = dotR + 6;
-
-    if (Math.abs(my - dotY) > hitR) return;
-
-    ui.showView(null);
     await displayFrame(frame.index);
+    ui.showView(null);
   }
 </script>
 
