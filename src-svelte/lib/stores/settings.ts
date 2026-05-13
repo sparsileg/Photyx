@@ -7,7 +7,6 @@ import { writable } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import {
   JPEG_QUALITY_DEFAULT,
-  RECENT_DIRS_DEFAULT,
   CONSOLE_HISTORY_DEFAULT,
   MACRO_FONT_DEFAULT,
   BUFFER_POOL_DEFAULT_GB,
@@ -18,7 +17,6 @@ import {
 
 export interface AppPreferences {
   jpeg_quality:              number;
-  recent_directories_max:    number;
   backup_directory:          string;
   console_history_size:      number;
   macro_editor_font_size:    number;
@@ -29,7 +27,6 @@ export interface AppPreferences {
 
 const defaults: AppPreferences = {
   jpeg_quality:             JPEG_QUALITY_DEFAULT,
-  recent_directories_max:   RECENT_DIRS_DEFAULT,
   backup_directory:         '',
   console_history_size:     CONSOLE_HISTORY_DEFAULT,
   macro_editor_font_size:   MACRO_FONT_DEFAULT,
@@ -51,8 +48,6 @@ function createSettingsStore() {
         const n = { ...s };
         if (prefs['jpeg_quality'])
           n.jpeg_quality = parseInt(prefs['jpeg_quality'], 10) || s.jpeg_quality;
-        if (prefs['recent_directories_max'])
-          n.recent_directories_max = parseInt(prefs['recent_directories_max'], 10) || s.recent_directories_max;
         if (prefs['backup_directory'] !== undefined)
           n.backup_directory = prefs['backup_directory'];
         if (prefs['console_history_size'])

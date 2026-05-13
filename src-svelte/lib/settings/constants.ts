@@ -8,10 +8,6 @@ export const JPEG_QUALITY_DEFAULT = 75;
 export const JPEG_QUALITY_MIN = 1;
 export const JPEG_QUALITY_MAX = 100;
 
-export const RECENT_DIRS_DEFAULT = 10;
-export const RECENT_DIRS_MIN = 1;
-export const RECENT_DIRS_MAX = 50;
-
 // ── pcode / Macro ─────────────────────────────────────────────────────────────
 
 export const CONSOLE_HISTORY_DEFAULT = 500;
@@ -66,15 +62,6 @@ export const PREF_FIELDS: PrefFieldMeta[] = [
     max: JPEG_QUALITY_MAX,
     default: JPEG_QUALITY_DEFAULT,
     unit: '%',
-  },
-  {
-    key: 'recent_directories_max',
-    label: 'Recent Directories',
-    helper: 'Number of recent directories to remember (1–50).',
-    type: 'integer',
-    min: RECENT_DIRS_MIN,
-    max: RECENT_DIRS_MAX,
-    default: RECENT_DIRS_DEFAULT,
   },
   // §5.3 pcode / Macro
   {
@@ -226,7 +213,7 @@ export const THRESHOLD_FIELDS: ThresholdFieldMeta[] = [
 export const PREF_SECTIONS: PrefSection[] = [
   {
     title: 'File & Path',
-    keys: ['jpeg_quality', 'recent_directories_max'],
+    keys: ['jpeg_quality'],
   },
   {
     title: 'pcode / Macro',

@@ -26,7 +26,6 @@
     const s = $settings;
     draft = {
       jpeg_quality:             s.jpeg_quality,
-      recent_directories_max:   s.recent_directories_max,
       backup_directory:         s.backup_directory,
       console_history_size:     s.console_history_size,
       macro_editor_font_size:   s.macro_editor_font_size,

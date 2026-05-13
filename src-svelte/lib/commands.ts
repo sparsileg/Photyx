@@ -68,8 +68,7 @@ export async function selectDirectory() {
   ui.clearViewer();
   notifications.info(`Directory: ${path}`);
 
-  // Persist directory visit and open a new session
-  db.recordDirectoryVisit(path).catch(e => console.error('recordDirectoryVisit failed:', e));
+  // open a new session
   db.openSession(path, 0).catch(e => console.error('openSession failed:', e));
   db.setPreference('last_directory', path).catch(e => console.error('setPreference last_directory failed:', e));
 }
