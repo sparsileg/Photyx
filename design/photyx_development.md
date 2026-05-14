@@ -1,6 +1,6 @@
 # Photyx — Developer Notes
 
-**Version:** 28 **Last updated:** 4 May 2026 **Status:** Active development — Phase 9 in progress
+**Version:** 29 **Last updated:** 13 May 2026 **Status:** Active development — Phase 9 in progress
 
 ---
 
@@ -10,7 +10,7 @@
 Photyx/
 ├── src-svelte/           ← Svelte frontend (target stack)
 │   ├── lib/
-│   │   ├── commands.ts   ← Shared backend command helpers (selectDirectory, loadFiles, displayFrame, closeSession, etc.)
+│   │   ├── commands.ts   ← Shared backend command helpers (addFiles, displayFrame, closeSession, etc.)
 │   │   ├── pcodeCommands.ts   ← Single source of truth for all pcode command names
 │   │   ├── components/   ← Svelte UI components
 │   │   │   ├── panels/   ← Sliding panel components
@@ -74,6 +74,7 @@ Photyx/
 │       │   └── tokenizer.rs
 │       └── plugins/
 │           ├── mod.rs
+│           ├── add_files.rs
 │           ├── analyze_frames.rs
 │           ├── auto_stretch.rs
 │           ├── background_median.rs
@@ -87,13 +88,8 @@ Photyx/
 │           ├── highlight_clipping.rs
 │           ├── keywords.rs
 │           ├── list_keywords.rs
-│           ├── read_all_files.rs
-│           ├── read_fits.rs
-│           ├── read_tiff.rs
-│           ├── read_xisf.rs
 │           ├── run_macro.rs
 │           ├── scripting.rs
-│           ├── select_directory.rs
 │           ├── set_frame.rs
 │           ├── star_count.rs
 │           ├── write_current_files.rs
@@ -208,6 +204,22 @@ Always-on when viewer has an image. Coordinates flow `Viewer.svelte` → `+page.
 
 Suspected Tauri WebView compositor artifact on Windows; deferred.
 
+### 3.11 Session Model — Global File Context
+
+Photyx uses a **global file context** — a flat list of file paths (`ctx.file_list`) with no concept of an "active directory."
+
+- `AddFiles` appends explicit file paths to the session; duplicates are skipped
+- Files from multiple directories coexist in a single session
+- `ClearSession` resets the entire session
+- `ctx.source_directories()` — returns unique parent directories of all loaded files
+- `ctx.common_parent()` — returns the common parent if all files share one, else None
+- `ctx.remove_rejected_files()` — removes rejected paths from file_list and all caches after commit
+- Relative paths in pcode commands resolve against `common_parent()` when available
+
+**Status bar display:** `N files · M directories` derived from `ctx.file_list`.
+
+**`pwd` command:** Lists unique source directories from the current file list.
+
 ### 3.28 pcode Interpreter
 
 - `If <expr> / Else / EndIf` — conditionals with `==`, `!=`, `<`, `>`, `<=`, `>=`
@@ -279,7 +291,7 @@ Two-row toolbar. Row 1: buttons. Row 2: session path display + optional IMPORTED
 
 **Imported sessions:** `is_imported: true` in response → IMPORTED badge shown, Commit disabled.
 
-**Commit sequence:** sync toggled flags → `commit_analysis_results` → on success: `ui.showView(null)`, `ui.clearViewer()`, `closeSession()`. Terminal operation.
+**Commit sequence:** sync toggled flags → `commit_analysis_results` → on success: sync session from backend → `ui.showView(null)` → `ui.clearViewer()`. Session stays open; pass frames remain loaded.
 
 ### 3.42 notifications.running() — Pulse Animation + Expanded Bar
 
@@ -303,7 +315,7 @@ Writes currently active frame only. Distinct from `WriteCurrent` which writes al
 
 ### 3.49 utils.rs — Shared Path Utilities
 
-`resolve_path`, `get_log_dir`, `get_macros_dir`.
+`resolve_path(path, active_directory)` — resolves relative paths against a base directory. Callers pass `ctx.common_parent().as_ref().and_then(|p| p.to_str())` as the base. `get_log_dir`.
 
 ### 3.51 pcode Implementation Details
 
@@ -311,13 +323,13 @@ Variables resolved inside the evaluator via `HashMap` — never pre-substituted.
 
 ### 3.52 ContourHeatmap Algorithm
 
-Star detection → adaptive grid → IDW interpolation → bicubic upscale → colormap. Output in `ctx.variables["NEW_FILE"]`.
+Star detection → adaptive grid → IDW interpolation → bicubic upscale → colormap. Output written to the source file's parent directory. Path stored in `ctx.variables["NEW_FILE"]`.
 
 ### 3.53 Blink Review Workflow
 
-1. Fast blink pass — PXFLAG red border overlay (after Commit)
-2. Deliberate review — P/R keys write PXFLAG immediately
-3. Delete confirmed rejects
+1. Fast blink pass — PXFLAG red border overlay
+2. Deliberate review — P/R keys update flag in `ctx.analysis_results`
+3. Commit Results — moves rejects, pass frames remain loaded
 
 ### 3.54 client_actions — Cross-Boundary Side Effects
 
@@ -396,28 +408,27 @@ Returns `(SessionStats, HashSet<String>)`.
 3. Runs `compute_session_stats_iterative`; updates ctx
 4. Reclassifies each frame; calls `categorize_rejection()` for REJECTs
 5. Updates `flag`, `triggered_by`, `rejection_category` in place
-6. Returns results + `applied_thresholds` (SNR excluded) + `session_path` + `is_imported`
+6. Returns results + `applied_thresholds` (SNR excluded) + `is_imported`
 
-### 3.62 Commit Results — Enhanced Pattern
+### 3.62 Commit Results
 
-`commit_analysis_results` — terminal operation:
+`commit_analysis_results` — non-terminal operation; session stays open:
 
-1. Guard: error if `is_imported_session`
-2. Write PXFLAG to all buffers in memory
-3. Drop lock
-4. Dispatch `WriteCurrent` — flush all to disk atomically
-5. Create `<active_directory>/rejected/` if absent
-6. Move each REJECT file: `<path>` → `<dir>/rejected/<name>.<ext>.rejected`
-7. Re-key `file_list`, `image_buffers`, `analysis_results` to new paths
-8. Return success message
+1. Guard: error if `analysis_results` is empty or `is_imported_session`
+2. Collect REJECT paths from `ctx.file_list`
+3. Move each REJECT file: `<path>` → `<parent>/rejected/<name>.<ext>.rejected`; each file lands in its own source directory's `rejected/` subfolder
+4. Call `ctx.remove_rejected_files(&reject_paths)` — removes from `file_list`, `image_buffers`, all caches; clears analysis results
+5. Return success message
 
-**Order matters:** WriteCurrent must run before file moves — it looks up buffers by original path.
+**PXFLAG is NOT written to files.** The file move is the sole persistence action. This keeps commit fast (< 1 second for 100+ frames) and avoids rewriting raw image data.
 
-**Frontend:** sync toggled flags → `commit_analysis_results` → success: `ui.showView(null)`, `ui.clearViewer()`, `closeSession()`.
+**Frontend:** sync toggled flags → `commit_analysis_results` → success: sync session from `get_session` → `session.setFileList()` → `ui.showView(null)` → `ui.clearViewer()`. Pass frames remain loaded and ready for subsequent operations.
+
+**Order of frontend updates matters:** session sync must happen before `ui.showView(null)` so reactive components update while still mounted.
 
 ### 3.63 AppContext.clear_session()
 
-Clears all session state. Resets `is_imported_session` to `false`. Preserves `active_directory`.
+Clears all session state. Resets `is_imported_session` to `false`. Does not preserve any directory reference.
 
 ### 3.64 Rejection Categories
 
@@ -443,14 +454,15 @@ O always leads (least recoverable). B leads T when both present (B is root cause
 
 - Calls `get_analysis_results` + `get_threshold_profiles`
 - Default filename: `<target>_<YYYYMMDD>.json` from first frame basename (`Light_<target>_..._<YYYYMMDD>-...`)
-- All filenames stored as basenames
-- JSON: `photyx_version`, `exported_at`, `active_directory`, `threshold_profile_name`, `thresholds`, `session_stats`, `outlier_paths[]`, `frames[]`
+- All filenames stored as **full absolute paths** (multi-directory sessions require this)
+- Outlier paths stored as full absolute paths
+- JSON: `photyx_version`, `exported_at`, `threshold_profile_name`, `thresholds`, `session_stats`, `outlier_paths[]`, `frames[]`
 - `writeTextFile` requires `fs:allow-write-text-file` capability
 
 **Import (`importSessionJson()` in `MenuBar.svelte`):**
 
 - `readTextFile` → validate → `load_analysis_json` Tauri command
-- Rust: clears session, sets `active_directory`, reconstructs full paths (dir + "/" + basename), populates analysis state, sets `is_imported_session = true`
+- Rust: clears session, treats `filename` fields as full paths directly (no directory prefix construction), populates analysis state, sets `is_imported_session = true`
 - Frontend: opens Analysis Results automatically
 - No images loaded — display only
 
@@ -467,60 +479,97 @@ Right-click context menu. "Set to PASS" or "Set to REJECT" based on current flag
 
 `set_frame_flag`: updates `ctx.analysis_results[path].flag` directly. No reclassification side effects.
 
+### 3.67 Image Reader Consolidation
+
+All format reading is consolidated in `plugins/image_reader.rs`:
+
+- `read_image_file(path)` — dispatches to format-specific reader by extension
+- `read_fits_file(path)` — FITS reader
+- `read_xisf_file(path)` — XISF reader
+- `read_tiff_file(path)` — TIFF reader
+- `peek_fits_dimensions(path)` — peek FITS header without reading pixels
+- `peek_xisf_dimensions(path)` — peek XISF header without reading pixels
+- `peek_tiff_dimensions(path)` — peek TIFF header without reading pixels
+
+The peek functions are used by `AddFiles` for memory limit estimation.
+
+### 3.68 AddFiles Plugin
+
+`plugins/add_files.rs` — appends explicit file paths to the session:
+
+1. Parse comma-separated paths from `paths=` argument
+2. Validate all paths exist
+3. Filter out paths already in `ctx.file_list` (duplicate detection)
+4. Peek first file to estimate memory usage; check against `ctx.buffer_pool_bytes`
+5. Load each new file via `read_image_file()`; insert into `ctx.image_buffers` and `ctx.file_list`
+
+Does **not** call `ctx.clear_session()`. To start fresh, call `ClearSession` first.
+
+### 3.69 DB Schema Migration v3
+
+Migration v3 (applied automatically on startup if DB is at version 2):
+
+```sql
+ALTER TABLE crash_recovery DROP COLUMN active_directory;
+```
+
+Crash recovery now stores `file_list` (JSON array of full paths) only. On recovery, paths are passed directly to `AddFiles`.
+
+### 3.70 Linux GTK File Picker — Known Issue
+
+On Linux, the native GTK file picker with `multiple: true` silently refuses to confirm a selection that includes both files and directories (e.g. when Ctrl+A selects files alongside a `rejected/` subfolder). Workaround: avoid using Ctrl+A when a `rejected/` subfolder is present in the directory; select files manually instead.
+
 ---
 
 ## 4. Tauri Commands (Implemented)
 
-| Command                           | Description                                                                                                           |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `dispatch_command`                | Dispatches a single pcode command (legacy interactive path)                                                           |
-| `run_script`                      | Executes a pcode script string; returns ScriptResponse                                                                |
-| `debug_buffer_info`               | Returns buffer metadata                                                                                               |
-| `commit_analysis_results`         | Writes PXFLAG to buffers, flushes via WriteCurrent, moves REJECT files to rejected/, re-keys ctx. Terminal operation. |
-| `get_analysis_results`            | Reclassifies frames (skipped for imported); returns frames, stats, outliers, session_path, is_imported                |
-| `get_active_threshold_profile_id` | Returns active threshold profile id                                                                                   |
-| `get_autostretch_frame`           | Computes Auto-STF stretch, returns JPEG data URL                                                                      |
-| `get_blink_cache_status`          | Returns blink cache build status                                                                                      |
-| `get_blink_frame`                 | Returns blink frame as JPEG data URL                                                                                  |
-| `get_current_frame`               | Returns current image as raw JPEG data URL                                                                            |
-| `get_full_frame`                  | Returns current image at full resolution with STF applied                                                             |
-| `get_histogram`                   | Computes histogram bins + stats                                                                                       |
-| `get_keywords`                    | Returns all keywords for current frame                                                                                |
-| `get_pixel`                       | Returns raw pixel value(s) at source coordinates                                                                      |
-| `get_session`                     | Returns current session state                                                                                         |
-| `get_star_positions`              | Re-runs star detection, returns positions for annotation overlay                                                      |
-| `get_threshold_profiles`          | Returns all threshold profiles from AppSettings                                                                       |
-| `get_variable`                    | Returns a pcode variable value                                                                                        |
-| `list_log_files`                  | Lists available log files                                                                                             |
-| `list_macros`                     | Lists macros from DB                                                                                                  |
-| `list_plugins`                    | Returns list of registered plugins                                                                                    |
-| `load_analysis_json`              | Clears session; populates analysis state from JSON payload; sets is_imported_session = true                           |
-| `load_file`                       | Reads a single image file, injects into session                                                                       |
-| `read_log_file`                   | Reads and parses a log file                                                                                           |
-| `save_threshold_profile`          | Insert or update a threshold profile                                                                                  |
-| `delete_threshold_profile`        | Delete a threshold profile; re-seeds Default if last deleted                                                          |
-| `set_active_threshold_profile`    | Sets active profile; propagates thresholds into AppContext immediately                                                |
-| `set_frame_flag`                  | Updates PASS/REJECT flag for a single frame in ctx.analysis_results by path                                           |
-| `start_background_cache`          | Spawns background task to build blink cache JPEGs                                                                     |
-| `check_crash_recovery`            | Returns crash recovery candidate if present                                                                           |
-| `close_session`                   | Marks session closed in DB; resets is_imported_session                                                                |
-| `open_session`                    | Records session open in session_history                                                                               |
-| `write_crash_recovery`            | Writes crash recovery state                                                                                           |
-| `backup_database`                 | Creates timestamped ZIP backup of photyx.db                                                                           |
-| `restore_database`                | Restores photyx.db from ZIP backup                                                                                    |
-| `delete_macro`                    | Deletes a macro from DB                                                                                               |
-| `get_macros`                      | Returns all macros from DB                                                                                            |
-| `get_macro_versions`              | Returns version history for a macro                                                                                   |
-| `increment_macro_run_count`       | Increments run_count for a macro                                                                                      |
-| `rename_macro`                    | Renames a macro                                                                                                       |
-| `restore_macro_version`           | Restores a macro to a previous version                                                                                |
-| `save_macro`                      | Saves (insert or update) a macro                                                                                      |
-| `get_all_preferences`             | Returns all preferences as key/value map                                                                              |
-| `set_preference`                  | Writes a single preference to DB and AppSettings                                                                      |
-| `get_quick_launch_buttons`        | Returns Quick Launch button assignments                                                                               |
-| `save_quick_launch_buttons`       | Saves Quick Launch button assignments                                                                                 |
-| `get_recent_directories`          | Returns recent directory history                                                                                      |
-| `record_directory_visit`          | Records a directory visit                                                                                             |
+| Command                           | Description                                                                                                          |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `dispatch_command`                | Dispatches a single pcode command (legacy interactive path)                                                          |
+| `run_script`                      | Executes a pcode script string; returns ScriptResponse                                                               |
+| `debug_buffer_info`               | Returns buffer metadata                                                                                              |
+| `commit_analysis_results`         | Moves REJECT files to per-source rejected/ subfolders; removes from session; pass frames remain. Fast, non-terminal. |
+| `get_analysis_results`            | Reclassifies frames (skipped for imported); returns frames, stats, outliers, is_imported                             |
+| `get_active_threshold_profile_id` | Returns active threshold profile id                                                                                  |
+| `get_autostretch_frame`           | Computes Auto-STF stretch, returns JPEG data URL                                                                     |
+| `get_blink_cache_status`          | Returns blink cache build status                                                                                     |
+| `get_blink_frame`                 | Returns blink frame as JPEG data URL                                                                                 |
+| `get_current_frame`               | Returns current image as raw JPEG data URL                                                                           |
+| `get_full_frame`                  | Returns current image at full resolution with STF applied                                                            |
+| `get_histogram`                   | Computes histogram bins + stats                                                                                      |
+| `get_keywords`                    | Returns all keywords for current frame                                                                               |
+| `get_pixel`                       | Returns raw pixel value(s) at source coordinates                                                                     |
+| `get_session`                     | Returns current session state (fileList, currentFrame) — no activeDirectory                                          |
+| `get_star_positions`              | Re-runs star detection, returns positions for annotation overlay                                                     |
+| `get_threshold_profiles`          | Returns all threshold profiles from AppSettings                                                                      |
+| `get_variable`                    | Returns a pcode variable value                                                                                       |
+| `list_log_files`                  | Lists available log files                                                                                            |
+| `list_plugins`                    | Returns list of registered plugins                                                                                   |
+| `load_analysis_json`              | Clears session; populates analysis state from JSON payload; sets is_imported_session = true                          |
+| `load_file`                       | Reads a single image file, injects into session                                                                      |
+| `read_log_file`                   | Reads and parses a log file                                                                                          |
+| `save_threshold_profile`          | Insert or update a threshold profile                                                                                 |
+| `delete_threshold_profile`        | Delete a threshold profile; re-seeds Default if last deleted                                                         |
+| `set_active_threshold_profile`    | Sets active profile; propagates thresholds into AppContext immediately                                               |
+| `set_frame_flag`                  | Updates PASS/REJECT flag for a single frame in ctx.analysis_results by path                                          |
+| `start_background_cache`          | Spawns background task to build blink cache JPEGs                                                                    |
+| `check_crash_recovery`            | Returns crash recovery candidate if present (file_list + current_frame_index)                                        |
+| `close_session`                   | Marks session closed in DB; resets is_imported_session                                                               |
+| `open_session`                    | Records session open in session_history                                                                              |
+| `write_crash_recovery`            | Writes crash recovery state (file_list, current_frame_index)                                                         |
+| `backup_database`                 | Creates timestamped ZIP backup of photyx.db                                                                          |
+| `restore_database`                | Restores photyx.db from ZIP backup                                                                                   |
+| `delete_macro`                    | Deletes a macro from DB                                                                                              |
+| `get_macros`                      | Returns all macros from DB                                                                                           |
+| `get_macro_versions`              | Returns version history for a macro                                                                                  |
+| `increment_macro_run_count`       | Increments run_count for a macro                                                                                     |
+| `rename_macro`                    | Renames a macro                                                                                                      |
+| `restore_macro_version`           | Restores a macro to a previous version                                                                               |
+| `save_macro`                      | Saves (insert or update) a macro                                                                                     |
+| `get_all_preferences`             | Returns all preferences as key/value map                                                                             |
+| `set_preference`                  | Writes a single preference to DB and AppSettings                                                                     |
+| `get_quick_launch_buttons`        | Returns Quick Launch button assignments                                                                              |
+| `save_quick_launch_buttons`       | Saves Quick Launch button assignments                                                                                |
 
 ---
 
@@ -563,35 +612,52 @@ See §3.35 and `photyx_reference.md` §9 for plugin status table.
 
 ---
 
-## 7. Known Issues & Deferred Items
+## 7. Session Store (`session.ts`) — Key Fields
 
-| Issue                                         | Notes                                                                                                                  |
-| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| cfitsio parallel loading crashes              | Thread-safety — sequential loading used                                                                                |
-| Blink UI jitter                               | Suspected Tauri WebView compositor artifact on Windows; deferred                                                       |
-| Full-res frames are JPEG not lossless         | Disclosed via disclaimer bar; pixel readout uses raw buffer                                                            |
-| Long-running commands block UI                | Requires Tauri event system; deferred                                                                                  |
-| Zoom approximate at high levels               | Full-res cache uses STF params from display-res downsample                                                             |
-| XISF Vector/Matrix properties                 | Read as placeholder, skipped on write; deferred                                                                        |
-| Rayon thread count not configurable           | Hardcoded to num_cpus-1                                                                                                |
-| stderr log output in dev mode                 | Duplicated to terminal; remove when no longer needed                                                                   |
-| Sidebar icon tooltips clipped by Quick Launch | CSS stacking context; deferred                                                                                         |
-| Plugin boilerplate is verbose                 | Deferred to Phase 10                                                                                                   |
-| Single file load blink isolation              | Files loaded via LoadFile included in ctx.file_list                                                                    |
-| AutoStretch performance in dev mode           | 3–5 seconds for RGB 9MP in debug build; near-instant in release                                                        |
-| AutoStretch lost on Pixels tab switch         | Viewer reverts to raw display; deferred                                                                                |
-| SNR estimator PSF artifact                    | Worse-seeing frames produce higher SNR; confirmed across sessions; excluded from rejection; estimator revision planned |
-| AnalyzeFrames progress reporting              | No per-frame progress; requires Tauri event system; deferred                                                           |
-| threshold_profiles orphaned columns           | bg_stddev_reject_sigma and bg_gradient_reject_sigma remain in schema; migration deferred                               |
-| Memory leak suspected                         | 103GB virtual / 20GB RSS observed after multiple sessions; audit deferred                                              |
+| Field / Derived            | Purpose                                                |
+| -------------------------- | ------------------------------------------------------ |
+| `fileList`                 | Ordered list of full file paths in the current session |
+| `loadedImages`             | Record of image metadata keyed by file path            |
+| `currentFrame`             | Zero-based index of the currently displayed frame      |
+| `variables`                | pcode variable store (mirrors ctx.variables)           |
+| `fileCount` (derived)      | `fileList.length`                                      |
+| `directoryCount` (derived) | Number of unique parent directories in `fileList`      |
+| `currentImage` (derived)   | `loadedImages[fileList[currentFrame]]`                 |
+
+Note: `activeDirectory` has been removed. Directory information is always derived from `fileList`.
 
 ---
 
-## 8. Phase Completion Status
+## 8. Known Issues & Deferred Items
+
+| Issue                                         | Notes                                                                                                                                      |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| cfitsio parallel loading crashes              | Thread-safety — sequential loading used                                                                                                    |
+| Blink UI jitter                               | Suspected Tauri WebView compositor artifact on Windows; deferred                                                                           |
+| Full-res frames are JPEG not lossless         | Disclosed via disclaimer bar; pixel readout uses raw buffer                                                                                |
+| Long-running commands block UI                | Requires Tauri event system; deferred                                                                                                      |
+| Zoom approximate at high levels               | Full-res cache uses STF params from display-res downsample                                                                                 |
+| XISF Vector/Matrix properties                 | Read as placeholder, skipped on write; deferred                                                                                            |
+| Rayon thread count not configurable           | Hardcoded to num_cpus-1                                                                                                                    |
+| stderr log output in dev mode                 | Duplicated to terminal; remove when no longer needed                                                                                       |
+| Sidebar icon tooltips clipped by Quick Launch | CSS stacking context; deferred                                                                                                             |
+| Plugin boilerplate is verbose                 | Deferred to Phase 10                                                                                                                       |
+| Single file load blink isolation              | Files loaded via LoadFile included in ctx.file_list                                                                                        |
+| AutoStretch performance in dev mode           | 3–5 seconds for RGB 9MP in debug build; near-instant in release                                                                            |
+| AutoStretch lost on Pixels tab switch         | Viewer reverts to raw display; deferred                                                                                                    |
+| SNR estimator PSF artifact                    | Worse-seeing frames produce higher SNR; confirmed across sessions; excluded from rejection; estimator revision planned                     |
+| AnalyzeFrames progress reporting              | No per-frame progress; requires Tauri event system; deferred                                                                               |
+| threshold_profiles orphaned columns           | bg_stddev_reject_sigma and bg_gradient_reject_sigma remain in schema; migration deferred                                                   |
+| Memory leak suspected                         | 103GB virtual / 20GB RSS observed after multiple sessions; audit deferred                                                                  |
+| Linux GTK file picker multi-select            | Silently refuses to confirm selection containing both files and folders (e.g. rejected/ subfolder); avoid Ctrl+A when rejected/ is present |
+
+---
+
+## 9. Phase Completion Status
 
 See Section 13 in the Specification.
 
-## 9. Settings Persistence (Phase 9)
+## 10. Settings Persistence (Phase 9)
 
 All persistence via SQLite (`photyx.db`). See `photyx_persistence_inventory.md` for schema and `photyx_reference.md` §5 for settings tables.
 
@@ -601,6 +667,12 @@ Settings that remain in localStorage: none — migration complete as of Phase 9 
 
 ---
 
-## 10. Database Schema
+## 11. Database Schema
 
 See `photyx_persistence_inventory.md` for full DDL. All tables live in `APPDATA/Photyx/photyx.db`.
+
+DB schema is at version 3. Migration history:
+
+- v1: initial schema
+- v2: renamed `snr_reject_sigma` → `signal_weight_reject_sigma` in `threshold_profiles`
+- v3: dropped `active_directory` column from `crash_recovery`

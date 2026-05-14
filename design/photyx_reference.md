@@ -1,12 +1,11 @@
 # Photyx — Reference Document
 
-**Version:** 3 **Last updated:** 10 May 2026
+**Version:** 4 **Last updated:** 13 May 2026
 
 This document is the authoritative lookup reference for pcode
 commands, interrogation properties, keyword mappings, analysis
 metrics, settings, Tauri commands, and file format support. It is a
-companion to `photyx_spec.md` (requirements) and
-`photyx_development.md` (implementation). Upload this document when
+companion to `photyx_spec.md` (requirements) and `photyx_development.md` (implementation). Upload this document when
 doing work involving pcode scripting, keyword management, analysis, or
 settings configuration.
 
@@ -16,61 +15,63 @@ settings configuration.
 
 All pcode commands in the initial release. Arguments in brackets are optional.
 
-| Command             | Category        | Description                                                                                                                                                                                         | Key Arguments                                          |
-| ------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| AddKeyword          | Keyword         | Adds or replaces a keyword on loaded images                                                                                                                                                         | name, value, [comment], [scope=all\|current]           |
-| AnalyzeFrames       | Frame Analysis  | Computes seven quality metrics for all loaded frames, classifies each as PASS or REJECT, writes PXFLAG keyword                                                                                      | —                                                      |
-| Assert              | Scripting       | Halts execution with an error if expression is false; silent on pass in both Trace and No Trace modes                                                                                               | expression                                             |
-| AutoStretch         | Processing      | Applies Auto-STF stretch to current frame (display only — raw buffer unchanged)                                                                                                                     | [shadowClip], [targetBackground]                       |
-| BinImage            | Processing      | Bins the image by an integer factor                                                                                                                                                                 | factor                                                 |
-| BlinkSequence       | Blink & View    | Starts blinking the loaded image set                                                                                                                                                                | [fps]                                                  |
-| CacheFrames         | Blink & View    | Pre-decodes and caches all frames for blinking at both resolutions                                                                                                                                  | —                                                      |
-| ClearSession        | Session         | Clears all loaded images and resets session state                                                                                                                                                   | —                                                      |
-| ComputeEccentricity | Analysis        | Calculates eccentricity for detected stars on current frame                                                                                                                                         | —                                                      |
-| ComputeFWHM         | Analysis        | Calculates FWHM for detected stars; displays per-star circle annotations on viewer overlay                                                                                                          | —                                                      |
-| ContourHeatmap      | Analysis        | Generates spatial FWHM heatmap for current frame; writes XISF to active directory; stores output path in `$NEW_FILE`                                                                                | [palette], [contour_levels], [threshold], [saturation] |
-| CopyFile            | File Management | Copies a file to a destination directory; defaults to current frame if source= not specified; destination created automatically; stores path in `$NEW_FILE`                                         | [source], destination                                  |
-| CopyKeyword         | Keyword         | Copies a keyword value to a new keyword name                                                                                                                                                        | from, to                                               |
-| CountFiles          | Scripting       | Stores number of files in current list in `$filecount`                                                                                                                                              | —                                                      |
-| CountStars          | Analysis        | Counts detected stars in current frame                                                                                                                                                              | —                                                      |
-| CropImage           | Processing      | Crops the image to a specified region                                                                                                                                                               | x, y, width, height                                    |
-| DebayerImage        | Processing      | Debayers a Bayer CFA image on demand                                                                                                                                                                | [pattern], [method=nearest\|bilinear\|vng\|ahd]        |
-| DeleteKeyword       | Keyword         | Removes a keyword from loaded images                                                                                                                                                                | name, [scope=all\|current]                             |
-| FilterByKeyword     | File Management | Filters the active file list by keyword value                                                                                                                                                       | name, value                                            |
-| GetHistogram        | Processing      | Computes histogram statistics for current frame (median, std dev, clipping %)                                                                                                                       | —                                                      |
-| GetImageProperty    | Interrogation   | Retrieves an image property into a variable; see §2 for full property list                                                                                                                          | property                                               |
-| GetKeyword          | Interrogation   | Retrieves a keyword value; auto-stores in `$<NAME>` (uppercase) — e.g. `GetKeyword name=FILTER` stores result in `$FILTER`                                                                          | name                                                   |
-| GetSessionProperty  | Interrogation   | Retrieves a session state value into a variable; see §2 for full property list                                                                                                                      | property                                               |
-| ListFiles           | File Management | Lists files in the active directory                                                                                                                                                                 | [filter]                                               |
-| ListKeywords        | Keyword         | Lists all keywords for the current image                                                                                                                                                            | —                                                      |
-| LoadFile            | File Management | Loads a single image file into the session without clearing existing session; stores path in `$LOAD_FILE_PATH`                                                                                      | path                                                   |
-| Log                 | Scripting       | Writes collected macro output since last Log call to a file                                                                                                                                         | path, [append]                                         |
-| MedianValue         | Analysis        | Returns the median pixel value per channel                                                                                                                                                          | —                                                      |
-| ModifyKeyword       | Keyword         | Changes the value of an existing keyword                                                                                                                                                            | name, value, [comment], [scope=all\|current]           |
-| MoveFile            | File Management | Moves a file to a destination directory; defaults to current frame if source= not specified; stores path in `$NEW_FILE`                                                                             | [source], destination                                  |
-| Print               | Scripting       | Outputs a message to the pcode console; accepts bare expressions — `Print $x + 1` and `Print "hello"` are both valid                                                                                | message (positional or bare expression)                |
-| ReadAll             | I/O             | Reads all supported image files (FITS + XISF + TIFF) in the active directory                                                                                                                        | —                                                      |
-| ReadFIT             | I/O             | Reads all FITS files in the active directory                                                                                                                                                        | —                                                      |
-| ReadTIFF            | I/O             | Reads all TIFF files in the active directory                                                                                                                                                        | —                                                      |
-| ReadXISF            | I/O             | Reads all XISF files in the active directory                                                                                                                                                        | —                                                      |
-| RunMacro            | Scripting       | Executes a saved macro by name; bare names resolve automatically; if the macro has @param declarations, parameters are passed as named arguments (e.g. `RunMacro ProcessLights INPUT_DIR="D:/M31"`) | name, [param=value …]                                  |
-| SelectDirectory     | File Management | Sets the active working directory                                                                                                                                                                   | path                                                   |
-| Set                 | Scripting       | Assigns a value to a variable; string literals on the RHS must use double quotes                                                                                                                    | varname = value                                        |
-| SetFrame            | Navigation      | Sets the current active frame by index (0-based)                                                                                                                                                    | index                                                  |
-| SetZoom             | Blink & View    | Sets the viewer zoom level                                                                                                                                                                          | level (fit, 25, 50, 100, 200)                          |
-| Test                | Interrogation   | Performs a boolean test and stores result in `$Result`; see §2 for full test list                                                                                                                   | expression                                             |
-| WriteCurrent        | I/O             | Writes all buffered images back to their source paths in their original format (atomic temp-rename)                                                                                                 | —                                                      |
-| WriteFIT            | I/O             | Writes all buffered images as FITS files (atomic temp-rename)                                                                                                                                       | destination, [overwrite]                               |
-| WriteFrame          | I/O             | Writes the currently active frame only back to its source format (atomic temp-rename)                                                                                                               | —                                                      |
-| WriteTIFF           | I/O             | Writes all buffered images as TIFF files with AstroTIFF keyword embedding (atomic temp-rename)                                                                                                      | destination, [overwrite]                               |
-| WriteXISF           | I/O             | Writes all buffered images as XISF files (atomic temp-rename)                                                                                                                                       | destination, [overwrite], [compress=true\|false]       |
-| pwd                 | Console         | Prints the current active directory (client-side only)                                                                                                                                              | —                                                      |
+| Command             | Category        | Description                                                                                                                                                 | Key Arguments                                          |
+| ------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| AddFiles            | Session         | Appends explicit file paths to the session; skips duplicates; checks memory limit before loading                                                            | paths                                                  |
+| AddKeyword          | Keyword         | Adds or replaces a keyword on loaded images                                                                                                                 | name, value, [comment], [scope=all\|current]           |
+| AnalyzeFrames       | Frame Analysis  | Computes five quality metrics for all loaded frames, classifies each as PASS or REJECT                                                                      | —                                                      |
+| Assert              | Scripting       | Halts execution with an error if expression is false; silent on pass in both Trace and No Trace modes                                                       | expression                                             |
+| AutoStretch         | Processing      | Applies Auto-STF stretch to current frame (display only — raw buffer unchanged)                                                                             | [shadowClip], [targetBackground]                       |
+| BinImage            | Processing      | Bins the image by an integer factor                                                                                                                         | factor                                                 |
+| BlinkSequence       | Blink & View    | Starts blinking the loaded image set                                                                                                                        | [fps]                                                  |
+| CacheFrames         | Blink & View    | Pre-decodes and caches all frames for blinking at both resolutions                                                                                          | —                                                      |
+| ClearSession        | Session         | Clears all loaded images and resets session state                                                                                                           | —                                                      |
+| ComputeEccentricity | Analysis        | Calculates eccentricity for detected stars on current frame                                                                                                 | —                                                      |
+| ComputeFWHM         | Analysis        | Calculates FWHM for detected stars; displays per-star circle annotations on viewer overlay                                                                  | —                                                      |
+| ContourHeatmap      | Analysis        | Generates spatial FWHM heatmap for current frame; writes XISF to source file's directory; stores output path in `$NEW_FILE`                                 | [palette], [contour_levels], [threshold], [saturation] |
+| CopyFile            | File Management | Copies a file to a destination directory; defaults to current frame if source= not specified; destination created automatically; stores path in `$NEW_FILE` | [source], destination                                  |
+| CopyKeyword         | Keyword         | Copies a keyword value to a new keyword name                                                                                                                | from, to                                               |
+| CountFiles          | Scripting       | Stores number of files in current list in `$filecount`                                                                                                      | —                                                      |
+| CountStars          | Analysis        | Counts detected stars in current frame                                                                                                                      | —                                                      |
+| CropImage           | Processing      | Crops the image to a specified region                                                                                                                       | x, y, width, height                                    |
+| DebayerImage        | Processing      | Debayers a Bayer CFA image on demand                                                                                                                        | [pattern], [method=nearest\|bilinear\|vng\|ahd]        |
+| DeleteKeyword       | Keyword         | Removes a keyword from loaded images                                                                                                                        | name, [scope=all\|current]                             |
+| FilterByKeyword     | File Management | Filters the active file list by keyword value                                                                                                               | name, value                                            |
+| GetHistogram        | Processing      | Computes histogram statistics for current frame (median, std dev, clipping %)                                                                               | —                                                      |
+| GetImageProperty    | Interrogation   | Retrieves an image property into a variable; see §2 for full property list                                                                                  | property                                               |
+| GetKeyword          | Interrogation   | Retrieves a keyword value; auto-stores in `$<NAME>` (uppercase) — e.g. `GetKeyword name=FILTER` stores result in `$FILTER`                                  | name                                                   |
+| GetSessionProperty  | Interrogation   | Retrieves a session state value into a variable; see §2 for full property list                                                                              | property                                               |
+| ListFiles           | File Management | Lists files in the active file list                                                                                                                         | [filter]                                               |
+| ListKeywords        | Keyword         | Lists all keywords for the current image                                                                                                                    | —                                                      |
+| LoadFile            | File Management | Loads a single image file for display without adding it to the session; stores path in `$LOAD_FILE_PATH`                                                    | path                                                   |
+| Log                 | Scripting       | Writes collected macro output since last Log call to a file                                                                                                 | path, [append]                                         |
+| MedianValue         | Analysis        | Returns the median pixel value per channel                                                                                                                  | —                                                      |
+| ModifyKeyword       | Keyword         | Changes the value of an existing keyword                                                                                                                    | name, value, [comment], [scope=all\|current]           |
+| MoveFile            | File Management | Moves a file to a destination directory; defaults to current frame if source= not specified; stores path in `$NEW_FILE`                                     | [source], destination                                  |
+| Print               | Scripting       | Outputs a message to the pcode console; accepts bare expressions — `Print $x + 1` and `Print "hello"` are both valid                                        | message (positional or bare expression)                |
+| RunMacro            | Scripting       | Executes a saved macro by name from the database                                                                                                            | name                                                   |
+| Set                 | Scripting       | Assigns a value to a variable; string literals on the RHS must use double quotes                                                                            | varname = value                                        |
+| SetFrame            | Navigation      | Sets the current active frame by index (0-based)                                                                                                            | index                                                  |
+| SetZoom             | Blink & View    | Sets the viewer zoom level                                                                                                                                  | level (fit, 25, 50, 100, 200)                          |
+| Test                | Interrogation   | Performs a boolean test and stores result in `$Result`; see §2 for full test list                                                                           | expression                                             |
+| WriteCurrent        | I/O             | Writes all buffered images back to their source paths in their original format (atomic temp-rename)                                                         | —                                                      |
+| WriteFIT            | I/O             | Writes all buffered images as FITS files (atomic temp-rename)                                                                                               | destination, [overwrite]                               |
+| WriteFrame          | I/O             | Writes the currently active frame only back to its source format (atomic temp-rename)                                                                       | —                                                      |
+| WriteTIFF           | I/O             | Writes all buffered images as TIFF files with AstroTIFF keyword embedding (atomic temp-rename)                                                              | destination, [overwrite]                               |
+| WriteXISF           | I/O             | Writes all buffered images as XISF files (atomic temp-rename)                                                                                               | destination, [overwrite], [compress=true\|false]       |
+| pwd                 | Console         | Prints the unique source directories of all files currently loaded in the session (client-side only)                                                        | —                                                      |
 
-### 1.1 Command Aliases
+### 1.1 Retired Commands
 
-Command aliases (ReadAllFITFiles, ReadAllXISFFiles, etc.) have been
-removed. Use the canonical names: ReadFIT, ReadXISF, ReadTIFF,
-ReadAll, WriteFIT, WriteXISF, WriteTIFF, WriteCurrent, WriteFrame.
+The following commands have been retired and are no longer available:
+
+| Retired Command | Replacement | Notes                                                                  |
+| --------------- | ----------- | ---------------------------------------------------------------------- |
+| SelectDirectory | AddFiles    | Directory as a first-class entity is replaced by explicit file paths   |
+| ReadAll         | AddFiles    | Use AddFiles with explicit paths; ClearSession first if starting fresh |
+| ReadFIT         | AddFiles    | Format filtering is now the user's responsibility at selection time    |
+| ReadTIFF        | AddFiles    | Format filtering is now the user's responsibility at selection time    |
+| ReadXISF        | AddFiles    | Format filtering is now the user's responsibility at selection time    |
 
 ### 1.2 Keyword Scope Parameter
 
@@ -122,11 +123,21 @@ Macros declare runtime parameters using `@param` comment lines at the top of the
 
 **At run time:**
 
-- Console: `RunMacro ProcessLights INPUT_DIR="D:/M31" OUTPUT_DIR="D:/Output"`
+- Console: `RunMacro name=ProcessLights`
 - Macro Library / Quick Launch: parameter prompt dialog appears before execution
 - Parameters become pcode variables (`$INPUT_DIR`, etc.) for the duration of the macro
 
 **Quick Launch rule:** buttons store only `RunMacro name=X` — never embedded parameter values. Parameters are always resolved at run time.
+
+### 1.7 Session Model
+
+Photyx uses a **global file context** — a flat list of file paths that persists across operations. There is no concept of an "active directory."
+
+- `AddFiles` appends files to the session; existing files are skipped automatically
+- `ClearSession` resets the session entirely
+- Files from multiple directories can coexist in a single session
+- After Commit Results, rejected files are removed from the session; pass frames remain loaded
+- `pwd` lists the unique source directories derived from the current file list
 
 ---
 
@@ -179,14 +190,12 @@ Macros declare runtime parameters using `@param` comment lines at the top of the
 | SITEELEV | Float   | Observatory elevation in meters      | 1524.0                  |
 | IMAGETYP | String  | Frame type                           | Light, Dark, Flat, Bias |
 | SWCREATE | String  | Software that created the file       | Photyx 1.0              |
-| PXFLAG   | String  | Photyx frame analysis recommendation | PASS, REJECT            |
 
 ### 2.3 Session Properties (GetSessionProperty)
 
 | Property        | Type    | Description                             | Example Value         |
 | --------------- | ------- | --------------------------------------- | --------------------- |
 | FileCount       | Integer | Number of files in the active file list | 47                    |
-| ActiveDirectory | String  | Current active working directory        | D:/Astrophotos/M31    |
 | CurrentFrame    | Integer | Index of the currently displayed frame  | 0-based               |
 | LoadedFileCount | Integer | Number of files loaded into buffer pool | 12                    |
 | TotalMemoryUsed | Integer | Buffer pool memory usage in bytes       | 1073741824            |
@@ -237,8 +246,7 @@ When converting FITS to XISF, all FITS keywords are written verbatim into the FI
 | FOCALLEN     | Instrument:Telescope:FocalLength     |
 | IMAGETYP     | Observation:Image:Type               |
 
-WCS transformation keywords (`CRPIX1/2`, `CD1_1`, `CD1_2`, `CD2_1`,
-`CD2_2`, `CDELT1/2`, `CROTA1/2`, `LONPOLE`, `LATPOLE`, `PV1_*`, all PC
+WCS transformation keywords (`CRPIX1/2`, `CD1_1`, `CD1_2`, `CD2_1`, `CD2_2`, `CDELT1/2`, `CROTA1/2`, `LONPOLE`, `LATPOLE`, `PV1_*`, all PC
 matrix keywords) have no XISF Property equivalents and are preserved
 verbatim in the FITSKeyword block only.
 
@@ -248,13 +256,13 @@ verbatim in the FITSKeyword block only.
 
 ### 4.1 Metrics
 
-| Metric            | Description                                                                                | Threshold Type           | Default Reject | Rejection Driver |
-| ----------------- | ------------------------------------------------------------------------------------------ | ------------------------ | -------------- | ---------------- |
-| Background Median | Sigma-clipped sky background level                                                         | Sigma (session-relative) | > +2.5σ        | ✓                |
-| FWHM              | Median FWHM derived from elliptical Moffat PSF fitting                                     | Sigma (session-relative) | > +2.5σ        | ✓                |
-| Eccentricity      | Median eccentricity derived from Moffat PSF fitted ellipse semi-axes: e = sqrt(1 − (b/a)²) | Absolute                 | > 0.85         | ✓                |
+| Metric            | Description                                                                                                        | Threshold Type           | Default Reject | Rejection Driver |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------ | -------------- | ---------------- |
+| Background Median | Sigma-clipped sky background level                                                                                 | Sigma (session-relative) | > +2.5σ        | ✓                |
+| FWHM              | Median FWHM derived from elliptical Moffat PSF fitting                                                             | Sigma (session-relative) | > +2.5σ        | ✓                |
+| Eccentricity      | Median eccentricity derived from Moffat PSF fitted ellipse semi-axes: e = sqrt(1 − (b/a)²)                         | Absolute                 | > 0.85         | ✓                |
 | Star Count        | Stars accepted by Moffat PSF fitting; bimodal-aware anchoring applied when cloud-induced population split detected | Sigma (session-relative) | < 1.5σ         | ✓                |
-| Signal Weight     | PSF-based signal quality: A² / (A + B·π·a·b); derived from Moffat fit parameters                                  | Sigma (session-relative) | < 2.5σ         | ✓                |
+| Signal Weight     | PSF-based signal quality: A² / (A + B·π·a·b); derived from Moffat fit parameters                                   | Sigma (session-relative) | < 2.5σ         | ✓                |
 
 ### 4.2 Classification
 
@@ -262,19 +270,19 @@ verbatim in the FITSKeyword block only.
 - A frame is REJECT if any single metric exceeds its threshold
 - `triggered_by` records which metrics caused the REJECT (visible in Analysis Graph tooltip)
 - Each REJECT frame is assigned a rejection category: O (Optical), T (Transparency), B (Sky Brightness), or combinations (OT, OB, BT, OBT)
-- PXFLAG keyword is written to files on Commit Results (not automatically on AnalyzeFrames completion)
-- On Commit: REJECT files are moved to a `rejected/` subfolder and renamed `<name>.<ext>.rejected`
+- On Commit: REJECT files are moved to a `rejected/` subfolder within their own source directory and renamed `<name>.<ext>.rejected`; PXFLAG is **not** written to files
+- After Commit: rejected files are removed from the session; pass frames remain loaded
 
-### 4.3 PXFLAG Keyword
+### 4.3 Commit Results Behavior
 
-```
-PXFLAG = 'PASS'    / Photyx frame analysis recommendation
-PXFLAG = 'REJECT'  / Photyx frame analysis recommendation
-```
+Commit Results is a fast, non-destructive operation:
 
-User can override any frame's flag during blink review with P (pass)
-or R (reject) keyboard shortcuts. Each keypress writes PXFLAG to the
-file immediately.
+1. Collects all REJECT paths from `ctx.analysis_results`
+2. Moves each REJECT file to `<source_dir>/rejected/<filename>.rejected`
+3. Removes rejected paths from `ctx.file_list` and all caches
+4. Clears analysis results — pass frames remain loaded and ready for subsequent operations (e.g. stacking)
+
+PXFLAG keywords are **not** written to files on commit. The move itself is the persistence action.
 
 ---
 
@@ -294,9 +302,7 @@ last-used value is restored automatically. If it is **persisted and a
 user pref**, it appears in Edit > Preferences and the user-set value
 is always used until changed.
 
-All defaults and bounds are defined as constants in
-`src-tauri/src/settings/defaults.rs`. Bounds are enforced in
-`AppSettings` on read — the database stores raw values and Rust clamps
+All defaults and bounds are defined as constants in `src-tauri/src/settings/defaults.rs`. Bounds are enforced in `AppSettings` on read — the database stores raw values and Rust clamps
 them. This allows bounds to change without a schema migration.
 
 ### 5.2 UI / Viewer Settings
@@ -310,13 +316,11 @@ them. This allows bounds to change without a schema migration.
 
 ### 5.3 File & Path Settings
 
-| Setting                 | Default       | Persisted | Pref | DB Key                   | Min | Max |
-| ----------------------- | ------------- | --------- | ---- | ------------------------ | --- | --- |
-| Working directory       | Last used     | X         |      | `last_directory`         | —   | —   |
-| JPEG quality            | 75%           | X         | X    | `jpeg_quality`           | 1   | 100 |
-| Overwrite behavior      | Prompt        |           |      | —                        | —   | —   |
-| Recent directories max  | 10            | X         | X    | `recent_directories_max` | 1   | 50  |
-| Format filter selection | All Supported |           |      | —                        | —   | —   |
+| Setting                | Default | Persisted | Pref | DB Key                   | Min | Max |
+| ---------------------- | ------- | --------- | ---- | ------------------------ | --- | --- |
+| JPEG quality           | 75%     | X         | X    | `jpeg_quality`           | 1   | 100 |
+| Overwrite behavior     | Prompt  |           |      | —                        | —   | —   |
+| Recent directories max | 10      | X         | X    | `recent_directories_max` | 1   | 50  |
 
 ### 5.4 pcode / Macro Settings
 
@@ -338,24 +342,21 @@ them. This allows bounds to change without a schema migration.
 ### 5.6 Quick Launch Settings
 
 The user can pin as many macros as they wish to the Quick Launch panel;
-buttons automatically wrap to the next row. Stored in
-`quick_launch_buttons` table — not in the `preferences` key/value
+buttons automatically wrap to the next row. Stored in `quick_launch_buttons` table — not in the `preferences` key/value
 store.
 
 ### 5.7 Threshold Profile Settings (AnalyzeFrames)
 
-Named sets of rejection thresholds stored in the `threshold_profiles`
-table. The active profile is tracked by
-`preferences.active_threshold_profile_id`.
+Named sets of rejection thresholds stored in the `threshold_profiles` table. The active profile is tracked by `preferences.active_threshold_profile_id`.
 
-| Setting                  | Type     | Default | Min   | Max   | Notes |
-| ------------------------ | -------- | ------- | ----- | ----- | ----- |
-| Name                     | String   | Default | —     | —     |       |
-| Background Median reject | Sigma    | +2.5σ   | +0.5σ | +4.0σ |       |
-| FWHM reject              | Sigma    | +2.5σ   | +0.5σ | +4.0σ |       |
-| Eccentricity reject      | Absolute | 0.85    | 0.10  | 1.00  |       |
+| Setting                  | Type     | Default | Min   | Max   | Notes                                                |
+| ------------------------ | -------- | ------- | ----- | ----- | ---------------------------------------------------- |
+| Name                     | String   | Default | —     | —     |                                                      |
+| Background Median reject | Sigma    | +2.5σ   | +0.5σ | +4.0σ |                                                      |
+| FWHM reject              | Sigma    | +2.5σ   | +0.5σ | +4.0σ |                                                      |
+| Eccentricity reject      | Absolute | 0.85    | 0.10  | 1.00  |                                                      |
 | Star Count reject        | Sigma    | 1.5σ    | 0.5σ  | 5.0σ  | Bimodal-anchored; 1.5σ relative to clear-sky cluster |
-| Signal Weight reject     | Sigma    | 2.5σ    | 0.5σ  | 5.0σ  |       |
+| Signal Weight reject     | Sigma    | 2.5σ    | 0.5σ  | 5.0σ  |                                                      |
 
 ### 5.8 AutoStretch Settings
 
@@ -380,6 +381,8 @@ These settings are persisted but do not appear in Edit > Preferences.
 ## 6. File Format Coverage
 
 ### 6.1 Read Support
+
+All format reading is handled by `plugins/image_reader.rs`, which consolidates FITS, XISF, and TIFF readers. Files are loaded via `AddFiles` with explicit paths.
 
 | Format                 | Notes                                               |
 | ---------------------- | --------------------------------------------------- |
@@ -418,6 +421,7 @@ These settings are persisted but do not appear in Edit > Preferences.
 | `backup_database`           | Creates a timestamped ZIP backup of photyx.db in the configured backup directory                                         |
 | `check_crash_recovery`      | Returns crash recovery candidate if written_at is recent and a session is open                                           |
 | `close_session`             | Sets closed_at on the current session_history row                                                                        |
+| `commit_analysis_results`   | Moves REJECT files to rejected/ subfolders; removes them from session; leaves pass frames loaded                         |
 | `debug_buffer_info`         | Returns buffer metadata including display_width and color_space                                                          |
 | `delete_macro`              | Deletes a macro and its version history from the database                                                                |
 | `dispatch_command`          | Dispatches a single pcode command to the plugin registry (legacy interactive path)                                       |
@@ -435,8 +439,7 @@ These settings are persisted but do not appear in Edit > Preferences.
 | `get_macros`                | Returns all macros with name, display_name, script, run_count, last_run_at                                               |
 | `get_pixel`                 | Returns raw pixel value(s) at source coordinates (x, y) from the raw image buffer                                        |
 | `get_quick_launch_buttons`  | Returns ordered list of Quick Launch button assignments                                                                  |
-| `get_recent_directories`    | Returns recent directories ordered by last_used desc, trimmed to recent_directories_max                                  |
-| `get_session`               | Returns current session state (directory, file list, current frame)                                                      |
+| `get_session`               | Returns current session state (file list, current frame)                                                                 |
 | `get_star_positions`        | Re-runs star detection on current frame; returns {cx, cy, fwhm, r} per star for annotation overlay                       |
 | `get_variable`              | Returns a pcode variable value from ctx.variables by name                                                                |
 | `increment_macro_run_count` | Updates run_count and last_run_at for a macro after successful execution                                                 |
@@ -446,7 +449,6 @@ These settings are persisted but do not appear in Edit > Preferences.
 | `load_file`                 | Reads a single image file from disk, injects into session, returns JPEG data URL                                         |
 | `open_session`              | Inserts a session_history row with closed_at = NULL; returns session id                                                  |
 | `read_log_file`             | Reads and parses a log file into structured {timestamp, level, module, message} lines                                    |
-| `record_directory_visit`    | Upserts a directory visit; trims list to recent_directories_max                                                          |
 | `rename_macro`              | Renames a macro; validates name uniqueness                                                                               |
 | `restore_database`          | Restores photyx.db from a ZIP backup; reopens connection in-place without app restart                                    |
 | `restore_macro_version`     | Restores a previous macro version as the current script                                                                  |
@@ -456,7 +458,7 @@ These settings are persisted but do not appear in Edit > Preferences.
 | `set_frame_flag`            | Updates PASS/REJECT flag for a single frame in ctx.analysis_results by path; used before Commit to sync toggled flags    |
 | `set_preference`            | Upserts a single preference key/value; writes through AppSettings struct                                                 |
 | `start_background_cache`    | Spawns background task to build blink cache JPEGs                                                                        |
-| `write_crash_recovery`      | Upserts the single crash_recovery row with current session state                                                         |
+| `write_crash_recovery`      | Upserts the single crash_recovery row with current session state (file list, current frame)                              |
 
 ---
 
@@ -466,7 +468,7 @@ These settings are persisted but do not appear in Edit > Preferences.
 | --------------- | --------------------------------------------------------------------------------- |
 | Separator       | Forward slash `/` always; backend translates to OS-native before filesystem calls |
 | Absolute paths  | `D:/Astrophotos/M31` (Windows) or `/home/user/photos` (macOS/Linux)               |
-| Relative paths  | Resolved against current active directory set by `SelectDirectory`                |
+| Relative paths  | Resolved against `common_parent()` of the current file list                       |
 | Home shorthand  | `~` expands to current user's home directory on all platforms                     |
 | UNC paths       | `//192.168.1.100/Astrophotos/M31` — useful for ASIAir Pro over local network      |
 | Spaces in paths | Must be enclosed in double quotes                                                 |
@@ -479,6 +481,7 @@ All plugins are Built-in Native in the initial release. WASM user plugins are su
 
 | Plugin              | Category        | Status     |
 | ------------------- | --------------- | ---------- |
+| AddFiles            | Session         | ✅ Complete |
 | AddKeyword          | Keyword         | ✅ Complete |
 | AnalyzeFrames       | Frame Analysis  | ✅ Complete |
 | Assert              | Scripting       | ✅ Complete |
@@ -500,12 +503,7 @@ All plugins are Built-in Native in the initial release. WASM user plugins are su
 | ModifyKeyword       | Keyword         | ✅ Complete |
 | MoveFile            | File Management | ✅ Complete |
 | Print               | Scripting       | ✅ Complete |
-| ReadAll             | I/O Reader      | ✅ Complete |
-| ReadFIT             | I/O Reader      | ✅ Complete |
-| ReadTIFF            | I/O Reader      | ✅ Complete |
-| ReadXISF            | I/O Reader      | ✅ Complete |
 | RunMacro            | Scripting       | ✅ Complete |
-| SelectDirectory     | File Management | ✅ Complete |
 | SetFrame            | Navigation      | ✅ Complete |
 | WriteCurrent        | I/O Writer      | ✅ Complete |
 | WriteFIT            | I/O Writer      | ✅ Complete |

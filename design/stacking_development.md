@@ -1,8 +1,6 @@
 # Photyx — Quick Astrophotography Stacking (Preview Pipeline)
 
-**Version:** 3
-**Date:** 27 April 2026
-**Status:** Theory and Top-level Design
+**Version:** 4 **Date:** 13 May 2026 **Status:** Design Complete — Ready for Implementation
 
 ---
 
@@ -58,9 +56,9 @@ No required arguments for the initial implementation. Optional arguments (e.g. a
 
 - The stacked result appears in the viewer as a standalone image
 - It does **not** replace or disturb the currently loaded file list or session
-- The stacked result is automatically written to the active directory as an XISF file using the naming convention: `Stack_[directory_name]_[N]frames_[timestamp].xisf`
-- No additional user action is required to save — the write is automatic on stack completion
-- The user may also explicitly write in other formats using `WriteFIT` or `WriteTIFF` if desired
+- The stacked result is held in a transient `ImageBuffer` slot in `AppContext` with no source file path
+- The user explicitly writes the result using `WriteXISF`, `WriteFIT`, or `WriteTIFF` with a destination path — there is no automatic write
+- When writing, Photyx auto-generates a suggested filename (see §3.10) that the user may accept or change
 - A `ClearStack` pcode command discards the transient stacked result and returns the viewer to the normal session image
 
 ### 3.3 Stack Result Identification
@@ -73,24 +71,48 @@ STACKED RESULT — 62 frames — 2026-04-27 06:42
 
 This overlay is distinct from the normal filename overlay and uses a visually differentiated style (e.g. different color or border) to prevent confusion with regular frame display.
 
-### 3.4 Pipeline
+### 3.4 Filter Validation
 
-#### Stage 1 — Load and Normalize
+Before stacking begins, Photyx reads the FILTER keyword from all loaded frames and validates that only one filter type is present in the session.
 
-- All frames currently loaded in the session are used as input
+- The reference frame's FILTER keyword is treated as the canonical filter for the stack
+
+- Any frame whose FILTER keyword does not match the reference frame's FILTER is excluded from the stack
+
+- Each exclusion is reported to the pcode console and written to the stack log file:
+  
+  ```
+  Filter mismatch: frame 14 (OIII) excluded — stack filter is Ha
+  ```
+
+- Stacking proceeds with the matching frames only — this is not a hard stop
+
+- If FILTER keywords are absent from all frames, no filter validation is performed and stacking proceeds normally
+
+### 3.5 Pipeline
+
+#### Stage 1 — Reference Frame Selection
+
+- If `AnalyzeFrames` results are present in `AppContext`, use the cached FWHM and eccentricity metrics
+- If no analysis results exist, recompute FWHM and eccentricity for all frames before proceeding
+- Reference frame = the PASS frame (or any frame if no analysis has been run) with the lowest FWHM; ties broken by eccentricity (lowest wins)
+- Filter validation (§3.4) is performed at this stage using the reference frame's FILTER keyword
+
+#### Stage 2 — Load and Normalize
+
+- All frames passing filter validation are used as input
 - Pixel data is converted to `f32` (already the internal working format — no conversion layer required)
 - Each frame is normalized by dividing by its **sigma-clipped sky background level**, computed using the existing `background.rs` module
   - Raw median is **not** used — it is unreliable when significant nebulosity or extended objects are present in the field
   - `background.rs` already handles this correctly via sigma-clipped estimation
 
-Calibration frames (bias, dark, flat) are skipped. This is intentional — speed is the priority.
+Calibration frames (bias, dark, flat) are skipped in the initial release. See §5.1 for future calibration support.
 
-#### Stage 2 — Alignment (Registration)
+#### Stage 3 — Alignment (Registration)
 
 **Method: FFT Phase Correlation**
 
 - Computes translation-only alignment between each frame and the reference frame
-- The reference frame is the first frame in the loaded list (index 0)
 - FFT phase correlation is fast and robust under normal tracking conditions
 - Sub-pixel translation is supported
 
@@ -101,8 +123,8 @@ FFT phase correlation can fail silently when a frame contains a satellite trail,
 After computing the FFT translation for a frame, confirm it by verifying that a sample of bright stars (detected by the existing star detector in `analysis/stars.rs`) land within an acceptable pixel tolerance of their predicted positions. If validation fails:
 
 1. Flag the frame as **alignment-failed**
-2. Either skip it from the stack, or fall back to unaligned averaging for that frame
-3. Report the failure to the pcode console
+2. Skip it from the stack
+3. Report the failure to the pcode console and stack log file
 
 This reuses the existing star detection infrastructure and costs negligible additional time.
 
@@ -110,35 +132,37 @@ This reuses the existing star detection infrastructure and costs negligible addi
 
 Rotation and scale correction are **not** implemented in the initial version. This is appropriate for well-tracked sessions. Rotation/scale alignment is a future enhancement (see §8).
 
-#### Stage 3 — Stacking
+#### Stage 4 — Stacking
 
-- **Method:** Simple average (sum / count) after normalization and alignment
-- Frames that failed alignment validation are excluded from the sum
-- This is sufficient to reveal tracking errors, focus problems, cloud interference, and framing issues
+- **Method:** Sigma clipping (default). The stacking method is exposed as a select control in the UI — additional methods (e.g. simple average, median) may be added in the future
+- Frames that failed filter validation or alignment validation are excluded from the sum
+- The sigma-clipped mean is computed per pixel across all contributing frames
 
-#### Stage 4 — Stretch for Display
+#### Stage 5 — Stretch for Display
 
 - Apply Auto-STF using the existing `AutoStretch` plugin
 - The existing implementation is PixInsight-compatible and handles both mono and RGB
 - No new stretch code is required
 
-### 3.5 Progress Reporting
+### 3.6 Progress Reporting
 
-During stacking, per-frame progress is reported to the pcode console and the status bar:
+During stacking, per-frame progress is reported to the pcode console, the stack log file, and the status bar:
 
 ```
-Stacking frame 12 / 62 (19%)…
+Stack filter: Ha (reference frame)
+Filter mismatch: frame 14 (OIII) excluded
+Stacking frame 12 / 61 (20%)…
 Alignment failed: frame 7 — skipped
-Stacking complete — 61 / 62 frames stacked
+Stacking complete — 59 / 61 frames stacked
 ```
 
 Percentage complete is computed as `(frames processed / total frames) * 100`, updated after each frame. The status bar uses `notifications.running()` during the operation and `notifications.success()` on completion.
 
-### 3.6 Stack Quality Score
+### 3.7 Stack Quality Score
 
-On completion, a stack quality score is computed and reported to the console:
+On completion, a stack quality score is computed and reported to the console and stack log file:
 
-- **SNR improvement estimate** — theoretical SNR gain vs a single frame (`sqrt(N)` for N frames of equal quality, adjusted for rejected frames)
+- **SNR improvement estimate** — theoretical SNR gain vs a single frame (`sqrt(N)` for N frames, where N is the number of frames actually stacked, adjusted for rejected frames)
 - **Alignment success rate** — percentage of frames successfully aligned
 - **Background uniformity** — variance of per-frame background levels after normalization
 
@@ -146,83 +170,145 @@ Reported as a structured summary block in the console output:
 
 ```
 Stack Quality Summary:
-  Frames stacked:        61 / 62
-  SNR improvement:       ~7.8x (vs single frame)
-  Alignment success:     98.4%
+  Frames stacked:        59 / 61
+  SNR improvement:       ~7.7x (vs single frame)
+  Alignment success:     96.7%
   Background uniformity: good
 ```
 
 The UI placement for a graphical quality display is deferred to a future design pass.
 
-### 3.7 Pipeline Architecture
+### 3.8 Per-Frame Contribution Metrics
+
+The stacking run produces a per-frame contribution summary stored in a dedicated struct in `AppContext` (separate from `AnalysisResult`). This is intended for debugging and algorithm development.
+
+**Metrics reported per frame:**
+
+| Metric              | Description                                                 |
+| ------------------- | ----------------------------------------------------------- |
+| Frame index         | Zero-based index in the session file list                   |
+| Filename            | Source file path                                            |
+| Filter              | FILTER keyword value (if present)                           |
+| Included            | Whether the frame was included in the final stack           |
+| Exclusion reason    | `filter_mismatch`, `alignment_failed`, or blank if included |
+| Background level    | Sigma-clipped background estimate before normalization      |
+| FFT translation     | Computed X/Y pixel offset from reference frame              |
+| Alignment validated | Whether star position check passed                          |
+| FWHM                | Per-frame FWHM (from cached analysis or recomputed)         |
+| Eccentricity        | Per-frame eccentricity (from cached analysis or recomputed) |
+
+**Storage:** Separate struct in `AppContext`; cleared when `ClearStack` is called or a new stack is run.
+
+**Viewer component:** A new viewer-region component (`StackingResults`) displays the per-frame contribution table, following the same viewer-region pattern as `AnalysisResults`. Accessible via the View menu or a toolbar button after stacking completes.
+
+**Export:** The stack log file (see §3.9) contains the full per-frame contribution table in addition to progress and quality summary output.
+
+### 3.9 Stack Log File
+
+All stacking output — progress, filter exclusions, alignment failures, quality summary, and per-frame contribution table — is written to a dedicated stack log file.
+
+- Named: `photyx_stack_<timestamp>.log`
+- Written to the same logs directory used by the application logger
+- Accessible via the existing Log Viewer
+
+### 3.10 Suggested Output Filename
+
+When the user invokes `WriteXISF` (or `WriteFIT` / `WriteTIFF`) on a stacked result, Photyx generates a suggested filename using the following convention:
+
+```
+Photyx_stack_<target>_<filter>_<integration_seconds>s_<timestamp>.xisf
+```
+
+- `<target>` — OBJECT keyword from the reference frame; `unknown` if absent
+- `<filter>` — FILTER keyword from the reference frame; `nofilter` if absent
+- `<integration_seconds>` — sum of EXPTIME keyword values across all stacked frames, rounded to nearest integer
+- `<timestamp>` — UTC timestamp at stack completion, formatted `YYYYMMDD_HHMMSS`
+
+Example: `Photyx_stack_M31_Ha_18300s_20260427_064215.xisf`
+
+The suggested name is presented to the user and may be changed before writing.
+
+### 3.11 Pipeline Architecture
 
 ```
 notifications.running("Stacking frames…")
 
-for each loaded frame (i of N):
+# Stage 1 — Reference frame selection
+if analysis results exist in AppContext:
+    use cached FWHM and eccentricity
+else:
+    recompute FWHM and eccentricity for all frames
+
+reference_frame = frame with lowest FWHM among PASS frames (eccentricity as tiebreaker)
+validate FILTER keywords against reference frame FILTER; log and exclude mismatches
+
+# Stages 2–4 — Normalize, align, stack
+for each frame passing filter validation (i of N):
     convert to f32 (no-op — already internal format)
     normalize by sigma-clipped background (background.rs)
     compute FFT translation vs. reference frame
     validate translation against star positions (stars.rs)
     if validation passes:
         resample into stack buffer at computed offset
-        accumulate (sum + count)
+        accumulate into sigma-clip working set
+        record per-frame contribution metrics
         report progress: "Stacking frame i / N (pct%)"
     else:
         flag frame as alignment-failed
-        report to console: "Alignment failed: frame i — skipped"
+        record per-frame contribution metrics (exclusion_reason = alignment_failed)
+        report to console and log: "Alignment failed: frame i — skipped"
 
-final_image = sum / count
+final_image = sigma_clipped_mean(accumulation buffer)
+
+# Stage 5 — Stretch and display
 apply AutoStretch
+place result in transient ImageBuffer slot in AppContext (no source path)
+display stack result label overlay in viewer
+display StackingResults viewer component
+
+# Completion
 compute stack quality score
-write result to active directory as Stack_[dir]_[N]frames_[timestamp].xisf
-place result in viewer as transient ImageBuffer
-display stack result label overlay
-notifications.success("Stack complete — N frames")
-report quality summary to console
+report quality summary to console and log
+write per-frame contribution table to log
+notifications.success("Stack complete — N frames stacked")
 ```
 
-### 3.8 Integration with Photyx
+### 3.12 Integration with Photyx
 
 #### Existing Infrastructure Reused
 
-| Component                        | Reuse                                      |
-| -------------------------------- | ------------------------------------------ |
-| `analysis/stars.rs`              | Star detection for alignment validation    |
-| `analysis/background.rs`         | Sigma-clipped background for normalization |
-| `AutoStretch` plugin             | Stretch for display                        |
-| `AppContext.image_buffers`       | Source frames                              |
-| `get_current_frame` display path | Render stacked result                      |
-| pcode console + `consolePipe`    | Progress and error reporting               |
-| `notifications.running()`        | Status bar pulse during operation          |
+| Component                                             | Reuse                                            |
+| ----------------------------------------------------- | ------------------------------------------------ |
+| `analysis/stars.rs`                                   | Star detection for alignment validation          |
+| `analysis/fwhm.rs`, `analysis/eccentricity.rs`        | Reference frame selection when no cached results |
+| `analysis/background.rs`                              | Sigma-clipped background for normalization       |
+| `AutoStretch` plugin                                  | Stretch for display                              |
+| `AppContext.image_buffers`                            | Source frames                                    |
+| pcode console + `consolePipe`                         | Progress and error reporting                     |
+| `notifications.running()` / `notifications.success()` | Status bar pulse and completion                  |
+| Log Viewer                                            | Stack log file access                            |
 
 #### New Infrastructure Required
 
-| Component                    | Notes                                                                         |
-| ---------------------------- | ----------------------------------------------------------------------------- |
-| `StackFrames` plugin         | Built-in native plugin; wraps the stacking pipeline                           |
-| `ClearStack` plugin          | Built-in native plugin; discards transient stack buffer                       |
-| FFT phase correlation        | New Rust implementation; candidate crate: `rustfft`                           |
-| Transient `ImageBuffer` slot | Mechanism to hold a stacked result in `AppContext` without a source file path |
-| Alignment validation logic   | Thin wrapper coordinating FFT result + star position check                    |
-| Stack quality computation    | Composite metric from SNR estimate, alignment rate, background uniformity     |
-| Stack result XISF writer     | Auto-write to active directory on completion                                  |
-| Stack result viewer label    | Overlay distinct from normal filename overlay                                 |
+| Component                          | Notes                                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------------ |
+| `StackFrames` plugin               | Built-in native plugin; wraps the stacking pipeline                                  |
+| `ClearStack` plugin                | Built-in native plugin; discards transient stack buffer and contribution metrics     |
+| FFT phase correlation              | New Rust implementation; candidate crate: `rustfft`                                  |
+| Transient `ImageBuffer` slot       | Holds stacked result in `AppContext` without a source file path                      |
+| Alignment validation logic         | Thin wrapper coordinating FFT result + star position check                           |
+| Sigma clipping accumulator         | Per-pixel sigma-clipped mean across frame set                                        |
+| Stack quality computation          | Composite metric from SNR estimate, alignment rate, background uniformity            |
+| Per-frame contribution struct      | Separate from `AnalysisResult`; stored in `AppContext`                               |
+| `StackingResults` viewer component | New viewer-region component; displays per-frame contribution table                   |
+| Stack log file writer              | Writes progress, exclusions, quality summary, and contribution table                 |
+| Suggested filename generator       | Reads OBJECT, FILTER, EXPTIME from reference frame; constructs suggested output name |
+| Stack result viewer label          | Overlay distinct from normal filename overlay                                        |
+| Stacking method select control     | UI control to choose stack method; sigma clipping is default                         |
 
 #### Plugin Classification
 
-`StackFrames` and `ClearStack` are **built-in native plugins** per the Photyx plugin designation model. They operate on `AppContext` data and produce results that enter the display pipeline — they must be native, not WASM.
-
-### 3.9 Per-Frame Contribution Metrics
-
-The stacking run should produce a per-frame quality summary showing how each frame contributed to (or detracted from) the final stack. This mirrors the `AnalyzeFrames` / Analysis Graph pattern.
-
-**To Do — Design Required before implementation:**
-
-- What metrics are reported per frame? Candidates: normalized background level, alignment offset (dx, dy), validation pass/fail, alignment confidence score, contribution weight
-- Are these stored in `AppContext` alongside `AnalysisResult`, or in a separate struct?
-- Is a new viewer-region component required, or does the Analysis Graph component extend to support stacking metrics?
-- Can contribution metrics be exported to the console or written to a log file?
+`StackFrames` and `ClearStack` are **built-in native plugins** per the Photyx plugin designation model.
 
 ---
 
@@ -244,7 +330,7 @@ The user points Photyx at a directory that a capture application (e.g. N.I.N.A.,
 LiveStack path="D:/Capture/M31"
 ```
 
-Or using the active directory:
+Or using the common parent of the current session:
 
 ```
 LiveStack
@@ -265,17 +351,17 @@ Or closing the stack result viewer via the Close / `ClearStack` command.
 
 ### 4.3 Session Behavior
 
-- Live stacking runs in the background while the user continues to use Photyx normally
-- Each new frame is normalized, aligned, and accumulated automatically
+- Live stacking runs in the background while the user continues to use Photyx normally (if possible)
 - The viewer updates on every new frame arrival — the stacked result improves visibly in real time
-- The stacked result is written to disk periodically (every N frames, user-configurable) using the same naming convention as batch stacking
+- The stacked result is written to disk periodically (every N frames, user-configurable) using the same naming convention as batch stacking (§3.10)
 - The user can stop live stacking at any time without losing the accumulated result
+- The index of the last frame successfully included in the stack is stored as a keyword in the output file, enabling resume if stacking is interrupted
 
 ### 4.4 Required Infrastructure
 
 | Component                      | Notes                                                                                          |
 | ------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `notify` crate                 | File system watching — already in the planned crate list (spec §4.3)                           |
+| `notify` crate                 | File system watching                                                                           |
 | Background accumulation thread | Runs independently of the UI thread; communicates via channels                                 |
 | Incremental display update     | Triggers a viewer refresh on every new frame; uses existing `ui.requestFrameRefresh()` pattern |
 | `LiveStack` plugin             | Built-in native plugin; starts the file watcher and accumulation thread                        |
@@ -289,6 +375,7 @@ The live stack pipeline is identical to the batch pipeline per frame, executed i
 on new file detected in watch directory:
     read frame (appropriate reader plugin)
     convert to f32
+    validate FILTER keyword against reference frame FILTER; skip and log if mismatch
     normalize by sigma-clipped background (background.rs)
     compute FFT translation vs. reference frame
     validate translation
@@ -297,41 +384,36 @@ on new file detected in watch directory:
         update display (ui.requestFrameRefresh())
         report to console: "Live stack: frame N accumulated"
     else:
-        report alignment failure to console
+        report alignment failure to console and log
         skip frame
 ```
 
 ### 4.6 Debugging and Development Value
 
-Live stacking is particularly valuable during development and integration of advanced features. It provides:
-
-- A continuous, real-world test of the normalization, alignment, and accumulation pipeline under production conditions
-- Immediate visual feedback when pipeline parameters are tuned (e.g. alignment tolerance, background estimation)
-- A realistic stress test of the background thread / display update cycle
-- A natural integration test for the `notify` crate file watching infrastructure
+Live stacking provides a continuous real-world test of the normalization, alignment, and accumulation pipeline under production conditions, with immediate visual feedback when pipeline parameters are tuned.
 
 ---
 
 ## 5. What Is Explicitly Out of Scope — First Release (Batch Only)
 
-- Dark, flat, bias calibration
 - Cosmetic correction
-- Drizzle
 - Distortion correction
 - Background extraction
 - Photometric calibration
 - Rotation or scale alignment
-- Live / incremental stacking (second release)
 - Rejection map (future)
-- Incremental live display update (second release)
+- Calibration frame support (bias, dark, flat) — see §5.1
+
+### 5.1 Calibration Frame Support (Future)
+
+Dark, flat, and bias frame subtraction are deferred to a future release. The pipeline architecture does not preclude adding a calibration stage between normalization and alignment.
 
 ---
 
 ## 6. What Is Explicitly Out of Scope — Second Release (Live Stack)
 
+- Cosmetic correction
 - Rotation or scale alignment
-- Dark, flat, bias calibration
-- Drizzle
 - Distortion correction
 - Background extraction
 - Photometric calibration
@@ -339,53 +421,112 @@ Live stacking is particularly valuable during development and integration of adv
 
 ---
 
-## 7. Expected Development Effort
+## 7. Implementation Plan
 
-### 7.1 Batch Stacking (First Release)
+### 7.1 Phase A — Foundation (Batch Stacking Core)
 
-Estimates assume the Photyx plugin and display infrastructure is already in place (it is).
+All items required before any stacking result can be produced.
 
-| Component                                     | Estimated Effort |
-| --------------------------------------------- | ---------------- |
-| Load + normalize (via `background.rs`)        | 2–4 hours        |
-| FFT phase correlation (`rustfft`)             | 4–6 hours        |
-| Alignment validation (via `stars.rs`)         | 2–3 hours        |
-| Average stacking                              | 2–3 hours        |
-| `StackFrames` plugin integration              | 4–6 hours        |
-| `ClearStack` plugin                           | 1 hour           |
-| Progress reporting                            | 1–2 hours        |
-| Stack quality score                           | 2–3 hours        |
-| Stack result naming, auto-write, viewer label | 2–3 hours        |
-| **Total**                                     | **~20–31 hours** |
+| Task                                          | Notes                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------- |
+| Transient `ImageBuffer` slot in `AppContext`  | Holds stack result without source path; cleared by `ClearStack`                 |
+| Per-frame contribution struct in `AppContext` | Separate from `AnalysisResult`                                                  |
+| Filter validation logic                       | Read FILTER from all frames; exclude mismatches; log exclusions                 |
+| Reference frame selection                     | Use cached analysis results if present; otherwise recompute FWHM + eccentricity |
+| Load + normalize via `background.rs`          | Convert to f32; normalize by sigma-clipped background                           |
+| FFT phase correlation (`rustfft`)             | Translation-only; sub-pixel; candidate crate: `rustfft`                         |
+| Alignment validation via `stars.rs`           | Star position check after FFT; flag and skip failures                           |
+| Sigma clipping accumulator                    | Per-pixel sigma-clipped mean across frame set                                   |
+| `StackFrames` plugin                          | Wraps the full pipeline; registers as pcode command                             |
+| `ClearStack` plugin                           | Discards transient stack buffer and contribution metrics                        |
 
-### 7.2 Live Stacking (Second Release)
+### 7.2 Phase B — Display and Reporting
+
+All items required to surface the result to the user.
+
+| Task                                         | Notes                                                                               |
+| -------------------------------------------- | ----------------------------------------------------------------------------------- |
+| AutoStretch on stack result                  | Reuse existing `AutoStretch` plugin                                                 |
+| Stack result viewer label overlay            | Distinct style from normal filename overlay; shows frame count and timestamp        |
+| Stacking method select control               | UI control; sigma clipping default                                                  |
+| Progress reporting to console and status bar | Per-frame progress; `notifications.running()` / `notifications.success()`           |
+| Stack quality score computation              | SNR estimate, alignment rate, background uniformity                                 |
+| Stack quality summary to console             | Structured block at completion                                                      |
+| Stack log file writer                        | Progress, exclusions, quality summary, per-frame contribution table                 |
+| `StackingResults` viewer-region component    | Per-frame contribution table; new viewer-region following `AnalysisResults` pattern |
+| CSS file for `StackingResults`               | `static/css/stackingresults.css`                                                    |
+
+### 7.3 Phase C — Output
+
+| Task                                                                       | Notes                                                                                   |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Suggested filename generator                                               | Reads OBJECT, FILTER, EXPTIME from reference frame; constructs suggested name per §3.10 |
+| `WriteXISF` / `WriteFIT` / `WriteTIFF` operating on transient stack buffer | Existing write plugins need to detect and handle the transient slot                     |
+| Menu wiring: Analyze → Stack Frames                                        | Dispatches `StackFrames` via `consolePipe`                                              |
+| Menu wiring: Analyze → Clear Stack                                         | Dispatches `ClearStack` via `consolePipe`                                               |
+
+### 7.4 Phase D — Live Stacking (Second Release)
+
+Delivered as a complete unit. Do not begin until Phase A–C are complete and stable.
+
+| Task                                                  | Notes                                                       |
+| ----------------------------------------------------- | ----------------------------------------------------------- |
+| `notify` crate integration + file watcher             | File system watching for new frames                         |
+| Background accumulation thread + channel architecture | Independent of UI thread                                    |
+| Incremental display update on each new frame          | `ui.requestFrameRefresh()` on each accumulated frame        |
+| `LiveStack` and `StopLiveStack` plugins               | Start/stop watcher and accumulation thread                  |
+| Periodic auto-write                                   | Every N frames; user-configurable                           |
+| Resume keyword                                        | Last-included frame index written as keyword to output file |
+| Menu wiring: Analyze → Live Stack / Stop Live Stack   |                                                             |
+
+---
+
+## 8. Estimated Development Effort
+
+### 8.1 Batch Stacking (Phases A–C)
+
+| Phase | Component                                   | Estimated Effort |
+| ----- | ------------------------------------------- | ---------------- |
+| A     | Transient ImageBuffer + contribution struct | 1–2 hours        |
+| A     | Filter validation                           | 1 hour           |
+| A     | Reference frame selection                   | 1–2 hours        |
+| A     | Load + normalize                            | 2–4 hours        |
+| A     | FFT phase correlation                       | 4–6 hours        |
+| A     | Alignment validation                        | 2–3 hours        |
+| A     | Sigma clipping accumulator                  | 3–4 hours        |
+| A     | StackFrames + ClearStack plugins            | 3–4 hours        |
+| B     | Display, progress, quality score, log       | 4–6 hours        |
+| B     | StackingResults viewer component            | 3–5 hours        |
+| C     | Suggested filename + write integration      | 2–3 hours        |
+| C     | Menu wiring                                 | 1 hour           |
+|       | **Total**                                   | **~27–41 hours** |
+
+### 8.2 Live Stacking (Phase D)
 
 | Component                                             | Estimated Effort |
 | ----------------------------------------------------- | ---------------- |
 | `notify` crate integration + file watcher             | 3–5 hours        |
 | Background accumulation thread + channel architecture | 4–6 hours        |
-| Incremental display update on each new frame          | 2–3 hours        |
+| Incremental display update                            | 2–3 hours        |
 | `LiveStack` and `StopLiveStack` plugins               | 2–3 hours        |
-| Periodic auto-write                                   | 1–2 hours        |
-| **Total**                                             | **~12–19 hours** |
+| Periodic auto-write + resume keyword                  | 2–3 hours        |
+| Menu wiring                                           | 1 hour           |
+| **Total**                                             | **~14–21 hours** |
 
 ---
 
-## 8. Future Enhancements (Beyond Second Release)
+## 9. Future Enhancements (Beyond Second Release)
 
-| Enhancement                            | Notes                                                                                                   |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Rotation and scale alignment           | Extend FFT/star-match to solve similarity transform                                                     |
-| Median stacking                        | More robust; slower                                                                                     |
-| Sigma-clipped mean                     | Better rejection of outliers; more complex                                                              |
-| Star rejection                         | Per-pixel outlier rejection based on star positions                                                     |
-| Background normalization across frames | Useful for sessions with variable sky background                                                        |
-| Calibration frame support              | Bias, dark, flat subtraction                                                                            |
-| Rejection map                          | Visual overlay showing which pixels were rejected across frames; saved as an image viewable by the user |
-| Per-frame contribution display         | Analysis Graph-style visualization of per-frame stacking metrics (see §3.9)                             |
-| Graphical stack quality display        | UI component for stack quality score; placement TBD                                                     |
+| Enhancement                            | Notes                                                                      |
+| -------------------------------------- | -------------------------------------------------------------------------- |
+| Rotation and scale alignment           | Extend FFT/star-match to solve similarity transform                        |
+| Median stacking                        | More robust; slower                                                        |
+| Calibration frame support              | Bias, dark, flat subtraction                                               |
+| Rejection map                          | Visual overlay showing which pixels were rejected; saved as viewable image |
+| Graphical stack quality display        | UI component for stack quality score; placement TBD                        |
+| Drizzle                                | Sub-pixel integration for oversampled data                                 |
+| Background normalization across frames | Useful for sessions with variable sky background                           |
 
 ---
 
-*Previous version: 2*
-*Next review: Prior to implementation of batch stacking*
+*Previous version: 3* *Next review: Prior to implementation of Phase A*

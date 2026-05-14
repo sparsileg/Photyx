@@ -52,6 +52,7 @@ Once I say proceed, deliver **one change at a time** using BEFORE/AFTER blocks:
 - When the changes are extensive enough that incremental BEFORE/AFTER would be confusing or error-prone
 - When I ask for it explicitly
 - Recommend it proactively if more than ~30% of a file is changing
+- Because documents are so large, I want document updates to use BEFORE/AFTER blocks. If you feel a document full replacement is necessary, tell me why before doing it.
 
 #### Style and Process Preferences
 

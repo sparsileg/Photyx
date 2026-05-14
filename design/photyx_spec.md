@@ -1,6 +1,6 @@
 # Photyx — Specification & Requirements Document
 
-**Version:** 24 **Date:** 10 May 2026 **Status:** Active Development — Phase 9 in progress
+**Version:** 25 **Date:** 13 May 2026 **Status:** Active Development — Phase 10 in progress
 
 ---
 
@@ -153,7 +153,7 @@ Standard application menu with six top-level menus: File, Session, Edit, View, A
 
 **Session menu:**
 
-- Select Directory… (Ctrl+O)
+- Add Files… (Ctrl+O)
 - Close Session
 - ─────────────
 - Export Session JSON…
@@ -190,7 +190,7 @@ Standard application menu with six top-level menus: File, Session, Edit, View, A
 
 ### 8.3 Toolbar
 
-34px fixed height below the menu bar. Contains viewer controls.
+34px fixed height below the menu bar. Contains viewer controls and file/directory count display.
 
 ### 8.4 Icon Sidebar
 
@@ -241,7 +241,7 @@ Viewer-region component. Sortable table of per-frame metrics, PXFLAG values, and
 
 **Toolbar row 1:** Analysis Results title | ↻ Refresh | ✓ Commit Results | ⎘ Copy | ✕ Close
 
-**Toolbar row 2:** [IMPORTED badge if applicable] Session path: `<active directory>`
+**Toolbar row 2:** [IMPORTED badge if applicable] Session path: `<derived from file list>`
 
 **Columns:** # | Filename | FWHM | Eccentricity | Stars | Signal Weight | Bg Median | PXFLAG | Category
 
@@ -254,15 +254,15 @@ Viewer-region component. Sortable table of per-frame metrics, PXFLAG values, and
 
 Toggled rows are highlighted with an amber left border and subtle background tint. All underlying metric data (triggered_by, rejection_category) is preserved regardless of toggle direction so the user can toggle back if needed.
 
-**Commit Results behavior:** Terminal operation. On success:
+**Commit Results behavior:** Non-terminal operation. On success:
 
 1. Toggled flag changes are pushed to Rust
-2. PXFLAG written to all buffers and flushed to disk
-3. `rejected/` subfolder created in the active directory (if absent)
-4. All REJECT-flagged files moved to `rejected/<name>.<ext>.rejected`
-5. View closes, viewer clears, session closes
+2. Each REJECT file is moved to `<source_dir>/rejected/<name>.<ext>.rejected`
+3. Rejected files are removed from the session; pass frames remain loaded
+4. View closes, viewer clears
+5. Session stays open — pass frames are ready for subsequent operations (e.g. stacking)
 
-After commit, re-opening the directory will show only PASS files.
+PXFLAG is **not** written to files. The file move is the sole persistence action.
 
 **Imported sessions:** When loaded via Session → Import Session JSON…, an IMPORTED badge appears in the session path row and Commit Results is disabled. All display functionality works normally.
 
@@ -316,11 +316,11 @@ Play/pause/step controls. Resolution dropdown (12.5% / 25%). Min Delay dropdown.
 
 **Export (Session → Export Session JSON…):**
 
-Exports the current session's analysis results as a portable JSON archive. Default filename derived from the first frame: `<target>_<YYYYMMDD>.json` (e.g. `Light_M82_..._20240206-190228_....fit` → `M82_20240206.json`). JSON contains: `photyx_version`, `exported_at`, `active_directory`, `threshold_profile_name`, `thresholds`, `session_stats`, `outlier_paths`, and `frames[]` (per-frame: basename, all 5 raw metric values, flag, triggered_by, rejection_category). All filenames stored as basenames for cross-platform portability.
+Exports the current session's analysis results as a portable JSON archive. Default filename derived from the first frame: `<target>_<YYYYMMDD>.json`. JSON contains: `photyx_version`, `exported_at`, `threshold_profile_name`, `thresholds`, `session_stats`, `outlier_paths`, and `frames[]` (per-frame: full path, all 5 raw metric values, flag, triggered_by, rejection_category). All filenames stored as full absolute paths to support multi-directory sessions.
 
 **Import (Session → Import Session JSON…):**
 
-Clears the current session and loads analysis results from a JSON file. No images are loaded — display only. The session path from the JSON is shown in the Analysis Results toolbar row with an IMPORTED badge. Commit Results is disabled. On import, the Analysis Results view opens automatically.
+Clears the current session and loads analysis results from a JSON file. No images are loaded — display only. An IMPORTED badge appears in the Analysis Results toolbar. Commit Results is disabled. On import, the Analysis Results view opens automatically.
 
 ---
 
@@ -330,7 +330,7 @@ Settings are stored in the embedded SQLite database (`photyx.db`) in the OS app 
 
 **Threshold profiles:** Named sets of AnalyzeFrames rejection thresholds. Multiple profiles supported; managed via Edit > Analysis Parameters. Active profile propagated into `AppContext.analysis_thresholds` immediately on change. See §8.14 and `photyx_persistence_inventory.md` §5.
 
-**Crash recovery:** Session recovery state written every 60 seconds. On next launch after crash, Photyx offers to restore the previous session.
+**Crash recovery:** Session recovery state (file list + current frame) written every 60 seconds. On next launch after crash, Photyx offers to restore the previous session by reloading the same files.
 
 **Database backup:** Manual backup triggered from the Tools menu. Timestamped ZIP archive containing `photyx.db` and a `macros/` subfolder with each macro as a plain-text `.phs` file.
 
@@ -365,17 +365,13 @@ Five metrics are computed for each frame:
 
 **Algorithm:** All metrics except Background Median are derived from elliptical 2D Moffat PSF fitting per detected star. FWHM and Eccentricity replace prior intensity-weighted second-order moment calculations. Star Count now counts only stars that pass Moffat PSF acceptance criteria (replaces lenient connected-pixel detection). Signal Weight is a PSF-based signal quality measure: A² / (A + B·π·a·b), where A is fitted peak amplitude, B is local background, and π·a·b is effective PSF area. PSF Residual is computed internally as the star acceptance gate but is not user-facing.
 
-**Signal Weight:** Promoted to rejection metric. Catches transparency and thin-cloud events that Star Count misses, and correctly signals problems on frames where Star Count is inflated (e.g. satellite trails). Signal Weight rejections are assigned category T (Transparency).
+**Signal Weight:** Promotes to rejection metric. Catches transparency and thin-cloud events that Star Count misses, and correctly signals problems on frames where Star Count is inflated (e.g. satellite trails). Signal Weight rejections are assigned category T (Transparency).
 
 **Star Count threshold:** −3.0σ. Mild transparency events are better handled by SubframeSelector weighting than hard rejection; only severe star count drops warrant culling.
 
 **Removed metrics:** Background Std Dev (r = 0.92–0.999 with Bg Median) and Background Gradient (session-dependent with sign reversal). Both pcode commands retained as deprecated stubs for script compatibility. SNR Estimate removed as a user-facing metric; superseded by Signal Weight.
 
 **SNR note:** SNR is computed and displayed as a diagnostic metric but does not drive PASS/REJECT classification. Cross-session analysis confirmed a PSF artifact — worse-seeing frames produce higher SNR due to bloated star flux; SNR never drove a unique rejection not already caught by FWHM or Star Count.
-
-**Star Count threshold:** Raised from −1.5σ to −3.0σ. Mild transparency events are better handled by SubframeSelector weighting than hard rejection; only severe star count drops warrant culling.
-
-**Removed metrics:** Background Std Dev (r = 0.92–0.999 with Bg Median) and Background Gradient (session-dependent with sign reversal). Both pcode commands retained as deprecated stubs for script compatibility.
 
 ### 11.3 Classification
 
@@ -395,11 +391,18 @@ Every REJECT frame is assigned one or more rejection categories:
 
 ### 11.5 Session Statistics & Iterative Sigma Clipping
 
-Classification is session-relative. `AnalyzeFrames` uses two-pass iterative sigma clipping — see `development_notes.md` §3.60 for implementation details.
+Classification is session-relative. `AnalyzeFrames` uses two-pass iterative sigma clipping — see `photyx_development.md` §3.60 for implementation details.
 
 ### 11.6 Committing Results
 
-PXFLAG is **not** written automatically. Commit Results is a terminal operation — see §8.11 for the full commit sequence including file moves to `rejected/`.
+Commit Results is a **fast, non-terminal operation**:
+
+1. Toggled flag changes are pushed to Rust
+2. Each REJECT file is moved to `<source_dir>/rejected/<name>.<ext>.rejected`; each file lands in its own source directory's `rejected/` subfolder
+3. Rejected files are removed from the session; pass frames remain loaded
+4. Analysis results are cleared
+
+PXFLAG is **not** written to files. The file move is the sole persistence action. After commit, the session remains open and pass frames are immediately available for subsequent operations (e.g. stacking).
 
 ### 11.7 On-the-Fly Reclassification
 
@@ -410,7 +413,7 @@ PXFLAG is **not** written automatically. Commit Results is a terminal operation 
 1. Run `AnalyzeFrames`
 2. Review in Analysis Graph / Results table; adjust thresholds and refresh as needed
 3. Optionally toggle individual frame flags via right-click context menu
-4. Click **✓ Commit Results** — terminal operation; moves rejects to `rejected/`, closes session
+4. Click **✓ Commit Results** — moves rejects to `rejected/` subfolders; pass frames remain loaded
 
 ---
 
@@ -422,19 +425,20 @@ Local HTTP REST server via Axum. Deferred to post-Phase 9.
 
 ## 13. Development Phases
 
-| Phase       | Status      | Focus                                                                                                                                                                                                                                                                                                           |
-| ----------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 1     | ✅ Complete  | Scaffold, plugin host, FITS reader, viewer, logging                                                                                                                                                                                                                                                             |
-| Phase 2     | ✅ Complete  | Blink engine, Auto-STF, zoom, pan, pixel tracking, Info Panel                                                                                                                                                                                                                                                   |
-| Phase 3     | ✅ Complete  | photyx-xisf crate, XISF read/write, TIFF read/write, RGB display, background cache                                                                                                                                                                                                                              |
-| Phase 4     | ✅ Complete  | Keyword plugins, write plugins, AstroTIFF round-trip, FITS u16 fix, path resolution                                                                                                                                                                                                                             |
-| Phase 5     | ✅ Complete  | pcode interpreter (If/For/variables), Macro Editor, Quick Launch, GetKeyword, RunMacro, atomic writes                                                                                                                                                                                                           |
-| Phase 6     | ✅ Complete  | UI audit and cleanup                                                                                                                                                                                                                                                                                            |
-| Phase 7     | ✅ Complete  | AnalyzeFrames (5 metrics), PXFLAG, Analysis Graph, star annotations, consolePipe, blink overlay                                                                                                                                                                                                                 |
-| Phase 8     | ✅ Complete  | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                                                                                                                                                                                      |
-| **Phase 9** | ✅ Complete  | SQLite (✅), Quick Launch (✅), session history (✅), crash recovery (✅), macros in SQLite (✅), AppSettings (✅), Preferences (✅), threshold profiles (✅), rejection categories (✅), Session JSON export/import (✅), commit file move (✅), PXFLAG toggle (✅); analysis results persistence(✅);, console history(✅); |
-| Phase 10    | In progress | memory audit, UI audit, update Star Count algorithm, fix known bugs                                                                                                                                                                                                                                             |
-| Phase 11    | ⬜ Planned   | UI audit & testing                                                                                                                                                                                                                                                                                              |
+| Phase       | Status      | Focus                                                                                                                                                                                                                                                                |
+| ----------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 1     | Complete    | Scaffold, plugin host, FITS reader, viewer, logging                                                                                                                                                                                                                  |
+| Phase 2     | Complete    | Blink engine, Auto-STF, zoom, pan, pixel tracking, Info Panel                                                                                                                                                                                                        |
+| Phase 3     | Complete    | photyx-xisf crate, XISF read/write, TIFF read/write, RGB display, background cache                                                                                                                                                                                   |
+| Phase 4     | Complete    | Keyword plugins, write plugins, AstroTIFF round-trip, FITS u16 fix, path resolution                                                                                                                                                                                  |
+| Phase 5     | Complete    | pcode interpreter (If/For/variables), Macro Editor, Quick Launch, GetKeyword, RunMacro, atomic writes                                                                                                                                                                |
+| Phase 6     | Complete    | UI audit and cleanup                                                                                                                                                                                                                                                 |
+| Phase 7     | Complete    | AnalyzeFrames (5 metrics), PXFLAG, Analysis Graph, star annotations, consolePipe, blink overlay                                                                                                                                                                      |
+| Phase 8     | Complete    | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                                                                                                                                           |
+| Phase 9     | Complete    | SQLite , Quick Launch , session history , crash recovery , macros in SQLite , AppSettings , Preferences , threshold profiles , rejection categories , Session JSON export/import , commit file move , PXFLAG toggle , analysis results persistence , console history |
+| Phase 10    | Complete    | Memory audit, UI audit, update Star Count algorithm, fix known bugs, replace active directory  with selected files as the global context.                                                                                                                            |
+| Phase 11    | In Progress | Stacking, Live Stacking                                                                                                                                                                                                                                              |
+| Final Phase | ⬜ Planned   | UI audit & testing                                                                                                                                                                                                                                                   |
 
 ### 13.1 Deferred Items
 
@@ -455,57 +459,55 @@ Local HTTP REST server via Axum. Deferred to post-Phase 9.
 
 ### 15.1 Philosophy
 
-Photyx uses a file-centric session model. The user selects the files
-they want to work with; operations run against that set. There is no
-concept of a single "active directory" — files may come from any number
-of directories.
+Photyx uses a **global file context** — a flat list of file paths that persists across operations. There is no concept of an "active directory." Files may come from any number of directories and coexist in a single session.
 
-### 15.2 SelectFiles
+### 15.2 AddFiles
 
-`SelectFiles` is the primary entry point for loading images. It opens a
-multi-file picker allowing the user to select files from one or more
-directories. The resulting file list becomes the working set for all
-subsequent operations.
+`AddFiles` is the primary entry point for loading images. It opens a multi-file picker allowing the user to select one or more files. The selected files are **appended** to the current session — existing files are not cleared.
 
 - Replaces `SelectDirectory` in both the UI and pcode
-- The pcode command accepts either explicit file paths or a directory
-  path (loads all supported files from that directory)
-- Clears the current file list and loads the new selection
-- No active directory is set or maintained
+- Accepts explicit file paths only — no directory expansion
+- Skips files already loaded (duplicate detection)
+- Checks memory limit before loading (based on first file dimensions × total count)
+- Use `ClearSession` first if starting a fresh session is desired
+- The menu item is "Add Files…" (Ctrl+O)
 
 ### 15.3 Session State
 
 Session state consists of:
 
-- The loaded file list (paths)
+- The loaded file list (full absolute paths)
 - Per-file pixel buffers and derived caches
 - Analysis results
 
-There is no active directory field. Where a single directory is needed
-(e.g. log labeling), it is derived as the common parent of all loaded
-files, or left blank if files span unrelated directories.
+There is no active directory field. Where a single directory is needed (e.g. for relative path resolution or log labeling), it is derived as the common parent of all loaded files (`ctx.common_parent()`), or None if files span unrelated directories.
 
 ### 15.4 Write Operations
 
-All write operations use each file's original source path. Atomic
-temp-rename behavior is unchanged.
+All write operations use each file's original source path. Atomic temp-rename behavior is unchanged. Relative destination paths resolve against `ctx.common_parent()`.
 
 ### 15.5 Commit Results
 
-When committing analysis results, each rejected file is moved into a
-`rejected/` subdirectory within its own source directory. If the
-`rejected/` subdirectory does not exist it is created automatically.
+When committing analysis results:
+
+- Each REJECT file is moved to a `rejected/` subdirectory **within its own source directory**
+- If `rejected/` does not exist it is created automatically
+- PXFLAG is **not** written to files — the move is the sole persistence action
+- Rejected files are removed from the session; pass frames remain loaded
+- The session stays open after commit
 
 ### 15.6 Status Bar
 
-Displays loaded file count and directory count. Example:
-`157 files · 3 directories`
+The toolbar displays loaded file count and directory count derived from the file list. Example: `157 files · 3 directories`. Shows nothing when no files are loaded.
 
 ### 15.7 Close Session
 
-Clears the file list, all buffers, and all analysis results. Behavior
-unchanged from current implementation.
+Clears the file list, all buffers, and all analysis results. Resets the session entirely.
+
+### 15.8 Crash Recovery
+
+Session recovery state stores the full file list (absolute paths) and current frame index. On recovery, `AddFiles` is called with the stored paths to restore the session.
 
 ---
 
-*Previous version: 22 — Next review: Upon completion of Phase 9*
+*Previous version: 24 — Next review: Upon completion of Phase 10*
