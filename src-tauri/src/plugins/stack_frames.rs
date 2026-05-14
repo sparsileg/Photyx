@@ -1,5 +1,17 @@
 // plugins/stack_frames.rs — StackFrames built-in plugin
 // Stacking document §3.5, §3.11
+//
+// Stacking pipeline:
+//   Pass 1: Stream frames sequentially, FFT-align each, accumulate into
+//           per-pixel Welford running mean/variance buffers. Cache translations.
+//   Between passes: Compute per-pixel stddev from Welford M2/count.
+//   Pass 2: Stream frames again using cached translations, sigma-clip each
+//           pixel against pass-1 mean/stddev, accumulate clipped sum/count.
+//   Final: Divide clipped sum by count, normalize to 0.0–1.0.
+//
+// Rayon parallelism is used for all per-pixel work within each frame.
+// Frame loops are sequential (FFT alignment requires reference luma).
+// Memory: 5 f32 buffers × n_pixels — no per-frame sample accumulation.
 
 use crate::analysis::{
     self,
@@ -14,6 +26,7 @@ use crate::analysis::{
 use crate::context::{AppContext, BitDepth, ColorSpace, ImageBuffer, PixelData};
 use crate::plugin::{ArgMap, ParamSpec, PhotonPlugin, PluginError, PluginOutput};
 use chrono::Utc;
+use rayon::prelude::*;
 use tracing::info;
 
 pub struct StackFrames;
@@ -22,7 +35,7 @@ impl PhotonPlugin for StackFrames {
     fn name(&self) -> &str { "StackFrames" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str {
-        "Stacks all loaded frames using sigma-clipped mean with FFT phase correlation alignment."
+        "Stacks all loaded frames using two-pass sigma-clipped mean with FFT phase correlation alignment."
     }
     fn parameters(&self) -> Vec<ParamSpec> { vec![] }
 
@@ -31,23 +44,23 @@ impl PhotonPlugin for StackFrames {
             return Err(PluginError::new("NO_FILES", "No files loaded."));
         }
 
-        // Clear any previous stack result before starting
         ctx.clear_stack();
 
-        // ── Step 1: Collect frame snapshots ──────────────────────────────────
+        // ── Step 1: Collect frame snapshots (metadata + stars, no pixel duplication) ──
         let det_config = StarDetectionConfig::default();
+
         struct FrameSnapshot {
             index:        usize,
             path:         String,
             width:        usize,
             height:       usize,
+            channels:     usize,
             color_space:  ColorSpace,
             filter:       Option<String>,
             exptime:      Option<f32>,
             fwhm:         Option<f32>,
             eccentricity: Option<f32>,
             rotator:      Option<f32>,
-            luma:         Vec<f32>,
             stars:        Vec<crate::analysis::stars::StarCandidate>,
         }
 
@@ -58,11 +71,10 @@ impl PhotonPlugin for StackFrames {
                 None    => continue,
             };
             let pixels = match &buf.pixels {
-                Some(p) => p.clone(),
+                Some(p) => p,
                 None    => continue,
             };
 
-            // Pull cached analysis metrics if available
             let (cached_fwhm, cached_ecc) = if let Some(ar) = ctx.analysis_results.get(path) {
                 (ar.fwhm, ar.eccentricity)
             } else {
@@ -78,21 +90,24 @@ impl PhotonPlugin for StackFrames {
             let channels = buf.channels as usize;
             let width    = buf.width    as usize;
             let height   = buf.height   as usize;
-            let luma     = analysis::to_luminance(&pixels, channels);
+            let luma     = analysis::to_luminance(pixels, channels);
             let stars    = detect_stars(&luma, width, height, &det_config);
+
+            let fwhm        = cached_fwhm.or_else(|| compute_fwhm(&stars, None).map(|r| r.fwhm_pixels));
+            let eccentricity = cached_ecc.or_else(|| compute_eccentricity(&stars).map(|r| r.eccentricity));
 
             snapshots.push(FrameSnapshot {
                 index,
                 path: path.clone(),
                 width,
                 height,
+                channels,
                 color_space: buf.color_space.clone(),
                 filter,
                 exptime,
                 rotator,
-                fwhm: cached_fwhm,
-                eccentricity: cached_ecc,
-                luma,
+                fwhm,
+                eccentricity,
                 stars,
             });
         }
@@ -105,62 +120,52 @@ impl PhotonPlugin for StackFrames {
         let height   = snapshots[0].height;
         let n_pixels = width * height;
 
-        // ── Step 2: Compute FWHM/eccentricity using already-detected stars ────
-        for snap in &mut snapshots {
-            if snap.fwhm.is_none() {
-                snap.fwhm = compute_fwhm(&snap.stars, None).map(|r| r.fwhm_pixels);
-            }
-            if snap.eccentricity.is_none() {
-                snap.eccentricity = compute_eccentricity(&snap.stars).map(|r| r.eccentricity);
-            }
-        }
-
-        // ── Step 3: Select reference frame (lowest FWHM, eccentricity as tiebreaker) ──
+        // ── Step 2: Select reference frame ───────────────────────────────────
         let fwhm_ecc: Vec<(Option<f32>, Option<f32>)> = snapshots.iter()
             .map(|s| (s.fwhm, s.eccentricity))
             .collect();
-        let ref_idx        = select_reference_frame_idx(&fwhm_ecc);
-        let ref_filter     = snapshots[ref_idx].filter.clone();
+        let ref_idx         = select_reference_frame_idx(&fwhm_ecc);
+        let ref_filter      = snapshots[ref_idx].filter.clone();
         let ref_color_space = snapshots[ref_idx].color_space.clone();
-        let is_bayer       = ref_color_space == ColorSpace::Bayer;
+        let is_bayer        = ref_color_space == ColorSpace::Bayer;
 
         info!("StackFrames: reference frame index {} ({})", ref_idx, short_name(&snapshots[ref_idx].path));
         if let Some(f) = &ref_filter {
             info!("StackFrames: stack filter = {}", f);
         }
 
-        // Reference luminance and stars are already computed in snapshot
-        let ref_luma  = &snapshots[ref_idx].luma;
+        // Load reference luma from buffer pool
+        let ref_luma = ctx.image_buffers.get(&snapshots[ref_idx].path)
+            .and_then(|b| b.pixels.as_ref())
+            .map(|p| analysis::to_luminance(p, snapshots[ref_idx].channels))
+            .ok_or_else(|| PluginError::new("NO_REF", "Reference frame pixel data unavailable."))?;
+
         let ref_stars = &snapshots[ref_idx].stars;
 
-        // Pull OBJECT from reference frame buffer for summary
         let ref_path   = snapshots[ref_idx].path.clone();
         let ref_target = ctx.image_buffers.get(&ref_path)
             .and_then(|b| b.keywords.get("OBJECT"))
             .map(|kw| kw.value.clone());
 
-        // ── Step 4: Per-frame: filter validate, normalize, align, accumulate ──
-        let bg_sigma_config = SigmaClipConfig::default();
+        // ── Step 3: Pass 1 — Welford accumulation ────────────────────────────
+        let mut mean_buf:  Vec<f32> = vec![0.0; n_pixels];
+        let mut m2_buf:    Vec<f32> = vec![0.0; n_pixels];
+        let mut count_buf: Vec<u32> = vec![0;   n_pixels];
 
-        // Accumulation buffers
-        let mut sum_buf      = vec![0.0f64; n_pixels];
-        let mut count_buf    = vec![0u32;   n_pixels];
-        let mut pixel_samples: Vec<Vec<f32>> = vec![Vec::new(); n_pixels];
+        // Cache per-frame results for pass 2
+        let mut cached_translations: Vec<Option<(f32, f32)>> = vec![None; snapshots.len()];
 
-        let mut contributions:   Vec<FrameContribution> = Vec::new();
-        let mut messages:        Vec<String>            = Vec::new();
-        let     total            = snapshots.len();
-        let mut stacked_count    = 0usize;
+        let bg_sigma_config   = SigmaClipConfig::default();
+        let mut contributions: Vec<FrameContribution> = Vec::new();
+        let mut messages:      Vec<String>            = Vec::new();
+        let     total          = snapshots.len();
         let mut total_integration = 0.0f32;
 
-        // ── Flip reference state ──────────────────────────────────────────────
-        // The first successfully aligned post-flip frame becomes the flip
-        // reference. Subsequent post-flip frames align against it, then chain
-        // its translation to get the total offset relative to frame 0.
-        let mut flip_ref_normalized: Option<Vec<f32>>                              = None;
-        let mut flip_ref_stars:      Option<Vec<crate::analysis::stars::StarCandidate>> = None;
-        let mut flip_ref_dx:         f32 = 0.0;
-        let mut flip_ref_dy:         f32 = 0.0;
+        // Flip reference state
+        let mut flip_ref_luma:  Option<Vec<f32>>                                   = None;
+        let mut flip_ref_stars: Option<Vec<crate::analysis::stars::StarCandidate>> = None;
+        let mut flip_ref_dx:    f32 = 0.0;
+        let mut flip_ref_dy:    f32 = 0.0;
 
         for (i, snap) in snapshots.iter().enumerate() {
             let mut contrib = FrameContribution::new(snap.index, &snap.path);
@@ -183,9 +188,16 @@ impl PhotonPlugin for StackFrames {
                 }
             }
 
-            // ── Meridian flip detection and correction ────────────────────────
-            // Returns (luma, stars) — stars are re-detected on flipped luma so
-            // that alignment validation uses correct positions.
+            // ── Load frame luma from buffer pool ──────────────────────────────
+            let raw_luma = match ctx.image_buffers.get(&snap.path)
+                .and_then(|b| b.pixels.as_ref())
+                .map(|p| analysis::to_luminance(p, snap.channels))
+            {
+                Some(l) => l,
+                None    => continue,
+            };
+
+            // ── Meridian flip detection ───────────────────────────────────────
             let (luma, frame_stars) = if i != ref_idx {
                 let ref_rotator = snapshots[ref_idx].rotator;
                 match (ref_rotator, snap.rotator) {
@@ -200,12 +212,12 @@ impl PhotonPlugin for StackFrames {
                             );
                             info!("{}", msg);
                             messages.push(msg);
-                            let mut flipped_luma = snap.luma.clone();
-                            flipped_luma.reverse();
-                            let flipped_stars = detect_stars(&flipped_luma, snap.width, snap.height, &det_config);
-                            (flipped_luma, flipped_stars)
+                            let mut fl = raw_luma;
+                            fl.reverse();
+                            let fs = detect_stars(&fl, snap.width, snap.height, &det_config);
+                            (fl, fs)
                         } else {
-                            (snap.luma.clone(), snap.stars.clone())
+                            (raw_luma, snap.stars.clone())
                         }
                     }
                     (None, _) | (_, None) => {
@@ -217,48 +229,42 @@ impl PhotonPlugin for StackFrames {
                             info!("{}", msg);
                             messages.push(msg);
                         }
-                        (snap.luma.clone(), snap.stars.clone())
+                        (raw_luma, snap.stars.clone())
                     }
                 }
             } else {
-                (snap.luma.clone(), snap.stars.clone())
+                (raw_luma, snap.stars.clone())
             };
 
             // ── Normalize by sigma-clipped background ─────────────────────────
             let bg_est   = estimate_background(&luma, &bg_sigma_config);
             let bg_level = bg_est.median;
             contrib.background_level = Some(bg_level);
+            let divisor  = if bg_level > 1e-6 { bg_level } else { 1.0 };
 
-            let divisor    = if bg_level > 1e-6 { bg_level } else { 1.0 };
-            let normalized: Vec<f32> = luma.iter().map(|&v| v / divisor).collect();
+            let normalized: Vec<f32> = luma.par_iter().map(|&v| v / divisor).collect();
 
             // ── FFT alignment ─────────────────────────────────────────────────
-            let translation = if i == ref_idx {
-                // Reference frame — zero translation by definition
+            let translation: Option<(f32, f32)> = if i == ref_idx {
                 contrib.fft_translation    = Some((0.0, 0.0));
                 contrib.alignment_validated = Some(true);
-                Some((0.0f32, 0.0f32))
+                Some((0.0, 0.0))
 
             } else if contrib.meridian_flipped {
-                // ── Post-flip frame ───────────────────────────────────────────
-                match flip_ref_normalized.as_ref() {
+                match flip_ref_luma.as_ref() {
                     None => {
-                        // No flip reference yet — this frame becomes it.
-                        // Align against the main reference to establish the
-                        // chain, skip star validation (fields barely overlap),
-                        // and store this frame as the flip reference.
-                        match compute_translation(ref_luma, &normalized, width, height) {
+                        match compute_translation(&ref_luma, &normalized, width, height) {
                             Some(t) => {
                                 info!(
                                     "Frame {} (first flip): FFT vs main ref dx={:.2} dy={:.2}",
                                     snap.index, t.dx, t.dy
                                 );
                                 contrib.fft_translation    = Some((t.dx, t.dy));
-                                contrib.alignment_validated = Some(true); // trusted as anchor
-                                flip_ref_normalized = Some(normalized.clone());
-                                flip_ref_stars      = Some(frame_stars.clone());
-                                flip_ref_dx         = t.dx;
-                                flip_ref_dy         = t.dy;
+                                contrib.alignment_validated = Some(true);
+                                flip_ref_luma   = Some(normalized.clone());
+                                flip_ref_stars  = Some(frame_stars.clone());
+                                flip_ref_dx     = t.dx;
+                                flip_ref_dy     = t.dy;
                                 Some((t.dx, t.dy))
                             }
                             None => {
@@ -275,8 +281,6 @@ impl PhotonPlugin for StackFrames {
                         }
                     }
                     Some(flip_ref_norm) => {
-                        // Flip reference exists — align against it, validate
-                        // against its stars, then chain translations.
                         match compute_translation(flip_ref_norm, &normalized, width, height) {
                             Some(t) => {
                                 let total_dx = flip_ref_dx + t.dx;
@@ -285,7 +289,7 @@ impl PhotonPlugin for StackFrames {
                                     "Frame {} (flip): FFT vs flip-ref dx={:.2} dy={:.2} → total dx={:.2} dy={:.2}",
                                     snap.index, t.dx, t.dy, total_dx, total_dy
                                 );
-                                let frs = flip_ref_stars.as_deref().unwrap_or(&[]);
+                                let frs       = flip_ref_stars.as_deref().unwrap_or(&[]);
                                 let validated = validate_alignment(
                                     &frame_stars, frs, t.dx, t.dy, 3.0, 0.5
                                 );
@@ -321,13 +325,12 @@ impl PhotonPlugin for StackFrames {
                 }
 
             } else {
-                // ── Normal (non-flipped) frame ────────────────────────────────
-                match compute_translation(ref_luma, &normalized, width, height) {
+                match compute_translation(&ref_luma, &normalized, width, height) {
                     Some(t) => {
-                        contrib.fft_translation = Some((t.dx, t.dy));
                         let validated = validate_alignment(
                             &frame_stars, ref_stars, t.dx, t.dy, 3.0, 0.5
                         );
+                        contrib.fft_translation    = Some((t.dx, t.dy));
                         contrib.alignment_validated = Some(validated);
                         if validated {
                             Some((t.dx, t.dy))
@@ -357,22 +360,35 @@ impl PhotonPlugin for StackFrames {
                 }
             };
 
-            // ── Accumulate into per-pixel sample vectors ──────────────────────
+            // ── Resample and Welford-accumulate (Rayon parallel across pixels) ─
             let (dx, dy) = translation.unwrap();
-            accumulate_frame(&normalized, &mut pixel_samples, width, height, dx, dy);
+            let aligned  = resample_frame(&normalized, width, height, dx, dy);
+
+            mean_buf.par_iter_mut()
+                .zip(m2_buf.par_iter_mut())
+                .zip(count_buf.par_iter_mut())
+                .zip(aligned.par_iter())
+                .for_each(|(((mean, m2), count), &val)| {
+                    *count += 1;
+                    let delta  = val - *mean;
+                    *mean     += delta / *count as f32;
+                    let delta2 = val - *mean;
+                    *m2       += delta * delta2;
+                });
+
+            cached_translations[i] = Some((dx, dy));
 
             contrib.included = true;
             if let Some(et) = snap.exptime {
                 total_integration += et;
             }
-            stacked_count += 1;
 
             let pct = ((i + 1) as f32 / total as f32 * 100.0).round() as u32;
-            let msg = format!("Stacking frame {} / {} ({}%)…", i + 1, total, pct);
-            messages.push(msg);
-
+            messages.push(format!("Pass 1 — frame {} / {} ({}%)…", i + 1, total, pct));
             contributions.push(contrib);
         }
+
+        let stacked_count = contributions.iter().filter(|c| c.included).count();
 
         if stacked_count == 0 {
             return Err(PluginError::new(
@@ -381,27 +397,85 @@ impl PhotonPlugin for StackFrames {
             ));
         }
 
-        // ── Step 5: Sigma-clipped mean per pixel ──────────────────────────────
-        let sigma = 2.5f32;
-        for (i, samples) in pixel_samples.iter().enumerate() {
-            if samples.is_empty() {
-                continue;
-            }
-            let clipped_mean = sigma_clipped_mean(samples, sigma);
-            sum_buf[i]   = clipped_mean as f64;
-            count_buf[i] = 1; // sentinel — pixel is valid
-        }
-
-        // Collect sigma-clipped means and normalize to 0.0–1.0
-        let raw_pixels: Vec<f32> = (0..n_pixels)
-            .map(|i| if count_buf[i] > 0 { sum_buf[i] as f32 } else { 0.0 })
+        // ── Between passes: compute per-pixel stddev from Welford M2 ─────────
+        let stddev_buf: Vec<f32> = count_buf.par_iter()
+            .zip(m2_buf.par_iter())
+            .map(|(&count, &m2)| {
+                if count > 1 { (m2 / count as f32).sqrt() } else { 0.0 }
+            })
             .collect();
 
-        let max_val = raw_pixels.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-        let min_val = raw_pixels.iter().cloned().fold(f32::INFINITY,     f32::min);
+        // ── Step 4: Pass 2 — sigma-clipped accumulation ───────────────────────
+        let sigma          = 2.5f32;
+        let mut sum_buf:   Vec<f64> = vec![0.0; n_pixels];
+        let mut clip_count: Vec<u32> = vec![0;  n_pixels];
+
+        for (i, snap) in snapshots.iter().enumerate() {
+            let (dx, dy) = match cached_translations[i] {
+                Some(t) => t,
+                None    => continue,
+            };
+
+            // Load luma and apply flip if needed
+            let raw_luma = match ctx.image_buffers.get(&snap.path)
+                .and_then(|b| b.pixels.as_ref())
+                .map(|p| analysis::to_luminance(p, snap.channels))
+            {
+                Some(l) => l,
+                None    => continue,
+            };
+
+            let is_flipped = contributions.iter()
+                .find(|c| c.frame_index == snap.index && c.included)
+                .map(|c| c.meridian_flipped)
+                .unwrap_or(false);
+
+            let luma = if is_flipped {
+                let mut fl = raw_luma;
+                fl.reverse();
+                fl
+            } else {
+                raw_luma
+            };
+
+            let bg_est   = estimate_background(&luma, &bg_sigma_config);
+            let bg_level = bg_est.median;
+            let divisor  = if bg_level > 1e-6 { bg_level } else { 1.0 };
+
+            let normalized: Vec<f32> = luma.par_iter().map(|&v| v / divisor).collect();
+            let aligned = resample_frame(&normalized, width, height, dx, dy);
+
+            // Sigma-clip and accumulate — Rayon parallel across pixels
+            sum_buf.par_iter_mut()
+                .zip(clip_count.par_iter_mut())
+                .zip(aligned.par_iter())
+                .zip(mean_buf.par_iter())
+                .zip(stddev_buf.par_iter())
+                .for_each(|((((sum, count), &val), &mean), &sd)| {
+                    let threshold = sigma * sd;
+                    if sd < 1e-10 || (val - mean).abs() <= threshold {
+                        *sum   += val as f64;
+                        *count += 1;
+                    }
+                });
+
+            let pct = ((i + 1) as f32 / total as f32 * 100.0).round() as u32;
+            messages.push(format!("Pass 2 — frame {} / {} ({}%)…", i + 1, total, pct));
+        }
+
+        // ── Step 5: Build final pixel buffer ──────────────────────────────────
+        let raw_pixels: Vec<f32> = sum_buf.par_iter()
+            .zip(clip_count.par_iter())
+            .map(|(&sum, &count)| {
+                if count > 0 { sum as f32 / count as f32 } else { 0.0 }
+            })
+            .collect();
+
+        let max_val = raw_pixels.par_iter().cloned().reduce(|| f32::NEG_INFINITY, f32::max);
+        let min_val = raw_pixels.par_iter().cloned().reduce(|| f32::INFINITY,     f32::min);
         let range   = (max_val - min_val).max(1e-6);
 
-        let stack_pixels: Vec<f32> = raw_pixels.iter()
+        let stack_pixels: Vec<f32> = raw_pixels.par_iter()
             .map(|&v| ((v - min_val) / range).clamp(0.0, 1.0))
             .collect();
 
@@ -410,8 +484,8 @@ impl PhotonPlugin for StackFrames {
         let timestamp_display = Utc::now().format("%Y-%m-%d %H:%M").to_string();
 
         let stack_label = format!(
-            "STACKED RESULT \u{2014} {} frames \u{2014} {}",
-            stacked_count, timestamp_display
+            "STACKED RESULT \u{2014} {} / {} frames \u{2014} {}",
+            stacked_count, total, timestamp_display
         );
 
         let output_color_space = if is_bayer { ColorSpace::Mono } else { ColorSpace::Mono };
@@ -469,8 +543,6 @@ impl PhotonPlugin for StackFrames {
 }
 
 // ── Reference frame selection ─────────────────────────────────────────────────
-// Lowest FWHM wins; eccentricity as tiebreaker.
-// Frames with no FWHM measurement are sorted last.
 
 fn select_reference_frame_idx(fwhm_ecc: &[(Option<f32>, Option<f32>)]) -> usize {
     fwhm_ecc
@@ -491,35 +563,31 @@ fn select_reference_frame_idx(fwhm_ecc: &[(Option<f32>, Option<f32>)]) -> usize 
         .unwrap_or(0)
 }
 
-// ── Frame accumulation with sub-pixel translation ─────────────────────────────
-// Resamples the normalized frame into the stack accumulation buffer using
-// bilinear interpolation at the computed (dx, dy) offset.
+// ── Frame resampling with sub-pixel translation ───────────────────────────────
+// Returns an aligned output buffer using bilinear interpolation.
+// Rayon parallel across pixels.
 
-fn accumulate_frame(
-    normalized:    &[f32],
-    pixel_samples: &mut Vec<Vec<f32>>,
-    width:         usize,
-    height:        usize,
-    dx:            f32,
-    dy:            f32,
-) {
-    for out_y in 0..height {
-        for out_x in 0..width {
+fn resample_frame(
+    normalized: &[f32],
+    width:      usize,
+    height:     usize,
+    dx:         f32,
+    dy:         f32,
+) -> Vec<f32> {
+    (0..height * width)
+        .into_par_iter()
+        .map(|idx| {
+            let out_y = idx / width;
+            let out_x = idx % width;
             let src_x = out_x as f32 - dx;
             let src_y = out_y as f32 - dy;
-
-            let x0 = src_x.floor() as i32;
-            let y0 = src_y.floor() as i32;
-            let x1 = x0 + 1;
-            let y1 = y0 + 1;
-
-            let fx = src_x - x0 as f32;
-            let fy = src_y - y0 as f32;
-
-            let sample = bilinear(normalized, width, height, x0, y0, x1, y1, fx, fy);
-            pixel_samples[out_y * width + out_x].push(sample);
-        }
-    }
+            let x0    = src_x.floor() as i32;
+            let y0    = src_y.floor() as i32;
+            let fx    = src_x - x0 as f32;
+            let fy    = src_y - y0 as f32;
+            bilinear(normalized, width, height, x0, y0, x0 + 1, y0 + 1, fx, fy)
+        })
+        .collect()
 }
 
 fn bilinear(
@@ -548,51 +616,7 @@ fn bilinear(
     top * (1.0 - fy) + bottom * fy
 }
 
-// ── Sigma-clipped mean ────────────────────────────────────────────────────────
-
-fn sigma_clipped_mean(samples: &[f32], sigma: f32) -> f32 {
-    if samples.is_empty() {
-        return 0.0;
-    }
-    if samples.len() == 1 {
-        return samples[0];
-    }
-
-    let mut working: Vec<f32> = samples.to_vec();
-
-    for _ in 0..5 {
-        if working.is_empty() {
-            break;
-        }
-        let n    = working.len() as f32;
-        let mean = working.iter().sum::<f32>() / n;
-        let var  = working.iter().map(|&x| (x - mean) * (x - mean)).sum::<f32>() / n;
-        let sd   = var.sqrt();
-
-        if sd < 1e-10 {
-            break;
-        }
-
-        let lo     = mean - sigma * sd;
-        let hi     = mean + sigma * sd;
-        let before = working.len();
-        working.retain(|&x| x >= lo && x <= hi);
-        if working.len() == before {
-            break;
-        }
-    }
-
-    if working.is_empty() {
-        return samples.iter().sum::<f32>() / samples.len() as f32;
-    }
-
-    working.iter().sum::<f32>() / working.len() as f32
-}
-
 // ── Alignment validation ──────────────────────────────────────────────────────
-// Applies (dx, dy) to each candidate star's centroid and checks whether it
-// lands within `tolerance` pixels of any star in the reference set.
-// Returns true if the match rate meets or exceeds `min_match_rate`.
 
 fn validate_alignment(
     frame_stars:    &[crate::analysis::stars::StarCandidate],
