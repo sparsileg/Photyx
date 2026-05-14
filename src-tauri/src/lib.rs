@@ -184,6 +184,7 @@ pub fn run() {
     let registry = Arc::new(PluginRegistry::new());
 
     plugins::scripting::register_all(&registry);
+    registry.register(Arc::new(plugins::add_files::AddFiles));
     registry.register(Arc::new(plugins::analyze_frames::AnalyzeFrames));
     registry.register(Arc::new(plugins::auto_stretch::AutoStretch));
     registry.register(Arc::new(plugins::background_median::BackgroundGradientPlugin));
@@ -191,6 +192,7 @@ pub fn run() {
     registry.register(Arc::new(plugins::background_median::BackgroundStdDevPlugin));
     registry.register(Arc::new(plugins::cache_frames::CacheFrames));
     registry.register(Arc::new(plugins::clear_session::ClearSession));
+    registry.register(Arc::new(plugins::clear_stack::ClearStack));
     registry.register(Arc::new(plugins::compute_eccentricity::ComputeEccentricity));
     registry.register(Arc::new(plugins::compute_fwhm::ComputeFWHM));
     registry.register(Arc::new(plugins::contour_heatmap::ContourHeatmap));
@@ -201,8 +203,8 @@ pub fn run() {
     registry.register(Arc::new(plugins::keywords::ModifyKeyword));
     registry.register(Arc::new(plugins::list_keywords::ListKeywords));
     registry.register(Arc::new(plugins::run_macro::RunMacro));
-    registry.register(Arc::new(plugins::add_files::AddFiles));
     registry.register(Arc::new(plugins::set_frame::SetFrame));
+    registry.register(Arc::new(plugins::stack_frames::StackFrames));
     registry.register(Arc::new(plugins::star_count::CountStarsPlugin));
     registry.register(Arc::new(plugins::write_current_files::WriteCurrent));
     registry.register(Arc::new(plugins::write_fits::WriteFIT));

@@ -158,6 +158,17 @@ pub struct AppContext {
     /// AnalyzeFrames run. Disables Commit in the frontend and skips reclassification
     /// in get_analysis_results (imported classifications are authoritative).
     pub is_imported_session: bool,
+
+    /// Transient stacked result — holds the output of StackFrames without a source
+    /// file path. Cleared by ClearStack or a new StackFrames run.
+    pub stack_result: Option<ImageBuffer>,
+
+    /// Per-frame contribution metrics from the last StackFrames run.
+    /// Cleared by ClearStack or a new StackFrames run.
+    pub stack_contributions: Vec<crate::analysis::stack_metrics::FrameContribution>,
+
+    /// Summary metrics from the last StackFrames run.
+    pub stack_summary: Option<crate::analysis::stack_metrics::StackSummary>,
 }
 
 impl AppContext {
@@ -232,6 +243,9 @@ impl AppContext {
         self.last_histogram = None;
         self.variables.clear();
         self.is_imported_session = false;
+        self.stack_result = None;
+        self.stack_contributions.clear();
+        self.stack_summary = None;
     }
 
     /// Remove rejected files from the session after a commit.
@@ -255,9 +269,17 @@ impl AppContext {
         self.is_imported_session = false;
     }
 
-    pub fn analysis_result_for(&mut self, path: &str) -> &mut crate::analysis::AnalysisResult {
+pub fn analysis_result_for(&mut self, path: &str) -> &mut crate::analysis::AnalysisResult {
         self.analysis_results
             .entry(path.to_string())
             .or_insert_with(|| crate::analysis::AnalysisResult::new(path))
+    }
+
+    /// Discard the transient stack result and per-frame contribution data.
+    /// Called by ClearStack and at the start of a new StackFrames run.
+    pub fn clear_stack(&mut self) {
+        self.stack_result = None;
+        self.stack_contributions.clear();
+        self.stack_summary = None;
     }
 }

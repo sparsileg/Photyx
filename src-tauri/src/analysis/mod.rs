@@ -3,11 +3,13 @@
 
 pub mod background;
 pub mod eccentricity;
+pub mod fft_align;
 pub mod fwhm;
 pub mod metrics;
 pub mod moffat;
 pub mod profiles;
 pub mod session_stats;
+pub mod stack_metrics;
 pub mod stars;
 
 use serde::{Deserialize, Serialize};
