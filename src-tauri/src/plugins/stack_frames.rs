@@ -244,9 +244,17 @@ impl PhotonPlugin for StackFrames {
             count_buf[i] = 1; // sentinel — pixel is valid
         }
 
-        // Normalize output to 0.0–1.0 range
-        let stack_pixels: Vec<f32> = (0..n_pixels)
+        // Collect sigma-clipped means and normalize to 0.0–1.0
+        let raw_pixels: Vec<f32> = (0..n_pixels)
             .map(|i| if count_buf[i] > 0 { sum_buf[i] as f32 } else { 0.0 })
+            .collect();
+
+        let max_val = raw_pixels.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let min_val = raw_pixels.iter().cloned().fold(f32::INFINITY,     f32::min);
+        let range   = (max_val - min_val).max(1e-6);
+
+        let stack_pixels: Vec<f32> = raw_pixels.iter()
+            .map(|&v| ((v - min_val) / range).clamp(0.0, 1.0))
             .collect();
 
         // ── Step 6: Build output ImageBuffer ─────────────────────────────────

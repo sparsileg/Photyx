@@ -51,6 +51,7 @@
 
   const ARG_HINTS: Record<string, string> = {
     abs:                '(#)',
+    addfiles:           'paths=',
     addkeyword:         'name=  value=  comment=',
     analyzeframes:      '',
     assert:             'expression=',
@@ -60,6 +61,7 @@
     cacheframes:        '',
     clear:              '',
     clearannotations:    (_raw: string) => { handleClientCommand('clearannotations'); },
+    clearstack:         '',
     computefwhm:        '',
     contourheatmap:     'palette=[viridis|plasma|coolwarm]  contour_levels=#  threshold=  saturation=',
     copyfile:           'destination=  source=',
@@ -95,13 +97,13 @@
     pwd:                (_raw: string) => { handleClientCommand('pwd'); },
     round:              '(#)',
     runmacro:           'filename=',
-    addfiles:           'paths=',
     set:                '<varname> = <value>',
     setframe:           'index=',
     setzoom:            'level=',
     showanalysisgraph:   (_raw: string) => { handleClientCommand('showanalysisgraph'); },
     showanalysisresults: (_raw: string) => { handleClientCommand('showanalysisresults'); },
     sqrt:               '(#)',
+    stackframes:        '',
     test:               '',
     version:             (_raw: string) => { handleClientCommand('version'); },
     writecurrent:       '',
@@ -324,6 +326,13 @@
       if (filePath) await loadFile(filePath);
     }
     if (cmd === 'setframe') ui.clearAnnotations();
+    if (cmd === 'stackframes' && data?.stack_available) {
+      notifications.success('Stack complete — opening result…');
+      ui.showView('stackResult');
+    }
+    if (cmd === 'clearstack') {
+      ui.showView(null);
+    }
   }
 
   function submit() {

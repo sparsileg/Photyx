@@ -14,6 +14,7 @@ export type ActiveChannel = 'rgb';
 export const VIEWS = [
   'analysisGraph',
   'analysisResults',
+  'stackResult',
 ] as const;
 
 export type ViewName = typeof VIEWS[number];
@@ -23,6 +24,7 @@ export interface UIState {
   activeChannel:       ActiveChannel;
   activePanel:         PanelId;
   activeView:          ViewName | null;
+  analysisParametersOpen: boolean;
   annotationToken:     number;
   autostretchImageUrl: string | null;
   blinkCached:         boolean;
@@ -39,10 +41,10 @@ export interface UIState {
   keywordModalOpen:    boolean;
   logViewerOpen:       boolean;
   macroEditorFile:     { id: number | null; name: string; displayName: string; script: string } | null;
-  analysisParametersOpen: boolean;
   preferencesOpen:     boolean;
   quickLaunchVisible:  boolean;
   showQualityFlags:    boolean;
+  stackImageUrl:       string | null;
   theme:               Theme;
   viewerClearToken:    number;
   zoomLevel:           ZoomLevel;
@@ -53,6 +55,7 @@ const initial: UIState = {
   activeChannel:       'rgb',
   activePanel:         null,
   activeView:          null,
+  analysisParametersOpen: false,
   annotationToken:     0,
   autostretchImageUrl: null,
   blinkCached:         false,
@@ -69,10 +72,10 @@ const initial: UIState = {
   keywordModalOpen:    false,
   logViewerOpen:       false,
   macroEditorFile:     null,
-  analysisParametersOpen: false,
   preferencesOpen:     false,
   quickLaunchVisible:  true,
   showQualityFlags:    true,
+  stackImageUrl:       null,
   theme:               'matrix',   // overwritten by hydrateFromDb()
   viewerClearToken:    0,
   zoomLevel:           'fit',
@@ -136,6 +139,7 @@ function createUIStore() {
     setBlinkFrame:    (url: string | null) => update(s => ({ ...s, blinkImageUrl: url })),
     setAutostretchFrame: (url: string | null) => update(s => ({ ...s, autostretchImageUrl: url })),
     setDisplayImage:  (url: string | null) => update(s => ({ ...s, displayImageUrl: url })),
+    setStackImage:    (url: string | null) => update(s => ({ ...s, stackImageUrl: url })),
     setBlinkCached:   (v: boolean) => update(s => ({ ...s, blinkCached: v })),
     setBlinkCaching:  (v: boolean) => update(s => ({ ...s, blinkCaching: v })),
     setBlinkTabActive:(v: boolean) => update(s => ({ ...s, blinkTabActive: v })),

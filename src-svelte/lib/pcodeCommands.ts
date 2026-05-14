@@ -23,6 +23,10 @@ export const PCODE_COMMANDS = new Set([
   'ListKeywords',
   'ModifyKeyword',
 
+// ── Stacking ─────────────────────────────────────────────────────────────
+  'ClearStack',
+  'StackFrames',
+
   // ── Image analysis ───────────────────────────────────────────────────────
   'AnalyzeFrames',
   'ClearAnnotations',

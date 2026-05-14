@@ -269,6 +269,7 @@ pub fn run() {
             commands::backup::backup_database,
             commands::backup::restore_database,
             commands::display::get_autostretch_frame,
+            commands::display::get_autostretch_stack_frame,
             commands::display::get_blink_cache_status,
             commands::display::get_blink_frame,
             commands::display::get_current_frame,

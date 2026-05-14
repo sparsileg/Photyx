@@ -71,6 +71,7 @@ impl PhotonPlugin for AutoStretch {
 // Called by both the plugin execute() and the get_autostretch_frame Tauri command.
 // Returns raw JPEG bytes — no caching, no side effects on AppContext.
 
+/// Compute an auto-stretched JPEG from the current session frame.
 pub fn compute_autostretch_jpeg(
     ctx: &AppContext,
     shadow_clip: f32,
@@ -82,6 +83,15 @@ pub fn compute_autostretch_jpeg(
     let buffer = ctx.image_buffers.get(path)
         .ok_or_else(|| "Image buffer not found".to_string())?;
 
+    compute_autostretch_jpeg_from_buffer(buffer, shadow_clip, target_bg)
+}
+
+/// Compute an auto-stretched JPEG from any ImageBuffer directly.
+pub fn compute_autostretch_jpeg_from_buffer(
+    buffer: &crate::context::ImageBuffer,
+    shadow_clip: f32,
+    target_bg: f32,
+) -> Result<Vec<u8>, String> {
     let pixels = buffer.pixels.as_ref()
         .ok_or_else(|| "No pixel data".to_string())?;
 

@@ -13,9 +13,10 @@
   import MacroEditor from '../lib/components/panels/MacroEditor.svelte';
   import MenuBar from '../lib/components/MenuBar.svelte';
   import PreferencesDialog from '../lib/components/PreferencesDialog.svelte';
-  import ThresholdProfilesDialog from '../lib/components/ThresholdProfilesDialog.svelte';
   import QuickLaunch from '../lib/components/QuickLaunch.svelte';
+  import StackResult from '../lib/components/StackResult.svelte';
   import StatusBar from '../lib/components/StatusBar.svelte';
+  import ThresholdProfilesDialog from '../lib/components/ThresholdProfilesDialog.svelte';
   import Toolbar from '../lib/components/Toolbar.svelte';
   import Viewer from '../lib/components/Viewer.svelte';
   import type { HelpEntry } from '../lib/pcodeHelp';
@@ -186,6 +187,8 @@
       <AnalysisGraph />
     {:else if $ui.activeView === 'analysisResults'}
       <AnalysisResults />
+    {:else if $ui.activeView === 'stackResult'}
+      <StackResult />
     {:else}
       <Viewer onMousePixel={onMousePixel} />
     {/if}
