@@ -138,7 +138,14 @@ Rotation and scale correction are **not** implemented in the initial version. Th
 - Frames that failed filter validation or alignment validation are excluded from the sum
 - The sigma-clipped mean is computed per pixel across all contributing frames
 
-#### Stage 5 — Stretch for Display
+#### Stage 5 — Debayer (Bayer input only)
+
+- If the input frames have `ColorSpace::Bayer`, the stacked mono result is debayered
+  using the existing `DebayerImage` infrastructure (Bilinear method by default)
+- The debayered output is RGB; the `ImageBuffer` color space is updated accordingly
+- Mono input frames produce a mono stack result — no debayering is performed
+
+#### Stage 6 — Stretch for Display
 
 - Apply Auto-STF using the existing `AutoStretch` plugin
 - The existing implementation is PixInsight-compatible and handles both mono and RGB
@@ -446,7 +453,8 @@ All items required to surface the result to the user.
 
 | Task                                         | Notes                                                                               |
 | -------------------------------------------- | ----------------------------------------------------------------------------------- |
-| AutoStretch on stack result                  | Reuse existing `AutoStretch` plugin                                                 |
+| Debayer stack result for Bayer input         | Apply bilinear debayer to stacked mono Bayer result; output becomes RGB             |
+| AutoStretch on stack result                  |                                                                                     |
 | Stack result viewer label overlay            | Distinct style from normal filename overlay; shows frame count and timestamp        |
 | Stacking method select control               | UI control; sigma clipping default                                                  |
 | Progress reporting to console and status bar | Per-frame progress; `notifications.running()` / `notifications.success()`           |

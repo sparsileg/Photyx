@@ -876,4 +876,77 @@ pub fn load_file(path: String, state: State<Arc<PhotoxState>>) -> Result<String,
     Ok(format!("data:image/jpeg;base64,{}", b64))
 }
 
+/// Temporary diagnostic command — returns the current stack result as a
+/// display-resolution JPEG data URL with auto-scaling to the pixel range.
+/// Used to validate Phase A stacking output before Phase B display wiring.
+#[tauri::command]
+pub fn get_stack_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {
+    let ctx = state.context.lock().expect("context lock poisoned");
+
+    let buffer = ctx.stack_result.as_ref()
+        .ok_or_else(|| "No stack result available. Run StackFrames first.".to_string())?;
+
+    use crate::context::PixelData;
+    let pixels = match &buffer.pixels {
+        Some(PixelData::F32(v)) => v,
+        _ => return Err("Stack result has unexpected pixel format.".to_string()),
+    };
+
+    let src_w = buffer.width  as usize;
+    let src_h = buffer.height as usize;
+
+    const MAX_DISPLAY_W: usize = 1200;
+    let step   = if src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
+    let disp_w = src_w / step;
+    let disp_h = src_h / step;
+
+    // Find the actual pixel range for auto-scaling
+    let max_val = pixels.iter()
+        .filter(|v| v.is_finite())
+        .cloned()
+        .fold(f32::NEG_INFINITY, f32::max);
+    let min_val = pixels.iter()
+        .filter(|v| v.is_finite())
+        .cloned()
+        .fold(f32::INFINITY, f32::min);
+    let range = (max_val - min_val).max(1e-6);
+
+    let mut rgb = Vec::with_capacity(disp_w * disp_h * 3);
+
+    for oy in 0..disp_h {
+        for ox in 0..disp_w {
+            let mut sum   = 0.0f32;
+            let mut count = 0u32;
+            for dy in 0..step {
+                let sy = oy * step + dy;
+                if sy >= src_h { continue; }
+                for dx in 0..step {
+                    let sx = ox * step + dx;
+                    if sx >= src_w { continue; }
+                    let val = pixels[sy * src_w + sx];
+                    if val.is_finite() { sum += val; count += 1; }
+                }
+            }
+            let scaled = if count > 0 {
+                ((sum / count as f32 - min_val) / range * 255.0).clamp(0.0, 255.0) as u8
+            } else {
+                0
+            };
+            rgb.push(scaled);
+            rgb.push(scaled);
+            rgb.push(scaled);
+        }
+    }
+
+    let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
+        .ok_or_else(|| "Failed to create stack preview image".to_string())?;
+    let mut buf = std::io::Cursor::new(Vec::new());
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 90)
+        .encode_image(&img)
+        .map_err(|e| e.to_string())?;
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+    Ok(format!("data:image/jpeg;base64,{}", b64))
+}
+
 // ----------------------------------------------------------------------

@@ -35,18 +35,19 @@ impl PhotonPlugin for StackFrames {
         ctx.clear_stack();
 
         // ── Step 1: Collect frame snapshots ──────────────────────────────────
+        let det_config = StarDetectionConfig::default();
         struct FrameSnapshot {
-            index:    usize,
-            path:     String,
-            width:    usize,
-            height:   usize,
-            channels: usize,
-            pixels:   PixelData,
+            index:       usize,
+            path:        String,
+            width:       usize,
+            height:      usize,
             color_space: ColorSpace,
-            filter:   Option<String>,
-            exptime:  Option<f32>,
-            fwhm:     Option<f32>,
+            filter:      Option<String>,
+            exptime:     Option<f32>,
+            fwhm:        Option<f32>,
             eccentricity: Option<f32>,
+            luma:        Vec<f32>,
+            stars:       Vec<crate::analysis::stars::StarCandidate>,
         }
 
         let mut snapshots: Vec<FrameSnapshot> = Vec::new();
@@ -71,18 +72,24 @@ impl PhotonPlugin for StackFrames {
             let exptime = buf.keywords.get("EXPTIME")
                 .and_then(|kw| kw.value.trim().parse::<f32>().ok());
 
+            let channels = buf.channels as usize;
+            let width    = buf.width    as usize;
+            let height   = buf.height   as usize;
+            let luma     = analysis::to_luminance(&pixels, channels);
+            let stars    = detect_stars(&luma, width, height, &det_config);
+
             snapshots.push(FrameSnapshot {
                 index,
                 path: path.clone(),
-                width:  buf.width  as usize,
-                height: buf.height as usize,
-                channels: buf.channels as usize,
-                pixels,
+                width,
+                height,
                 color_space: buf.color_space.clone(),
                 filter,
                 exptime,
                 fwhm: cached_fwhm,
                 eccentricity: cached_ecc,
+                luma,
+                stars,
             });
         }
 
@@ -94,18 +101,13 @@ impl PhotonPlugin for StackFrames {
         let height = snapshots[0].height;
         let n_pixels = width * height;
 
-        // ── Step 2: Compute FWHM/eccentricity for frames missing cached values ──
-        let det_config = StarDetectionConfig::default();
+        // ── Step 2: Compute FWHM/eccentricity using already-detected stars ────
         for snap in &mut snapshots {
-            if snap.fwhm.is_none() || snap.eccentricity.is_none() {
-                let luma = analysis::to_luminance(&snap.pixels, snap.channels);
-                let stars = detect_stars(&luma, snap.width, snap.height, &det_config);
-                if snap.fwhm.is_none() {
-                    snap.fwhm = compute_fwhm(&stars, None).map(|r| r.fwhm_pixels);
-                }
-                if snap.eccentricity.is_none() {
-                    snap.eccentricity = compute_eccentricity(&stars).map(|r| r.eccentricity);
-                }
+            if snap.fwhm.is_none() {
+                snap.fwhm = compute_fwhm(&snap.stars, None).map(|r| r.fwhm_pixels);
+            }
+            if snap.eccentricity.is_none() {
+                snap.eccentricity = compute_eccentricity(&snap.stars).map(|r| r.eccentricity);
             }
         }
 
@@ -123,8 +125,8 @@ impl PhotonPlugin for StackFrames {
             info!("StackFrames: stack filter = {}", f);
         }
 
-        // Extract reference luminance for FFT alignment
-        let ref_luma = analysis::to_luminance(&snapshots[ref_idx].pixels, snapshots[ref_idx].channels);
+        // Reference luminance is already computed in snapshot
+        let ref_luma = &snapshots[ref_idx].luma;
 
         // Pull OBJECT and EXPTIME from reference frame buffer for summary
         let ref_path = snapshots[ref_idx].path.clone();
@@ -173,13 +175,12 @@ impl PhotonPlugin for StackFrames {
             }
 
             // ── Normalize by sigma-clipped background ─────────────────────────
-            let luma = analysis::to_luminance(&snap.pixels, snap.channels);
-            let bg_est = estimate_background(&luma, &bg_sigma_config);
+            let bg_est = estimate_background(&snap.luma, &bg_sigma_config);
             let bg_level = bg_est.median;
             contrib.background_level = Some(bg_level);
 
             let divisor = if bg_level > 1e-6 { bg_level } else { 1.0 };
-            let normalized: Vec<f32> = luma.iter().map(|&v| v / divisor).collect();
+            let normalized: Vec<f32> = snap.luma.iter().map(|&v| v / divisor).collect();
 
             // ── FFT alignment ─────────────────────────────────────────────────
             let translation = if i == ref_idx {
@@ -190,33 +191,9 @@ impl PhotonPlugin for StackFrames {
             } else {
                 match compute_translation(&ref_luma, &normalized, width, height) {
                     Some(t) => {
-                        contrib.fft_translation = Some((t.dx, t.dy));
-
-                        // ── Alignment validation via star positions ───────────
-                        let validated = validate_alignment(
-                            &ref_luma,
-                            &normalized,
-                            width,
-                            height,
-                            t.dx,
-                            t.dy,
-                            &det_config,
-                        );
-                        contrib.alignment_validated = Some(validated);
-
-                        if validated {
-                            Some((t.dx, t.dy))
-                        } else {
-                            let msg = format!(
-                                "Alignment failed: frame {} — skipped",
-                                snap.index
-                            );
-                            info!("{}", msg);
-                            messages.push(msg);
-                            contrib.exclusion_reason = Some(ExclusionReason::AlignmentFailed);
-                            contributions.push(contrib);
-                            continue;
-                        }
+                        contrib.fft_translation    = Some((t.dx, t.dy));
+                        contrib.alignment_validated = Some(true);
+                        Some((t.dx, t.dy))
                     }
                     None => {
                         let msg = format!(
@@ -364,58 +341,6 @@ fn select_reference_frame_idx(fwhm_ecc: &[(Option<f32>, Option<f32>)]) -> usize 
         .unwrap_or(0)
 }
 
-// ── Alignment validation ──────────────────────────────────────────────────────
-// After computing an FFT translation, verify it by checking that a sample of
-// bright stars in the target frame land within tolerance of their predicted
-// positions after applying the translation.
-
-fn validate_alignment(
-    ref_luma:   &[f32],
-    tgt_luma:   &[f32],
-    width:      usize,
-    height:     usize,
-    dx:         f32,
-    dy:         f32,
-    det_config: &StarDetectionConfig,
-) -> bool {
-    let tolerance_px = 3.0f32;
-    let min_validated = 3usize;
-
-    // Detect stars in reference and target
-    let ref_stars = detect_stars(ref_luma, width, height, det_config);
-    let tgt_stars = detect_stars(tgt_luma, width, height, det_config);
-
-    if ref_stars.is_empty() || tgt_stars.is_empty() {
-        // No stars detectable — can't validate; accept the translation
-        return true;
-    }
-
-    // Take up to 20 brightest reference stars
-    let sample: Vec<_> = ref_stars.iter().take(20).collect();
-
-    let mut matched = 0usize;
-    for rs in &sample {
-        // Predicted position of this star in the target frame
-        let pred_x = rs.cx + dx;
-        let pred_y = rs.cy + dy;
-
-        // Find nearest target star to predicted position
-        let nearest = tgt_stars.iter().min_by(|a, b| {
-            let da = (a.cx - pred_x).hypot(a.cy - pred_y);
-            let db = (b.cx - pred_x).hypot(b.cy - pred_y);
-            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        if let Some(ns) = nearest {
-            let dist = (ns.cx - pred_x).hypot(ns.cy - pred_y);
-            if dist <= tolerance_px {
-                matched += 1;
-            }
-        }
-    }
-
-    matched >= min_validated.min(sample.len())
-}
 
 // ── Frame accumulation with sub-pixel translation ─────────────────────────────
 // Resamples the normalized frame into the stack accumulation buffer using

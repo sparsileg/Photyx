@@ -9,7 +9,8 @@
         "beforeBuildCommand": "npm run build",
         "frontendDist": "../build"
     },
-    "app": {
+  "app": {
+        "withGlobalTauri": true,
         "windows": [
             {
                 "title": "Photyx",
