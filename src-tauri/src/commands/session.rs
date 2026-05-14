@@ -9,9 +9,8 @@ use crate::db;
 pub fn get_session(state: State<Arc<PhotoxState>>) -> serde_json::Value {
     let ctx = state.context.lock().expect("context lock poisoned");
     serde_json::json!({
-        "activeDirectory": ctx.active_directory,
-        "fileList":        ctx.file_list,
-        "currentFrame":    ctx.current_frame,
+        "fileList":     ctx.file_list,
+        "currentFrame": ctx.current_frame,
     })
 }
 
@@ -93,16 +92,14 @@ pub fn do_write_crash_recovery(state: &PhotoxState) -> Result<(), String> {
     let autostretch_enabled: i64 = 1;
     db.execute(
         "INSERT INTO crash_recovery
-             (id, active_directory, file_list, current_frame_index, autostretch_enabled, written_at)
-         VALUES (1, ?1, ?2, ?3, ?4, ?5)
+             (id, file_list, current_frame_index, autostretch_enabled, written_at)
+         VALUES (1, ?1, ?2, ?3, ?4)
          ON CONFLICT(id) DO UPDATE SET
-             active_directory    = excluded.active_directory,
              file_list           = excluded.file_list,
              current_frame_index = excluded.current_frame_index,
              autostretch_enabled = excluded.autostretch_enabled,
              written_at          = excluded.written_at",
         rusqlite::params![
-            ctx.active_directory,
             file_list,
             ctx.current_frame as i64,
             autostretch_enabled,
@@ -136,14 +133,13 @@ pub fn check_crash_recovery(state: State<Arc<PhotoxState>>) -> Result<Option<ser
     );
 
     let result = db.query_row(
-        "SELECT active_directory, file_list, current_frame_index, written_at
+        "SELECT file_list, current_frame_index, written_at
          FROM crash_recovery WHERE id = 1",
         [],
         |row| Ok(serde_json::json!({
-            "active_directory":    row.get::<_, Option<String>>(0)?,
-            "file_list":           row.get::<_, Option<String>>(1)?,
-            "current_frame_index": row.get::<_, Option<i64>>(2)?,
-            "written_at":          row.get::<_, i64>(3)?,
+            "file_list":           row.get::<_, Option<String>>(0)?,
+            "current_frame_index": row.get::<_, Option<i64>>(1)?,
+            "written_at":          row.get::<_, i64>(2)?,
         })),
     ).ok();
     Ok(result)

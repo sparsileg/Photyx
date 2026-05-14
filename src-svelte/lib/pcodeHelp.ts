@@ -20,59 +20,17 @@ export interface HelpEntry {
 
 export const HELP_DB: Record<string, HelpEntry> = {
 
-  // ── File / Session ────────────────────────────────────────────────────────
+  // ── File / Session ──────────────────────────────────────────────────────
 
-  selectdirectory: {
-    name:        'SelectDirectory',
-    description: 'Sets the active working directory for the current session. All relative paths in subsequent commands resolve against this directory.',
-    syntax:      'SelectDirectory path=<path>',
+  addfiles: {
+    name:        'AddFiles',
+    description: 'Appends a list of explicit file paths to the session. Files already loaded are skipped. Use ClearSession first if you want to start fresh.',
+    syntax:      'AddFiles paths=<path>[,<path>...]',
     arguments: [
-      { name: 'path', type: 'path', required: true, description: 'Full path to the directory to activate' },
+      { name: 'paths', type: 'string', required: true, description: 'Comma-separated list of full file paths to load' },
     ],
-    output:  'Sets the session active directory. Clears the current file list.',
-    example: 'SelectDirectory path="D:/Astrophotos/M31/Lights"',
-  },
-
-  readfit: {
-    name:        'ReadFIT',
-    description: 'Loads a single FITS file into the session.',
-    syntax:      'ReadFIT path=<path>',
-    arguments: [
-      { name: 'path', type: 'path', required: true, description: 'Full path to the FITS file to load' },
-    ],
-    output:  'Adds the file to the session file list and displays it in the viewer.',
-    example: 'ReadFIT path="D:/Astrophotos/M31/frame001.fit"',
-  },
-
-  readtiff: {
-    name:        'ReadTIFF',
-    description: 'Loads a single TIFF file into the session.',
-    syntax:      'ReadTIFF path=<path>',
-    arguments: [
-      { name: 'path', type: 'path', required: true, description: 'Full path to the TIFF file to load' },
-    ],
-    output:  'Adds the file to the session file list and displays it in the viewer.',
-    example: 'ReadTIFF path="D:/Astrophotos/M31/frame001.tif"',
-  },
-
-  readxisf: {
-    name:        'ReadXISF',
-    description: 'Loads a single XISF file into the session.',
-    syntax:      'ReadXISF path=<path>',
-    arguments: [
-      { name: 'path', type: 'path', required: true, description: 'Full path to the XISF file to load' },
-    ],
-    output:  'Adds the file to the session file list and displays it in the viewer.',
-    example: 'ReadXISF path="D:/Astrophotos/M31/frame001.xisf"',
-  },
-
-  readall: {
-    name:        'ReadAll',
-    description: 'Loads all supported image files (FITS, TIFF, XISF) from the active directory into the session.',
-    syntax:      'ReadAll',
-    arguments:   [],
-    output:  'Populates the session file list with all supported files found in the active directory.',
-    example: 'SelectDirectory path="D:/Astrophotos/M31/Lights"\nReadAll',
+    output:  'Appends the specified files to the session file list.',
+    example: 'AddFiles paths="D:/M31/frame001.fit,D:/M31/frame002.fit"',
   },
 
   writefit: {
@@ -177,7 +135,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'LoadFile path="D:/Heatmaps/fwhm_heatmap.xisf"',
   },
 
-  // ── Keywords ──────────────────────────────────────────────────────────────
+  // ── Keywords ────────────────────────────────────────────────────────────
 
   addkeyword: {
     name:        'AddKeyword',
@@ -251,7 +209,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'GetKeyword name=EXPTIME\nPrint $EXPTIME',
   },
 
-  // ── Analysis ──────────────────────────────────────────────────────────────
+  // ── Analysis ────────────────────────────────────────────────────────────
 
   autostretch: {
     name:        'AutoStretch',
@@ -271,7 +229,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
     syntax:      'AnalyzeFrames',
     arguments:   [],
     output:  'Populates analysis results for all frames. Results visible in Analysis Results and Analysis Graph views.',
-    example: 'ReadAll\nAnalyzeFrames',
+    example: 'SelectFiles paths="D:/M31/Lights"\nAnalyzeFrames',
   },
 
   computefwhm: {
@@ -312,19 +270,19 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   contourheatmap: {
     name:        'ContourHeatmap',
-    description: 'Generates a false-color heatmap of a metric (e.g. FWHM) across all frames, showing spatial variation across the sensor.',
+    description: 'Generates a false-color heatmap of FWHM across the current frame, showing spatial focus variation across the sensor.',
     syntax:      'ContourHeatmap [palette=viridis|plasma|coolwarm] [contour_levels=<int>] [threshold=<float>] [saturation=<float>]',
     arguments: [
-      { name: 'palette',        type: 'string', required: false, default: 'viridis', description: 'Color palette: viridis, plasma, or coolwarm' },
-      { name: 'contour_levels', type: 'integer', required: false, default: '10',     description: 'Number of contour levels' },
-      { name: 'threshold',      type: 'float',  required: false,                    description: 'Rejection threshold for outlier pixels' },
-      { name: 'saturation',     type: 'float',  required: false, default: '1.0',    description: 'Color saturation multiplier' },
+      { name: 'palette',        type: 'string',  required: false, default: 'viridis', description: 'Color palette: viridis, plasma, or coolwarm' },
+      { name: 'contour_levels', type: 'integer', required: false, default: '10',      description: 'Number of contour levels' },
+      { name: 'threshold',      type: 'float',   required: false,                     description: 'Rejection threshold for outlier pixels' },
+      { name: 'saturation',     type: 'float',   required: false, default: '1.0',     description: 'Color saturation multiplier' },
     ],
     output:  'Generates a heatmap image and loads it in the viewer.',
     example: 'ContourHeatmap palette=plasma contour_levels=12',
   },
 
-  // ── Scripting ─────────────────────────────────────────────────────────────
+  // ── Scripting ───────────────────────────────────────────────────────────
 
   set: {
     name:        'Set',
@@ -371,13 +329,13 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   runmacro: {
     name:        'RunMacro',
-    description: 'Executes a saved .phs macro file. Bare filenames (without path) are resolved from the Macros directory automatically.',
-    syntax:      'RunMacro filename=<path>',
+    description: 'Executes a saved macro by name from the database.',
+    syntax:      'RunMacro name=<string>',
     arguments: [
-      { name: 'filename', type: 'path', required: true, description: 'Path to the .phs macro file, or bare name to resolve from Macros directory' },
+      { name: 'name', type: 'string', required: true, description: 'Name of the macro to execute' },
     ],
-    output:  'Executes all commands in the macro file. Print output appears in the console.',
-    example: 'RunMacro filename="my-workflow"\nRunMacro filename="D:/Macros/sort-rejects.phs"',
+    output:  'Executes all commands in the macro. Print output appears in the console.',
+    example: 'RunMacro name="my-workflow"',
   },
 
   log: {
@@ -392,7 +350,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'Log path="D:/logs/session.log" append=true',
   },
 
-  // ── View / Display ────────────────────────────────────────────────────────
+  // ── View / Display ──────────────────────────────────────────────────────
 
   setframe: {
     name:        'SetFrame',
@@ -425,7 +383,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'CacheFrames\nBlinkSequence fps=3',
   },
 
-  // ── Console only ──────────────────────────────────────────────────────────
+  // ── Console only ────────────────────────────────────────────────────────
 
   help: {
     name:        'Help',
@@ -458,10 +416,10 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   pwd: {
     name:        'pwd',
-    description: 'Prints the current active directory.',
+    description: 'Prints the unique source directories of all files currently loaded in the session.',
     syntax:      'pwd',
     arguments:   [],
-    output:  'Outputs the active directory path to the console.',
+    output:  'Outputs one directory path per line to the console.',
     example: 'pwd',
   },
 };

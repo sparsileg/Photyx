@@ -71,23 +71,10 @@
       console.error('DB hydration failed:', e);
     }
 
-    // Restore last directory — set both frontend store and Rust ctx.active_directory
-    try {
-      const lastDir = prefs['last_directory'];
-      if (lastDir) {
-        session.setDirectory(lastDir);
-        await invoke('dispatch_command', {
-          request: { command: 'SelectDirectory', args: { path: lastDir } }
-        });
-      }
-    } catch (e) {
-      console.error('Failed to restore last directory:', e);
-    }
-
     // Check for crash recovery candidate
     try {
       const recovery = await db.checkCrashRecovery();
-      if (recovery?.active_directory) {
+      if (recovery?.file_list) {
         showRecoveryOffer = true;
         pendingRecovery = recovery;
       }
@@ -101,24 +88,23 @@
   // Crash recovery state
   let showRecoveryOffer = $state(false);
   let pendingRecovery = $state<{
-    active_directory: string | null;
     file_list: string | null;
     current_frame_index: number | null;
     written_at: number;
   } | null>(null);
 
   async function acceptRecovery() {
-    if (!pendingRecovery?.active_directory) return;
+    if (!pendingRecovery?.file_list) return;
     showRecoveryOffer = false;
-    const dir = pendingRecovery.active_directory;
     try {
-      await invoke('run_script', {
-        script: `SelectDirectory path="${dir}"\nReadAll`
-      });
-      session.setDirectory(dir);
-      await db.setPreference('last_directory', dir);
-      await db.openSession(dir, 0);
-      await syncSessionState();
+      const paths = JSON.parse(pendingRecovery.file_list) as string[];
+      if (paths.length > 0) {
+        const pathsArg = paths.map(p => p.replace(/\\/g, '/')).join(',');
+        await invoke('dispatch_command', {
+          request: { command: 'SelectFiles', args: { paths: pathsArg } }
+        });
+        await syncSessionState();
+      }
     } catch (e) {
       console.error('Session recovery failed:', e);
     }
@@ -134,11 +120,9 @@
 
   async function syncSessionState() {
     const state = await invoke<{
-      activeDirectory: string | null;
       fileList: string[];
       currentFrame: number;
     }>('get_session');
-    if (state.activeDirectory) session.setDirectory(state.activeDirectory);
     session.setFileList(state.fileList);
     session.setCurrentFrame(state.currentFrame);
   }
@@ -180,7 +164,7 @@
 
 {#if showRecoveryOffer && pendingRecovery}
   <div class="recovery-bar">
-    <span>A previous session was not closed cleanly. Restore <strong>{pendingRecovery.active_directory}</strong>?</span>
+    <span>A previous session was not closed cleanly. Restore {JSON.parse(pendingRecovery.file_list ?? '[]').length} file(s)?</span>
     <button onclick={acceptRecovery}>Restore</button>
     <button onclick={dismissRecovery}>Dismiss</button>
   </div>

@@ -169,8 +169,7 @@
         }
       }
       if (response.session_changed) {
-        const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
-        session.setDirectory(s.activeDirectory ?? '');
+        const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
         session.setFileList(s.fileList);
       }
       // Dispatch client actions returned by Rust — no command-name matching needed

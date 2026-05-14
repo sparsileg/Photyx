@@ -4,7 +4,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { ui } from '../stores/ui';
   import { notifications } from '../stores/notifications';
-  import { closeSession } from '../commands';
+  import { session } from '../stores/session';
 
   interface FrameResult {
     index: number;
@@ -160,14 +160,15 @@
       }
     }
 
-    // Commit is terminal — close view, clear displayed image, close session
     notifications.running('Committing results…');
     try {
       const msg = await invoke<string>('commit_analysis_results');
       notifications.success(msg);
+      const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
+      session.setFileList(s.fileList);
+      session.setCurrentFrame(s.currentFrame);
       ui.showView(null);
       ui.clearViewer();
-      await closeSession();
     } catch (e) {
       notifications.error(`Commit failed: ${e}`);
     }

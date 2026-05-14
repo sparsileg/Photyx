@@ -116,8 +116,7 @@ pub struct ScriptResult {
 
 // Commands that modify the session file list or active directory.
 const SESSION_COMMANDS: &[&str] = &[
-    "readfit", "readtiff", "readxisf", "readall",
-    "selectdirectory", "clearsession", "movefile", "runmacro",
+    "addfiles", "clearsession", "movefile", "runmacro",
 ];
 
 // Commands that alter the pixel data currently displayed in the viewer.
@@ -201,12 +200,8 @@ pub fn run() {
     registry.register(Arc::new(plugins::keywords::DeleteKeyword));
     registry.register(Arc::new(plugins::keywords::ModifyKeyword));
     registry.register(Arc::new(plugins::list_keywords::ListKeywords));
-    registry.register(Arc::new(plugins::read_all_files::ReadAll));
-    registry.register(Arc::new(plugins::read_fits::ReadFIT));
-    registry.register(Arc::new(plugins::read_tiff::ReadTIFF));
-    registry.register(Arc::new(plugins::read_xisf::ReadXISF));
     registry.register(Arc::new(plugins::run_macro::RunMacro));
-    registry.register(Arc::new(plugins::select_directory::SelectDirectory));
+    registry.register(Arc::new(plugins::add_files::AddFiles));
     registry.register(Arc::new(plugins::set_frame::SetFrame));
     registry.register(Arc::new(plugins::star_count::CountStarsPlugin));
     registry.register(Arc::new(plugins::write_current_files::WriteCurrent));

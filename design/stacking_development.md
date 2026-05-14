@@ -26,10 +26,10 @@ This is **not** a production-quality stacker. It is a **diagnostic preview tool*
 
 Two distinct stacking modes are defined. They share the same core pipeline but differ in how frames are delivered. They are explicitly separated — do not conflate them during design or implementation.
 
-| Mode | Description | Release |
-|---|---|---|
-| **Batch diagnostic** | Stack all currently loaded frames on demand | First release |
-| **Live stack** | Incrementally stack frames as they arrive from the file system, with real-time display update on every new frame | Second release |
+| Mode                 | Description                                                                                                      | Release        |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------- |
+| **Batch diagnostic** | Stack all currently loaded frames on demand                                                                      | First release  |
+| **Live stack**       | Incrementally stack frames as they arrive from the file system, with real-time display update on every new frame | Second release |
 
 Live stacking requires three components that must ship together: file system watching (`notify` crate), a background accumulation thread, and incremental display update on every new frame. Implementing any one without the others produces no useful result. Live stacking is deferred to the second release in its entirety.
 
@@ -186,28 +186,28 @@ report quality summary to console
 
 #### Existing Infrastructure Reused
 
-| Component | Reuse |
-|---|---|
-| `analysis/stars.rs` | Star detection for alignment validation |
-| `analysis/background.rs` | Sigma-clipped background for normalization |
-| `AutoStretch` plugin | Stretch for display |
-| `AppContext.image_buffers` | Source frames |
-| `get_current_frame` display path | Render stacked result |
-| pcode console + `consolePipe` | Progress and error reporting |
-| `notifications.running()` | Status bar pulse during operation |
+| Component                        | Reuse                                      |
+| -------------------------------- | ------------------------------------------ |
+| `analysis/stars.rs`              | Star detection for alignment validation    |
+| `analysis/background.rs`         | Sigma-clipped background for normalization |
+| `AutoStretch` plugin             | Stretch for display                        |
+| `AppContext.image_buffers`       | Source frames                              |
+| `get_current_frame` display path | Render stacked result                      |
+| pcode console + `consolePipe`    | Progress and error reporting               |
+| `notifications.running()`        | Status bar pulse during operation          |
 
 #### New Infrastructure Required
 
-| Component | Notes |
-|---|---|
-| `StackFrames` plugin | Built-in native plugin; wraps the stacking pipeline |
-| `ClearStack` plugin | Built-in native plugin; discards transient stack buffer |
-| FFT phase correlation | New Rust implementation; candidate crate: `rustfft` |
+| Component                    | Notes                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| `StackFrames` plugin         | Built-in native plugin; wraps the stacking pipeline                           |
+| `ClearStack` plugin          | Built-in native plugin; discards transient stack buffer                       |
+| FFT phase correlation        | New Rust implementation; candidate crate: `rustfft`                           |
 | Transient `ImageBuffer` slot | Mechanism to hold a stacked result in `AppContext` without a source file path |
-| Alignment validation logic | Thin wrapper coordinating FFT result + star position check |
-| Stack quality computation | Composite metric from SNR estimate, alignment rate, background uniformity |
-| Stack result XISF writer | Auto-write to active directory on completion |
-| Stack result viewer label | Overlay distinct from normal filename overlay |
+| Alignment validation logic   | Thin wrapper coordinating FFT result + star position check                    |
+| Stack quality computation    | Composite metric from SNR estimate, alignment rate, background uniformity     |
+| Stack result XISF writer     | Auto-write to active directory on completion                                  |
+| Stack result viewer label    | Overlay distinct from normal filename overlay                                 |
 
 #### Plugin Classification
 
@@ -273,13 +273,13 @@ Or closing the stack result viewer via the Close / `ClearStack` command.
 
 ### 4.4 Required Infrastructure
 
-| Component | Notes |
-|---|---|
-| `notify` crate | File system watching — already in the planned crate list (spec §4.3) |
-| Background accumulation thread | Runs independently of the UI thread; communicates via channels |
-| Incremental display update | Triggers a viewer refresh on every new frame; uses existing `ui.requestFrameRefresh()` pattern |
-| `LiveStack` plugin | Built-in native plugin; starts the file watcher and accumulation thread |
-| `StopLiveStack` plugin | Built-in native plugin; stops the watcher and accumulation thread gracefully |
+| Component                      | Notes                                                                                          |
+| ------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `notify` crate                 | File system watching — already in the planned crate list (spec §4.3)                           |
+| Background accumulation thread | Runs independently of the UI thread; communicates via channels                                 |
+| Incremental display update     | Triggers a viewer refresh on every new frame; uses existing `ui.requestFrameRefresh()` pattern |
+| `LiveStack` plugin             | Built-in native plugin; starts the file watcher and accumulation thread                        |
+| `StopLiveStack` plugin         | Built-in native plugin; stops the watcher and accumulation thread gracefully                   |
 
 ### 4.5 Pipeline
 
@@ -345,45 +345,45 @@ Live stacking is particularly valuable during development and integration of adv
 
 Estimates assume the Photyx plugin and display infrastructure is already in place (it is).
 
-| Component | Estimated Effort |
-|---|---|
-| Load + normalize (via `background.rs`) | 2–4 hours |
-| FFT phase correlation (`rustfft`) | 4–6 hours |
-| Alignment validation (via `stars.rs`) | 2–3 hours |
-| Average stacking | 2–3 hours |
-| `StackFrames` plugin integration | 4–6 hours |
-| `ClearStack` plugin | 1 hour |
-| Progress reporting | 1–2 hours |
-| Stack quality score | 2–3 hours |
-| Stack result naming, auto-write, viewer label | 2–3 hours |
-| **Total** | **~20–31 hours** |
+| Component                                     | Estimated Effort |
+| --------------------------------------------- | ---------------- |
+| Load + normalize (via `background.rs`)        | 2–4 hours        |
+| FFT phase correlation (`rustfft`)             | 4–6 hours        |
+| Alignment validation (via `stars.rs`)         | 2–3 hours        |
+| Average stacking                              | 2–3 hours        |
+| `StackFrames` plugin integration              | 4–6 hours        |
+| `ClearStack` plugin                           | 1 hour           |
+| Progress reporting                            | 1–2 hours        |
+| Stack quality score                           | 2–3 hours        |
+| Stack result naming, auto-write, viewer label | 2–3 hours        |
+| **Total**                                     | **~20–31 hours** |
 
 ### 7.2 Live Stacking (Second Release)
 
-| Component | Estimated Effort |
-|---|---|
-| `notify` crate integration + file watcher | 3–5 hours |
-| Background accumulation thread + channel architecture | 4–6 hours |
-| Incremental display update on each new frame | 2–3 hours |
-| `LiveStack` and `StopLiveStack` plugins | 2–3 hours |
-| Periodic auto-write | 1–2 hours |
-| **Total** | **~12–19 hours** |
+| Component                                             | Estimated Effort |
+| ----------------------------------------------------- | ---------------- |
+| `notify` crate integration + file watcher             | 3–5 hours        |
+| Background accumulation thread + channel architecture | 4–6 hours        |
+| Incremental display update on each new frame          | 2–3 hours        |
+| `LiveStack` and `StopLiveStack` plugins               | 2–3 hours        |
+| Periodic auto-write                                   | 1–2 hours        |
+| **Total**                                             | **~12–19 hours** |
 
 ---
 
 ## 8. Future Enhancements (Beyond Second Release)
 
-| Enhancement | Notes |
-|---|---|
-| Rotation and scale alignment | Extend FFT/star-match to solve similarity transform |
-| Median stacking | More robust; slower |
-| Sigma-clipped mean | Better rejection of outliers; more complex |
-| Star rejection | Per-pixel outlier rejection based on star positions |
-| Background normalization across frames | Useful for sessions with variable sky background |
-| Calibration frame support | Bias, dark, flat subtraction |
-| Rejection map | Visual overlay showing which pixels were rejected across frames; saved as an image viewable by the user |
-| Per-frame contribution display | Analysis Graph-style visualization of per-frame stacking metrics (see §3.9) |
-| Graphical stack quality display | UI component for stack quality score; placement TBD |
+| Enhancement                            | Notes                                                                                                   |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Rotation and scale alignment           | Extend FFT/star-match to solve similarity transform                                                     |
+| Median stacking                        | More robust; slower                                                                                     |
+| Sigma-clipped mean                     | Better rejection of outliers; more complex                                                              |
+| Star rejection                         | Per-pixel outlier rejection based on star positions                                                     |
+| Background normalization across frames | Useful for sessions with variable sky background                                                        |
+| Calibration frame support              | Bias, dark, flat subtraction                                                                            |
+| Rejection map                          | Visual overlay showing which pixels were rejected across frames; saved as an image viewable by the user |
+| Per-frame contribution display         | Analysis Graph-style visualization of per-frame stacking metrics (see §3.9)                             |
+| Graphical stack quality display        | UI component for stack quality score; placement TBD                                                     |
 
 ---
 

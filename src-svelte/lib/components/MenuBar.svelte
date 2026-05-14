@@ -9,7 +9,7 @@
   import { open, save } from '@tauri-apps/plugin-dialog';
   import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
   import { quickLaunch } from '../stores/quickLaunch';
-  import { selectDirectory, closeSession, applyAutoStretch, loadFile } from '../commands';
+  import { addFiles, closeSession, applyAutoStretch, loadFile } from '../commands';
   import { ui } from '../stores/ui';
 
   let openMenu = $state<string | null>(null);
@@ -44,7 +44,7 @@
     case 'plugin-manager':      ui.togglePanel('plugins'); break;
     case 'restore-database':    restoreDatabase(); break;
     case 'run-macro':           ui.togglePanel('macro-editor'); break;
-    case 'select-directory':    selectDirectory(); break;
+    case 'add-files':           addFiles(); break;
     case 'theme-dark':          ui.setTheme('dark'); break;
     case 'theme-light':         ui.setTheme('light'); break;
     case 'theme-matrix':        ui.setTheme('matrix'); break;
@@ -228,7 +228,7 @@
 
     // Build per-frame array using basenames only for portability
     const frames = data.frames.map((f: any) => ({
-      filename:           f.short_name,
+      filename:           f.filename,
       fwhm:               f.fwhm,
       eccentricity:       f.eccentricity,
       star_count:         f.star_count,
@@ -239,15 +239,14 @@
       rejection_category: f.rejection_category ?? null,
     }));
 
-    // Outlier paths — strip to basenames
-    const outlierPaths = (data.outlier_paths ?? []).map((p: string) => {
-      return p.split('/').pop() ?? p.split('\\').pop() ?? p;
-    });
+    // Outlier paths — preserve full paths for multi-directory sessions
+    const outlierPaths = (data.outlier_paths ?? []).map((p: string) =>
+      p.replace(/\\/g, '/')
+    );
 
     const json = {
       photyx_version:         '1.0.0',
       exported_at:            new Date().toISOString(),
-      active_directory:       data.session_path ?? '',
       threshold_profile_name: profileName,
       thresholds,
       session_stats:          data.session_stats ?? {},
@@ -328,15 +327,11 @@
       notifications.error('Invalid session JSON: missing frames array.');
       return;
     }
-    if (!payload.active_directory) {
-      notifications.error('Invalid session JSON: missing active_directory.');
-      return;
-    }
 
-    notifications.running('Importing session…');
+    notifications.running('Importing session ');
     try {
       await invoke('load_analysis_json', { payload });
-      notifications.success(`Session imported — ${payload.frames.length} frames from ${payload.active_directory}`);
+      notifications.success(`Session imported — ${payload.frames.length} frames`);
       // Open the results view so the user sees the imported data immediately
       ui.showView('analysisResults');
     } catch (e) {
@@ -355,8 +350,8 @@
       { label: 'Exit',               action: 'exit' },
     ]},
     { name: 'Session', items: [
-      { label: 'Select Directory ', action: 'select-directory', shortcut: 'Ctrl+O' },
-      { label: 'Close Session',     action: 'close-session' },
+      { label: 'Add Files', action: 'add-files', shortcut: 'Ctrl+O' },
+      { label: 'Close Session', action: 'close-session' },
     ]},
     { name: 'Edit', items: [
       { label: 'Preferences',         action: 'preferences' },

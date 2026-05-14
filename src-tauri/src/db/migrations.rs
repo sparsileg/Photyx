@@ -6,15 +6,14 @@
 use rusqlite::{Connection, Result};
 use crate::db::schema;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
-
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     let version = get_version(conn)?;
     tracing::info!("DB schema version on open: {}", version);
-
     let migrations: Vec<fn(&Connection) -> Result<()>> = vec![
         migrate_v1,  // version 0 → 1: create all tables
         migrate_v2,  // version 1 → 2: rename snr_reject_sigma → signal_weight_reject_sigma
+        migrate_v3,  // version 2 → 3: drop active_directory from crash_recovery
     ];
 
     for (i, migration) in migrations.iter().enumerate() {
@@ -42,6 +41,12 @@ fn migrate_v2(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "ALTER TABLE threshold_profiles
          RENAME COLUMN snr_reject_sigma TO signal_weight_reject_sigma;"
+    )
+}
+
+fn migrate_v3(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "ALTER TABLE crash_recovery DROP COLUMN active_directory;"
     )
 }
 

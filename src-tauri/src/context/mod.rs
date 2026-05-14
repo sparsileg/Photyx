@@ -2,6 +2,7 @@
 // Spec §6.4
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 // ── Image buffer ──────────────────────────────────────────────────────────────
@@ -93,10 +94,7 @@ pub enum BlinkCacheStatus {
 
 #[derive(Debug, Default)]
 pub struct AppContext {
-    /// Currently active working directory (set by SelectDirectory)
-    pub active_directory: Option<String>,
-
-    /// Flat list of file paths in the active directory
+    /// Flat list of file paths in the current session
     pub file_list: Vec<String>,
 
     /// Loaded image buffers (keyed by file path) — raw pixel data, never modified
@@ -163,9 +161,24 @@ pub struct AppContext {
 }
 
 impl AppContext {
+    /// Returns the unique parent directories of all loaded files.
+    pub fn source_directories(&self) -> Vec<PathBuf> {
+        let mut dirs: Vec<PathBuf> = self.file_list.iter()
+            .filter_map(|f| std::path::Path::new(f).parent().map(|p| p.to_path_buf()))
+            .collect();
+        dirs.sort();
+        dirs.dedup();
+        dirs
+    }
+
+    /// Returns the common parent directory if all files share one, else None.
+    pub fn common_parent(&self) -> Option<PathBuf> {
+        let dirs = self.source_directories();
+        if dirs.len() == 1 { dirs.into_iter().next() } else { None }
+    }
+
     /// Sync all fields that mirror AppSettings into AppContext.
     /// Call this at startup and whenever any preference changes.
-    /// This is the single source of truth for settings → context propagation.
     pub fn sync_from_settings(&mut self, settings: &crate::settings::AppSettings) {
         self.autostretch_shadow_clip = settings.autostretch_shadow_clip as f32;
         self.autostretch_target_bg   = settings.autostretch_target_bg as f32;
@@ -202,7 +215,6 @@ impl AppContext {
     }
 
     /// Clear all session state — pixel buffers, caches, analysis results.
-    /// Active directory is preserved.
     pub fn clear_session(&mut self) {
         self.file_list.clear();
         self.image_buffers.clear();
@@ -219,6 +231,27 @@ impl AppContext {
         self.last_stf_params = None;
         self.last_histogram = None;
         self.variables.clear();
+        self.is_imported_session = false;
+    }
+
+    /// Remove rejected files from the session after a commit.
+    /// Clears analysis results but leaves pass frames loaded.
+    pub fn remove_rejected_files(&mut self, rejected_paths: &[String]) {
+        let reject_set: std::collections::HashSet<&str> =
+            rejected_paths.iter().map(|s| s.as_str()).collect();
+        self.file_list.retain(|p| !reject_set.contains(p.as_str()));
+        for path in rejected_paths {
+            self.image_buffers.remove(path);
+            self.display_cache.remove(path);
+            self.full_res_cache.remove(path);
+            self.blink_cache_12.remove(path);
+            self.blink_cache_25.remove(path);
+        }
+        self.analysis_results.clear();
+        self.outlier_frame_paths.clear();
+        self.last_session_stats = None;
+        self.last_analysis_thresholds = None;
+        self.current_frame = 0;
         self.is_imported_session = false;
     }
 

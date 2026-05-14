@@ -2,7 +2,7 @@
 <script lang="ts">
   import { ui } from '../stores/ui';
   import type { ZoomLevel } from '../stores/ui';
-  import { session } from '../stores/session';
+  import { session, directoryCount } from '../stores/session';
   const zoomLevels: { id: ZoomLevel; label: string }[] = [
     { id: 'fit',  label: 'Fit' },
     { id: '25',   label: '25%' },
@@ -26,7 +26,9 @@
   <div class="toolbar-sep"></div>
   <div class="toolbar-group">
     <span class="toolbar-dir">
-      {$session.activeDirectory ?? 'No directory selected'}
+      {$session.fileList.length === 0
+        ? 'No files loaded'
+        : `${$session.fileList.length} file(s) · ${$directoryCount} director${$directoryCount === 1 ? 'y' : 'ies'}`}
     </span>
   </div>
 </div>

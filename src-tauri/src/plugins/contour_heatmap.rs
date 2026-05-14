@@ -236,7 +236,10 @@ impl PhotonPlugin for ContourHeatmap {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("image");
-        let source_dir = ctx.active_directory.as_deref().unwrap_or(".");
+        let source_dir = std::path::Path::new(&source_path)
+            .parent()
+            .and_then(|p| p.to_str())
+            .unwrap_or(".");
         let out_path = format!("{}/{}_heatmap.xisf", source_dir.trim_end_matches('/').trim_end_matches('\\'), source_stem);
         let heatmap_key = out_path.clone();
 

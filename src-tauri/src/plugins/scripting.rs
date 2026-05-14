@@ -99,12 +99,12 @@ impl PhotonPlugin for MoveFile {
 
         let dest_dir = crate::utils::resolve_path(
             destination,
-            ctx.active_directory.as_deref(),
+            ctx.common_parent().as_ref().and_then(|p| p.to_str()),
         );
 
         // Use explicit source if provided, otherwise use current frame
         let src_path = if let Some(source) = args.get("source") {
-            crate::utils::resolve_path(source, ctx.active_directory.as_deref())
+            crate::utils::resolve_path(source, ctx.common_parent().as_ref().and_then(|p| p.to_str()))
         } else {
             ctx.file_list
                 .get(ctx.current_frame)
@@ -186,11 +186,11 @@ impl PhotonPlugin for CopyFile {
 
         let dest_dir = crate::utils::resolve_path(
             destination,
-            ctx.active_directory.as_deref(),
+            ctx.common_parent().as_ref().and_then(|p| p.to_str()),
         );
 
         let src_path = if let Some(source) = args.get("source") {
-            crate::utils::resolve_path(source, ctx.active_directory.as_deref())
+            crate::utils::resolve_path(source, ctx.common_parent().as_ref().and_then(|p| p.to_str()))
         } else {
             ctx.file_list
                 .get(ctx.current_frame)
@@ -344,7 +344,7 @@ impl PhotonPlugin for LoadFile {
         let path = args.get("path")
             .ok_or_else(|| PluginError::missing_arg("path"))?;
 
-        let resolved = crate::utils::resolve_path(path, ctx.active_directory.as_deref());
+        let resolved = crate::utils::resolve_path(path, ctx.common_parent().as_ref().and_then(|p| p.to_str()));
 
         if !std::path::Path::new(&resolved).exists() {
             return Err(PluginError::new(

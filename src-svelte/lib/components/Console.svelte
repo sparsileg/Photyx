@@ -93,13 +93,9 @@
     movefile:           'destination=',
     print:              'message (or bare: Print "hello")',
     pwd:                (_raw: string) => { handleClientCommand('pwd'); },
-    readall:            '',
-    readfit:            '',
-    readtiff:           '',
-    readxisf:           '',
     round:              '(#)',
     runmacro:           'filename=',
-    selectdirectory:    'path=',
+    addfiles:           'paths=',
     set:                '<varname> = <value>',
     setframe:           'index=',
     setzoom:            'level=',
@@ -150,8 +146,17 @@
 
   const CLIENT_COMMANDS: Record<string, (raw: string) => void> = {
     pwd: (_raw: string) => {
-      const dir = $session.activeDirectory ?? '(no directory selected)';
-      append(dir, 'output');
+      const fileList = $session.fileList;
+      if (fileList.length === 0) {
+        append('(no files loaded)', 'output');
+      } else {
+        const dirs = [...new Set(fileList.map(f => {
+          const parts = f.replace(/\\/g, '/').split('/');
+          parts.pop();
+          return parts.join('/');
+        }))].sort();
+        dirs.forEach(d => append(d, 'output'));
+      }
     },
     help: (raw: string) => {
       const parts = raw.trim().split(/\s+/);
@@ -165,10 +170,9 @@
         }
         return;
       }
-      append('Photyx pcode v1.0  —  commands:', 'output');
-      append('  File:     SelectDirectory ListFiles FilterByKeyword', 'output');
-      append('  I/O:      ReadFIT ReadXISF ReadTIFF ReadAll', 'output');
-      append('            WriteFIT WriteXISF WriteTIFF WriteCurrent WritePNG WriteJPEG', 'output');
+      append('Photyx pcode v1.0     commands:', 'output');
+      append('  File:     SelectFiles ListFiles FilterByKeyword', 'output');
+      append('  I/O:      WriteFIT WriteXISF WriteTIFF WriteCurrent WritePNG WriteJPEG', 'output');
       append('  Keyword:  AddKeyword DeleteKeyword ModifyKeyword CopyKeyword ListKeywords GetKeyword', 'output');
       append('  Query:    GetImageProperty GetSessionProperty Test', 'output');
       append('  Process:  AutoStretch CropImage BinImage DebayerImage', 'output');
@@ -274,26 +278,16 @@
     output: string | null,
     data: Record<string, unknown> | null = null
   ) {
-    if (cmd === 'selectdirectory' && args.path) {
-      session.setDirectory(args.path);
-      session.setFileList([]);
-      session.update(s => ({ ...s, loadedImages: {} }));
-      ui.requestViewerClear();
-      notifications.info(`Directory: ${args.path}`);
-    }
     if (cmd === 'clearsession') {
-      session.setDirectory('');
       session.setFileList([]);
       session.setCurrentFrame(0);
       session.update(s => ({ ...s, loadedImages: {} }));
       ui.clearViewer();
     }
-    if (['readallfitfiles','readallxisffiles','readalltifffiles',
-         'readallfiles','readfit','readtiff','readxisf','readall','runmacro'].includes(cmd)) {
+    if (['addfiles', 'runmacro'].includes(cmd)) {
       if (output) notifications.success(output);
       try {
-        const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
-        session.setDirectory(s.activeDirectory ?? '');
+        const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
         session.setFileList(s.fileList);
       } catch (e) {
         notifications.error(`Session sync failed: ${e}`);
@@ -308,7 +302,7 @@
       if (cc === 'clearannotations')   ui.clearAnnotations();
       if (cc === 'clear')              lines = [];
       if (cc === 'version')            append('Photyx 1.0.0-dev  |  pcode v1.0  |  Tauri + Svelte + Rust', 'output');
-      if (cc === 'pwd')                append($session.activeDirectory ?? '(no directory selected)', 'output');
+      if (cc === 'pwd')                CLIENT_COMMANDS['pwd']('');
     }
 
     if (data?.client_command) {

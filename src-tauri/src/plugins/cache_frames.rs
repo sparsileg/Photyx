@@ -41,7 +41,7 @@ impl PhotonPlugin for CacheFrames {
         };
 
         if ctx.file_list.is_empty() {
-            return Err(PluginError::new("NO_FILES", "No files loaded. Use ReadAllFITFiles first."));
+            return Err(PluginError::new("NO_FILES", "No files loaded. Use SelectFiles first."));
         }
 
         // ── Collect immutable snapshot of pixel data ──────────────────────────

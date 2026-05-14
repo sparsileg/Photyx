@@ -17,6 +17,20 @@ export const CLIENT_COMMAND_NAMES = new Set([
   'Pwd',
 ]);
 
+function pwdCommand(): void {
+  const fileList = get(session).fileList;
+  if (fileList.length === 0) {
+    pipeToConsole('(no files loaded)', 'output');
+  } else {
+    const dirs = [...new Set(fileList.map(f => {
+      const parts = f.replace(/\\/g, '/').split('/');
+      parts.pop();
+      return parts.join('/');
+    }))].sort();
+    dirs.forEach(d => pipeToConsole(d, 'output'));
+  }
+}
+
 /// Executes a client-only command by name (case-insensitive).
 /// Called from Console.svelte (interactive) and any run_script caller (macro, Quick Launch).
 export function handleClientCommand(cc: string): void {
@@ -34,7 +48,7 @@ export function handleClientCommand(cc: string): void {
       pipeToConsole('Photyx 1.0.0-dev  |  pcode v1.0  |  Tauri + Svelte + Rust', 'output');
       break;
     case 'pwd':
-      pipeToConsole(get(session).activeDirectory ?? '(no directory selected)', 'output');
+      pwdCommand();
       break;
   }
 }

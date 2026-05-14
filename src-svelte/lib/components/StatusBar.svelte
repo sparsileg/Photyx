@@ -1,6 +1,7 @@
 <!-- StatusBar.svelte — Notification / status bar. Spec §8.10 -->
 <script lang="ts">
   import { latestNotification, notifications } from '../stores/notifications';
+  import { session, directoryCount } from '../stores/session';
 
   let historyOpen = $state(false);
 
@@ -53,9 +54,12 @@
   <span id="status-icon">{meta.icon}</span>
   <span id="status-text">{message}</span>
   <div id="status-right">
-    <div class="status-item">
-      <span class="status-item-label">Theme</span>
-      <span class="status-item-val">Photyx</span>
-    </div>
+    {#if $session.fileList.length > 0}
+      <div class="status-item">
+        <span class="status-item-val">
+          {$session.fileList.length} file{$session.fileList.length !== 1 ? 's' : ''} · {$directoryCount} director{$directoryCount !== 1 ? 'ies' : 'y'}
+        </span>
+      </div>
+    {/if}
   </div>
 </div>

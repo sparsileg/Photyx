@@ -137,7 +137,6 @@ CREATE TABLE IF NOT EXISTS console_history (
 pub const CREATE_CRASH_RECOVERY: &str = "
 CREATE TABLE IF NOT EXISTS crash_recovery (
     id                  INTEGER PRIMARY KEY CHECK (id = 1),
-    active_directory    TEXT,
     file_list           TEXT,
     current_frame_index INTEGER,
     autostretch_enabled INTEGER,

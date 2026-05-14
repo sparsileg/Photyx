@@ -1,102 +1,60 @@
 // commands.ts — Shared backend command helpers
 // Wraps Tauri invoke calls for common operations
 
-import { db } from './db';
 import { invoke } from '@tauri-apps/api/core';
-import { notifications } from './stores/notifications';
 import { open } from '@tauri-apps/plugin-dialog';
+import { notifications } from './stores/notifications';
 import { session } from './stores/session';
 import { ui } from './stores/ui';
-
-export type FormatFilter = 'all' | 'fits' | 'xisf' | 'tiff' | 'png' | 'jpeg';
-
-export const FORMAT_FILTERS: { id: FormatFilter; label: string; commands: string[] }[] = [
-  { id: 'all',  label: 'All Supported', commands: ['ReadAll'] },
-  { id: 'fits', label: 'FITS only',     commands: ['ReadFIT'] },
-  { id: 'xisf', label: 'XISF only',     commands: ['ReadXISF'] },
-  { id: 'tiff', label: 'TIFF only',     commands: ['ReadTIFF'] },
-  { id: 'png',  label: 'PNG only',      commands: ['ReadPNG'] },
-  { id: 'jpeg', label: 'JPEG only',     commands: ['ReadJPEG'] },
-];
 
 /** Sync session store from backend state */
 export async function syncSession() {
   const state = await invoke<{
-    activeDirectory: string | null;
     fileList: string[];
     currentFrame: number;
   }>('get_session');
-  session.setDirectory(state.activeDirectory ?? '');
   session.setFileList(state.fileList);
   session.setCurrentFrame(state.currentFrame);
 }
 
-/** Open folder picker and set active directory — does NOT load pixel data */
-export async function selectDirectory() {
+/** Open a multi-file picker and append selected files to the session */
+export async function addFiles() {
+  console.log('addFiles: called');
   let selected;
-  let currentDir: string | null = null;
-  session.subscribe(s => { currentDir = s.activeDirectory; })();
   try {
     selected = await open({
-      directory: true,
-      multiple: false,
-      defaultPath: currentDir ?? undefined,
+      directory: false,
+      multiple: true,
+      filters: [{
+        name: 'Supported Images',
+        extensions: ['fit', 'fits', 'fts', 'xisf', 'tif', 'tiff'],
+      }],
     });
   } catch (e) {
-    notifications.error(`Failed to open folder picker: ${e}`);
+    notifications.error(`Failed to open file picker: ${e}`);
     return;
   }
 
-  if (!selected) return;
+  if (!selected || (Array.isArray(selected) && selected.length === 0)) return;
 
-  const path = typeof selected === 'string' ? selected : selected[0];
-  if (!path) return;
+  const paths = Array.isArray(selected) ? selected : [selected];
+  const pathsArg = paths.map(p => p.replace(/\\/g, '/')).join(',');
+
+  notifications.running(`Loading ${paths.length} file(s)…`);
 
   const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(
     'dispatch_command',
-    { request: { command: 'SelectDirectory', args: { path } } }
+    { request: { command: 'AddFiles', args: { paths: pathsArg } } }
   );
 
   if (!result.success) {
-    notifications.error(result.error ?? 'SelectDirectory failed');
-    return;
-  }
-
-  session.setDirectory(path);
-  session.setFileList([]);
-  session.update(s => ({ ...s, loadedImages: {} }));
-  ui.clearViewer();
-  notifications.info(`Directory: ${path}`);
-
-  // open a new session
-  db.openSession(path, 0).catch(e => console.error('openSession failed:', e));
-  db.setPreference('last_directory', path).catch(e => console.error('setPreference last_directory failed:', e));
-}
-
-/** Load files from active directory using the specified format filter */
-export async function loadFiles(filter: FormatFilter) {
-  const entry = FORMAT_FILTERS.find(f => f.id === filter);
-  if (!entry) return;
-
-  notifications.running(`Loading ${entry.label} files…`);
-
-  for (const command of entry.commands) {
-    const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(
-      'dispatch_command',
-      { request: { command, args: {} } }
-    );
-
-    if (!result.success) {
-      const msg = result.error ?? `${command} failed`;
-      if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
-        notifications.alert('Too many files to load', msg, 10000);
-      } else {
-        notifications.error(msg);
-      }
-      return;
+    const msg = result.error ?? 'SelectFiles failed';
+    if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
+      notifications.alert('Too many files to load', msg, 10000);
+    } else {
+      notifications.error(msg);
     }
-
-    if (result.output) notifications.info(result.output);
+    return;
   }
 
   await syncSession();
@@ -108,9 +66,11 @@ export async function loadFiles(filter: FormatFilter) {
 
   // Ensure current frame metadata is populated for correct zoom scaling in blink
   await displayFrame(0);
+
+  if (result.output) notifications.success(result.output);
 }
 
-/** Clear all loaded images and reset session. Active directory is preserved. */
+/** Clear all loaded images and reset session. */
 export async function closeSession() {
   const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(
     'dispatch_command',
@@ -133,10 +93,11 @@ export async function loadFile(path: string) {
   try {
     const dataUrl = await invoke<string>('load_file', { path });
     ui.setDisplayImage(dataUrl);
-    // Sync session so viewer has correct metadata for zoom calculations
-    const s = await invoke<{ activeDirectory: string; fileList: string[]; currentFrame: number }>('get_session');
+
+    const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
     session.setFileList(s.fileList);
     session.setCurrentFrame(s.currentFrame);
+
     const info = await invoke<{
       current_frame: number;
       file_count: number;
@@ -193,9 +154,9 @@ export async function displayFrame(index: number) {
   console.trace('displayFrame called with index:', index);
   try {
     ui.clearAnnotations();
-    let setFrameResult;
+
     try {
-      setFrameResult = await invoke<{ success: boolean; error: string | null }>('dispatch_command', {
+      await invoke<{ success: boolean; error: string | null }>('dispatch_command', {
         request: { command: 'SetFrame', args: { index: String(index) } }
       });
     } catch (e) {
@@ -204,29 +165,6 @@ export async function displayFrame(index: number) {
 
     session.setCurrentFrame(index);
 
-    // Check if display cache already populated for this frame
-    // disable check so autostretch is no longer automatically done for every image
-    // const cacheCheck = await invoke<{
-    //     current_frame: number;
-    //     file_count: number;
-    //     buffer: { display_width: number } | null;
-    // }>('debug_buffer_info');
-
-    // const needsStretch = !cacheCheck.buffer || cacheCheck.buffer.display_width === 0;
-
-    // if (needsStretch) {
-    //     const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(
-    //         'dispatch_command',
-    //         { request: { command: 'AutoStretch', args: {} } }
-    //     );
-
-    //     if (!result.success) {
-    //         notifications.error(result.error ?? 'AutoStretch failed');
-    //         return;
-    //     }
-    // }
-
-    // Fetch buffer metadata for the current frame
     const info = await invoke<{
       current_frame: number;
       file_count: number;
@@ -243,18 +181,14 @@ export async function displayFrame(index: number) {
 
     if (info.buffer) {
       try {
-        const path = await invoke<{
-          activeDirectory: string | null;
-          fileList: string[];
-          currentFrame: number;
-        }>('get_session');
-        const filePath = path.fileList[index];
+        const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
+        const filePath = s.fileList[index];
         if (filePath) {
           const keywords = await invoke<Record<string, { name: string; value: string; comment: string | null }>>('get_keywords');
-          session.update(s => ({
-            ...s,
+          session.update(st => ({
+            ...st,
             loadedImages: {
-              ...s.loadedImages,
+              ...st.loadedImages,
               [filePath]: {
                 filename: info.buffer!.filename,
                 width: info.buffer!.width,

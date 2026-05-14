@@ -360,18 +360,20 @@ Five metrics are computed for each frame:
 | Background Median | Sigma    | +σ (high is worse) | 2.5σ              | ✓                |
 | FWHM              | Sigma    | +σ (high is worse) | 2.5σ              | ✓                |
 | Eccentricity      | Absolute | > threshold        | 0.85              | ✓                |
-| Star Count        | Sigma    | −σ (low is worse)  | 1.5σ              | ✓                |
-| Signal Weight     | Sigma    | −σ (low is worse)  | 2.5σ              | ✓                |
+| Star Count        | Sigma    | −σ (low is worse)  | −3.0σ             | ✓                |
+| Signal Weight     | Sigma    | −σ (low is worse)  | −2.5σ             | ✓                |
 
 **Algorithm:** All metrics except Background Median are derived from elliptical 2D Moffat PSF fitting per detected star. FWHM and Eccentricity replace prior intensity-weighted second-order moment calculations. Star Count now counts only stars that pass Moffat PSF acceptance criteria (replaces lenient connected-pixel detection). Signal Weight is a PSF-based signal quality measure: A² / (A + B·π·a·b), where A is fitted peak amplitude, B is local background, and π·a·b is effective PSF area. PSF Residual is computed internally as the star acceptance gate but is not user-facing.
 
 **Signal Weight:** Promoted to rejection metric. Catches transparency and thin-cloud events that Star Count misses, and correctly signals problems on frames where Star Count is inflated (e.g. satellite trails). Signal Weight rejections are assigned category T (Transparency).
 
-**Star Count threshold:** 1.5σ. With bimodal-aware anchoring, the session mean is computed from the clear-sky population only, making 1.5σ the correct companion threshold. Mild transparency events that don't produce a bimodal distribution are still handled by SubframeSelector weighting downstream.
+**Star Count threshold:** −3.0σ. Mild transparency events are better handled by SubframeSelector weighting than hard rejection; only severe star count drops warrant culling.
 
 **Removed metrics:** Background Std Dev (r = 0.92–0.999 with Bg Median) and Background Gradient (session-dependent with sign reversal). Both pcode commands retained as deprecated stubs for script compatibility. SNR Estimate removed as a user-facing metric; superseded by Signal Weight.
 
 **SNR note:** SNR is computed and displayed as a diagnostic metric but does not drive PASS/REJECT classification. Cross-session analysis confirmed a PSF artifact — worse-seeing frames produce higher SNR due to bloated star flux; SNR never drove a unique rejection not already caught by FWHM or Star Count.
+
+**Star Count threshold:** Raised from −1.5σ to −3.0σ. Mild transparency events are better handled by SubframeSelector weighting than hard rejection; only severe star count drops warrant culling.
 
 **Removed metrics:** Background Std Dev (r = 0.92–0.999 with Bg Median) and Background Gradient (session-dependent with sign reversal). Both pcode commands retained as deprecated stubs for script compatibility.
 
@@ -393,22 +395,15 @@ Every REJECT frame is assigned one or more rejection categories:
 
 ### 11.5 Session Statistics & Iterative Sigma Clipping
 
-Classification is session-relative. `AnalyzeFrames` uses two-pass iterative
-sigma clipping with bimodal-aware anchoring for star count — see
-`development_notes.md` §3.60 for implementation details.
+Classification is session-relative. `AnalyzeFrames` uses two-pass iterative sigma clipping — see `development_notes.md` §3.60 for implementation details.
 
 ### 11.6 Committing Results
 
-PXFLAG is **not** written automatically. Commit Results is a terminal
-operation — see §8.11 for the full commit sequence including file moves to
-`rejected/`.
+PXFLAG is **not** written automatically. Commit Results is a terminal operation — see §8.11 for the full commit sequence including file moves to `rejected/`.
 
 ### 11.7 On-the-Fly Reclassification
 
-`get_analysis_results` reclassifies all frames on every call using cached
-metrics + current thresholds. Threshold changes take effect immediately on
-next Refresh without rerunning AnalyzeFrames. Skipped for imported
-sessions.
+`get_analysis_results` reclassifies all frames on every call using cached metrics + current thresholds. Threshold changes take effect immediately on next Refresh without rerunning AnalyzeFrames. Skipped for imported sessions.
 
 ### 11.8 Blink Review Workflow
 
@@ -453,6 +448,63 @@ Local HTTP REST server via Axum. Deferred to post-Phase 9.
 
 - GPU acceleration — deferred until CPU pipeline is stable and benchmarked
 - Python plugin support — WASM is the preferred extensibility path
+
+---
+
+## 15. File Selection & Session Model
+
+### 15.1 Philosophy
+
+Photyx uses a file-centric session model. The user selects the files
+they want to work with; operations run against that set. There is no
+concept of a single "active directory" — files may come from any number
+of directories.
+
+### 15.2 SelectFiles
+
+`SelectFiles` is the primary entry point for loading images. It opens a
+multi-file picker allowing the user to select files from one or more
+directories. The resulting file list becomes the working set for all
+subsequent operations.
+
+- Replaces `SelectDirectory` in both the UI and pcode
+- The pcode command accepts either explicit file paths or a directory
+  path (loads all supported files from that directory)
+- Clears the current file list and loads the new selection
+- No active directory is set or maintained
+
+### 15.3 Session State
+
+Session state consists of:
+
+- The loaded file list (paths)
+- Per-file pixel buffers and derived caches
+- Analysis results
+
+There is no active directory field. Where a single directory is needed
+(e.g. log labeling), it is derived as the common parent of all loaded
+files, or left blank if files span unrelated directories.
+
+### 15.4 Write Operations
+
+All write operations use each file's original source path. Atomic
+temp-rename behavior is unchanged.
+
+### 15.5 Commit Results
+
+When committing analysis results, each rejected file is moved into a
+`rejected/` subdirectory within its own source directory. If the
+`rejected/` subdirectory does not exist it is created automatically.
+
+### 15.6 Status Bar
+
+Displays loaded file count and directory count. Example:
+`157 files · 3 directories`
+
+### 15.7 Close Session
+
+Clears the file list, all buffers, and all analysis results. Behavior
+unchanged from current implementation.
 
 ---
 

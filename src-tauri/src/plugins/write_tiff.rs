@@ -38,7 +38,7 @@ impl PhotonPlugin for WriteTIFF {
         let destination = crate::utils::resolve_path(
             args.get("destination")
                 .ok_or_else(|| PluginError::missing_arg("destination"))?,
-            ctx.active_directory.as_deref(),
+            ctx.common_parent().as_ref().and_then(|p| p.to_str()),
         );
 
         let overwrite = args.get("overwrite").map(|v| v == "true").unwrap_or(false);

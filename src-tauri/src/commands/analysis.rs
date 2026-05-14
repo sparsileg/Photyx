@@ -8,7 +8,9 @@ use crate::PhotoxState;
 pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value {
     let mut ctx = state.context.lock().expect("context lock poisoned");
 
-    let session_path = ctx.active_directory.clone().unwrap_or_default();
+    let session_path = ctx.common_parent()
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_default();
     let is_imported  = ctx.is_imported_session;
 
     // If no cached metrics exist, return empty — AnalyzeFrames hasn't run yet.
@@ -123,11 +125,10 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
 
 #[derive(Debug, serde::Deserialize)]
 pub struct AnalysisJsonPayload {
-    pub active_directory: String,
-    pub thresholds:       ThresholdPayload,
-    pub session_stats:    SessionStatsPayload,
-    pub outlier_paths:    Vec<String>,
-    pub frames:           Vec<FramePayload>,
+    pub thresholds:    ThresholdPayload,
+    pub session_stats: SessionStatsPayload,
+    pub outlier_paths: Vec<String>,
+    pub frames:        Vec<FramePayload>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -180,15 +181,10 @@ pub fn load_analysis_json(
     };
 
     let mut ctx = state.context.lock().expect("context lock poisoned");
-
     ctx.clear_session();
 
-    ctx.active_directory = Some(payload.active_directory.clone());
-
-    let dir = payload.active_directory.trim_end_matches('/').trim_end_matches('\\');
-
     for frame in &payload.frames {
-        let full_path = format!("{}/{}", dir, frame.filename);
+        let full_path = frame.filename.replace('\\', "/");
         ctx.file_list.push(full_path.clone());
 
         let flag = match frame.flag.as_str() {
@@ -211,9 +207,9 @@ pub fn load_analysis_json(
         ctx.analysis_results.insert(full_path, result);
     }
 
-    // Outlier paths in JSON are basenames — reconstruct full paths
+    // Outlier paths are full absolute paths
     ctx.outlier_frame_paths = payload.outlier_paths.iter()
-        .map(|f| format!("{}/{}", dir, f))
+        .map(|f| f.replace('\\', "/"))
         .collect();
 
     // Restore session stats
@@ -239,9 +235,8 @@ pub fn load_analysis_json(
     ctx.is_imported_session = true;
 
     tracing::info!(
-        "load_analysis_json: imported {} frames from {}",
+        "load_analysis_json: imported {} frames",
         ctx.file_list.len(),
-        payload.active_directory
     );
 
     Ok(())
@@ -249,16 +244,15 @@ pub fn load_analysis_json(
 
 // ── commit_analysis_results ───────────────────────────────────────────────────
 
-/// Write PXFLAG keywords to all image buffers, flush to disk via WriteCurrent,
-/// then move REJECT files to a `rejected/` subfolder with `.rejected` appended.
+/// Move REJECT files to a `rejected/` subfolder with `.rejected` appended.
+/// Does not write PXFLAG keywords or flush files to disk — the move itself
+/// is the persistence action.
 #[tauri::command]
 pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String, String> {
-    use crate::context::KeywordEntry;
-    use crate::plugin::ArgMap;
 
-    // ── Step 1: write PXFLAG into all buffers ────────────────────────────────
-    let ( _paths, reject_paths, pass_count, reject_count) = {
-        let mut ctx = state.context.lock().expect("context lock poisoned");
+    // ── Step 1: collect reject paths ─────────────────────────────────────────
+    let (reject_paths, pass_count, reject_count) = {
+        let ctx = state.context.lock().expect("context lock poisoned");
 
         if ctx.analysis_results.is_empty() {
             return Err("No analysis results to commit. Run AnalyzeFrames first.".to_string());
@@ -267,55 +261,34 @@ pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String,
             return Err("Cannot commit an imported session — no images are loaded.".to_string());
         }
 
-        let thresholds = ctx.analysis_thresholds.clone();
-        let paths: Vec<String> = ctx.file_list.clone();
         let mut pass_count   = 0u32;
         let mut reject_count = 0u32;
         let mut reject_paths: Vec<String> = Vec::new();
 
-        for path in &paths {
+        for path in &ctx.file_list {
             if let Some(result) = ctx.analysis_results.get(path) {
-                if let Some(flag) = &result.flag {
-                    let flag_str = flag.as_str().to_string();
-                    match flag {
-                        crate::analysis::PxFlag::Pass   => pass_count   += 1,
-                        crate::analysis::PxFlag::Reject => {
-                            reject_count += 1;
-                            reject_paths.push(path.clone());
-                        }
+                match result.flag {
+                    Some(crate::analysis::PxFlag::Pass) => pass_count += 1,
+                    Some(crate::analysis::PxFlag::Reject) => {
+                        reject_count += 1;
+                        reject_paths.push(path.clone());
                     }
-                    if let Some(buf) = ctx.image_buffers.get_mut(path) {
-                        buf.keywords.insert(
-                            "PXFLAG".to_string(),
-                            KeywordEntry::new("PXFLAG", &flag_str, Some("Photyx frame quality flag")),
-                        );
-                    }
+                    None => {}
                 }
             }
         }
 
-        ctx.last_analysis_thresholds = Some(thresholds);
-        tracing::info!("CommitResults: {} PASS, {} REJECT — writing to disk", pass_count, reject_count);
-        (paths, reject_paths, pass_count, reject_count)
+        tracing::info!("CommitResults: {} PASS, {} REJECT", pass_count, reject_count);
+        (reject_paths, pass_count, reject_count)
     };
 
-    // ── Step 2: flush all files to disk via WriteCurrent ─────────────────────
-    let args = ArgMap::new();
-    state.registry
-        .dispatch(&mut state.context.lock().expect("context lock poisoned"), "WriteCurrent", &args)
-        .map_err(|e| e.message)?;
-
-    // ── Step 3: move REJECT files to rejected/ subfolder ─────────────────────
+    // ── Step 2: move REJECT files to rejected/ subfolder ─────────────────────
     let mut move_errors: Vec<String> = Vec::new();
     let mut moved_count = 0u32;
-
-    // Collect renames: old_path → new_path
-    let mut renames: Vec<(String, String)> = Vec::new();
 
     for old_path in &reject_paths {
         let p = std::path::Path::new(old_path);
 
-        // Destination: <parent>/rejected/<filename>.rejected
         let parent = match p.parent() {
             Some(d) => d,
             None    => { move_errors.push(format!("No parent dir: {}", old_path)); continue; }
@@ -341,7 +314,6 @@ pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String,
         match std::fs::rename(old_path, &new_path) {
             Ok(()) => {
                 tracing::info!("CommitResults: moved {} → {}", old_path, new_path_str);
-                renames.push((old_path.clone(), new_path_str));
                 moved_count += 1;
             }
             Err(e) => {
@@ -350,30 +322,9 @@ pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String,
         }
     }
 
-    // ── Step 4: update AppContext to reflect new paths ────────────────────────
-    if !renames.is_empty() {
-        let mut ctx = state.context.lock().expect("context lock poisoned");
-
-        for (old, new) in &renames {
-            // Re-key image_buffers
-            if let Some(mut buf) = ctx.image_buffers.remove(old) {
-                buf.filename = new.clone();
-                ctx.image_buffers.insert(new.clone(), buf);
-            }
-            // Re-key analysis_results
-            if let Some(mut result) = ctx.analysis_results.remove(old) {
-                result.filename = new.clone();
-                ctx.analysis_results.insert(new.clone(), result);
-            }
-        }
-
-        // Update file_list preserving order
-        for path in ctx.file_list.iter_mut() {
-            if let Some((_, new)) = renames.iter().find(|(old, _)| old == path) {
-                *path = new.clone();
-            }
-        }
-    }
+    // ── Step 3: remove rejected files from session; leave pass frames loaded ──
+    let mut ctx = state.context.lock().expect("context lock poisoned");
+    ctx.remove_rejected_files(&reject_paths);
 
     // ── Build result message ──────────────────────────────────────────────────
     let mut msg = format!(

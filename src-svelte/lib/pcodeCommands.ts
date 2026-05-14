@@ -2,15 +2,9 @@
 // Imported by Console.svelte (tab completion) and MacroEditor.svelte (syntax highlighting).
 // Update this file only when commands are added, removed, or renamed.
 export const PCODE_COMMANDS = new Set([
-  // ── Directory & session ──────────────────────────────────────────────────
+  // ── Directory & session
+  'AddFiles',
   'ClearSession',
-  'SelectDirectory',
-
-  // ── Read commands ────────────────────────────────────────────────────────
-  'ReadAll',
-  'ReadFIT',
-  'ReadTIFF',
-  'ReadXISF',
 
   // ── Write commands ───────────────────────────────────────────────────────
   'WriteCurrent',
