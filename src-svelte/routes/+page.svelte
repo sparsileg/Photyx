@@ -199,7 +199,7 @@
         <div id="blink-filename-overlay">{$session.fileList[$session.currentFrame]?.split(/[\\/]/).pop() ?? ''}</div>
       {/if}
     {/if}
-    <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded}>
+    <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded} class:hidden={$ui.activeView === 'stackResult'}>
       <Console onhelp={(entry) => helpEntry = entry} />
         <InfoPanel onBlinkFrame={onBlinkFrame} mousePixel={mousePixel} />
     </div>

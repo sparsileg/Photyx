@@ -42,7 +42,7 @@
         const filter  = s.filter ?? '';
         const intMin  = Math.round(s.integration_seconds / 60);
         const dateStr = s.completed_at.slice(0, 16).replace('T', ' ');
-        stackLabel = `STACKED RESULT — ${s.stacked_frames} frames — ${dateStr} UTC`;
+        stackLabel = `STACKED RESULT — ${s.stacked_frames} / ${s.total_frames} frames — ${dateStr} UTC`;
         stackStats = [
           target,
           filter || null,

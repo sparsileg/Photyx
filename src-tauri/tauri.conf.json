@@ -14,9 +14,9 @@
         "windows": [
             {
                 "title": "Photyx",
-                "width": 950,
-                "height": 1125,
-                "x": 1000,
+                "width": 1350,
+                "height": 1000,
+                "x": 600,
                 "y": 100,
                 "resizable": true,
                 "fullscreen": false,

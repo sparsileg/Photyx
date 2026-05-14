@@ -59,6 +59,9 @@ pub struct FrameContribution {
 
     /// Per-frame eccentricity — from cached AnalysisResult or recomputed
     pub eccentricity: Option<f32>,
+
+    /// Whether a 180° meridian flip was detected and corrected for this frame
+    pub meridian_flipped: bool,
 }
 
 impl FrameContribution {
@@ -74,6 +77,7 @@ impl FrameContribution {
             alignment_validated: None,
             fwhm: None,
             eccentricity: None,
+            meridian_flipped: false,
         }
     }
 }

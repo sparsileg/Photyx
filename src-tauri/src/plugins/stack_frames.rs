@@ -37,17 +37,18 @@ impl PhotonPlugin for StackFrames {
         // ── Step 1: Collect frame snapshots ──────────────────────────────────
         let det_config = StarDetectionConfig::default();
         struct FrameSnapshot {
-            index:       usize,
-            path:        String,
-            width:       usize,
-            height:      usize,
-            color_space: ColorSpace,
-            filter:      Option<String>,
-            exptime:     Option<f32>,
-            fwhm:        Option<f32>,
+            index:        usize,
+            path:         String,
+            width:        usize,
+            height:       usize,
+            color_space:  ColorSpace,
+            filter:       Option<String>,
+            exptime:      Option<f32>,
+            fwhm:         Option<f32>,
             eccentricity: Option<f32>,
-            luma:        Vec<f32>,
-            stars:       Vec<crate::analysis::stars::StarCandidate>,
+            rotator:      Option<f32>,
+            luma:         Vec<f32>,
+            stars:        Vec<crate::analysis::stars::StarCandidate>,
         }
 
         let mut snapshots: Vec<FrameSnapshot> = Vec::new();
@@ -68,8 +69,10 @@ impl PhotonPlugin for StackFrames {
                 (None, None)
             };
 
-            let filter = buf.keywords.get("FILTER").map(|kw| kw.value.clone());
+            let filter  = buf.keywords.get("FILTER").map(|kw| kw.value.clone());
             let exptime = buf.keywords.get("EXPTIME")
+                .and_then(|kw| kw.value.trim().parse::<f32>().ok());
+            let rotator = buf.keywords.get("ROTATOR")
                 .and_then(|kw| kw.value.trim().parse::<f32>().ok());
 
             let channels = buf.channels as usize;
@@ -86,6 +89,7 @@ impl PhotonPlugin for StackFrames {
                 color_space: buf.color_space.clone(),
                 filter,
                 exptime,
+                rotator,
                 fwhm: cached_fwhm,
                 eccentricity: cached_ecc,
                 luma,
@@ -97,8 +101,8 @@ impl PhotonPlugin for StackFrames {
             return Err(PluginError::new("NO_PIXELS", "No frames with pixel data available."));
         }
 
-        let width  = snapshots[0].width;
-        let height = snapshots[0].height;
+        let width    = snapshots[0].width;
+        let height   = snapshots[0].height;
         let n_pixels = width * height;
 
         // ── Step 2: Compute FWHM/eccentricity using already-detected stars ────
@@ -115,21 +119,22 @@ impl PhotonPlugin for StackFrames {
         let fwhm_ecc: Vec<(Option<f32>, Option<f32>)> = snapshots.iter()
             .map(|s| (s.fwhm, s.eccentricity))
             .collect();
-        let ref_idx = select_reference_frame_idx(&fwhm_ecc);
-        let ref_filter = snapshots[ref_idx].filter.clone();
+        let ref_idx        = select_reference_frame_idx(&fwhm_ecc);
+        let ref_filter     = snapshots[ref_idx].filter.clone();
         let ref_color_space = snapshots[ref_idx].color_space.clone();
-        let is_bayer = ref_color_space == ColorSpace::Bayer;
+        let is_bayer       = ref_color_space == ColorSpace::Bayer;
 
         info!("StackFrames: reference frame index {} ({})", ref_idx, short_name(&snapshots[ref_idx].path));
         if let Some(f) = &ref_filter {
             info!("StackFrames: stack filter = {}", f);
         }
 
-        // Reference luminance is already computed in snapshot
-        let ref_luma = &snapshots[ref_idx].luma;
+        // Reference luminance and stars are already computed in snapshot
+        let ref_luma  = &snapshots[ref_idx].luma;
+        let ref_stars = &snapshots[ref_idx].stars;
 
-        // Pull OBJECT and EXPTIME from reference frame buffer for summary
-        let ref_path = snapshots[ref_idx].path.clone();
+        // Pull OBJECT from reference frame buffer for summary
+        let ref_path   = snapshots[ref_idx].path.clone();
         let ref_target = ctx.image_buffers.get(&ref_path)
             .and_then(|b| b.keywords.get("OBJECT"))
             .map(|kw| kw.value.clone());
@@ -137,26 +142,30 @@ impl PhotonPlugin for StackFrames {
         // ── Step 4: Per-frame: filter validate, normalize, align, accumulate ──
         let bg_sigma_config = SigmaClipConfig::default();
 
-        // Accumulation buffers: sum and count per pixel
-        let mut sum_buf   = vec![0.0f64; n_pixels];
-        let mut count_buf = vec![0u32;   n_pixels];
-
-        // For sigma clipping we collect per-pixel sample vectors.
-        // At 60-180 frames and typical image sizes this is the memory-intensive
-        // step. We use a flat Vec<Vec<f32>> indexed by pixel position.
-        // Each inner Vec grows as frames are accumulated.
+        // Accumulation buffers
+        let mut sum_buf      = vec![0.0f64; n_pixels];
+        let mut count_buf    = vec![0u32;   n_pixels];
         let mut pixel_samples: Vec<Vec<f32>> = vec![Vec::new(); n_pixels];
 
-        let mut contributions: Vec<FrameContribution> = Vec::new();
-        let mut messages: Vec<String> = Vec::new();
-        let total = snapshots.len();
-        let mut stacked_count = 0usize;
+        let mut contributions:   Vec<FrameContribution> = Vec::new();
+        let mut messages:        Vec<String>            = Vec::new();
+        let     total            = snapshots.len();
+        let mut stacked_count    = 0usize;
         let mut total_integration = 0.0f32;
+
+        // ── Flip reference state ──────────────────────────────────────────────
+        // The first successfully aligned post-flip frame becomes the flip
+        // reference. Subsequent post-flip frames align against it, then chain
+        // its translation to get the total offset relative to frame 0.
+        let mut flip_ref_normalized: Option<Vec<f32>>                              = None;
+        let mut flip_ref_stars:      Option<Vec<crate::analysis::stars::StarCandidate>> = None;
+        let mut flip_ref_dx:         f32 = 0.0;
+        let mut flip_ref_dy:         f32 = 0.0;
 
         for (i, snap) in snapshots.iter().enumerate() {
             let mut contrib = FrameContribution::new(snap.index, &snap.path);
-            contrib.filter     = snap.filter.clone();
-            contrib.fwhm       = snap.fwhm;
+            contrib.filter       = snap.filter.clone();
+            contrib.fwhm         = snap.fwhm;
             contrib.eccentricity = snap.eccentricity;
 
             // ── Filter validation ─────────────────────────────────────────────
@@ -174,26 +183,165 @@ impl PhotonPlugin for StackFrames {
                 }
             }
 
+            // ── Meridian flip detection and correction ────────────────────────
+            // Returns (luma, stars) — stars are re-detected on flipped luma so
+            // that alignment validation uses correct positions.
+            let (luma, frame_stars) = if i != ref_idx {
+                let ref_rotator = snapshots[ref_idx].rotator;
+                match (ref_rotator, snap.rotator) {
+                    (Some(ref_rot), Some(frame_rot)) => {
+                        let delta   = (frame_rot - ref_rot).rem_euclid(360.0);
+                        let flipped = (delta - 180.0).abs() < 10.0;
+                        if flipped {
+                            contrib.meridian_flipped = true;
+                            let msg = format!(
+                                "Meridian flip detected: frame {} (ROTATOR {:.1}° vs ref {:.1}°) — pre-rotated 180°",
+                                snap.index, frame_rot, ref_rot
+                            );
+                            info!("{}", msg);
+                            messages.push(msg);
+                            let mut flipped_luma = snap.luma.clone();
+                            flipped_luma.reverse();
+                            let flipped_stars = detect_stars(&flipped_luma, snap.width, snap.height, &det_config);
+                            (flipped_luma, flipped_stars)
+                        } else {
+                            (snap.luma.clone(), snap.stars.clone())
+                        }
+                    }
+                    (None, _) | (_, None) => {
+                        if snap.rotator.is_none() {
+                            let msg = format!(
+                                "ROTATOR keyword missing: frame {} — assuming no flip",
+                                snap.index
+                            );
+                            info!("{}", msg);
+                            messages.push(msg);
+                        }
+                        (snap.luma.clone(), snap.stars.clone())
+                    }
+                }
+            } else {
+                (snap.luma.clone(), snap.stars.clone())
+            };
+
             // ── Normalize by sigma-clipped background ─────────────────────────
-            let bg_est = estimate_background(&snap.luma, &bg_sigma_config);
+            let bg_est   = estimate_background(&luma, &bg_sigma_config);
             let bg_level = bg_est.median;
             contrib.background_level = Some(bg_level);
 
-            let divisor = if bg_level > 1e-6 { bg_level } else { 1.0 };
-            let normalized: Vec<f32> = snap.luma.iter().map(|&v| v / divisor).collect();
+            let divisor    = if bg_level > 1e-6 { bg_level } else { 1.0 };
+            let normalized: Vec<f32> = luma.iter().map(|&v| v / divisor).collect();
 
             // ── FFT alignment ─────────────────────────────────────────────────
             let translation = if i == ref_idx {
-                // Reference frame has zero translation by definition
+                // Reference frame — zero translation by definition
                 contrib.fft_translation    = Some((0.0, 0.0));
                 contrib.alignment_validated = Some(true);
                 Some((0.0f32, 0.0f32))
+
+            } else if contrib.meridian_flipped {
+                // ── Post-flip frame ───────────────────────────────────────────
+                match flip_ref_normalized.as_ref() {
+                    None => {
+                        // No flip reference yet — this frame becomes it.
+                        // Align against the main reference to establish the
+                        // chain, skip star validation (fields barely overlap),
+                        // and store this frame as the flip reference.
+                        match compute_translation(ref_luma, &normalized, width, height) {
+                            Some(t) => {
+                                info!(
+                                    "Frame {} (first flip): FFT vs main ref dx={:.2} dy={:.2}",
+                                    snap.index, t.dx, t.dy
+                                );
+                                contrib.fft_translation    = Some((t.dx, t.dy));
+                                contrib.alignment_validated = Some(true); // trusted as anchor
+                                flip_ref_normalized = Some(normalized.clone());
+                                flip_ref_stars      = Some(frame_stars.clone());
+                                flip_ref_dx         = t.dx;
+                                flip_ref_dy         = t.dy;
+                                Some((t.dx, t.dy))
+                            }
+                            None => {
+                                let msg = format!(
+                                    "Alignment failed: frame {} — FFT returned no result, skipped",
+                                    snap.index
+                                );
+                                info!("{}", msg);
+                                messages.push(msg);
+                                contrib.exclusion_reason = Some(ExclusionReason::AlignmentFailed);
+                                contributions.push(contrib);
+                                continue;
+                            }
+                        }
+                    }
+                    Some(flip_ref_norm) => {
+                        // Flip reference exists — align against it, validate
+                        // against its stars, then chain translations.
+                        match compute_translation(flip_ref_norm, &normalized, width, height) {
+                            Some(t) => {
+                                let total_dx = flip_ref_dx + t.dx;
+                                let total_dy = flip_ref_dy + t.dy;
+                                info!(
+                                    "Frame {} (flip): FFT vs flip-ref dx={:.2} dy={:.2} → total dx={:.2} dy={:.2}",
+                                    snap.index, t.dx, t.dy, total_dx, total_dy
+                                );
+                                let frs = flip_ref_stars.as_deref().unwrap_or(&[]);
+                                let validated = validate_alignment(
+                                    &frame_stars, frs, t.dx, t.dy, 3.0, 0.5
+                                );
+                                contrib.fft_translation    = Some((total_dx, total_dy));
+                                contrib.alignment_validated = Some(validated);
+                                if validated {
+                                    Some((total_dx, total_dy))
+                                } else {
+                                    let msg = format!(
+                                        "Alignment failed: frame {} — star position check failed, skipped",
+                                        snap.index
+                                    );
+                                    info!("{}", msg);
+                                    messages.push(msg);
+                                    contrib.exclusion_reason = Some(ExclusionReason::AlignmentFailed);
+                                    contributions.push(contrib);
+                                    continue;
+                                }
+                            }
+                            None => {
+                                let msg = format!(
+                                    "Alignment failed: frame {} — FFT returned no result, skipped",
+                                    snap.index
+                                );
+                                info!("{}", msg);
+                                messages.push(msg);
+                                contrib.exclusion_reason = Some(ExclusionReason::AlignmentFailed);
+                                contributions.push(contrib);
+                                continue;
+                            }
+                        }
+                    }
+                }
+
             } else {
-                match compute_translation(&ref_luma, &normalized, width, height) {
+                // ── Normal (non-flipped) frame ────────────────────────────────
+                match compute_translation(ref_luma, &normalized, width, height) {
                     Some(t) => {
-                        contrib.fft_translation    = Some((t.dx, t.dy));
-                        contrib.alignment_validated = Some(true);
-                        Some((t.dx, t.dy))
+                        contrib.fft_translation = Some((t.dx, t.dy));
+                        let validated = validate_alignment(
+                            &frame_stars, ref_stars, t.dx, t.dy, 3.0, 0.5
+                        );
+                        contrib.alignment_validated = Some(validated);
+                        if validated {
+                            Some((t.dx, t.dy))
+                        } else {
+                            let msg = format!(
+                                "Alignment failed: frame {} — star position check failed, skipped",
+                                snap.index
+                            );
+                            info!("{}", msg);
+                            messages.push(msg);
+                            contrib.exclusion_reason = Some(ExclusionReason::AlignmentFailed);
+                            contributions.push(contrib);
+                            continue;
+                        }
                     }
                     None => {
                         let msg = format!(
@@ -220,7 +368,7 @@ impl PhotonPlugin for StackFrames {
             stacked_count += 1;
 
             let pct = ((i + 1) as f32 / total as f32 * 100.0).round() as u32;
-            let msg = format!("Stacking frame {} / {} ({}%)\u{2026}", i + 1, total, pct);
+            let msg = format!("Stacking frame {} / {} ({}%)…", i + 1, total, pct);
             messages.push(msg);
 
             contributions.push(contrib);
@@ -258,7 +406,7 @@ impl PhotonPlugin for StackFrames {
             .collect();
 
         // ── Step 6: Build output ImageBuffer ─────────────────────────────────
-        let completed_at = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let completed_at      = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let timestamp_display = Utc::now().format("%Y-%m-%d %H:%M").to_string();
 
         let stack_label = format!(
@@ -266,13 +414,7 @@ impl PhotonPlugin for StackFrames {
             stacked_count, timestamp_display
         );
 
-        let output_color_space = if is_bayer {
-            // Bayer stacked as mono → debayer result is RGB, but we keep mono
-            // for now and note it in the label. Full debayer is a future enhancement.
-            ColorSpace::Mono
-        } else {
-            ColorSpace::Mono
-        };
+        let output_color_space = if is_bayer { ColorSpace::Mono } else { ColorSpace::Mono };
 
         let stack_buf = ImageBuffer {
             filename:      stack_label.clone(),
@@ -290,9 +432,9 @@ impl PhotonPlugin for StackFrames {
 
         // ── Step 7: Compute and store summary ────────────────────────────────
         let mut summary = StackSummary::compute(&contributions, &completed_at);
-        summary.target               = ref_target;
-        summary.filter               = ref_filter;
-        summary.integration_seconds  = total_integration;
+        summary.target              = ref_target;
+        summary.filter              = ref_filter;
+        summary.integration_seconds = total_integration;
 
         ctx.stack_contributions = contributions;
         ctx.stack_summary       = Some(summary.clone());
@@ -349,7 +491,6 @@ fn select_reference_frame_idx(fwhm_ecc: &[(Option<f32>, Option<f32>)]) -> usize 
         .unwrap_or(0)
 }
 
-
 // ── Frame accumulation with sub-pixel translation ─────────────────────────────
 // Resamples the normalized frame into the stack accumulation buffer using
 // bilinear interpolation at the computed (dx, dy) offset.
@@ -364,11 +505,9 @@ fn accumulate_frame(
 ) {
     for out_y in 0..height {
         for out_x in 0..width {
-            // Source coordinates in the input frame
             let src_x = out_x as f32 - dx;
             let src_y = out_y as f32 - dy;
 
-            // Bilinear interpolation
             let x0 = src_x.floor() as i32;
             let y0 = src_y.floor() as i32;
             let x1 = x0 + 1;
@@ -434,8 +573,8 @@ fn sigma_clipped_mean(samples: &[f32], sigma: f32) -> f32 {
             break;
         }
 
-        let lo = mean - sigma * sd;
-        let hi = mean + sigma * sd;
+        let lo     = mean - sigma * sd;
+        let hi     = mean + sigma * sd;
         let before = working.len();
         working.retain(|&x| x >= lo && x <= hi);
         if working.len() == before {
@@ -448,6 +587,36 @@ fn sigma_clipped_mean(samples: &[f32], sigma: f32) -> f32 {
     }
 
     working.iter().sum::<f32>() / working.len() as f32
+}
+
+// ── Alignment validation ──────────────────────────────────────────────────────
+// Applies (dx, dy) to each candidate star's centroid and checks whether it
+// lands within `tolerance` pixels of any star in the reference set.
+// Returns true if the match rate meets or exceeds `min_match_rate`.
+
+fn validate_alignment(
+    frame_stars:    &[crate::analysis::stars::StarCandidate],
+    ref_stars:      &[crate::analysis::stars::StarCandidate],
+    dx:             f32,
+    dy:             f32,
+    tolerance:      f32,
+    min_match_rate: f32,
+) -> bool {
+    let sample: Vec<_> = frame_stars.iter().take(20).collect();
+    if sample.is_empty() {
+        return false;
+    }
+
+    let matched = sample.iter().filter(|s| {
+        let predicted_x = s.cx + dx;
+        let predicted_y = s.cy + dy;
+        ref_stars.iter().any(|r| {
+            let dist = ((r.cx - predicted_x).powi(2) + (r.cy - predicted_y).powi(2)).sqrt();
+            dist <= tolerance
+        })
+    }).count();
+
+    (matched as f32 / sample.len() as f32) >= min_match_rate
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
