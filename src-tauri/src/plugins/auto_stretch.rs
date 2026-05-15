@@ -223,7 +223,7 @@ pub fn compute_autostretch_jpeg_from_buffer(
 
 // ── STF parameter computation ─────────────────────────────────────────────────
 
-fn compute_stf_params(pixels: &[f32], shadow_clip: f32, target_bg: f32) -> (f32, f32) {
+pub fn compute_stf_params(pixels: &[f32], shadow_clip: f32, target_bg: f32) -> (f32, f32) {
     let mut valid: Vec<f32> = pixels.iter().cloned().filter(|p| p.is_finite()).collect();
     if valid.is_empty() {
         return (0.0, 0.5);
@@ -263,7 +263,7 @@ fn compute_stf_params(pixels: &[f32], shadow_clip: f32, target_bg: f32) -> (f32,
 
 /// Midtone Transfer Function — PixInsight-compatible
 #[inline(always)]
-fn mtf(m: f32, x: f32) -> f32 {
+pub fn mtf(m: f32, x: f32) -> f32 {
     if x <= 0.0 { return 0.0; }
     if x >= 1.0 { return 1.0; }
     if (m - 0.5).abs() < f32::EPSILON { return x; }

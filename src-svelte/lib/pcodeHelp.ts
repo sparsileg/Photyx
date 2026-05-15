@@ -124,6 +124,17 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'ClearSession',
   },
 
+  readimages: {
+    name:        'ReadImages',
+    description: 'Loads a single image file or all supported images in a directory (FITS, XISF, TIFF) into the session. Files already loaded are skipped.',
+    syntax:      'ReadImages path=<path>',
+    arguments: [
+      { name: 'path', type: 'path', required: true, description: 'Full path to a single image file or a directory' },
+    ],
+    output:  'Appends the loaded file(s) to the session file list. Skips duplicates.',
+    example: 'ReadImages path="/home/stan/astro-data/M31/lights"\nReadImages path="/home/stan/astro-data/M31/lights/frame001.xisf"',
+  },
+
   loadfile: {
     name:        'LoadFile',
     description: 'Loads a single file for display without adding it to the session file list.',
@@ -229,7 +240,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
     syntax:      'AnalyzeFrames',
     arguments:   [],
     output:  'Populates analysis results for all frames. Results visible in Analysis Results and Analysis Graph views.',
-    example: 'SelectFiles paths="D:/M31/Lights"\nAnalyzeFrames',
+    example: 'AddFiles paths="D:/M31/Lights"\nAnalyzeFrames',
   },
 
   computefwhm: {

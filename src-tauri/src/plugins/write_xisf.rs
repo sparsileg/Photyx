@@ -37,6 +37,13 @@ impl PhotonPlugin for WriteXISF {
                 description: "Compress with LZ4HC + byte shuffling (default: false)".to_string(),
                 default:     Some("false".to_string()),
             },
+            ParamSpec {
+                name:        "stack".to_string(),
+                param_type:  ParamType::Boolean,
+                required:    false,
+                description: "Write the transient stack result instead of session files (default: false)".to_string(),
+                default:     Some("false".to_string()),
+            },
         ]
     }
 
@@ -47,8 +54,13 @@ impl PhotonPlugin for WriteXISF {
             ctx.common_parent().as_ref().and_then(|p| p.to_str()),
         );
 
-        let overwrite = args.get("overwrite").map(|v| v == "true").unwrap_or(false);
-        let compress  = args.get("compress").map(|v| v == "true").unwrap_or(false);
+        let overwrite  = args.get("overwrite").map(|v| v == "true").unwrap_or(false);
+        let compress   = args.get("compress").map(|v| v == "true").unwrap_or(false);
+        let write_stack = args.get("stack").map(|v| v == "true").unwrap_or(false);
+
+        if write_stack {
+            return write_stack_result(ctx, &destination, overwrite, compress);
+        }
 
         if ctx.file_list.is_empty() {
             return Ok(PluginOutput::Message("No files loaded.".to_string()));
@@ -105,6 +117,56 @@ impl PhotonPlugin for WriteXISF {
 
         Ok(PluginOutput::Message(msg))
     }
+}
+
+fn write_stack_result(
+    ctx: &mut AppContext,
+    destination: &str,
+    overwrite: bool,
+    compress: bool,
+) -> Result<PluginOutput, PluginError> {
+    let buffer = ctx.stack_result.as_ref()
+        .ok_or_else(|| PluginError::new("NO_STACK", "No stack result available. Run StackFrames first."))?;
+
+    std::fs::create_dir_all(destination).map_err(|e| {
+        PluginError::new("IO_ERROR", &format!("Cannot create directory '{}': {}", destination, e))
+    })?;
+
+    // Build suggested filename from stack_summary (§3.10)
+    let filename = if let Some(summary) = &ctx.stack_summary {
+        let target    = summary.target.as_deref().unwrap_or("unknown").replace(' ', "_");
+        let filter    = summary.filter.as_deref().unwrap_or("nofilter").replace(' ', "_");
+        let int_secs  = summary.integration_seconds.round() as u64;
+        let timestamp = summary.completed_at
+            .replace(['-', ':', 'T'], "")
+            .chars().take(15).collect::<String>()
+            .replace(' ', "_");
+        format!("Photyx_stack_{}_{}_{:}s_{}.xisf", target, filter, int_secs, timestamp)
+    } else {
+        "Photyx_stack.xisf".to_string()
+    };
+
+    let out_path = format!("{}/{}", destination.trim_end_matches('/'), filename);
+
+    if !overwrite && std::path::Path::new(&out_path).exists() {
+        return Ok(PluginOutput::Message(format!("Skipped — file already exists: {}", out_path)));
+    }
+
+    let options = WriteOptions {
+        codec:           if compress { Codec::Lz4Hc } else { Codec::None },
+        shuffle:         compress,
+        creator_app:     "Photyx".to_string(),
+        block_alignment: 4096,
+    };
+
+    let xisf_image = buffer_to_xisf_image(buffer)
+        .map_err(|e| PluginError::new("CONVERT_ERROR", &e))?;
+
+    XisfWriter::write(&out_path, &xisf_image, &options)
+        .map_err(|e| PluginError::new("WRITE_ERROR", &format!("Failed to write '{}': {}", out_path, e)))?;
+
+    info!("Wrote stack XISF: {}", out_path);
+    Ok(PluginOutput::Message(format!("Stack exported: {}", out_path)))
 }
 
 pub(crate) fn buffer_to_xisf_image(buffer: &crate::context::ImageBuffer) -> Result<XisfImage, String> {

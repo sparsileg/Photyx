@@ -14,7 +14,7 @@
   import MenuBar from '../lib/components/MenuBar.svelte';
   import PreferencesDialog from '../lib/components/PreferencesDialog.svelte';
   import QuickLaunch from '../lib/components/QuickLaunch.svelte';
-  import StackResult from '../lib/components/StackResult.svelte';
+  import StackingWorkspace from '../lib/components/StackingWorkspace.svelte';
   import StatusBar from '../lib/components/StatusBar.svelte';
   import ThresholdProfilesDialog from '../lib/components/ThresholdProfilesDialog.svelte';
   import Toolbar from '../lib/components/Toolbar.svelte';
@@ -102,7 +102,7 @@
       if (paths.length > 0) {
         const pathsArg = paths.map(p => p.replace(/\\/g, '/')).join(',');
         await invoke('dispatch_command', {
-          request: { command: 'SelectFiles', args: { paths: pathsArg } }
+          request: { command: 'AddFiles', args: { paths: pathsArg } }
         });
         await syncSessionState();
       }
@@ -187,9 +187,9 @@
       <AnalysisGraph />
     {:else if $ui.activeView === 'analysisResults'}
       <AnalysisResults />
-    {:else if $ui.activeView === 'stackResult'}
-      <StackResult />
-    {:else}
+      {:else if $ui.activeView === 'stackingWorkspace'}
+        <StackingWorkspace />
+      {:else}
       <Viewer onMousePixel={onMousePixel} />
     {/if}
     {#if !$ui.consoleExpanded}
@@ -199,7 +199,7 @@
         <div id="blink-filename-overlay">{$session.fileList[$session.currentFrame]?.split(/[\\/]/).pop() ?? ''}</div>
       {/if}
     {/if}
-    <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded} class:hidden={$ui.activeView === 'stackResult'}>
+    <div id="bottom-panel" class:console-expanded={$ui.consoleExpanded} class:hidden={$ui.activeView === 'stackingWorkspace'}>
       <Console onhelp={(entry) => helpEntry = entry} />
         <InfoPanel onBlinkFrame={onBlinkFrame} mousePixel={mousePixel} />
     </div>

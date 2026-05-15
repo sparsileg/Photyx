@@ -48,7 +48,7 @@ export async function addFiles() {
   );
 
   if (!result.success) {
-    const msg = result.error ?? 'SelectFiles failed';
+    const msg = result.error ?? 'AddFiles failed';
     if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
       notifications.alert('Too many files to load', msg, 10000);
     } else {

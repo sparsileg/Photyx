@@ -1,7 +1,7 @@
 // plugins/image_reader.rs — Format-agnostic single image file reader
 //
 // Consolidates FITS, XISF, and TIFF readers. Dispatches to the appropriate
-// format-specific reader based on file extension. Used by SelectFiles,
+// format-specific reader based on file extension. Used by AddFiles and ReadImages,
 // load_file (commands/display.rs), and the LoadFile pcode plugin.
 
 use std::path::Path;

@@ -14,7 +14,7 @@ export type ActiveChannel = 'rgb';
 export const VIEWS = [
   'analysisGraph',
   'analysisResults',
-  'stackResult',
+  'stackingWorkspace',
 ] as const;
 
 export type ViewName = typeof VIEWS[number];

@@ -111,7 +111,7 @@ impl PhotonPlugin for AddFiles {
             }
         }
 
-        info!("SelectFiles: loaded {} of {} files", loaded, paths.len());
+        info!("AddFiles: loaded {} of {} files", loaded, paths.len());
 
         let mut msg = format!(
             "Loaded {} file(s) (~{} MB raw, ~{} MB peak with analysis).",
@@ -120,7 +120,7 @@ impl PhotonPlugin for AddFiles {
         if !errors.is_empty() {
             msg.push_str(&format!(" {} error(s).", errors.len()));
             for e in &errors {
-                tracing::warn!("SelectFiles: {}", e);
+                tracing::warn!("AddFiles: {}", e);
             }
         }
 

@@ -502,7 +502,16 @@ impl PhotonPlugin for StackFrames {
             pixels:        Some(PixelData::F32(stack_pixels)),
         };
 
-        ctx.stack_result = Some(stack_buf);
+        ctx.stack_result   = Some(stack_buf);
+
+        // ── Auto-debayer if stack result is Bayer ─────────────────────────
+        if is_bayer {
+            if let Err(e) = crate::plugins::debayer_image::debayer_stack(ctx) {
+                info!("StackFrames: auto-debayer failed — {}", e.message);
+            } else {
+                info!("StackFrames: auto-debayered stack result → RGB");
+            }
+        }
 
         // ── Step 7: Compute and store summary ────────────────────────────────
         let mut summary = StackSummary::compute(&contributions, &completed_at);

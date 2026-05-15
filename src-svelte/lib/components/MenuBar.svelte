@@ -26,9 +26,9 @@
     close();
     switch (a) {
     case 'about':               ui.openAbout(); break;
-    case 'analysis-parameters': ui.openAnalysisParameters(); break;
-    case 'preferences':         ui.openPreferences(); break;
+    case 'add-files':           addFiles(); break;
     case 'analysis-graph':      ui.showView('analysisGraph'); break;
+    case 'analysis-parameters': ui.openAnalysisParameters(); break;
     case 'analysis-results':    ui.showView('analysisResults'); break;
     case 'analyze-frames':      runAnalyzeFrames(); break;
     case 'backup-database':     backupDatabase(); break;
@@ -42,9 +42,10 @@
     case 'log-viewer':          ui.openLogViewer(); break;
     case 'macro-library':       ui.togglePanel('macro-lib'); break;
     case 'plugin-manager':      ui.togglePanel('plugins'); break;
+    case 'preferences':         ui.openPreferences(); break;
     case 'restore-database':    restoreDatabase(); break;
     case 'run-macro':           ui.togglePanel('macro-editor'); break;
-    case 'add-files':           addFiles(); break;
+    case 'stacking-workspace':  ui.showView('stackingWorkspace'); break;
     case 'theme-dark':          ui.setTheme('dark'); break;
     case 'theme-light':         ui.setTheme('light'); break;
     case 'theme-matrix':        ui.setTheme('matrix'); break;
@@ -369,6 +370,8 @@
       { sep: true },
       { label: 'Export Analysis Results', action: 'export-analysis-results' },
       { label: 'Import Analysis Results', action: 'import-analysis-results' },
+      { sep: true },
+      { label: 'Stacking Workspace',      action: 'stacking-workspace' },
       { sep: true },
       { label: 'Contour Plot',            action: 'contour-plot' },
     ]},

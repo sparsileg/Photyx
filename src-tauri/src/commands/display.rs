@@ -880,9 +880,12 @@ pub fn load_file(path: String, state: State<Arc<PhotoxState>>) -> Result<String,
 /// JPEG data URL plus the stack summary. Uses the same Auto-STF parameters
 /// as the main viewer.
 #[tauri::command]
-pub fn get_autostretch_stack_frame(state: State<Arc<PhotoxState>>) -> Result<serde_json::Value, String> {
+pub fn get_autostretch_stack_frame(
+    shadow_clip: Option<f32>,
+    target_bg:   Option<f32>,
+    state: State<Arc<PhotoxState>>,
+) -> Result<serde_json::Value, String> {
     let ctx = state.context.lock().expect("context lock poisoned");
-
     let summary_json = ctx.stack_summary.as_ref().map(|s| serde_json::json!({
         "stacked_frames":         s.stacked_frames,
         "total_frames":           s.total_frames,
@@ -894,13 +897,11 @@ pub fn get_autostretch_stack_frame(state: State<Arc<PhotoxState>>) -> Result<ser
         "integration_seconds":    s.integration_seconds,
         "completed_at":           s.completed_at,
     }));
-
     let buffer = ctx.stack_result.as_ref()
         .ok_or_else(|| "No stack result available.".to_string())
         .map_err(|e| e)?;
-
-    let shadow_clip = ctx.autostretch_shadow_clip;
-    let target_bg   = ctx.autostretch_target_bg;
+    let shadow_clip = shadow_clip.unwrap_or(ctx.autostretch_shadow_clip);
+    let target_bg   = target_bg.unwrap_or(ctx.autostretch_target_bg);
 
     let jpeg_bytes = crate::plugins::auto_stretch::compute_autostretch_jpeg_from_buffer(
         buffer, shadow_clip, target_bg,
@@ -987,5 +988,6 @@ pub fn get_stack_frame(state: State<Arc<PhotoxState>>) -> Result<String, String>
     let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
     Ok(format!("data:image/jpeg;base64,{}", b64))
 }
+
 
 // ----------------------------------------------------------------------

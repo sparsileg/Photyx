@@ -2,6 +2,7 @@
 // Spec §15 (AnalyzeFrames), §7 (pcode analysis commands)
 
 pub mod background;
+pub mod debayer;
 pub mod eccentricity;
 pub mod fft_align;
 pub mod fwhm;

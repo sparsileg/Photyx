@@ -95,6 +95,7 @@
     movefile:           'destination=',
     print:              'message (or bare: Print "hello")',
     pwd:                (_raw: string) => { handleClientCommand('pwd'); },
+    readimages:         'path=',
     round:              '(#)',
     runmacro:           'filename=',
     set:                '<varname> = <value>',
@@ -109,8 +110,6 @@
     writecurrent:       '',
     writefit:           'destination=  overwrite=',
     writeframe:         '',
-    writejpeg:          'filename=  destination=  quality=',
-    writepng:           'filename=  destination=',
     writetiff:          'destination=  overwrite=',
     writexisf:          'destination=  overwrite=  compress=',
   };
@@ -173,8 +172,8 @@
         return;
       }
       append('Photyx pcode v1.0     commands:', 'output');
-      append('  File:     SelectFiles ListFiles FilterByKeyword', 'output');
-      append('  I/O:      WriteFIT WriteXISF WriteTIFF WriteCurrent WritePNG WriteJPEG', 'output');
+      append('  File:     ListFiles FilterByKeyword', 'output');
+      append('  I/O:      AddFiles ReadImages WriteFIT WriteXISF WriteTIFF WriteCurrent', 'output');
       append('  Keyword:  AddKeyword DeleteKeyword ModifyKeyword CopyKeyword ListKeywords GetKeyword', 'output');
       append('  Query:    GetImageProperty GetSessionProperty Test', 'output');
       append('  Process:  AutoStretch CropImage BinImage DebayerImage', 'output');

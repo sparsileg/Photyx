@@ -1,0 +1,208 @@
+/* stackingworkspace.css — Stacking Workspace viewer styles */
+
+#sw-root {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: var(--bg-color);
+    color: var(--text-color);
+    font-family: monospace;
+    font-size: 12px;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+
+#sw-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+#sw-title {
+    font-size: 12px;
+    color: var(--primary-color);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-right: 4px;
+    white-space: nowrap;
+}
+
+.sw-separator {
+    width: 1px;
+    height: 18px;
+    background: var(--border-color);
+    flex-shrink: 0;
+}
+
+.sw-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.sw-label-highlight {
+    font-size: 11px;
+    color: var(--primary-color);
+    font-family: monospace;
+    white-space: nowrap;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sw-btn {
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: monospace;
+    padding: 3px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.sw-btn:hover:not(:disabled) {
+    background: var(--card-hover);
+    color: var(--primary-color);
+    border-color: var(--primary-hover);
+}
+
+.sw-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.sw-btn-primary {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    opacity: 0.85;
+}
+
+.sw-btn-primary:hover:not(:disabled) {
+    opacity: 1;
+    background: var(--card-hover);
+}
+
+.sw-btn-commit {
+    border-color: var(--success-color);
+    color: var(--success-color);
+    opacity: 0.85;
+}
+
+.sw-btn-commit:hover:not(:disabled) {
+    opacity: 1;
+    background: var(--card-hover);
+}
+
+.sw-close {
+    margin-left: auto;
+    color: var(--error-color);
+    border-color: var(--border-color);
+    opacity: 0.6;
+}
+
+.sw-close:hover {
+    background: var(--card-hover);
+    color: var(--error-color);
+    border-color: var(--error-color);
+    opacity: 1;
+}
+
+.sw-select {
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-size: 11px;
+    font-family: monospace;
+    padding: 3px 6px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.sw-select:focus {
+    outline: none;
+    border-color: var(--primary-hover);
+}
+
+.sw-select:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+/* ── Image area ──────────────────────────────────────────────────────────── */
+
+#sw-image-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+}
+
+#sw-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.sw-status {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-family: monospace;
+}
+
+.sw-status-hint {
+    font-size: 11px;
+    color: var(--text-secondary);
+    opacity: 0.6;
+}
+
+.sw-error {
+    color: var(--error-color);
+}
+
+#sw-stack-label {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    border: 1px solid var(--primary-color);
+    color: var(--primary-color);
+    font-family: monospace;
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 2px;
+    pointer-events: none;
+    white-space: nowrap;
+    letter-spacing: 0.05em;
+}
+
+/* ── Autocrop preview overlay ────────────────────────────────────────────── */
+
+#sw-crop-overlay {
+    position: absolute;
+    pointer-events: none;
+    border: 2px solid var(--primary-color);
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+    z-index: 10;
+}

@@ -5,13 +5,12 @@ export const PCODE_COMMANDS = new Set([
   // ── Directory & session
   'AddFiles',
   'ClearSession',
+  'ReadImages',
 
   // ── Write commands ───────────────────────────────────────────────────────
   'WriteCurrent',
   'WriteFIT',
   'WriteFrame',
-  'WriteJPEG',
-  'WritePNG',
   'WriteTIFF',
   'WriteXISF',
 
