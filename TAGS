@@ -1,0 +1,2379 @@
+
+crates/photyx-xisf/tests/reader_tests.rs,368
+const TEST_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data");TEST_DIR5,85
+fn test_open_and_metadata() {test_open_and_metadata8,169
+fn test_read_pixels() {test_read_pixels42,1339
+fn test_round_trip() {test_round_trip76,2511
+fn test_round_trip_compressed() {test_round_trip_compressed149,5380
+fn test_fits_keywords() {test_fits_keywords197,7230
+
+crates/photyx-xisf/LICENSE-APACHE,0
+
+crates/photyx-xisf/src/writer.rs,1468
+const SIGNATURE: &[u8] = b"XISF0100";SIGNATURE28,968
+const HEADER_LENGTH_LEN: usize = 4;HEADER_LENGTH_LEN29,1006
+const RESERVED_LEN: usize = 4;RESERVED_LEN30,1042
+const XISF_XMLNS: &str = "http://www.pixinsight.com/xisf";XISF_XMLNS31,1073
+pub struct XisfWriter;XisfWriter36,1371
+impl XisfWriter {XisfWriter38,1395
+    pub fn write(write48,1778
+fn write_xisf(path: &Path, image: &XisfImage, options: &WriteOptions) -> Result<(), XisfError> {write_xisf59,2191
+fn compute_stable_position(compute_stable_position140,5771
+fn aligned(n: u64, alignment: u64) -> u64 {aligned165,6472
+fn build_xml_header(build_xml_header172,6798
+fn property_to_xml(prop: &XisfProperty) -> Option<String> {property_to_xml272,10098
+fn serialize_pixels(image: &XisfImage) -> Vec<u8> {serialize_pixels307,11772
+fn interleaved_to_planar<T: Copy + Default>(interleaved_to_planar339,13095
+fn sample_format_to_str(f: &SampleFormat) -> &'static str {sample_format_to_str358,13699
+fn sample_format_item_size(f: &SampleFormat) -> usize {sample_format_item_size368,13998
+fn color_space_to_str(cs: &ColorSpace) -> &'static str {color_space_to_str378,14257
+fn codec_to_str(codec: &Codec) -> &'static str {codec_to_str387,14538
+fn xml_escape(s: &str) -> String {xml_escape400,15055
+fn escape_fits_value(s: &str) -> String {escape_fits_value410,15370
+fn chrono_now() -> String {chrono_now415,15481
+fn days_to_ymd(days: u64) -> (u64, u64, u64) {days_to_ymd438,16256
+
+crates/photyx-xisf/src/types.rs,3590
+pub enum SampleFormat {SampleFormat5,150
+    UInt8,UInt86,174
+    UInt16,UInt167,185
+    UInt32,UInt328,197
+    Float32,Float329,209
+    Float64,Float6410,222
+pub enum ColorSpace {ColorSpace15,303
+    Gray,Gray16,325
+    RGB,RGB17,335
+    CFA,   // Bayer mosaicCFA18,344
+    Unknown(String),Unknown19,371
+pub enum PixelData {PixelData24,446
+    U8(Vec<u8>),U825,467
+    U16(Vec<u16>),U1626,484
+    U32(Vec<u32>),U3227,503
+    F32(Vec<f32>),F3228,522
+    F64(Vec<f64>),F6429,541
+impl PixelData {PixelData32,563
+    pub fn len(&self) -> usize {len33,580
+    pub fn is_empty(&self) -> bool { self.len() == 0 }is_empty43,861
+    pub fn item_size(&self) -> usize {item_size45,917
+pub struct FitsKeyword {FitsKeyword59,1302
+    pub name:    String,name60,1327
+    pub value:   String,value61,1352
+    pub comment: String,comment62,1377
+pub enum PropertyValue {PropertyValue67,1460
+    String(String),String68,1485
+    Boolean(bool),Boolean69,1505
+    Int64(i64),Int6470,1524
+    UInt64(u64),UInt6471,1540
+    Float64(f64),Float6472,1557
+    TimePoint(String),   // ISO 8601 string — conversion to DateTime deferredTimePoint73,1575
+    Vector(Vec<f64>),Vector74,1655
+    Matrix { rows: usize, cols: usize, data: Vec<f64> },Matrix75,1677
+pub struct XisfProperty {XisfProperty80,1815
+    pub id:    String,id81,1841
+    pub type_: String,type_82,1864
+    pub value: PropertyValue,value83,1887
+pub enum Codec {Codec88,1978
+    None,None89,1995
+    Lz4,Lz490,2005
+    Lz4Hc,Lz4Hc91,2014
+    Zlib,Zlib92,2025
+    Zstd,Zstd93,2035
+impl Default for Codec {Codec96,2048
+    fn default() -> Self { Codec::Lz4Hc }default97,2073
+pub struct XisfImageMeta {XisfImageMeta103,2252
+    pub width:        u32,width104,2279
+    pub height:       u32,height105,2306
+    pub channels:     u32,channels106,2333
+    pub sample_format: SampleFormat,sample_format107,2360
+    pub color_space:  ColorSpace,color_space108,2397
+    pub fits_keywords: Vec<FitsKeyword>,fits_keywords109,2431
+    pub properties:   Vec<XisfProperty>,properties110,2472
+    pub(crate) location: DataBlockLocation,location113,2625
+    pub(crate) compression: Option<CompressionInfo>,compression114,2669
+pub struct XisfImage {XisfImage119,2796
+    pub width:         u32,width120,2819
+    pub height:        u32,height121,2847
+    pub channels:      u32,channels122,2875
+    pub sample_format: SampleFormat,sample_format123,2903
+    pub color_space:   ColorSpace,color_space124,2940
+    pub pixels:        PixelData,pixels125,2975
+    pub fits_keywords: Vec<FitsKeyword>,fits_keywords126,3009
+    pub properties:    Vec<XisfProperty>,properties127,3050
+pub struct WriteOptions {WriteOptions132,3155
+    pub codec:        Codec,codec133,3181
+    pub shuffle:      bool,shuffle134,3210
+    pub creator_app:  String,creator_app135,3238
+    pub block_alignment: u64,block_alignment137,3323
+impl Default for WriteOptions {WriteOptions140,3356
+    fn default() -> Self {default141,3388
+pub(crate) enum DataBlockLocation {DataBlockLocation153,3720
+    Attachment { offset: u64, size: u64 },Attachment154,3756
+    Inline     { encoding: String, data: Vec<u8> },Inline156,3823
+    Embedded   { data: Vec<u8> },Embedded157,3875
+pub(crate) struct CompressionInfo {CompressionInfo162,4012
+    pub codec:             Codec,codec163,4048
+    pub uncompressed_size: u64,uncompressed_size164,4082
+    pub item_size:         Option<usize>,  // Some(n) = byte-shuffled with item size nitem_size165,4114
+
+crates/photyx-xisf/src/compress.rs,291
+pub fn unshuffle(data: &[u8], item_size: usize) -> Vec<u8> {unshuffle8,312
+pub fn shuffle(data: &[u8], item_size: usize) -> Vec<u8> {shuffle21,745
+pub fn decompress(data: &[u8], info: &CompressionInfo) -> Result<Vec<u8>, XisfError> {decompress33,1096
+pub fn compress(compress69,2451
+
+crates/photyx-xisf/src/error.rs,791
+pub enum XisfError {XisfError6,81
+    Io(#[from] std::io::Error),Io8,133
+    InvalidSignature,InvalidSignature11,226
+    XmlParse(#[from] quick_xml::Error),XmlParse14,286
+    MissingAttribute { element: String, attr: String },MissingAttribute17,406
+    UnsupportedSampleFormat(String),UnsupportedSampleFormat20,512
+    UnsupportedCodec(String),UnsupportedCodec23,603
+    UnsupportedLocation(String),UnsupportedLocation26,694
+    Decompression(String),Decompression29,769
+    ImageIndexOutOfRange { index: usize, count: usize },ImageIndexOutOfRange32,877
+    UnsupportedGeometry(String),UnsupportedGeometry35,1006
+    UnsupportedPropertyType(String),UnsupportedPropertyType38,1089
+    Utf8(#[from] std::str::Utf8Error),Utf841,1167
+    Base64(String),Base6444,1248
+
+crates/photyx-xisf/src/lib.rs,154
+pub mod error;error7,166
+pub mod reader;reader8,181
+pub mod writer;writer9,197
+pub mod types;types10,213
+pub(crate) mod compress;compress11,228
+
+crates/photyx-xisf/src/reader.rs,2967
+const SIGNATURE: &[u8] = b"XISF0100";SIGNATURE27,891
+const HEADER_LENGTH_LEN: usize = 4;HEADER_LENGTH_LEN28,929
+const RESERVED_LEN: usize = 4;RESERVED_LEN29,965
+pub struct XisfReader {XisfReader37,1452
+    path:       PathBuf,path38,1476
+    image_meta: Vec<XisfImageMeta>,image_meta39,1501
+    file_props: Vec<XisfProperty>,file_props40,1537
+impl XisfReader {XisfReader43,1575
+    pub fn open(path: impl AsRef<Path>) -> Result<Self, XisfError> {open53,1926
+    pub fn image_count(&self) -> usize {image_count90,3941
+    pub fn image_meta(&self, index: usize) -> Result<&XisfImageMeta, XisfError> {image_meta95,4081
+    pub fn read_image(&self, index: usize) -> Result<XisfImage, XisfError> {read_image103,4378
+    pub fn file_properties(&self) -> &[XisfProperty] {file_properties136,5934
+fn parse_header(xml: &str) -> Result<(Vec<XisfImageMeta>, Vec<XisfProperty>), XisfError> {parse_header144,6300
+    enum State {State159,7054
+        Root,Root160,7071
+        InImage(ImageBuilder),InImage161,7085
+        InMetadata,InMetadata162,7116
+fn local_name(name: &[u8]) -> &str {local_name228,9495
+struct ImageBuilder {ImageBuilder239,9865
+    width:         u32,width240,9887
+    height:        u32,height241,9911
+    channels:      u32,channels242,9935
+    sample_format: SampleFormat,sample_format243,9959
+    color_space:   ColorSpace,color_space244,9992
+    location:      DataBlockLocation,location245,10023
+    compression:   Option<CompressionInfo>,compression246,10061
+    fits_keywords: Vec<FitsKeyword>,fits_keywords247,10105
+    properties:    Vec<XisfProperty>,properties248,10142
+impl ImageBuilder {ImageBuilder251,10183
+    fn build(self) -> Result<XisfImageMeta, XisfError> {build252,10203
+fn parse_image_attrs(e: &quick_xml::events::BytesStart) -> Result<ImageBuilder, XisfError> {parse_image_attrs267,10698
+fn parse_geometry(s: &str) -> Result<(u32, u32, u32), XisfError> {parse_geometry314,12747
+fn parse_sample_format(s: &str) -> Result<SampleFormat, XisfError> {parse_sample_format328,13396
+fn parse_color_space(s: Option<&str>) -> ColorSpace {parse_color_space349,14197
+fn parse_location(s: &str) -> Result<DataBlockLocation, XisfError> {parse_location359,14666
+fn parse_compression(s: &str) -> Result<CompressionInfo, XisfError> {parse_compression383,15844
+fn parse_fits_keyword(e: &quick_xml::events::BytesStart) -> Result<Option<FitsKeyword>, XisfErroparse_fits_keyword425,17397
+fn parse_property(e: &quick_xml::events::BytesStart) -> Result<Option<XisfProperty>, XisfError> parse_property448,18336
+fn parse_property_value(type_: &str, value: &str) -> Result<PropertyValue, XisfError> {parse_property_value471,19104
+fn read_data_block(path: &Path, location: &DataBlockLocation) -> Result<Vec<u8>, XisfError> {read_data_block501,20625
+fn deserialize_pixels(deserialize_pixels520,21581
+fn planar_to_interleaved<T: Copy + Default>(planar_to_interleaved563,23196
+
+crates/photyx-xisf/LICENSE-MIT,0
+
+crates/photyx-xisf/Cargo.toml,0
+
+static/themes/matrix.css,0
+
+static/themes/light.css,0
+
+static/themes/dark.css,0
+
+static/css/console.css,0
+
+static/css/stackingworkspace.css,0
+
+static/css/dropdown.css,0
+
+static/css/stackresult.css,0
+
+static/css/statusbar.css,0
+
+static/css/sidebar.css,0
+
+static/css/infopanel.css,0
+
+static/css/helpmodal.css,0
+
+static/css/thresholdprofiles.css,0
+
+static/css/viewer.css,0
+
+static/css/modal.css,0
+
+static/css/toolbar.css,0
+
+static/css/macroeditor.css,0
+
+static/css/analysisresults.css,0
+
+static/css/logviewer.css,0
+
+static/css/layout.css,0
+
+static/css/analysisgraph.css,0
+
+static/css/preferences.css,0
+
+static/tauri.svg,0
+
+static/svelte.svg,0
+
+static/favicon.png,0
+
+static/vite.svg,0
+
+vite.config.js,1593
+const host = process.env.TAURI_DEV_HOST;host4,132
+export default defineConfig(async () => ({anonymousObjectf57ffc2c01056,201
+  plugins: [sveltekit()],plugins7,244
+  plugins: [sveltekit()],anonymousObjectf57ffc2c0105.plugins7,244
+  clearScreen: false,clearScreen11,421
+  clearScreen: false,anonymousObjectf57ffc2c0105.clearScreen11,421
+    port: 1420,port14,526
+    port: 1420,anonymousObjectf57ffc2c0105.server.port14,526
+    strictPort: true,strictPort15,542
+    strictPort: true,anonymousObjectf57ffc2c0105.server.strictPort15,542
+    host: host || false,host16,564
+    host: host || false,anonymousObjectf57ffc2c0105.server.host16,564
+          protocol: "ws",protocol19,613
+          protocol: "ws",anonymousObjectf57ffc2c0105.server.hmr.protocol19,613
+          host,host20,639
+          host,anonymousObjectf57ffc2c0105.server.hmr.host20,639
+          port: 1421,port21,655
+          port: 1421,anonymousObjectf57ffc2c0105.server.hmr.port21,655
+    hmr: hosthmr17,589
+    hmr: hostanonymousObjectf57ffc2c0105.server.hmr17,589
+      ignored: ["**/src-tauri/**"],ignored26,772
+      ignored: ["**/src-tauri/**"],anonymousObjectf57ffc2c0105.server.watch.ignored26,772
+    watch: {watch24,706
+    watch: {anonymousObjectf57ffc2c0105.server.watch24,706
+      allow: ['..', './src-svelte']allow30,884
+      allow: ['..', './src-svelte']anonymousObjectf57ffc2c0105.server.fs.allow30,884
+    fs: {fs28,815
+    fs: {anonymousObjectf57ffc2c0105.server.fs28,815
+  server: {server13,514
+  server: {anonymousObjectf57ffc2c0105.server13,514
+
+.projectile,0
+
+Cargo.lock,0
+
+README.md,0
+
+design/photyx_reference.md,0
+
+design/photyx_layout.svg,0
+
+design/photyx_development.md,0
+
+design/project-onboarding.md,0
+
+design/photyx_ui_patterns.md,0
+
+design/Metric-Correlation.md,0
+
+design/photyx_persistence_inventory.md,0
+
+design/Photyx_Memory_Audit.md,0
+
+design/photyx_spec.md,0
+
+design/stacking_development.md,0
+
+design/Archive/photyx_spec_contour_heatmap.md,0
+
+design/Archive/initial_requirements_v0.0.md,0
+
+design/Archive/SelectFiles_Implementation_Plan.md,0
+
+design/Archive/metric_algorithm_update_v2.md,0
+
+design/Archive/Metric_Updates.md,0
+
+package.json,0
+
+.vscode/extensions.json,0
+
+.vscode/settings.json,0
+
+src-tauri/icons/128x128.png,0
+
+src-tauri/icons/Square71x71Logo.png,0
+
+src-tauri/icons/32x32.png,0
+
+src-tauri/icons/StoreLogo.png,0
+
+src-tauri/icons/icon.ico,0
+
+src-tauri/icons/Square107x107Logo.png,0
+
+src-tauri/icons/128x128@2x.png,0
+
+src-tauri/icons/Square150x150Logo.png,0
+
+src-tauri/icons/Square30x30Logo.png,0
+
+src-tauri/icons/icon.icns,0
+
+src-tauri/icons/Square142x142Logo.png,0
+
+src-tauri/icons/Square89x89Logo.png,0
+
+src-tauri/icons/Square284x284Logo.png,0
+
+src-tauri/icons/Square310x310Logo.png,0
+
+src-tauri/icons/Square44x44Logo.png,0
+
+src-tauri/icons/icon.png,0
+
+src-tauri/build.rs,21
+fn main() {main1,0
+
+src-tauri/capabilities/default.json,0
+
+src-tauri/Cargo.lock,0
+
+src-tauri/src/context/mod.rs,4461
+pub enum ColorSpace {ColorSpace11,449
+    Mono,Mono12,471
+    RGB,RGB13,481
+    Bayer,Bayer14,490
+pub enum BitDepth {BitDepth18,552
+    U8,U819,572
+    U16,U1620,580
+    F32,F3221,589
+pub enum PixelData {PixelData25,649
+    U8(Vec<u8>),U826,670
+    U16(Vec<u16>),U1627,687
+    F32(Vec<f32>),F3228,706
+impl PixelData {PixelData31,728
+    pub fn normalize_value(val: f64, bit_depth: &BitDepth) -> f64 {normalize_value32,745
+    pub fn len(&self) -> usize {len40,976
+    pub fn is_empty(&self) -> bool {is_empty48,1173
+pub struct ImageBuffer {ImageBuffer54,1291
+    pub filename:      String,filename55,1316
+    pub width:         u32,width56,1347
+    pub height:        u32,height57,1375
+    pub display_width: u32,display_width58,1403
+    pub bit_depth:     BitDepth,bit_depth59,1431
+    pub color_space:   ColorSpace,color_space60,1464
+    pub channels:      u8,channels61,1499
+    pub keywords:      HashMap<String, KeywordEntry>,keywords62,1526
+    pub pixels:        Option<PixelData>,pixels63,1580
+pub struct KeywordEntry {KeywordEntry69,1882
+    pub name:    String,name70,1908
+    pub value:   String,value71,1933
+    pub comment: Option<String>,comment72,1958
+impl KeywordEntry {KeywordEntry75,1994
+    pub fn new(name: &str, value: &str, comment: Option<&str>) -> Self {new76,2014
+pub enum BlinkCacheStatus {BlinkCacheStatus88,2509
+    Idle,Idle90,2552
+    Building,Building91,2562
+    Ready,Ready92,2576
+pub struct AppContext {AppContext96,2616
+    pub file_list: Vec<String>,file_list98,2695
+    pub image_buffers: HashMap<String, ImageBuffer>,image_buffers101,2813
+    pub display_cache: HashMap<String, Vec<u8>>,display_cache104,2957
+    pub full_res_cache: HashMap<String, Vec<u8>>,full_res_cache107,3097
+    pub blink_cache_12: HashMap<String, Vec<u8>>,blink_cache_12110,3209
+    pub blink_cache_25: HashMap<String, Vec<u8>>,blink_cache_25113,3319
+    pub blink_cache_status: BlinkCacheStatus,blink_cache_status116,3408
+    pub current_frame: usize,current_frame119,3502
+    pub variables: HashMap<String, String>,variables122,3562
+    pub last_histogram: Option<crate::plugins::get_histogram::HistogramStats>,last_histogram125,3670
+    pub last_stf_params: Option<(f32, f32)>,last_stf_params128,3829
+    pub autostretch_shadow_clip: f32,autostretch_shadow_clip131,3968
+    pub autostretch_target_bg:   f32,autostretch_target_bg132,4006
+    pub analysis_thresholds: crate::analysis::session_stats::AnalysisThresholds,analysis_thresholds135,4146
+    pub last_analysis_thresholds: Option<crate::analysis::session_stats::AnalysisThresholds>,last_analysis_thresholds138,4326
+    pub analysis_results: HashMap<String, crate::analysis::AnalysisResult>,analysis_results139,4420
+    pub outlier_frame_paths: std::collections::HashSet<String>,outlier_frame_paths142,4592
+    pub last_session_stats: Option<crate::analysis::session_stats::SessionStats>,last_session_stats145,4738
+    pub log_dir: Option<String>,log_dir148,4902
+    pub buffer_pool_bytes: i64,buffer_pool_bytes152,5089
+    pub current_session_id: Option<i64>,current_session_id155,5224
+    pub is_imported_session: bool,is_imported_session160,5515
+    pub stack_result: Option<ImageBuffer>,stack_result164,5704
+    pub stack_contributions: Vec<crate::analysis::stack_metrics::FrameContribution>,stack_contributions168,5874
+    pub stack_summary: Option<crate::analysis::stack_metrics::StackSummary>,stack_summary171,6015
+impl AppContext {AppContext174,6095
+    pub fn source_directories(&self) -> Vec<PathBuf> {source_directories176,6180
+    pub fn common_parent(&self) -> Option<PathBuf> {common_parent186,6547
+    pub fn sync_from_settings(&mut self, settings: &crate::settings::AppSettings) {sync_from_settings193,6853
+    pub fn new() -> Self {new199,7169
+    pub fn current_image(&self) -> Option<&ImageBuffer> {current_image207,7554
+    pub fn current_image_mut(&mut self) -> Option<&mut ImageBuffer> {current_image_mut212,7724
+    pub fn total_memory_used(&self) -> usize {total_memory_used217,7919
+    pub fn clear_session(&mut self) {clear_session229,8352
+    pub fn remove_rejected_files(&mut self, rejected_paths: &[String]) {remove_rejected_files253,9253
+pub fn analysis_result_for(&mut self, path: &str) -> &mut crate::analysis::AnalysisResult {analysis_result_for272,10041
+    pub fn clear_stack(&mut self) {clear_stack280,10430
+
+src-tauri/src/pcode/mod.rs,1219
+pub mod expr;expr4,60
+pub mod tokenizer;tokenizer5,74
+pub struct PcodeResult {PcodeResult17,382
+    pub line_number:    usize,line_number18,407
+    pub command:        String,command19,438
+    pub success:        bool,success20,470
+    pub message:        Option<String>,message21,500
+    pub data:           Option<serde_json::Value>,data22,540
+    pub trace_line:     Option<String>,trace_line23,591
+    pub client_actions: Vec<String>,client_actions24,631
+impl PcodeResult {PcodeResult27,671
+    pub fn format(&self) -> String {format28,690
+enum Block {Block40,1214
+    Line {Line41,1227
+    If {If45,1305
+    For {For51,1448
+fn parse_blocks(lines: &[(usize, PcodeLine)]) -> Result<Vec<Block>, String> {parse_blocks60,1616
+pub fn execute_script(execute_script166,5692
+fn execute_blocks(execute_blocks207,6993
+fn execute_line(execute_line294,10593
+            const CLIENT_COMMANDS: &[&str] = &[CLIENT_COMMANDS348,12730
+fn evaluate_condition(expression: &str, variables: &HashMap<String, String>) -> bool {evaluate_condition518,20871
+fn substitute_vars(s: &str, variables: &HashMap<String, String>) -> String {substitute_vars530,21349
+fn handle_log(handle_log580,22985
+
+src-tauri/src/pcode/tokenizer.rs,481
+pub enum PcodeLine {PcodeLine6,183
+    Command {Command8,251
+    Assignment {Assignment13,408
+    If {If18,527
+    Else,Else22,618
+    EndIf,EndIf24,665
+    For {For26,731
+    EndFor,EndFor32,852
+    Skip,Skip34,914
+pub fn tokenize_line(line: &str) -> PcodeLine {tokenize_line38,981
+fn find_word(haystack: &str, needle: &str) -> Option<usize> {find_word106,3249
+pub fn parse_args(rest: &str) -> std::collections::HashMap<String, String> {parse_args124,3913
+
+src-tauri/src/pcode/expr.rs,2410
+pub fn evaluate_expr(expr: &str, variables: &HashMap<String, String>) -> Result<String, String> evaluate_expr13,487
+pub fn evaluate_condition(expr: &str, variables: &HashMap<String, String>) -> Result<bool, Strinevaluate_condition26,936
+fn resolve_side(s: &str, variables: &HashMap<String, String>) -> Result<String, String> {resolve_side48,1887
+fn normalize_quotes(s: &str) -> String {normalize_quotes69,2683
+enum Value {Value79,3101
+    Num(f64),Num80,3114
+    Str(String),Str81,3128
+impl Value {Value84,3148
+    fn as_str(&self) -> String {as_str85,3161
+    fn as_num(&self) -> Option<f64> {as_num92,3320
+enum Token {Token103,3735
+    Num(f64),Num104,3748
+    Str(String),Str105,3762
+    Var(String),   // $varname — resolved during parse_primaryVar106,3779
+    Ident(String), // function name or bare wordIdent107,3844
+    Op(char),Op108,3893
+    LParen,LParen109,3907
+    RParen,RParen110,3919
+    Comma,Comma111,3931
+impl Token {Token114,3945
+    fn display(&self) -> String {display115,3958
+fn tokenize(input: &str) -> Result<Vec<Token>, String> {tokenize131,4633
+fn parse_expr(input: &str, variables: &HashMap<String, String>) -> Result<Value, String> {parse_expr225,7908
+fn parse_addition(tokens: &[Token], pos: &mut usize, variables: &HashMap<String, String>) -> Resparse_addition244,8644
+fn parse_multiplication(tokens: &[Token], pos: &mut usize, variables: &HashMap<String, String>) parse_multiplication274,9825
+fn parse_exponentiation(tokens: &[Token], pos: &mut usize, variables: &HashMap<String, String>) parse_exponentiation310,11265
+fn parse_unary(tokens: &[Token], pos: &mut usize, variables: &HashMap<String, String>) -> Resultparse_unary328,11990
+fn parse_primary(tokens: &[Token], pos: &mut usize, variables: &HashMap<String, String>) -> Resuparse_primary342,12510
+fn call_function(name: &str, tokens: &[Token], pos: &mut usize, variables: &HashMap<String, Stricall_function401,14642
+fn one_numeric_arg(args: &[Value], fname: &str) -> Result<f64, String> {one_numeric_arg440,16305
+fn two_numeric_args(args: &[Value], fname: &str) -> Result<(f64, f64), String> {two_numeric_args449,16621
+fn find_comparison_op(expr: &str, op: &str) -> Option<usize> {find_comparison_op460,17244
+fn compare_values(lhs: &str, op: &str, rhs: &str) -> bool {compare_values494,18280
+fn format_number(n: f64) -> String {format_number519,18947
+
+src-tauri/src/analysis/stars.rs,924
+pub struct StarCandidate {StarCandidate20,950
+    pub cx: f32,cx22,1035
+    pub cy: f32,cy24,1110
+    pub peak: f32,peak26,1198
+    pub bbox: (usize, usize, usize, usize),bbox28,1289
+    pub patch: Vec<f32>,patch31,1444
+    pub pixel_count: usize,pixel_count34,1545
+pub fn detect_stars(detect_stars42,1937
+fn is_local_max(is_local_max158,6291
+fn flood_fill(flood_fill189,7255
+mod tests {tests225,8452
+    fn flat_with_stars(width: usize, height: usize, stars: &[(usize, usize, f32)]) -> Vec<f32> {flat_with_stars228,8483
+    fn test_detects_single_star() {test_detects_single_star242,9140
+    fn test_detects_multiple_stars() {test_detects_multiple_stars255,9679
+    fn test_rejects_saturated_stars() {test_rejects_saturated_stars269,10130
+    fn test_empty_image_returns_empty() {test_empty_image_returns_empty285,10727
+    fn test_flat_image_no_stars() {test_flat_image_no_stars292,10930
+
+src-tauri/src/analysis/mod.rs,2736
+pub mod background;background4,138
+pub mod debayer;debayer5,158
+pub mod eccentricity;eccentricity6,175
+pub mod fft_align;fft_align7,197
+pub mod fwhm;fwhm8,216
+pub mod metrics;metrics9,230
+pub mod moffat;moffat10,247
+pub mod profiles;profiles11,263
+pub mod session_stats;session_stats12,281
+pub mod stack_metrics;stack_metrics13,304
+pub mod stars;stars14,327
+pub enum PxFlag {PxFlag21,633
+    Pass,Pass22,651
+    Reject,Reject23,661
+impl PxFlag {PxFlag26,676
+    pub fn as_str(&self) -> &str {as_str27,690
+impl std::fmt::Display for PxFlag {PxFlag35,843
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {fmt36,879
+pub struct AnalysisResult {AnalysisResult46,1375
+    pub filename:             String,filename47,1403
+    pub background_median:    Option<f32>,background_median50,1484
+    pub signal_weight:        Option<f32>,signal_weight54,1697
+    pub fwhm:                 Option<f32>,   // mean FWHM in pixelsfwhm57,1780
+    pub eccentricity:         Option<f32>,   // mean eccentricity (0 = circular, 1 = line)eccentricity58,1848
+    pub star_count:           Option<u32>,   // number of detected starsstar_count59,1939
+    pub flag:                 Option<PxFlag>,flag62,2087
+    pub triggered_by:         Vec<String>,triggered_by63,2133
+    pub rejection_category:   Option<String>,rejection_category71,2532
+impl AnalysisResult {AnalysisResult74,2581
+    pub fn new(filename: &str) -> Self {new75,2603
+pub struct SigmaClipConfig {SigmaClipConfig87,3027
+    pub sigma:       f32,sigma88,3056
+    pub iterations:  u32,iterations89,3082
+impl Default for SigmaClipConfig {SigmaClipConfig92,3111
+    fn default() -> Self {default93,3146
+pub struct StarDetectionConfig {StarDetectionConfig101,3452
+    pub detection_threshold:  f32,detection_threshold102,3485
+    pub peak_radius:          u32,peak_radius103,3520
+    pub flood_threshold:      f32,flood_threshold104,3555
+    pub saturation_threshold: f32,saturation_threshold105,3590
+    pub sigma_clip:           SigmaClipConfig,sigma_clip106,3625
+impl Default for StarDetectionConfig {StarDetectionConfig109,3675
+    fn default() -> Self {default110,3714
+pub struct BackgroundConfig {BackgroundConfig124,4205
+    pub sigma_clip:         SigmaClipConfig,sigma_clip125,4235
+    pub gradient_grid_size: u32,gradient_grid_size126,4280
+impl Default for BackgroundConfig {BackgroundConfig129,4316
+    fn default() -> Self {default130,4352
+pub fn extract_luminance(extract_luminance140,4703
+pub fn to_f32_normalized(pixels: &PixelData) -> Vec<f32> {to_f32_normalized167,5534
+pub fn to_luminance(pixels: &PixelData, channels: usize) -> Vec<f32> {to_luminance176,5879
+
+src-tauri/src/analysis/stack_metrics.rs,2495
+pub enum ExclusionReason {ExclusionReason9,415
+    FilterMismatch,FilterMismatch10,442
+    AlignmentFailed,AlignmentFailed11,462
+impl ExclusionReason {ExclusionReason14,486
+    pub fn as_str(&self) -> &str {as_str15,509
+impl std::fmt::Display for ExclusionReason {ExclusionReason23,719
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {fmt24,764
+pub struct FrameContribution {FrameContribution32,1110
+    pub frame_index: usize,frame_index34,1191
+    pub filename: String,filename37,1250
+    pub filter: Option<String>,filter40,1340
+    pub included: bool,included43,1432
+    pub exclusion_reason: Option<ExclusionReason>,exclusion_reason46,1507
+    pub background_level: Option<f32>,background_level49,1631
+    pub fft_translation: Option<(f32, f32)>,fft_translation52,1744
+    pub alignment_validated: Option<bool>,alignment_validated55,1848
+    pub fwhm: Option<f32>,fwhm58,1960
+    pub eccentricity: Option<f32>,eccentricity61,2064
+    pub meridian_flipped: bool,meridian_flipped64,2180
+impl FrameContribution {FrameContribution67,2215
+    pub fn new(frame_index: usize, filename: &str) -> Self {new68,2240
+pub struct StackSummary {StackSummary88,2956
+    pub total_frames: usize,total_frames90,3032
+    pub filter_excluded: usize,filter_excluded93,3109
+    pub alignment_excluded: usize,alignment_excluded96,3191
+    pub stacked_frames: usize,stacked_frames99,3263
+    pub snr_improvement: f32,snr_improvement102,3372
+    pub alignment_success_rate: f32,alignment_success_rate105,3460
+    pub background_uniformity: BackgroundUniformity,background_uniformity108,3587
+    pub completed_at: String,completed_at111,3699
+    pub target: Option<String>,target114,3790
+    pub filter: Option<String>,filter117,3883
+    pub integration_seconds: f32,integration_seconds120,3988
+impl StackSummary {StackSummary123,4025
+    pub fn compute(contributions: &[FrameContribution], completed_at: &str) -> Self {compute124,4045
+pub enum BackgroundUniformity {BackgroundUniformity168,5735
+    Good,Good170,5782
+    Moderate,Moderate171,5792
+    Poor,Poor172,5806
+impl BackgroundUniformity {BackgroundUniformity175,5819
+    pub fn from_levels(levels: &[f32]) -> Self {from_levels178,5983
+    pub fn as_str(&self) -> &str {as_str199,6550
+impl std::fmt::Display for BackgroundUniformity {BackgroundUniformity208,6743
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {fmt209,6793
+
+src-tauri/src/analysis/eccentricity.rs,963
+pub fn star_eccentricity(star: &StarCandidate) -> Option<f32> {star_eccentricity18,858
+pub struct EccentricityResult {EccentricityResult83,2767
+    pub eccentricity: f32,eccentricity85,2882
+    pub star_count: usize,star_count87,2969
+    pub rejected_count: usize,rejected_count89,3047
+pub fn compute_eccentricity(stars: &[StarCandidate]) -> Option<EccentricityResult> {compute_eccentricity93,3140
+mod tests {tests127,4154
+    fn circular_star(sigma: f32) -> StarCandidate {circular_star132,4297
+    fn elongated_star(sigma_x: f32, sigma_y: f32) -> StarCandidate {elongated_star151,5072
+    fn test_circular_star_low_eccentricity() {test_circular_star_low_eccentricity171,5899
+    fn test_elongated_star_high_eccentricity() {test_elongated_star_high_eccentricity178,6164
+    fn test_compute_eccentricity_median() {test_compute_eccentricity_median186,6494
+    fn test_compute_eccentricity_empty() {test_compute_eccentricity_empty198,6859
+
+src-tauri/src/analysis/moffat.rs,1743
+const BETA: f32 = 4.765;BETA29,1221
+const MAX_ITER: usize = 50;MAX_ITER32,1283
+const CONVERGENCE_TOL: f32 = 1e-5;CONVERGENCE_TOL35,1384
+const LAMBDA_INIT: f32 = 1e-3;LAMBDA_INIT38,1454
+const MIN_AXIS: f32 = 0.5;MIN_AXIS41,1556
+const MAX_AXIS: f32 = 30.0;MAX_AXIS44,1656
+const MIN_AXIS_RATIO: f32 = 0.2;MIN_AXIS_RATIO48,1804
+const MAX_RESIDUAL: f32 = 0.3;MAX_RESIDUAL51,1901
+pub struct MoffatFit {MoffatFit56,2180
+    pub signal_weight: f32,signal_weight58,2250
+pub fn fit_star(star: &StarCandidate) -> Option<MoffatFit> {fit_star65,2592
+fn lm_fit(lm_fit144,4796
+fn moffat_eval(x: f32, y: f32, p: &[f32; 5], bg: f32) -> f32 {moffat_eval235,7468
+fn moffat_grad(x: f32, y: f32, p: &[f32; 5]) -> [f32; 5] {moffat_grad248,7934
+fn solve_5x5(a: &[[f32; 5]; 5], b: &[f32; 5]) -> [f32; 5] {solve_5x5269,8707
+fn border_mean(patch: &[f32], bw: usize, bh: usize) -> f32 {border_mean319,10120
+fn normalized_residual(normalized_residual338,10692
+fn signal_weight(amp: f32, bg: f32, a: f32, b: f32) -> f32 {signal_weight361,11331
+mod tests {tests372,11760
+    fn synthetic_moffat_star(synthetic_moffat_star377,11895
+    fn test_fit_symmetric_star() {test_fit_symmetric_star406,12785
+    fn test_fit_elongated_star() {test_fit_elongated_star413,13076
+    fn test_rejects_too_small_patch() {test_rejects_too_small_patch419,13285
+    fn test_signal_weight_positive() {test_signal_weight_positive425,13498
+    fn test_signal_weight_penalizes_broad_psf() {test_signal_weight_penalizes_broad_psf431,13672
+    fn test_fwhm_formula() {test_fwhm_formula440,14072
+    fn test_eccentricity_circular() {test_eccentricity_circular447,14304
+    fn test_eccentricity_elongated() {test_eccentricity_elongated453,14498
+
+src-tauri/src/analysis/fft_align.rs,1023
+const REG_SIZE: usize = 1024;REG_SIZE26,1155
+pub struct AlignmentTranslation {AlignmentTranslation34,1598
+    pub dx: f32,dx35,1632
+    pub dy: f32,dy36,1649
+pub fn compute_translation(compute_translation48,2188
+fn downsample(downsample142,6454
+fn fft_2d(buf: &mut Vec<Complex<f32>>, width: usize, height: usize, inverse: bool) {fft_2d181,7676
+fn hann_window_2d(width: usize, height: usize) -> Vec<f32> {hann_window_2d216,8931
+fn subpixel_refine(subpixel_refine235,9706
+mod tests {tests264,10832
+    fn flat_with_star(width: usize, height: usize, cx: usize, cy: usize) -> Vec<f32> {flat_with_star267,10863
+    fn shift_image(src: &[f32], width: usize, height: usize, dx: i32, dy: i32) -> Vec<f32> {shift_image282,11429
+    fn test_zero_translation() {test_zero_translation297,11953
+    fn test_known_translation() {test_known_translation306,12311
+    fn test_empty_returns_none() {test_empty_returns_none316,12773
+    fn test_large_image_downsamples() {test_large_image_downsamples321,12891
+
+src-tauri/src/analysis/profiles.rs,553
+pub fn pixel_size_um(instrume: &str) -> Option<f32> {pixel_size_um8,348
+pub fn plate_scale(focal_length_mm: f32, pixel_size_um: f32, binning: u32) -> f32 {plate_scale23,849
+static CAMERA_TABLE: &[(&str, f32)] = &[CAMERA_TABLE30,1159
+mod tests {tests52,2029
+    fn test_known_camera_exact() {test_known_camera_exact56,2072
+    fn test_known_camera_case_insensitive() {test_known_camera_case_insensitive61,2193
+    fn test_unknown_camera() {test_unknown_camera67,2388
+    fn test_plate_scale_binning_2() {test_plate_scale_binning_272,2495
+
+src-tauri/src/analysis/fwhm.rs,1070
+pub fn star_fwhm(star: &StarCandidate) -> Option<f32> {star_fwhm24,1103
+pub struct FwhmResult {FwhmResult79,2541
+    pub fwhm_pixels:    f32,fwhm_pixels80,2565
+    pub fwhm_arcsec:    Option<f32>,fwhm_arcsec81,2594
+    pub star_count:     usize,star_count82,2631
+    pub rejected_count: usize,rejected_count83,2662
+pub fn compute_fwhm(compute_fwhm87,2747
+mod tests {tests128,3889
+    fn gaussian_star(sigma: f32) -> StarCandidate {gaussian_star132,3967
+    fn elongated_gaussian_star(sigma_x: f32, sigma_y: f32) -> StarCandidate {elongated_gaussian_star158,4757
+    fn test_fwhm_gaussian_sigma2() {test_fwhm_gaussian_sigma2185,5658
+    fn test_fwhm_gaussian_sigma3() {test_fwhm_gaussian_sigma3196,5990
+    fn test_fwhm_elongated_star_geometric_mean() {test_fwhm_elongated_star_geometric_mean207,6322
+    fn test_compute_fwhm_with_plate_scale() {test_compute_fwhm_with_plate_scale219,6807
+    fn test_compute_fwhm_no_plate_scale() {test_compute_fwhm_no_plate_scale230,7336
+    fn test_compute_fwhm_empty() {test_compute_fwhm_empty237,7572
+
+src-tauri/src/analysis/background.rs,1714
+pub struct BackgroundEstimate {BackgroundEstimate14,696
+    pub median: f32,median16,782
+    pub stddev: f32,stddev18,869
+fn median_sorted(values: &mut Vec<f32>) -> f32 {median_sorted22,953
+fn mean_stddev(values: &[f32]) -> (f32, f32) {mean_stddev36,1349
+pub fn sigma_clipped_background(sample: &[f32], config: &SigmaClipConfig) -> BackgroundEstimate sigma_clipped_background51,1920
+const SUBSAMPLE_STEP: usize = 8;SUBSAMPLE_STEP103,3626
+fn subsample(pixels: &[f32]) -> Vec<f32> {subsample105,3660
+pub fn estimate_background(luma: &[f32], config: &SigmaClipConfig) -> BackgroundEstimate {estimate_background115,3921
+pub fn background_median(luma: &[f32], config: &BackgroundConfig) -> f32 {background_median125,4414
+pub fn background_stddev(luma: &[f32], config: &BackgroundConfig) -> f32 {background_stddev134,4878
+pub fn background_gradient(background_gradient147,5631
+pub struct BackgroundMetrics {BackgroundMetrics202,7354
+    pub median:   f32,median203,7385
+    pub stddev:   f32,stddev204,7408
+    pub gradient: f32,gradient205,7431
+pub fn compute_background_metrics(compute_background_metrics208,7457
+mod tests {tests227,8086
+    fn make_config() -> BackgroundConfig {make_config230,8117
+    fn test_median_sorted_odd() {test_median_sorted_odd235,8215
+    fn test_median_sorted_even() {test_median_sorted_even241,8360
+    fn test_sigma_clip_rejects_outliers() {test_sigma_clip_rejects_outliers247,8511
+    fn test_background_median_flat_image() {test_background_median_flat_image261,9120
+    fn test_background_gradient_flat_image() {test_background_gradient_flat_image269,9363
+    fn test_background_gradient_ramp() {test_background_gradient_ramp278,9704
+
+src-tauri/src/analysis/metrics.rs,704
+pub const CLIP_THRESHOLD: f32 = 0.995;CLIP_THRESHOLD15,608
+pub fn highlight_clipping(luma: &[f32]) -> f32 {highlight_clipping20,806
+pub struct SignalWeightResult {SignalWeightResult42,1793
+    pub signal_weight: f32,signal_weight43,1825
+pub fn compute_signal_weight(compute_signal_weight48,1983
+mod tests {tests82,2909
+    fn test_clipping_none() {test_clipping_none86,2952
+    fn test_clipping_all() {test_clipping_all92,3092
+    fn test_clipping_half() {test_clipping_half98,3231
+    fn test_clipping_threshold() {test_clipping_threshold106,3488
+    fn test_clipping_empty() {test_clipping_empty114,3748
+    fn test_signal_weight_no_stars() {test_signal_weight_no_stars119,3848
+
+src-tauri/src/analysis/debayer.rs,577
+pub enum BayerPattern {BayerPattern8,366
+    RGGB,RGGB9,390
+    BGGR,BGGR10,400
+    GRBG,GRBG11,410
+    GBRG,GBRG12,420
+impl BayerPattern {BayerPattern15,433
+    pub fn from_str(s: &str) -> Self {from_str17,526
+    pub fn channel_at(&self, x: usize, y: usize) -> u8 {channel_at27,834
+pub fn debayer_bilinear(debayer_bilinear43,1353
+mod tests {tests155,5899
+    fn test_rggb_channel_at() {test_rggb_channel_at159,5942
+    fn test_debayer_output_size() {test_debayer_output_size168,6221
+    fn test_debayer_flat_image() {test_debayer_flat_image175,6428
+
+src-tauri/src/analysis/session_stats.rs,5110
+pub struct MetricThresholds {MetricThresholds12,587
+    pub reject: f32,reject13,617
+pub struct AnalysisThresholds {AnalysisThresholds17,689
+    pub background_median:   MetricThresholds,  // +σbackground_median19,804
+    pub signal_weight:       MetricThresholds,  // -σ (lower = worse)signal_weight20,859
+    pub fwhm:                MetricThresholds,  // +σfwhm21,930
+    pub star_count:          MetricThresholds,  // -σ (fewer stars = worse)star_count22,985
+    pub eccentricity:        MetricThresholds,  // absolute 0.0–1.0eccentricity25,1079
+impl Default for AnalysisThresholds {AnalysisThresholds28,1152
+    fn default() -> Self {default29,1190
+pub struct MetricWeights {MetricWeights44,1820
+    pub background_median:   f32,background_median45,1847
+    pub background_stddev:   f32,background_stddev46,1881
+    pub background_gradient: f32,background_gradient47,1915
+    pub signal_weight:       f32,signal_weight48,1949
+    pub fwhm:                f32,fwhm49,1983
+    pub eccentricity:        f32,eccentricity50,2017
+    pub star_count:          f32,star_count51,2051
+impl MetricWeights {MetricWeights55,2108
+    pub fn broadband() -> Self {broadband56,2129
+    pub fn narrowband() -> Self {narrowband68,2460
+    pub fn for_filter(filter: Option<&str>) -> Self {for_filter80,2792
+pub struct MetricStats {MetricStats91,3235
+    pub mean:   f32,mean92,3260
+    pub stddev: f32,stddev93,3281
+impl MetricStats {MetricStats96,3305
+    fn from_values(values: &[f32]) -> Self {from_values97,3324
+pub struct SessionStats {SessionStats109,3712
+    pub background_median:   MetricStats,background_median110,3738
+    pub signal_weight:       MetricStats,signal_weight111,3780
+    pub fwhm:                MetricStats,fwhm112,3822
+    pub eccentricity:        MetricStats,eccentricity113,3864
+    pub star_count:          MetricStats,star_count114,3906
+fn bimodality_coefficient(values: &[f32]) -> Option<f32> {bimodality_coefficient124,4420
+fn find_valley(values: &[f32], n_bins: usize) -> Option<f32> {find_valley152,5505
+const BIMODALITY_COEFFICIENT_THRESHOLD: f32 = 0.555;BIMODALITY_COEFFICIENT_THRESHOLD190,6732
+const BIMODAL_HISTOGRAM_BINS: usize = 20;BIMODAL_HISTOGRAM_BINS193,6837
+pub fn compute_metric_stats(compute_metric_stats211,7779
+fn compute_session_stats_plain(results: &[&AnalysisResult]) -> SessionStats {compute_session_stats_plain250,9230
+    macro_rules! collect {collect251,9308
+pub fn compute_session_stats(results: &[&AnalysisResult]) -> SessionStats {compute_session_stats272,10014
+    macro_rules! collect {collect273,10090
+pub fn compute_session_stats_iterative(compute_session_stats_iterative304,11445
+        macro_rules! check_outlier {check_outlier318,11954
+fn sigma_dev(value: f32, stats: &MetricStats) -> f32 {sigma_dev376,14053
+pub fn classify_frame(classify_frame388,14592
+    macro_rules! check_high {check_high395,14795
+    macro_rules! check_low {check_low405,15094
+pub fn categorize_rejection(triggered: &[String]) -> Option<String> {categorize_rejection444,16730
+mod tests {tests476,17689
+    fn make_result(filename: &str, fwhm: f32, ecc: f32, sw: f32, stars: u32, bg: f32) -> Analysimake_result480,17761
+    fn test_session_stats_basic() {test_session_stats_basic495,18307
+    fn test_classify_average_frame_passes() {test_classify_average_frame_passes506,18742
+    fn test_classify_bad_eccentricity_rejects() {test_classify_bad_eccentricity_rejects519,19298
+    fn test_signal_weight_triggers_rejection() {test_signal_weight_triggers_rejection532,19890
+    fn test_triggered_by_populated() {test_triggered_by_populated548,20685
+    fn test_weights_narrowband_zeroes_star_count() {test_weights_narrowband_zeroes_star_count564,21465
+    fn test_filter_selection() {test_filter_selection571,21654
+    fn test_category_optical_only() {test_category_optical_only583,22161
+    fn test_category_transparency_only() {test_category_transparency_only590,22518
+    fn test_category_sky_brightness_only() {test_category_sky_brightness_only597,22890
+    fn test_category_sky_brightness_with_transparency() {test_category_sky_brightness_with_transparency602,23054
+    fn test_category_optical_with_transparency() {test_category_optical_with_transparency614,23454
+    fn test_category_optical_with_sky_brightness() {test_category_optical_with_sky_brightness626,23823
+    fn test_category_all_three() {test_category_all_three634,24050
+    fn test_category_none_for_pass() {test_category_none_for_pass646,24348
+    fn test_bimodality_coefficient_unimodal() {test_bimodality_coefficient_unimodal651,24459
+    fn test_bimodality_coefficient_bimodal() {test_bimodality_coefficient_bimodal659,24852
+    fn test_compute_metric_stats_bimodal_anchors_to_upper() {test_compute_metric_stats_bimodal_anchors_to_upper668,25261
+    fn test_compute_metric_stats_unimodal_unchanged() {test_compute_metric_stats_unimodal_unchanged681,25815
+    fn test_bimodal_star_count_rejects_cloudy_frames() {test_bimodal_star_count_rejects_cloudy_frames693,26349
+
+src-tauri/src/logging.rs,283
+pub fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {init_logging11,375
+fn get_log_dir() -> PathBuf {get_log_dir58,1902
+fn session_log_filename() -> String {session_log_filename63,2044
+fn prune_old_logs(log_dir: &PathBuf, keep: usize) {prune_old_logs75,2423
+
+src-tauri/src/lib.rs,2340
+mod analysis;analysis4,80
+mod commands;commands5,94
+mod context;context6,108
+mod db;db7,121
+mod logging;logging8,129
+mod plugin;plugin9,142
+mod plugins;plugins10,154
+mod settings;settings11,167
+mod utils;utils12,181
+mod pcode;pcode23,447
+pub static GLOBAL_REGISTRY: once_cell::sync::OnceCell<Arc<PluginRegistry>> =GLOBAL_REGISTRY26,535
+pub static GLOBAL_DB: once_cell::sync::OnceCell<std::sync::Mutex<rusqlite::Connection>> =GLOBAL_DB30,740
+pub struct PhotoxState {PhotoxState35,1070
+    pub registry: Arc<PluginRegistry>,registry36,1095
+    pub context:  Mutex<AppContext>,context37,1134
+    pub db:       Mutex<rusqlite::Connection>,db38,1171
+    pub settings: Mutex<settings::AppSettings>,settings39,1218
+pub struct DispatchRequest {DispatchRequest45,1456
+    pub command: String,command46,1485
+    pub args:    ArgMap,args47,1510
+pub struct DispatchResponse {DispatchResponse51,1566
+    pub success: bool,success52,1596
+    pub output:  Option<String>,output53,1619
+    pub error:   Option<String>,error54,1652
+    pub data:    Option<serde_json::Value>,data55,1685
+async fn dispatch_command(dispatch_command59,1750
+pub struct ScriptResponse {ScriptResponse99,3474
+    pub results:         Vec<ScriptResult>,results100,3502
+    pub session_changed: bool,session_changed101,3546
+    pub display_changed: bool,display_changed102,3577
+    pub client_actions:  Vec<String>,client_actions103,3608
+pub struct ScriptResult {ScriptResult107,3677
+    pub line_number:    usize,line_number108,3703
+    pub command:        String,command109,3734
+    pub success:        bool,success110,3766
+    pub message:        Option<String>,message111,3796
+    pub data:           Option<serde_json::Value>,data112,3836
+    pub trace_line:     Option<String>,trace_line113,3887
+    pub client_actions: Vec<String>,client_actions114,3927
+const SESSION_COMMANDS: &[&str] = &[SESSION_COMMANDS118,4034
+const DISPLAY_COMMANDS: &[&str] = &[DISPLAY_COMMANDS123,4204
+fn run_script(script: String, state: State<Arc<PhotoxState>>) -> ScriptResponse {run_script128,4324
+fn list_plugins(state: State<Arc<PhotoxState>>) -> Vec<serde_json::Value> {list_plugins167,5760
+fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {init_logging173,6089
+pub fn run() {run180,6423
+
+src-tauri/src/settings/defaults.rs,4628
+pub const DEFAULT_THEME:               &str = "matrix";DEFAULT_THEME7,470
+pub const DEFAULT_ZOOM_LEVEL:          &str = "fit";DEFAULT_ZOOM_LEVEL8,526
+pub const DEFAULT_BLINK_RATE_SECS:     f64  = 0.1;DEFAULT_BLINK_RATE_SECS9,579
+pub const DEFAULT_CHANNEL_VIEW:        &str = "rgb";DEFAULT_CHANNEL_VIEW10,630
+pub const DEFAULT_LAST_DIRECTORY:      &str = "";DEFAULT_LAST_DIRECTORY14,897
+pub const DEFAULT_JPEG_QUALITY:        i64  = 75;DEFAULT_JPEG_QUALITY15,947
+pub const JPEG_QUALITY_MIN:            i64  = 1;JPEG_QUALITY_MIN16,997
+pub const JPEG_QUALITY_MAX:            i64  = 100;JPEG_QUALITY_MAX17,1046
+pub const DEFAULT_RECENT_DIRS_MAX:     i64  = 10;DEFAULT_RECENT_DIRS_MAX18,1097
+pub const RECENT_DIRS_MIN:             i64  = 1;RECENT_DIRS_MIN19,1147
+pub const RECENT_DIRS_MAX:             i64  = 50;RECENT_DIRS_MAX20,1196
+pub const DEFAULT_BACKUP_DIRECTORY:    &str = "";   // resolved to OS Downloads at runtimeDEFAULT_BACKUP_DIRECTORY24,1456
+pub const DEFAULT_CONSOLE_HISTORY_SIZE: i64 = 500;DEFAULT_CONSOLE_HISTORY_SIZE25,1547
+pub const CONSOLE_HISTORY_MIN:         i64  = 100;CONSOLE_HISTORY_MIN26,1598
+pub const CONSOLE_HISTORY_MAX:         i64  = 5000;CONSOLE_HISTORY_MAX27,1649
+pub const DEFAULT_MACRO_EDITOR_FONT:   i64  = 13;DEFAULT_MACRO_EDITOR_FONT28,1701
+pub const MACRO_EDITOR_FONT_MIN:       i64  = 8;MACRO_EDITOR_FONT_MIN29,1751
+pub const MACRO_EDITOR_FONT_MAX:       i64  = 24;MACRO_EDITOR_FONT_MAX30,1800
+pub const DEFAULT_ERROR_BEHAVIOR:      &str = "halt";  // not persistedDEFAULT_ERROR_BEHAVIOR31,1850
+pub const DEFAULT_BUFFER_POOL_BYTES:   i64  = 4 * 1024 * 1024 * 1024; // 4 GBDEFAULT_BUFFER_POOL_BYTES35,2136
+pub const BUFFER_POOL_MIN_BYTES:       i64  = 512 * 1024 * 1024;       // 512 MBBUFFER_POOL_MIN_BYTES36,2214
+pub const BUFFER_POOL_MAX_BYTES:       i64  = 32 * 1024 * 1024 * 1024; // 32 GBBUFFER_POOL_MAX_BYTES37,2295
+pub const DEFAULT_AUTOSTRETCH_SHADOW_CLIP:  f64 = -2.8;DEFAULT_AUTOSTRETCH_SHADOW_CLIP41,2589
+pub const AUTOSTRETCH_SHADOW_CLIP_MIN:      f64 = -5.0;AUTOSTRETCH_SHADOW_CLIP_MIN42,2645
+pub const AUTOSTRETCH_SHADOW_CLIP_MAX:      f64 =  0.0;AUTOSTRETCH_SHADOW_CLIP_MAX43,2701
+pub const DEFAULT_AUTOSTRETCH_TARGET_BG:    f64 = 0.15;DEFAULT_AUTOSTRETCH_TARGET_BG44,2757
+pub const AUTOSTRETCH_TARGET_BG_MIN:        f64 = 0.01;AUTOSTRETCH_TARGET_BG_MIN45,2813
+pub const AUTOSTRETCH_TARGET_BG_MAX:        f64 = 0.50;AUTOSTRETCH_TARGET_BG_MAX46,2869
+pub const DEFAULT_CRASH_RECOVERY_INTERVAL_SECS: i64 = 60;DEFAULT_CRASH_RECOVERY_INTERVAL_SECS50,3133
+pub const CRASH_RECOVERY_INTERVAL_MIN:          i64 = 15;CRASH_RECOVERY_INTERVAL_MIN51,3191
+pub const CRASH_RECOVERY_INTERVAL_MAX:          i64 = 300;CRASH_RECOVERY_INTERVAL_MAX52,3249
+pub const DEFAULT_PROFILE_NAME:              &str = "Default";DEFAULT_PROFILE_NAME56,3458
+pub const DEFAULT_BG_MEDIAN_SIGMA:           f64  = 2.5;DEFAULT_BG_MEDIAN_SIGMA57,3521
+pub const BG_MEDIAN_SIGMA_MIN:               f64  = 0.5;BG_MEDIAN_SIGMA_MIN58,3578
+pub const BG_MEDIAN_SIGMA_MAX:               f64  = 4.0;BG_MEDIAN_SIGMA_MAX59,3635
+pub const DEFAULT_SIGNAL_WEIGHT_SIGMA:       f64  = 2.5;DEFAULT_SIGNAL_WEIGHT_SIGMA60,3692
+pub const SIGNAL_WEIGHT_SIGMA_MIN:           f64  = 0.5;SIGNAL_WEIGHT_SIGMA_MIN61,3749
+pub const SIGNAL_WEIGHT_SIGMA_MAX:           f64  = 5.0;SIGNAL_WEIGHT_SIGMA_MAX62,3806
+pub const DEFAULT_FWHM_SIGMA:                f64  = 2.5;DEFAULT_FWHM_SIGMA63,3863
+pub const FWHM_SIGMA_MIN:                    f64  = 0.5;FWHM_SIGMA_MIN64,3920
+pub const FWHM_SIGMA_MAX:                    f64  = 4.0;FWHM_SIGMA_MAX65,3977
+pub const DEFAULT_STAR_COUNT_SIGMA:          f64  = 1.5;DEFAULT_STAR_COUNT_SIGMA68,4185
+pub const STAR_COUNT_SIGMA_MIN:              f64  = 0.5;STAR_COUNT_SIGMA_MIN69,4242
+pub const STAR_COUNT_SIGMA_MAX:              f64  = 5.0;STAR_COUNT_SIGMA_MAX70,4299
+pub const DEFAULT_ECCENTRICITY_ABS:          f64  = 0.85;DEFAULT_ECCENTRICITY_ABS71,4356
+pub const ECCENTRICITY_ABS_MIN:              f64  = 0.10;ECCENTRICITY_ABS_MIN72,4414
+pub const ECCENTRICITY_ABS_MAX:              f64  = 1.00;ECCENTRICITY_ABS_MAX73,4472
+pub const OUTLIER_SIGMA_THRESHOLD:           f64  = 4.0;OUTLIER_SIGMA_THRESHOLD74,4530
+pub const DISPLAY_MAX_WIDTH_PX:        u32  = 1200;  // box-filter downsample ceilingDISPLAY_MAX_WIDTH_PX80,4892
+pub const BLINK_JPEG_QUALITY:          u8   = 85;BLINK_JPEG_QUALITY81,4978
+pub const DISPLAY_JPEG_QUALITY:        u8   = 92;DISPLAY_JPEG_QUALITY82,5028
+pub const ALGORITHM_SET_VERSION:       i64  = 1;     // bump when any analysis algorithm changesALGORITHM_SET_VERSION83,5078
+
+src-tauri/src/settings/mod.rs,3149
+pub mod defaults;defaults8,308
+pub struct ThresholdProfile {ThresholdProfile13,432
+    pub id:                      i64,id14,462
+    pub name:                    String,name15,500
+    pub description:             Option<String>,description16,541
+    pub bg_median_reject_sigma:  f64,bg_median_reject_sigma17,590
+    pub signal_weight_reject_sigma: f64,signal_weight_reject_sigma18,628
+    pub fwhm_reject_sigma:       f64,fwhm_reject_sigma19,669
+    pub star_count_reject_sigma: f64,star_count_reject_sigma20,707
+    pub eccentricity_reject_abs: f64,eccentricity_reject_abs21,745
+impl ThresholdProfile {ThresholdProfile24,786
+    pub fn default_profile() -> Self {default_profile25,810
+pub struct AppSettings {AppSettings46,1752
+    pub theme:                       String,  // persistedtheme48,1957
+    pub zoom_level:                  String,zoom_level50,2088
+    pub blink_rate_secs:             f64,blink_rate_secs51,2133
+    pub channel_view:                String,channel_view52,2175
+    pub last_directory:              String,  // persisted (last-used, not user pref)last_directory55,2401
+    pub jpeg_quality:                i64,     // persisted, user prefjpeg_quality56,2487
+    pub recent_directories_max:      i64,     // persisted, user prefrecent_directories_max57,2557
+    pub backup_directory:            String,  // persisted, user prefbackup_directory60,2804
+    pub console_history_size:        i64,     // persisted, user prefconsole_history_size61,2874
+    pub macro_editor_font_size:      i64,     // persisted, user prefmacro_editor_font_size62,2944
+    pub error_behavior:              String,  // not persisted — always "halt"error_behavior63,3014
+    pub buffer_pool_bytes:           i64,     // persisted, user prefbuffer_pool_bytes66,3276
+    pub autostretch_shadow_clip:     f64,     // persisted, user prefautostretch_shadow_clip69,3527
+    pub autostretch_target_bg:       f64,     // persisted, user prefautostretch_target_bg70,3597
+    pub crash_recovery_interval_secs: i64,   // persisted, internalcrash_recovery_interval_secs73,3842
+    pub active_threshold_profile_id: Option<i64>,           // persistedactive_threshold_profile_id76,4065
+    pub threshold_profiles:          Vec<ThresholdProfile>, // loaded at startupthreshold_profiles77,4138
+    pub display_max_width_px:        u32,display_max_width_px80,4357
+    pub blink_jpeg_quality:          u8,blink_jpeg_quality81,4399
+    pub display_jpeg_quality:        u8,display_jpeg_quality82,4440
+    pub algorithm_set_version:       i64,algorithm_set_version83,4481
+impl AppSettings {AppSettings86,4526
+    pub fn new() -> Self {new89,4672
+    pub fn load_from_db(&mut self, db: &Connection) {load_from_db118,6381
+    pub fn save_preference(&mut self, key: &str, value: &str, db: &Connection) -> Result<(), Strsave_preference186,9612
+    fn apply(&mut self, key: &str, value: &str) {apply199,10261
+    pub fn load_threshold_profiles(&mut self, db: &Connection) {load_threshold_profiles253,12825
+    fn get_as_string(&self, key: &str) -> Option<String> {get_as_string320,15853
+
+src-tauri/src/db/mod.rs,260
+pub mod migrations;migrations5,166
+pub mod schema;schema6,186
+pub fn open_db(app_data_dir: PathBuf) -> Result<Connection> {open_db11,264
+fn seed_defaults(conn: &Connection) -> Result<()> {seed_defaults33,977
+pub fn now_unix() -> i64 {now_unix60,2049
+
+src-tauri/src/db/migrations.rs,510
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;CURRENT_SCHEMA_VERSION9,293
+pub fn run_migrations(conn: &Connection) -> Result<()> {run_migrations10,336
+fn get_version(conn: &Connection) -> Result<u32> {get_version32,1178
+fn set_version(conn: &Connection, version: u32) -> Result<()> {set_version36,1296
+fn migrate_v2(conn: &Connection) -> Result<()> {migrate_v240,1433
+fn migrate_v3(conn: &Connection) -> Result<()> {migrate_v347,1627
+fn migrate_v1(conn: &Connection) -> Result<()> {migrate_v153,1776
+
+src-tauri/src/db/schema.rs,1198
+pub const CREATE_PREFERENCES: &str = "CREATE_PREFERENCES4,99
+pub const CREATE_QUICK_LAUNCH_BUTTONS: &str = "CREATE_QUICK_LAUNCH_BUTTONS11,283
+pub const CREATE_RECENT_DIRECTORIES: &str = "CREATE_RECENT_DIRECTORIES20,567
+pub const CREATE_THRESHOLD_PROFILES: &str = "CREATE_THRESHOLD_PROFILES28,833
+pub const CREATE_ALGORITHM_SETS: &str = "CREATE_ALGORITHM_SETS44,1605
+pub const CREATE_FRAME_ANALYSIS_RESULTS: &str = "CREATE_FRAME_ANALYSIS_RESULTS56,2104
+pub const CREATE_FRAME_ANALYSIS_RESULTS_IDX_PATH: &str = "CREATE_FRAME_ANALYSIS_RESULTS_IDX_PATH88,3358
+pub const CREATE_FRAME_ANALYSIS_RESULTS_IDX_VERSION: &str = "CREATE_FRAME_ANALYSIS_RESULTS_IDX_VERSION91,3498
+pub const CREATE_MACROS: &str = "CREATE_MACROS94,3656
+pub const CREATE_MACRO_VERSIONS: &str = "CREATE_MACRO_VERSIONS107,4068
+pub const CREATE_MACRO_VERSIONS_IDX: &str = "CREATE_MACRO_VERSIONS_IDX115,4349
+pub const CREATE_SESSION_HISTORY: &str = "CREATE_SESSION_HISTORY118,4482
+pub const CREATE_CONSOLE_HISTORY: &str = "CREATE_CONSOLE_HISTORY128,4800
+pub const CREATE_CRASH_RECOVERY: &str = "CREATE_CRASH_RECOVERY137,5075
+pub const CREATE_CRASH_RECOVERY_SEED: &str = "CREATE_CRASH_RECOVERY_SEED148,5424
+
+src-tauri/src/plugin/registry.rs,646
+pub struct PluginRegistry {PluginRegistry12,480
+    plugins: RwLock<HashMap<String, Arc<dyn PhotonPlugin>>>,plugins13,508
+impl PluginRegistry {PluginRegistry16,572
+    pub fn new() -> Self {new17,594
+    pub fn register(&self, plugin: Arc<dyn PhotonPlugin>) {register24,775
+    pub fn get(&self, name: &str) -> Option<Arc<dyn PhotonPlugin>> {get34,1150
+    pub fn dispatch(dispatch43,1454
+    pub fn list(&self) -> Vec<String> {list65,2128
+    pub fn list_with_details(&self) -> Vec<serde_json::Value> {list_with_details77,2464
+impl Default for PluginRegistry {PluginRegistry96,3082
+    fn default() -> Self {default97,3116
+
+src-tauri/src/plugin/mod.rs,1679
+pub mod registry;registry4,89
+pub type ArgMap = HashMap<String, String>;ArgMap12,417
+pub enum ParamType {ParamType17,698
+    String,String18,719
+    Integer,Integer19,731
+    Float,Float20,744
+    Boolean,Boolean21,755
+    Path,Path22,768
+pub struct ParamSpec {ParamSpec26,829
+    pub name:        String,name27,852
+    pub param_type:  ParamType,param_type28,881
+    pub required:    bool,required29,913
+    pub description: String,description30,940
+    pub default:     Option<String>,default31,969
+pub enum PluginOutput {PluginOutput37,1266
+    Success,Success39,1339
+    Message(String),Message41,1415
+    Value(String),Value43,1506
+    Values(Vec<String>),Values45,1573
+    Data(serde_json::Value),Data49,1787
+pub struct PluginError {PluginError55,2078
+    pub code:    String,code56,2103
+    pub message: String,message57,2128
+impl PluginError {PluginError60,2156
+    pub fn new(code: &str, message: &str) -> Self {new61,2175
+    pub fn missing_arg(name: &str) -> Self {missing_arg68,2340
+    pub fn invalid_arg(name: &str, reason: &str) -> Self {invalid_arg72,2476
+impl std::fmt::Display for PluginError {PluginError77,2630
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {fmt78,2671
+pub trait PhotonPlugin: Send + Sync {PhotonPlugin86,3057
+    fn name(&self)        -> &str;name87,3095
+    fn version(&self)     -> &str;version88,3130
+    fn description(&self) -> &str;description89,3165
+    fn parameters(&self)  -> Vec<ParamSpec>;parameters90,3200
+    fn plugin_type(&self) -> &str { "Native" }  // WASM plugins override thisplugin_type91,3245
+    fn execute(execute92,3323
+
+src-tauri/src/commands/mod.rs,278
+pub mod analysis;analysis4,175
+pub mod backup;backup5,193
+pub mod display;display6,209
+pub mod logging;logging7,226
+pub mod macros;macros8,243
+pub mod preferences;preferences9,259
+pub mod session;session10,280
+pub mod threshold_profiles;threshold_profiles11,297
+
+src-tauri/src/commands/analysis.rs,2498
+pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value {get_analysis_results8,162
+pub struct AnalysisJsonPayload {AnalysisJsonPayload127,5798
+    pub thresholds:    ThresholdPayload,thresholds128,5831
+    pub session_stats: SessionStatsPayload,session_stats129,5872
+    pub outlier_paths: Vec<String>,outlier_paths130,5916
+    pub frames:        Vec<FramePayload>,frames131,5952
+pub struct ThresholdPayload {ThresholdPayload135,6034
+    pub bg_median_reject_sigma:      f64,bg_median_reject_sigma136,6064
+    pub signal_weight_reject_sigma:  f64,signal_weight_reject_sigma137,6106
+    pub fwhm_reject_sigma:           f64,fwhm_reject_sigma138,6148
+    pub star_count_reject_sigma:     f64,star_count_reject_sigma139,6190
+    pub eccentricity_reject_abs:     f64,eccentricity_reject_abs140,6232
+pub struct MetricStatsPayload {MetricStatsPayload144,6314
+    pub mean:   f32,mean145,6346
+    pub stddev: f32,stddev146,6367
+pub struct SessionStatsPayload {SessionStatsPayload150,6428
+    pub background_median: MetricStatsPayload,background_median151,6461
+    pub signal_weight:     MetricStatsPayload,signal_weight152,6508
+    pub fwhm:              MetricStatsPayload,fwhm153,6555
+    pub eccentricity:      MetricStatsPayload,eccentricity154,6602
+    pub star_count:        MetricStatsPayload,star_count155,6649
+pub struct FramePayload {FramePayload159,6736
+    pub filename:           String,filename160,6762
+    pub fwhm:               Option<f32>,fwhm161,6798
+    pub eccentricity:       Option<f32>,eccentricity162,6839
+    pub star_count:         Option<u32>,star_count163,6880
+    pub signal_weight:      Option<f32>,signal_weight164,6921
+    pub background_median:  Option<f32>,background_median165,6962
+    pub flag:               String,flag166,7003
+    pub triggered_by:       Vec<String>,triggered_by167,7039
+    pub rejection_category: Option<String>,rejection_category168,7080
+pub fn load_analysis_json(load_analysis_json174,7328
+pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String, String> {commit_analysis_results251,10926
+pub fn extract_frame_label(filename: &str) -> String {extract_frame_label345,14632
+pub fn get_frame_flags(state: State<Arc<PhotoxState>>) -> Vec<String> {get_frame_flags360,15201
+pub fn set_frame_flag(set_frame_flag378,15804
+pub fn get_star_positions(state: State<Arc<PhotoxState>>) -> serde_json::Value {get_star_positions396,16356
+
+src-tauri/src/commands/logging.rs,299
+pub fn list_log_files(state: State<Arc<PhotoxState>>) -> Result<Vec<serde_json::Value>, String> list_log_files8,141
+pub fn read_log_file(path: String) -> Result<Vec<serde_json::Value>, String> {read_log_file58,1759
+pub fn parse_log_line(line: &str) -> serde_json::Value {parse_log_line64,2009
+
+src-tauri/src/commands/session.rs,1022
+pub fn get_session(state: State<Arc<PhotoxState>>) -> serde_json::Value {get_session9,191
+pub fn get_variable(name: String, state: State<Arc<PhotoxState>>) -> Option<String> {get_variable18,467
+pub fn debug_buffer_info(state: State<Arc<PhotoxState>>) -> serde_json::Value {debug_buffer_info26,750
+pub fn open_session(open_session54,1906
+pub fn close_session(state: State<Arc<PhotoxState>>) -> Result<(), String> {close_session72,2511
+pub fn do_write_crash_recovery(state: &PhotoxState) -> Result<(), String> {do_write_crash_recovery87,3030
+pub fn write_crash_recovery(state: State<Arc<PhotoxState>>) -> Result<(), String> {write_crash_recovery113,4047
+pub fn check_crash_recovery(state: State<Arc<PhotoxState>>) -> Result<Option<serde_json::Value>,check_crash_recovery118,4188
+pub fn start_crash_recovery_timer(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {start_crash_recovery_timer148,5217
+pub fn get_keywords(state: State<Arc<PhotoxState>>) -> serde_json::Value {get_keywords171,6057
+
+src-tauri/src/commands/macros.rs,1475
+pub struct MacroRow {MacroRow14,420
+    pub id:           i64,id15,442
+    pub name:         String,name16,469
+    pub display_name: String,display_name17,499
+    pub script:       String,script18,529
+    pub tags:         Option<String>,tags19,559
+    pub run_count:    i64,run_count20,597
+    pub last_run_at:  Option<i64>,last_run_at21,624
+    pub created_at:   i64,created_at22,659
+    pub updated_at:   i64,updated_at23,686
+pub struct MacroVersionRow {MacroVersionRow27,737
+    pub id:       i64,id28,766
+    pub macro_id: i64,macro_id29,789
+    pub script:   String,script30,812
+    pub saved_at: i64,saved_at31,838
+pub fn derive_name(display_name: &str) -> String {derive_name38,1227
+pub fn get_macros(state: State<Arc<PhotoxState>>) -> Result<Vec<MacroRow>, String> {get_macros50,1754
+pub fn save_macro(save_macro86,2946
+pub fn delete_macro(state: State<Arc<PhotoxState>>, id: i64) -> Result<(), String> {delete_macro134,4475
+pub fn rename_macro(rename_macro144,4908
+pub fn get_macro_versions(get_macro_versions168,5616
+pub fn restore_macro_version(restore_macro_version201,6562
+pub fn increment_macro_run_count(state: State<Arc<PhotoxState>>, id: i64) -> Result<(), String> increment_macro_run_count243,7899
+pub fn migrate_quick_launch_macro_refs(db: &rusqlite::Connection) -> Result<(), String> {migrate_quick_launch_macro_refs258,8551
+fn extract_path_arg(script: &str) -> Option<String> {extract_path_arg307,10200
+
+src-tauri/src/commands/display.rs,1416
+pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {get_current_frame8,172
+    const MAX_DISPLAY_W: usize = 1200;MAX_DISPLAY_W28,984
+pub fn get_autostretch_frame(get_autostretch_frame194,8790
+pub fn get_blink_frame(get_blink_frame212,9454
+pub fn get_blink_cache_status(state: State<Arc<PhotoxState>>) -> String {get_blink_cache_status233,10147
+pub fn start_background_cache(start_background_cache243,10578
+        const MAX_DISPLAY_W: usize = 1200;MAX_DISPLAY_W282,12250
+pub fn get_pixel(x: u32, y: u32, state: State<Arc<PhotoxState>>) -> Result<serde_json::Value, Stget_pixel458,21220
+pub fn get_full_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {get_full_frame537,24034
+        fn mtf(m: f32, x: f32) -> f32 {mtf571,25314
+        fn stretch(p: f32, c0: f32, c0_range: f32, m: f32) -> u8 {stretch579,25585
+pub fn get_histogram(state: State<Arc<PhotoxState>>) -> Result<serde_json::Value, String> {get_histogram653,28652
+pub fn load_file(path: String, state: State<Arc<PhotoxState>>) -> Result<String, String> {load_file684,29788
+    const MAX_DISPLAY_W: usize = 1200;MAX_DISPLAY_W720,31103
+pub fn get_autostretch_stack_frame(get_autostretch_stack_frame883,39098
+pub fn get_stack_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {get_stack_frame923,40852
+    const MAX_DISPLAY_W: usize = 1200;MAX_DISPLAY_W938,41422
+
+src-tauri/src/commands/threshold_profiles.rs,457
+pub fn get_threshold_profiles(state: State<Arc<PhotoxState>>) -> Result<Vec<ThresholdProfile>, Sget_threshold_profiles10,230
+pub fn get_active_threshold_profile_id(state: State<Arc<PhotoxState>>) -> Option<i64> {get_active_threshold_profile_id16,475
+pub fn save_threshold_profile(save_threshold_profile22,700
+pub fn delete_threshold_profile(delete_threshold_profile103,4089
+pub fn set_active_threshold_profile(set_active_threshold_profile159,6201
+
+src-tauri/src/commands/backup.rs,229
+pub fn backup_database(state: State<Arc<PhotoxState>>) -> Result<String, String> {backup_database11,226
+pub fn restore_database(backup_path: String, state: State<Arc<PhotoxState>>) -> Result<(), Strinrestore_database127,5531
+
+src-tauri/src/commands/preferences.rs,694
+pub fn get_all_preferences(state: State<Arc<PhotoxState>>) -> Result<std::collections::HashMap<Sget_all_preferences9,180
+pub fn set_preference(key: String, value: String, state: State<Arc<PhotoxState>>) -> Result<(), set_preference23,700
+pub fn get_quick_launch_buttons(state: State<Arc<PhotoxState>>) -> Result<Vec<serde_json::Value>get_quick_launch_buttons37,1157
+pub fn save_quick_launch_buttons(save_quick_launch_buttons57,1886
+pub fn get_recent_directories(state: State<Arc<PhotoxState>>) -> Result<Vec<String>, String> {get_recent_directories78,2670
+pub fn record_directory_visit(path: String, state: State<Arc<PhotoxState>>) -> Result<(), Stringrecord_directory_visit92,3268
+
+src-tauri/src/main.rs,23
+fn main() {main4,145
+
+src-tauri/src/utils.rs,159
+pub fn resolve_path(path: &str, active_directory: Option<&str>) -> String {resolve_path9,260
+pub fn get_log_dir() -> std::path::PathBuf {get_log_dir25,765
+
+src-tauri/src/plugins/commit_stretch.rs,451
+pub struct CommitStretch;CommitStretch10,442
+impl PhotonPlugin for CommitStretch {CommitStretch12,469
+    fn name(&self) -> &str { "CommitStretch" }name13,507
+    fn version(&self) -> &str { "1.0" }version14,554
+    fn description(&self) -> &str {description15,594
+    fn parameters(&self) -> Vec<ParamSpec> {parameters19,718
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute38,1413
+
+src-tauri/src/plugins/star_count.rs,473
+pub struct CountStarsPlugin;CountStarsPlugin15,641
+impl PhotonPlugin for CountStarsPlugin {CountStarsPlugin17,671
+    fn name(&self)        -> &str { "CountStars" }name18,712
+    fn version(&self)     -> &str { "1.0.0" }version19,763
+    fn description(&self) -> &str {description20,809
+    fn parameters(&self) -> Vec<ParamSpec> {parameters25,997
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute72,3140
+
+src-tauri/src/plugins/image_reader.rs,679
+pub fn read_image_file(path: &str) -> Result<ImageBuffer, String> {read_image_file16,790
+pub fn peek_fits_dimensions(path: &str) -> Option<(u32, u32, u8, usize)> {peek_fits_dimensions41,1790
+pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {read_fits_file63,2573
+pub fn peek_xisf_dimensions(path: &str) -> Option<(u32, u32, u8, usize)> {peek_xisf_dimensions193,7644
+pub fn read_xisf_file(path: &str) -> Result<ImageBuffer, String> {read_xisf_file207,8152
+pub fn peek_tiff_dimensions(path: &str) -> Option<(u32, u32, u8, usize)> {peek_tiff_dimensions291,11012
+pub fn read_tiff_file(path: &str) -> Result<ImageBuffer, String> {read_tiff_file308,11724
+
+src-tauri/src/plugins/keywords.rs,2199
+fn parse_scope(args: &ArgMap) -> Result<bool, PluginError> {parse_scope13,610
+pub struct AddKeyword;AddKeyword26,1269
+impl PhotonPlugin for AddKeyword {AddKeyword28,1293
+    fn name(&self)        -> &str { "AddKeyword" }name29,1328
+    fn version(&self)     -> &str { "1.0" }version30,1379
+    fn description(&self) -> &str { "Adds or replaces a keyword on loaded images (scope=all|currdescription31,1423
+    fn parameters(&self) -> Vec<ParamSpec> {parameters33,1542
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute66,2784
+pub struct DeleteKeyword;DeleteKeyword118,4915
+impl PhotonPlugin for DeleteKeyword {DeleteKeyword120,4942
+    fn name(&self)        -> &str { "DeleteKeyword" }name121,4980
+    fn version(&self)     -> &str { "1.0" }version122,5034
+    fn description(&self) -> &str { "Removes a keyword from loaded images (scope=all|current, dedescription123,5078
+    fn parameters(&self) -> Vec<ParamSpec> {parameters125,5190
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute144,5871
+pub struct ModifyKeyword;ModifyKeyword183,7539
+impl PhotonPlugin for ModifyKeyword {ModifyKeyword185,7566
+    fn name(&self)        -> &str { "ModifyKeyword" }name186,7604
+    fn version(&self)     -> &str { "1.0" }version187,7658
+    fn description(&self) -> &str { "Changes the value of an existing keyword (scope=all|currentdescription188,7702
+    fn parameters(&self) -> Vec<ParamSpec> {parameters190,7818
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute223,9047
+pub struct CopyKeyword;CopyKeyword281,11436
+impl PhotonPlugin for CopyKeyword {CopyKeyword283,11461
+    fn name(&self)        -> &str { "CopyKeyword" }name284,11497
+    fn version(&self)     -> &str { "1.0" }version285,11549
+    fn description(&self) -> &str { "Copies a keyword value to a new keyword name on all bufferedescription286,11593
+    fn parameters(&self) -> Vec<ParamSpec> {parameters288,11702
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute307,12321
+
+src-tauri/src/plugins/write_tiff.rs,713
+pub struct WriteTIFF;WriteTIFF11,371
+impl PhotonPlugin for WriteTIFF {WriteTIFF13,394
+    fn name(&self)        -> &str { "WriteTIFF" }name14,428
+    fn version(&self)     -> &str { "1.0" }version15,478
+    fn description(&self) -> &str { "Writes all loaded images as TIFF files to a destination dirdescription16,522
+    fn parameters(&self) -> Vec<ParamSpec> {parameters18,629
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute37,1304
+fn build_image_description(buffer: &ImageBuffer) -> String {build_image_description91,3424
+pub(crate) fn write_tiff_file(out_path: &str, buffer: &ImageBuffer) -> Result<(), String> {write_tiff_file104,3904
+
+src-tauri/src/plugins/run_macro.rs,479
+pub struct RunMacro;RunMacro9,307
+impl PhotonPlugin for RunMacro {RunMacro11,329
+    fn name(&self)        -> &str { "RunMacro" }name12,362
+    fn version(&self)     -> &str { "1.1" }version13,411
+    fn description(&self) -> &str { "Executes a macro stored in the database" }description14,455
+    fn parameters(&self) -> Vec<ParamSpec> {parameters16,536
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute28,891
+
+src-tauri/src/plugins/mod.rs,1134
+pub mod add_files;add_files4,68
+pub mod analyze_frames;analyze_frames5,87
+pub mod auto_stretch;auto_stretch6,111
+pub mod background_median;background_median7,133
+pub mod cache_frames;cache_frames8,160
+pub mod clear_session;clear_session9,182
+pub mod clear_stack;clear_stack10,205
+pub mod compute_eccentricity;compute_eccentricity11,226
+pub mod compute_fwhm;compute_fwhm12,256
+pub mod commit_stretch;commit_stretch13,278
+pub mod contour_heatmap;contour_heatmap14,302
+pub mod debayer_image;debayer_image15,327
+pub mod get_histogram;get_histogram16,350
+pub mod image_reader;image_reader17,373
+pub mod keywords;keywords18,395
+pub mod list_keywords;list_keywords19,413
+pub mod read_images;read_images20,436
+pub mod run_macro;run_macro21,457
+pub mod scripting;scripting22,476
+pub mod set_frame;set_frame23,495
+pub mod stack_frames;stack_frames24,514
+pub mod star_count;star_count25,536
+pub mod write_current_files;write_current_files26,556
+pub mod write_fits;write_fits27,585
+pub mod write_frame;write_frame28,605
+pub mod write_tiff;write_tiff29,626
+pub mod write_xisf;write_xisf30,646
+
+src-tauri/src/plugins/scripting.rs,3673
+pub struct GetKeyword;GetKeyword16,723
+impl PhotonPlugin for GetKeyword {GetKeyword18,747
+    fn name(&self)        -> &str { "GetKeyword" }name19,782
+    fn version(&self)     -> &str { "1.0.0" }version20,833
+    fn description(&self) -> &str { "Retrieves a FITS keyword value from the current frame into description21,879
+    fn parameters(&self) -> Vec<ParamSpec> {parameters23,997
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute35,1348
+pub struct MoveFile;MoveFile70,2786
+impl PhotonPlugin for MoveFile {MoveFile72,2808
+    fn name(&self)        -> &str { "MoveFile" }name73,2841
+    fn version(&self)     -> &str { "1.0.0" }version74,2890
+    fn description(&self) -> &str { "Moves a file to a destination directory. Uses current framedescription75,2936
+    fn parameters(&self) -> Vec<ParamSpec> {parameters77,3066
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute96,3717
+pub struct CopyFile;CopyFile157,6333
+impl PhotonPlugin for CopyFile {CopyFile159,6355
+    fn name(&self)        -> &str { "CopyFile" }name160,6388
+    fn version(&self)     -> &str { "1.0.0" }version161,6437
+    fn description(&self) -> &str { "Copies a file to a destination directory. Uses current framdescription162,6483
+    fn parameters(&self) -> Vec<ParamSpec> {parameters164,6614
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute183,7265
+pub struct Print;Print231,9325
+impl PhotonPlugin for Print {Print233,9344
+    fn name(&self)        -> &str { "Print" }name234,9374
+    fn version(&self)     -> &str { "1.0.0" }version235,9420
+    fn description(&self) -> &str { "Outputs a literal message to the console" }description236,9466
+    fn parameters(&self) -> Vec<ParamSpec> {parameters238,9548
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute250,9899
+pub struct Assert;Assert264,10596
+impl PhotonPlugin for Assert {Assert266,10616
+    fn name(&self)        -> &str { "Assert" }name267,10647
+    fn version(&self)     -> &str { "1.0.0" }version268,10694
+    fn description(&self) -> &str { "Halts execution if the expression evaluates to false" }description269,10740
+    fn parameters(&self) -> Vec<ParamSpec> {parameters271,10834
+    fn execute(&self, _ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError>execute283,11193
+pub struct CountFiles;CountFiles301,12171
+impl PhotonPlugin for CountFiles {CountFiles303,12195
+    fn name(&self)        -> &str { "CountFiles" }name304,12230
+    fn version(&self)     -> &str { "1.0.0" }version305,12281
+    fn description(&self) -> &str { "Returns the number of loaded files; stores result in $filecdescription306,12327
+    fn parameters(&self) -> Vec<ParamSpec> { vec![] }parameters308,12432
+    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError>execute310,12487
+pub struct LoadFile;LoadFile324,13356
+impl PhotonPlugin for LoadFile {LoadFile326,13378
+    fn name(&self)        -> &str { "LoadFile" }name327,13411
+    fn version(&self)     -> &str { "1.0.0" }version328,13460
+    fn description(&self) -> &str { "Loads a single file for display without adding it to the sedescription329,13506
+    fn parameters(&self) -> Vec<ParamSpec> {parameters331,13612
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute343,13961
+pub fn register_all(registry: &crate::plugin::registry::PluginRegistry) {register_all369,15041
+
+src-tauri/src/plugins/set_frame.rs,456
+pub struct SetFrame;SetFrame7,235
+impl PhotonPlugin for SetFrame {SetFrame9,257
+    fn name(&self) -> &str { "SetFrame" }name10,290
+    fn version(&self) -> &str { "1.0" }version11,332
+    fn description(&self) -> &str { "Sets the current frame index" }description12,372
+    fn parameters(&self) -> Vec<ParamSpec> {parameters14,442
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute26,793
+
+src-tauri/src/plugins/compute_eccentricity.rs,494
+pub struct ComputeEccentricity;ComputeEccentricity14,362
+impl PhotonPlugin for ComputeEccentricity {ComputeEccentricity16,395
+    fn name(&self)        -> &str { "ComputeEccentricity" }name17,439
+    fn version(&self)     -> &str { "1.0.0" }version18,499
+    fn description(&self) -> &str {description19,545
+    fn parameters(&self) -> Vec<ParamSpec> {parameters25,839
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute51,1948
+
+src-tauri/src/plugins/get_histogram.rs,1694
+pub struct GetHistogram;GetHistogram8,341
+impl PhotonPlugin for GetHistogram {GetHistogram10,367
+    fn name(&self) -> &str { "GetHistogram" }name11,404
+    fn version(&self) -> &str { "1.0" }version12,450
+    fn description(&self) -> &str { "Computes histogram statistics for the current frame" }description13,490
+    fn parameters(&self) -> Vec<ParamSpec> { vec![] }parameters14,582
+    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError>execute16,637
+pub struct HistogramStats {HistogramStats62,2476
+    pub bins:         Vec<u32>,         // 256 bins for channel 0 (or mono)bins63,2504
+    pub bins_g:       Option<Vec<u32>>, // 256 bins for green channel (RGB only)bins_g64,2580
+    pub bins_b:       Option<Vec<u32>>, // 256 bins for blue channel (RGB only)bins_b65,2661
+    pub median:       f64,              // channel 0 (R or mono)median66,2741
+    pub median_g:     Option<f64>,median_g67,2806
+    pub median_b:     Option<f64>,median_b68,2841
+    pub mean:         f64,mean69,2876
+    pub std_dev:      f64,std_dev70,2903
+    pub std_dev_g:    Option<f64>,std_dev_g71,2930
+    pub std_dev_b:    Option<f64>,std_dev_b72,2965
+    pub clipping_pct: f64,clipping_pct73,3000
+pub fn compute_stats(pixels: &PixelData, is_rgb: bool) -> HistogramStats {compute_stats76,3030
+fn compute_mono_stats(pixels: &PixelData) -> HistogramStats {compute_mono_stats84,3212
+    const STRIDE: usize = 16;STRIDE91,3442
+fn compute_rgb_stats(pixels: &PixelData) -> HistogramStats {compute_rgb_stats141,5133
+    const STRIDE: usize = 16;STRIDE154,5580
+fn true_median(values: &mut Vec<f64>) -> f64 {true_median226,8864
+
+src-tauri/src/plugins/compute_fwhm.rs,505
+pub struct ComputeFWHM;ComputeFWHM15,344
+impl PhotonPlugin for ComputeFWHM {ComputeFWHM17,369
+    fn name(&self)        -> &str { "ComputeFWHM" }name18,405
+    fn version(&self)     -> &str { "1.0.0" }version19,457
+    fn description(&self) -> &str {description20,503
+    fn parameters(&self) -> Vec<ParamSpec> {parameters26,774
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute52,1883
+fn derive_plate_scale(derive_plate_scale146,6605
+
+src-tauri/src/plugins/clear_session.rs,514
+pub struct ClearSession;ClearSession8,271
+impl PhotonPlugin for ClearSession {ClearSession10,297
+    fn name(&self) -> &str { "ClearSession" }name11,334
+    fn version(&self) -> &str { "1.0" }version12,380
+    fn description(&self) -> &str { "Clears all loaded images and resets session state. Active ddescription13,420
+    fn parameters(&self) -> Vec<ParamSpec> { vec![] }parameters14,542
+    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError>execute16,597
+
+src-tauri/src/plugins/list_keywords.rs,504
+pub struct ListKeywords;ListKeywords7,241
+impl PhotonPlugin for ListKeywords {ListKeywords9,267
+    fn name(&self) -> &str { "ListKeywords" }name10,304
+    fn version(&self) -> &str { "1.0" }version11,350
+    fn description(&self) -> &str { "Lists all header keywords for the current frame" }description12,390
+    fn parameters(&self) -> Vec<ParamSpec> { vec![] }parameters13,478
+    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError>execute15,533
+
+src-tauri/src/plugins/write_frame.rs,517
+pub struct WriteFrame;WriteFrame11,381
+impl PhotonPlugin for WriteFrame {WriteFrame13,405
+    fn name(&self)        -> &str { "WriteFrame" }name14,440
+    fn version(&self)     -> &str { "1.0" }version15,491
+    fn description(&self) -> &str { "Writes the currently active frame back to its source path idescription16,535
+    fn parameters(&self)  -> Vec<ParamSpec> { vec![] }parameters17,656
+    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError>execute19,712
+
+src-tauri/src/plugins/write_current_files.rs,527
+pub struct WriteCurrent;WriteCurrent11,397
+impl PhotonPlugin for WriteCurrent {WriteCurrent13,423
+    fn name(&self)        -> &str { "WriteCurrent" }name14,460
+    fn version(&self)     -> &str { "1.0" }version15,513
+    fn description(&self) -> &str { "Writes all buffered images back to their source paths in thdescription16,557
+    fn parameters(&self)  -> Vec<ParamSpec> { vec![] }parameters17,676
+    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError>execute19,732
+
+src-tauri/src/plugins/analyze_frames.rs,1146
+pub struct AnalyzeFrames;AnalyzeFrames30,1007
+impl PhotonPlugin for AnalyzeFrames {AnalyzeFrames32,1034
+    fn name(&self)        -> &str { "AnalyzeFrames" }name33,1072
+    fn version(&self)     -> &str { "1.0.0" }version34,1126
+    fn description(&self) -> &str {description35,1172
+    fn parameters(&self) -> Vec<ParamSpec> {parameters41,1442
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute67,2568
+fn execute_current(execute_current91,3677
+fn execute_all(execute_all141,5622
+    struct FrameSnapshot {FrameSnapshot152,5950
+        path:     String,path153,5977
+        width:    u32,width154,6003
+        height:   u32,height155,6026
+        channels: u8,channels156,6049
+        pixels:   crate::context::PixelData,pixels157,6071
+        keywords: std::collections::HashMap<String, KeywordEntry>,keywords158,6116
+fn compute_metrics_for_image(compute_metrics_for_image298,11466
+fn derive_plate_scale(derive_plate_scale336,13196
+fn fmt_opt_adu(val: Option<f32>) -> String {fmt_opt_adu349,13739
+fn short_name(path: &str) -> &str {short_name356,13926
+
+src-tauri/src/plugins/stack_frames.rs,1473
+pub struct StackFrames;StackFrames32,1314
+impl PhotonPlugin for StackFrames {StackFrames34,1339
+    fn name(&self) -> &str { "StackFrames" }name35,1375
+    fn version(&self) -> &str { "1.0" }version36,1420
+    fn description(&self) -> &str {description37,1460
+    fn parameters(&self) -> Vec<ParamSpec> { vec![] }parameters40,1609
+    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError>execute42,1664
+        struct FrameSnapshot {FrameSnapshot52,2070
+            index:        usize,index53,2101
+            path:         String,path54,2134
+            width:        usize,width55,2168
+            height:       usize,height56,2201
+            channels:     usize,channels57,2234
+            color_space:  ColorSpace,color_space58,2267
+            filter:       Option<String>,filter59,2305
+            exptime:      Option<f32>,exptime60,2347
+            fwhm:         Option<f32>,fwhm61,2386
+            eccentricity: Option<f32>,eccentricity62,2425
+            rotator:      Option<f32>,rotator63,2464
+            stars:        Vec<crate::analysis::stars::StarCandidate>,stars64,2503
+fn select_reference_frame_idx(fwhm_ecc: &[(Option<f32>, Option<f32>)]) -> usize {select_reference_frame_idx556,25534
+fn resample_frame(resample_frame579,26424
+fn bilinear(bilinear602,27092
+fn validate_alignment(validate_alignment630,27959
+fn short_name(path: &str) -> &str {short_name657,28928
+
+src-tauri/src/plugins/clear_stack.rs,504
+pub struct ClearStack;ClearStack8,271
+impl PhotonPlugin for ClearStack {ClearStack10,295
+    fn name(&self) -> &str { "ClearStack" }name11,330
+    fn version(&self) -> &str { "1.0" }version12,374
+    fn description(&self) -> &str { "Discards the transient stacked result and per-frame contribdescription13,414
+    fn parameters(&self) -> Vec<ParamSpec> { vec![] }parameters14,575
+    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError>execute16,630
+
+src-tauri/src/plugins/write_xisf.rs,681
+pub struct WriteXISF;WriteXISF10,417
+impl PhotonPlugin for WriteXISF {WriteXISF12,440
+    fn name(&self)        -> &str { "WriteXISF" }name13,474
+    fn version(&self)     -> &str { "1.0" }version14,524
+    fn description(&self) -> &str { "Writes all loaded images as XISF files to a destination dirdescription15,568
+    fn parameters(&self) -> Vec<ParamSpec> {parameters17,675
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute50,2030
+fn write_stack_result(write_stack_result122,4941
+pub(crate) fn buffer_to_xisf_image(buffer: &crate::context::ImageBuffer) -> Result<XisfImage, Stbuffer_to_xisf_image172,6981
+
+src-tauri/src/plugins/auto_crop.rs,514
+pub struct AutoCrop;AutoCrop9,381
+impl PhotonPlugin for AutoCrop {AutoCrop11,403
+    fn name(&self) -> &str { "AutoCrop" }name12,436
+    fn version(&self) -> &str { "1.0" }version13,478
+    fn description(&self) -> &str {description14,518
+    fn parameters(&self) -> Vec<ParamSpec> {parameters18,658
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute51,1870
+pub fn apply_crop(apply_crop66,2673
+pub fn detect_crop_rect(detect_crop_rect136,5248
+
+src-tauri/src/plugins/write_fits.rs,612
+pub struct WriteFIT;WriteFIT11,365
+impl PhotonPlugin for WriteFIT {WriteFIT13,387
+    fn name(&self)        -> &str { "WriteFIT" }name14,420
+    fn version(&self)     -> &str { "1.0" }version15,469
+    fn description(&self) -> &str { "Writes all loaded images as FITS files to a destination dirdescription16,513
+    fn parameters(&self) -> Vec<ParamSpec> {parameters18,620
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute37,1295
+pub(crate) fn write_fits_new(out_path: &str, buffer: &ImageBuffer) -> Result<(), String> {write_fits_new96,3602
+
+src-tauri/src/plugins/background_median.rs,2055
+struct PreparedImage {PreparedImage18,696
+    luma:   Vec<f32>,luma19,719
+    width:  usize,width20,741
+    height: usize,height21,760
+    path:   String,path22,779
+fn prepare_current_image(ctx: &AppContext) -> Result<PreparedImage, PluginError> {prepare_current_image25,802
+fn parse_config(args: &ArgMap) -> Result<BackgroundConfig, PluginError> {parse_config50,1632
+fn run_and_store(run_and_store75,2515
+pub struct BackgroundMedianPlugin;BackgroundMedianPlugin99,3218
+impl PhotonPlugin for BackgroundMedianPlugin {BackgroundMedianPlugin101,3254
+    fn name(&self)        -> &str { "BackgroundMedian" }name102,3301
+    fn version(&self)     -> &str { "1.0.0" }version103,3358
+    fn description(&self) -> &str {description104,3404
+    fn parameters(&self) -> Vec<ParamSpec> {parameters108,3525
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute134,4580
+pub struct BackgroundStdDevPlugin;BackgroundStdDevPlugin154,5313
+impl PhotonPlugin for BackgroundStdDevPlugin {BackgroundStdDevPlugin156,5349
+    fn name(&self)        -> &str { "BackgroundStdDev" }name157,5396
+    fn version(&self)     -> &str { "1.0.0" }version158,5453
+    fn description(&self) -> &str {description159,5499
+    fn parameters(&self) -> Vec<ParamSpec> { BackgroundMedianPlugin.parameters() }parameters163,5712
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute165,5796
+pub struct BackgroundGradientPlugin;BackgroundGradientPlugin180,6478
+impl PhotonPlugin for BackgroundGradientPlugin {BackgroundGradientPlugin182,6516
+    fn name(&self)        -> &str { "BackgroundGradient" }name183,6565
+    fn version(&self)     -> &str { "1.0.0" }version184,6624
+    fn description(&self) -> &str {description185,6670
+    fn parameters(&self) -> Vec<ParamSpec> { BackgroundMedianPlugin.parameters() }parameters189,6846
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute191,6930
+
+src-tauri/src/plugins/contour_heatmap.rs,1697
+const STAR_ABORT_THRESHOLD:   usize = 25;STAR_ABORT_THRESHOLD26,1247
+const STAR_WARN_THRESHOLD:    usize = 75;STAR_WARN_THRESHOLD27,1289
+const CONTOUR_DASH_LEN:       usize = 12;  // pixels onCONTOUR_DASH_LEN28,1331
+const CONTOUR_GAP_LEN:        usize = 6;   // pixels offCONTOUR_GAP_LEN29,1387
+const OUTLINE_RADIUS:         usize = 1;   // black outline thickness around contourOUTLINE_RADIUS31,1528
+enum Palette {Palette37,1953
+    Viridis,Viridis38,1968
+    Plasma,Plasma39,1981
+    CoolWarm,CoolWarm40,1993
+impl Palette {Palette43,2010
+    fn from_str(s: &str) -> Option<Self> {from_str44,2025
+    fn sample(&self, t: f32) -> [u8; 3] {sample53,2300
+fn lerp_u8(a: u8, b: u8, t: f32) -> u8 {lerp_u8107,4233
+fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {lerp_f32112,4344
+fn grid_size(star_count: usize) -> usize {grid_size118,4625
+fn contour_dash_color(bg: [u8; 3]) -> [u8; 3] {contour_dash_color133,5174
+pub struct ContourHeatmap;ContourHeatmap145,5726
+impl PhotonPlugin for ContourHeatmap {ContourHeatmap147,5754
+    fn name(&self)        -> &str { "ContourHeatmap" }name148,5793
+    fn version(&self)     -> &str { "1.0.0" }version149,5848
+    fn description(&self) -> &str {description150,5894
+    fn parameters(&self) -> Vec<ParamSpec> {parameters157,6267
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute190,7710
+        struct StarPoint { x: f32, y: f32, fwhm: f32 }StarPoint254,10985
+        struct StarPoint { x: f32, y: f32, fwhm: f32 }x254,10985
+        struct StarPoint { x: f32, y: f32, fwhm: f32 }y254,10985
+        struct StarPoint { x: f32, y: f32, fwhm: f32 }fwhm254,10985
+
+src-tauri/src/plugins/cache_frames.rs,1036
+pub struct CacheFrames;CacheFrames15,503
+impl PhotonPlugin for CacheFrames {CacheFrames17,528
+    fn name(&self) -> &str { "CacheFrames" }name18,564
+    fn version(&self) -> &str { "1.0" }version19,609
+    fn description(&self) -> &str { "Pre-renders all loaded images to blink-resolution JPEGs" }description20,649
+    fn parameters(&self) -> Vec<ParamSpec> {parameters22,746
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute34,1151
+        struct FrameData {FrameData50,1973
+            path:   String,path51,2000
+            src_w:  usize,src_w52,2028
+            src_h:  usize,src_h53,2055
+            pixels: PixelSnapshot,pixels54,2082
+        enum PixelSnapshot {PixelSnapshot57,2128
+            U8(Vec<u8>),U858,2157
+            U16(Vec<u16>),U1659,2182
+            F32(Vec<f32>),F3260,2209
+pub fn compute_stf_params_pub(pixels: &[f32]) -> (f32, f32) {compute_stf_params_pub212,9158
+pub fn mtf_pub(m: f32, x: f32) -> f32 {mtf_pub240,10224
+
+src-tauri/src/plugins/auto_stretch.rs,1038
+const DEFAULT_SHADOW_CLIP:       f32 = -2.8;DEFAULT_SHADOW_CLIP18,883
+const DEFAULT_TARGET_BACKGROUND: f32 = 0.15;DEFAULT_TARGET_BACKGROUND19,928
+pub struct AutoStretch;AutoStretch21,974
+impl PhotonPlugin for AutoStretch {AutoStretch23,999
+    fn name(&self) -> &str { "AutoStretch" }name24,1035
+    fn version(&self) -> &str { "1.0" }version25,1080
+    fn description(&self) -> &str { "Applies automatic screen transfer function stretch" }description26,1120
+    fn parameters(&self) -> Vec<ParamSpec> {parameters28,1212
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute47,2003
+pub fn compute_autostretch_jpeg(compute_autostretch_jpeg75,3272
+pub fn compute_autostretch_jpeg_from_buffer(compute_autostretch_jpeg_from_buffer90,3760
+    const MAX_DISPLAY_W: usize = 1200;MAX_DISPLAY_W104,4380
+pub fn compute_stf_params(pixels: &[f32], shadow_clip: f32, target_bg: f32) -> (f32, f32) {compute_stf_params226,9855
+pub fn mtf(m: f32, x: f32) -> f32 {mtf266,11090
+
+src-tauri/src/plugins/add_files.rs,493
+pub struct AddFiles;AddFiles9,402
+impl PhotonPlugin for AddFiles {AddFiles11,424
+    fn name(&self)        -> &str { "AddFiles" }name12,457
+    fn version(&self)     -> &str { "1.0" }version13,506
+    fn description(&self) -> &str { "Appends a list of explicit file paths to the session" }description14,550
+    fn parameters(&self) -> Vec<ParamSpec> {parameters16,644
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute28,1013
+
+src-tauri/src/plugins/read_images.rs,447
+pub struct ReadImages;ReadImages11,411
+impl PhotonPlugin for ReadImages {ReadImages13,435
+    fn name(&self)        -> &str { "ReadImages" }name14,470
+    fn version(&self)     -> &str { "1.0" }version15,521
+    fn description(&self) -> &str {description16,565
+    fn parameters(&self) -> Vec<ParamSpec> {parameters20,706
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> execute32,1075
+
+src-tauri/src/plugins/debayer_image.rs,674
+pub struct DebayerImage;DebayerImage12,481
+impl PhotonPlugin for DebayerImage {DebayerImage14,507
+    fn name(&self) -> &str { "DebayerImage" }name15,544
+    fn version(&self) -> &str { "1.0" }version16,590
+    fn description(&self) -> &str {description17,630
+    fn parameters(&self) -> Vec<ParamSpec> { vec![] }parameters21,817
+    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError>execute23,872
+pub fn debayer_stack(ctx: &mut AppContext) -> Result<PluginOutput, PluginError> {debayer_stack34,1223
+fn debayer_current_frame(ctx: &mut AppContext) -> Result<PluginOutput, PluginError> {debayer_current_frame73,2847
+
+src-tauri/tauri.conf.json,0
+
+src-tauri/gen/schemas/acl-manifests.json,0
+
+src-tauri/gen/schemas/desktop-schema.json,0
+
+src-tauri/gen/schemas/linux-schema.json,0
+
+src-tauri/gen/schemas/capabilities.json,0
+
+src-tauri/Cargo.toml,0
+
+tsconfig.json,0
+
+TAGS,0
+
+src-svelte/lib/commands.ts,3214
+export async function syncSession() {syncSession11,378
+  const state = await invoke<{state12,416
+  const state = await invoke<{syncSession.state12,416
+export async function addFiles() {addFiles21,680
+  const paths = Array.isArray(selected) ? selected : [selected];paths40,1159
+  const paths = Array.isArray(selected) ? selected : [selected];addFiles.paths40,1159
+  const pathsArg = paths.map(p => p.replace(/\\/g, '/')).join(',');pathsArg41,1224
+  const pathsArg = paths.map(p => p.replace(/\\/g, '/')).join(',');addFiles.pathsArg41,1224
+  const result = await invoke<{ success: boolean; output: string | null; error: string | null }>result45,1357
+  const result = await invoke<{ success: boolean; output: string | null; error: string | null }>addFiles.result45,1357
+    const msg = result.error ?? 'AddFiles failed';msg51,1578
+    const msg = result.error ?? 'AddFiles failed';addFiles.msg51,1578
+export async function closeSession() {closeSession74,2242
+  const result = await invoke<{ success: boolean; output: string | null; error: string | null }>result75,2281
+  const result = await invoke<{ success: boolean; output: string | null; error: string | null }>closeSession.result75,2281
+export async function loadFile(path: string) {loadFile92,2780
+    const dataUrl = await invoke<string>('load_file', { path });dataUrl94,2835
+    const dataUrl = await invoke<string>('load_file', { path });loadFile.dataUrl94,2835
+    const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');s97,2934
+    const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');loadFile.s97,2934
+    const info = await invoke<{info101,3106
+    const info = await invoke<{loadFile.info101,3106
+      const keywords = await invoke<Record<string, { name: string; value: string; comment: strinkeywords116,3464
+      const keywords = await invoke<Record<string, { name: string; value: string; comment: strinloadFile.keywords116,3464
+export async function applyAutoStretch(shadowClip?: number, targetBackground?: number) {applyAutoStretch140,4256
+    const dataUrl = await invoke<string>('get_autostretch_frame', {dataUrl142,4353
+    const dataUrl = await invoke<string>('get_autostretch_frame', {applyAutoStretch.dataUrl142,4353
+export async function displayFrame(index: number) {displayFrame153,4704
+    const info = await invoke<{info168,5141
+    const info = await invoke<{displayFrame.info168,5141
+        const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');s184,5511
+        const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');displayFrame.s184,5511
+        const filePath = s.fileList[index];filePath185,5604
+        const filePath = s.fileList[index];displayFrame.filePath185,5604
+        const filePath = s.fileList[index];index185,5604
+        const filePath = s.fileList[index];displayFrame.index185,5604
+          const keywords = await invoke<Record<string, { name: string; value: string; comment: skeywords187,5672
+          const keywords = await invoke<Record<string, { name: string; value: string; comment: sdisplayFrame.keywords187,5672
+
+src-svelte/lib/db.ts,1684
+export interface QuickLaunchButton {QuickLaunchButton7,231
+  id:       number;id8,268
+  id:       number;QuickLaunchButton.id8,268
+  position: number;position9,288
+  position: number;QuickLaunchButton.position9,288
+  label:    string;label10,308
+  label:    string;QuickLaunchButton.label10,308
+  script:   string;script11,328
+  script:   string;QuickLaunchButton.script11,328
+export interface MacroRow {MacroRow14,351
+  id:           number;id15,379
+  id:           number;MacroRow.id15,379
+  name:         string;name16,403
+  name:         string;MacroRow.name16,403
+  display_name: string;display_name17,427
+  display_name: string;MacroRow.display_name17,427
+  script:       string;script18,451
+  script:       string;MacroRow.script18,451
+  tags:         string | null;tags19,475
+  tags:         string | null;MacroRow.tags19,475
+  run_count:    number;run_count20,506
+  run_count:    number;MacroRow.run_count20,506
+  last_run_at:  number | null;last_run_at21,530
+  last_run_at:  number | null;MacroRow.last_run_at21,530
+  created_at:   number;created_at22,561
+  created_at:   number;MacroRow.created_at22,561
+  updated_at:   number;updated_at23,585
+  updated_at:   number;MacroRow.updated_at23,585
+export interface MacroVersionRow {MacroVersionRow26,612
+  id:       number;id27,647
+  id:       number;MacroVersionRow.id27,647
+  macro_id: number;macro_id28,667
+  macro_id: number;MacroVersionRow.macro_id28,667
+  script:   string;script29,687
+  script:   string;MacroVersionRow.script29,687
+  saved_at: number;saved_at30,707
+  saved_at: number;MacroVersionRow.saved_at30,707
+export const db = {db33,730
+
+src-svelte/lib/pcode.ts,7242
+export const PCODE_COMMANDS = new Set([PCODE_COMMANDS20,738
+export type ArgHintValue = string | ((_raw: string) => void);ArgHintValue100,2371
+export const ARG_HINT_STRINGS: Record<string, string> = {ARG_HINT_STRINGS104,2590
+export interface HelpArgument {HelpArgument171,5001
+  name:        string;name172,5033
+  name:        string;HelpArgument.name172,5033
+  type:        string;type173,5056
+  type:        string;HelpArgument.type173,5056
+  required:    boolean;required174,5079
+  required:    boolean;HelpArgument.required174,5079
+  default?:    string;default175,5103
+  default?:    string;HelpArgument.default175,5103
+  description: string;description176,5126
+  description: string;HelpArgument.description176,5126
+export interface HelpEntry {HelpEntry179,5152
+  name:        string;name180,5181
+  name:        string;HelpEntry.name180,5181
+  description: string;description181,5204
+  description: string;HelpEntry.description181,5204
+  syntax:      string;syntax182,5227
+  syntax:      string;HelpEntry.syntax182,5227
+  arguments:   HelpArgument[];arguments183,5250
+  arguments:   HelpArgument[];HelpEntry.arguments183,5250
+  output:      string;output184,5281
+  output:      string;HelpEntry.output184,5281
+  example:     string;example185,5304
+  example:     string;HelpEntry.example185,5304
+export const HELP_DB: Record<string, HelpEntry> = {HELP_DB188,5330
+      { name: 'paths', type: 'string', required: true, description: 'Comma-separated list of fuldescription197,5680
+      { name: 'path', type: 'path', required: true, description: 'Full path to a single image fidescription208,6220
+      { name: 'destination', type: 'path',    required: true,  description: 'Directory to write description219,6786
+      { name: 'overwrite',   type: 'boolean', required: false, default: 'false', description: 'Wdefault220,6895
+      { name: 'destination', type: 'path',    required: true,  description: 'Directory to write description231,7396
+      { name: 'overwrite',   type: 'boolean', required: false, default: 'false', description: 'Wdefault232,7505
+      { name: 'destination', type: 'path',    required: true,  description: 'Directory to write description243,8101
+      { name: 'overwrite',   type: 'boolean', required: false, default: 'false', description: 'Wdefault244,8210
+      { name: 'compress',    type: 'boolean', required: false, default: 'false', description: 'Wdefault245,8345
+      { name: 'stack',       type: 'boolean', required: false, default: 'false', description: 'Wdefault246,8478
+      { name: 'destination', type: 'path',    required: true,  description: 'Full output file padescription266,9339
+      { name: 'overwrite',   type: 'boolean', required: false, default: 'false', description: 'Wdefault267,9442
+      { name: 'destination', type: 'path', required: true,  description: 'Destination directory description278,9996
+      { name: 'source',      type: 'path', required: false, description: 'Source file path (defadescription279,10101
+      { name: 'destination', type: 'path', required: true,  description: 'Destination directory description290,10675
+      { name: 'source',      type: 'path', required: false, description: 'Source file path (defadescription291,10780
+      { name: 'path', type: 'path', required: true, description: 'Full path to the file to load'description311,11531
+      { name: 'calibration_dir', type: 'path', required: false, description: 'Optional directorydescription324,12150
+      { name: 'shadow_clip', type: 'float', required: false, description: 'Shadow clipping factodescription344,13308
+      { name: 'target_bg',   type: 'float', required: false, description: 'Target background valdescription345,13435
+      { name: 'name',    type: 'string', required: true,  description: 'Keyword name (max 8 chardescription358,14045
+      { name: 'value',   type: 'string', required: true,  description: 'Keyword value' },description359,14153
+      { name: 'comment', type: 'string', required: false, description: 'Optional FITS comment' }description360,14243
+      { name: 'scope',   type: 'string', required: false, default: 'current', description: 'Appldefault361,14341
+      { name: 'name',  type: 'string', required: true,  description: 'Keyword name to delete' },description372,14870
+      { name: 'scope', type: 'string', required: false, default: 'current', description: 'Apply default373,14967
+      { name: 'name',    type: 'string', required: true,  description: 'Keyword name to modify' description384,15497
+      { name: 'value',   type: 'string', required: true,  description: 'New keyword value' },description385,15596
+      { name: 'comment', type: 'string', required: false, description: 'New comment (optional)' description386,15690
+      { name: 'scope',   type: 'string', required: false, default: 'current', description: 'Appldefault387,15789
+      { name: 'from', type: 'string', required: true, description: 'Source keyword name' },description398,16300
+      { name: 'to',   type: 'string', required: true, description: 'Destination keyword name' },description399,16392
+      { name: 'name', type: 'string', required: true, description: 'Keyword name to retrieve' },description419,17190
+      { name: 'shadowClip',       type: 'float', required: false, default: '-2.8',  description:default432,17726
+      { name: 'targetBackground', type: 'float', required: false, default: '0.15',  description:default433,17865
+      { name: 'palette',        type: 'string',  required: false, default: 'viridis', descriptiodefault489,20296
+      { name: 'contour_levels', type: 'integer', required: false, default: '10',      descriptiodefault490,20444
+      { name: 'threshold',      type: 'float',   required: false,                     descriptiodescription491,20573
+      { name: 'saturation',     type: 'float',   required: false, default: '1.0',     descriptiodefault492,20716
+      { name: 'varname',    type: 'string',     required: true, description: 'Variable name (no description505,21246
+      { name: 'expression', type: 'expression', required: true, description: 'Value or expressiodescription506,21356
+      { name: 'message', type: 'expression', required: true, description: 'Value, variable, or edescription517,21860
+      { name: 'expression', type: 'condition', required: true, description: 'Boolean condition tdescription528,22345
+      { name: 'name', type: 'string', required: true, description: 'Name of the macro to executedescription548,23129
+      { name: 'path',   type: 'path',    required: true,  description: 'Output log file path' },description559,23557
+      { name: 'append', type: 'boolean', required: false, default: 'false', description: 'Appenddefault560,23654
+      { name: 'index', type: 'integer', required: true, description: 'Zero-based frame index' },description573,24154
+      { name: 'fps', type: 'float', required: false, default: '2.0', description: 'Frames per sedefault593,24899
+      { name: 'command', type: 'string', required: false, description: 'Command name to get helpdescription606,25374
+export function getHelp(command: string): HelpEntry | null {getHelp645,26614
+
+src-svelte/lib/settings/constants.ts,5710
+export const JPEG_QUALITY_DEFAULT = 75;JPEG_QUALITY_DEFAULT7,442
+export const JPEG_QUALITY_MIN = 1;JPEG_QUALITY_MIN8,482
+export const JPEG_QUALITY_MAX = 100;JPEG_QUALITY_MAX9,517
+export const CONSOLE_HISTORY_DEFAULT = 500;CONSOLE_HISTORY_DEFAULT13,764
+export const CONSOLE_HISTORY_MIN = 100;CONSOLE_HISTORY_MIN14,808
+export const CONSOLE_HISTORY_MAX = 5000;CONSOLE_HISTORY_MAX15,848
+export const MACRO_FONT_DEFAULT = 13;MACRO_FONT_DEFAULT17,890
+export const MACRO_FONT_MIN = 8;MACRO_FONT_MIN18,928
+export const MACRO_FONT_MAX = 24;MACRO_FONT_MAX19,961
+export const BUFFER_POOL_DEFAULT_GB = 4;BUFFER_POOL_DEFAULT_GB23,1209
+export const BUFFER_POOL_MIN_GB = 0.5;BUFFER_POOL_MIN_GB24,1250
+export const BUFFER_POOL_MAX_GB = 32;BUFFER_POOL_MAX_GB25,1289
+export const GB = 1024 * 1024 * 1024;GB28,1383
+export const SHADOW_CLIP_DEFAULT = -2.8;SHADOW_CLIP_DEFAULT32,1635
+export const SHADOW_CLIP_MIN = -5.0;SHADOW_CLIP_MIN33,1676
+export const SHADOW_CLIP_MAX = 0.0;SHADOW_CLIP_MAX34,1713
+export const TARGET_BG_DEFAULT = 0.15;TARGET_BG_DEFAULT36,1750
+export const TARGET_BG_MIN = 0.01;TARGET_BG_MIN37,1789
+export const TARGET_BG_MAX = 0.50;TARGET_BG_MAX38,1824
+export interface PrefFieldMeta {PrefFieldMeta42,1957
+  key: string;key43,1990
+  key: string;PrefFieldMeta.key43,1990
+  label: string;label44,2005
+  label: string;PrefFieldMeta.label44,2005
+  helper: string;helper45,2022
+  helper: string;PrefFieldMeta.helper45,2022
+  type: 'integer' | 'float' | 'path';type46,2040
+  type: 'integer' | 'float' | 'path';PrefFieldMeta.type46,2040
+  min?: number;min47,2078
+  min?: number;PrefFieldMeta.min47,2078
+  max?: number;max48,2094
+  max?: number;PrefFieldMeta.max48,2094
+  step?: number;step49,2110
+  step?: number;PrefFieldMeta.step49,2110
+  default: number | string;default50,2127
+  default: number | string;PrefFieldMeta.default50,2127
+  unit?: string;  // displayed after the inputunit51,2155
+  unit?: string;  // displayed after the inputPrefFieldMeta.unit51,2155
+export const PREF_FIELDS: PrefFieldMeta[] = [PREF_FIELDS54,2205
+    max: JPEG_QUALITY_MAX,max62,2435
+    default: JPEG_QUALITY_DEFAULT,default63,2462
+    unit: '%',unit64,2497
+    max: CONSOLE_HISTORY_MAX,max80,2910
+    step: 100,step81,2940
+    key: 'macro_editor_font_size',key85,3002
+    max: MACRO_FONT_MAX,max90,3175
+    default: MACRO_FONT_DEFAULT,default91,3200
+    unit: 'px',unit92,3233
+    max: BUFFER_POOL_MAX_GB,max101,3498
+    step: 0.1,step102,3527
+    unit: 'GB',unit104,3579
+    max: SHADOW_CLIP_MAX,max114,3846
+    default: SHADOW_CLIP_DEFAULT,default115,3872
+    key: 'autostretch_target_bg',key118,3915
+    max: TARGET_BG_MAX,max124,4136
+    default: TARGET_BG_DEFAULT,default125,4160
+export interface PrefSection {PrefSection131,4293
+  title: string;title132,4324
+  title: string;PrefSection.title132,4324
+  keys: string[];keys133,4341
+  keys: string[];PrefSection.keys133,4341
+export const BG_MEDIAN_SIGMA_DEFAULT       = 2.5;BG_MEDIAN_SIGMA_DEFAULT138,4561
+export const SIGNAL_WEIGHT_SIGMA_DEFAULT   = 2.5;SIGNAL_WEIGHT_SIGMA_DEFAULT139,4611
+export const STAR_COUNT_SIGMA_DEFAULT = 1.5;STAR_COUNT_SIGMA_DEFAULT140,4661
+export const FWHM_SIGMA_DEFAULT       = 2.5;FWHM_SIGMA_DEFAULT141,4706
+export const ECCENTRICITY_ABS_DEFAULT = 0.85;ECCENTRICITY_ABS_DEFAULT142,4751
+export const ECCENTRICITY_ABS_MIN     = 0.10;ECCENTRICITY_ABS_MIN143,4797
+export const ECCENTRICITY_ABS_MAX     = 1.00;ECCENTRICITY_ABS_MAX144,4843
+export const SIGMA_MIN                = 0.5;SIGMA_MIN145,4889
+export const SIGMA_MAX                = 4.0;SIGMA_MAX146,4934
+export const SIGMA_STEP               = 0.5;SIGMA_STEP147,4979
+export interface ThresholdFieldMeta {ThresholdFieldMeta149,5025
+  key:       string;key150,5063
+  key:       string;ThresholdFieldMeta.key150,5063
+  label:     string;label151,5084
+  label:     string;ThresholdFieldMeta.label151,5084
+  direction: '+' | '-';   // '+' = reject if above, '-' = reject if belowdirection152,5105
+  direction: '+' | '-';   // '+' = reject if above, '-' = reject if belowThresholdFieldMeta.direction152,5105
+  type:      'sigma' | 'absolute';type153,5179
+  type:      'sigma' | 'absolute';ThresholdFieldMeta.type153,5179
+  min:       number;min154,5214
+  min:       number;ThresholdFieldMeta.min154,5214
+  max:       number;max155,5235
+  max:       number;ThresholdFieldMeta.max155,5235
+  default:   number;default156,5256
+  default:   number;ThresholdFieldMeta.default156,5256
+  step:      number;step157,5277
+  step:      number;ThresholdFieldMeta.step157,5277
+export const THRESHOLD_FIELDS: ThresholdFieldMeta[] = [THRESHOLD_FIELDS160,5301
+    max:       SIGMA_MAX,max167,5508
+    default:   BG_MEDIAN_SIGMA_DEFAULT,default168,5534
+    step:      SIGMA_STEP,step169,5574
+    key:       'signal_weight_reject_sigma',key172,5610
+    max:       SIGMA_MAX,max177,5757
+    default:   SIGNAL_WEIGHT_SIGMA_DEFAULT,default178,5783
+    step:      SIGMA_STEP,step179,5827
+    key:       'star_count_reject_sigma',key182,5863
+    max:       SIGMA_MAX,max187,6004
+    default:   STAR_COUNT_SIGMA_DEFAULT,default188,6030
+    step:      SIGMA_STEP,step189,6071
+    key:       'fwhm_reject_sigma',key192,6107
+    max:       SIGMA_MAX,max197,6236
+    default:   FWHM_SIGMA_DEFAULT,default198,6262
+    step:      SIGMA_STEP,step199,6297
+    key:       'eccentricity_reject_abs',key202,6333
+    max:       ECCENTRICITY_ABS_MAX,max207,6490
+    default:   ECCENTRICITY_ABS_DEFAULT,default208,6527
+    step:      0.01,step209,6568
+export const PREF_SECTIONS: PrefSection[] = [PREF_SECTIONS213,6598
+
+src-svelte/lib/clientCommands.ts,466
+export const CLIENT_COMMAND_NAMES = new Set([CLIENT_COMMAND_NAMES12,591
+function pwdCommand(): void {pwdCommand20,734
+  const fileList = get(session).fileList;fileList21,764
+  const fileList = get(session).fileList;pwdCommand.fileList21,764
+    const dirs = [...new Set(fileList.map(f => {dirs25,898
+    const dirs = [...new Set(fileList.map(f => {pwdCommand.dirs25,898
+export function handleClientCommand(cc: string): void {handleClientCommand36,1282
+
+src-svelte/lib/stores/notifications.ts,2220
+export type NotifType = 'idle' | 'info' | 'success' | 'warning' | 'error' | 'running' | 'alert';NotifType6,145
+export interface Notification {Notification8,243
+  id: number;id9,275
+  id: number;Notification.id9,275
+  message: string;message10,289
+  message: string;Notification.message10,289
+  type: NotifType;type11,308
+  type: NotifType;Notification.type11,308
+  time: Date;time12,327
+  time: Date;Notification.time12,327
+let nextId = 0;nextId15,344
+function createNotificationStore() {createNotificationStore17,361
+  const { subscribe, update } = writable<Notification[]>([]);subscribe18,398
+  const { subscribe, update } = writable<Notification[]>([]);createNotificationStore.subscribe18,398
+  const { subscribe, update } = writable<Notification[]>([]);update18,398
+  const { subscribe, update } = writable<Notification[]>([]);createNotificationStore.update18,398
+    const notif: Notification = {notif21,522
+    const notif: Notification = {createNotificationStore.notif21,522
+      type,type24,591
+      type,createNotificationStore.type24,591
+      time: new Date(),time25,603
+      time: new Date(),createNotificationStore.time25,603
+      const notif = push(alertMsg, 'alert');notif40,1083
+      const notif = push(alertMsg, 'alert');createNotificationStore.notif40,1083
+            const updated = { ...list[0], type: 'error' as NotifType, message: errorMsg };updated44,1238
+            const updated = { ...list[0], type: 'error' as NotifType, message: errorMsg };createNotificationStore.updated44,1238
+            const updated = { ...list[0], type: 'error' as NotifType, message: errorMsg };type44,1238
+            const updated = { ...list[0], type: 'error' as NotifType, message: errorMsg };createNotificationStore.type44,1238
+            const updated = { ...list[0], type: 'error' as NotifType, message: errorMsg };message44,1238
+            const updated = { ...list[0], type: 'error' as NotifType, message: errorMsg };createNotificationStore.message44,1238
+export const notifications = createNotificationStore();notifications54,1461
+export const latestNotification = derived(notifications, $n => $n[0] ?? null);latestNotification57,1572
+
+src-svelte/lib/stores/consoleHistory.ts,651
+export interface ConsoleLine {ConsoleLine6,224
+  id: number;id7,255
+  id: number;ConsoleLine.id7,255
+  text: string;text8,269
+  text: string;ConsoleLine.text8,269
+  type: 'input-echo' | 'trace-echo' | 'output' | 'error' | 'warning' | 'success' | 'info';type9,285
+  type: 'input-echo' | 'trace-echo' | 'output' | 'error' | 'warning' | 'success' | 'info';ConsoleLine.type9,285
+export const consoleHistory = writable<ConsoleLine[]>([]);consoleHistory12,379
+export const consolePipe = writable<ConsoleLine[]>([]);consolePipe16,580
+export function pipeToConsole(text: string, type: ConsoleLine['type'] = 'success') {pipeToConsole18,637
+
+src-svelte/lib/stores/ui.ts,6345
+export type Theme = 'dark' | 'light' | 'matrix';Theme7,152
+export type ZoomLevel = 'fit' | '25' | '50' | '100' | '200';ZoomLevel8,201
+export type PanelId = 'files' | 'keywords' | 'macro-editor' | 'macro-lib' | 'plugins' | null;PanelId9,262
+export type ActiveChannel = 'rgb';ActiveChannel10,356
+export const VIEWS = [VIEWS14,643
+export type ViewName = typeof VIEWS[number];ViewName20,742
+export interface UIState {UIState22,788
+  aboutOpen:           boolean;aboutOpen23,815
+  aboutOpen:           boolean;UIState.aboutOpen23,815
+  activeChannel:       ActiveChannel;activeChannel24,847
+  activeChannel:       ActiveChannel;UIState.activeChannel24,847
+  activePanel:         PanelId;activePanel25,885
+  activePanel:         PanelId;UIState.activePanel25,885
+  activeView:          ViewName | null;activeView26,917
+  activeView:          ViewName | null;UIState.activeView26,917
+  analysisParametersOpen: boolean;analysisParametersOpen27,957
+  analysisParametersOpen: boolean;UIState.analysisParametersOpen27,957
+  annotationToken:     number;annotationToken28,992
+  annotationToken:     number;UIState.annotationToken28,992
+  autostretchImageUrl: string | null;autostretchImageUrl29,1023
+  autostretchImageUrl: string | null;UIState.autostretchImageUrl29,1023
+  blinkCached:         boolean;blinkCached30,1061
+  blinkCached:         boolean;UIState.blinkCached30,1061
+  blinkCaching:        boolean;blinkCaching31,1093
+  blinkCaching:        boolean;UIState.blinkCaching31,1093
+  blinkImageUrl:       string | null;blinkImageUrl32,1125
+  blinkImageUrl:       string | null;UIState.blinkImageUrl32,1125
+  blinkModeActive:     boolean;blinkModeActive33,1163
+  blinkModeActive:     boolean;UIState.blinkModeActive33,1163
+  blinkPlaying:        boolean;blinkPlaying34,1195
+  blinkPlaying:        boolean;UIState.blinkPlaying34,1195
+  blinkResolution:     '12' | '25';blinkResolution35,1227
+  blinkResolution:     '12' | '25';UIState.blinkResolution35,1227
+  blinkTabActive:      boolean;blinkTabActive36,1263
+  blinkTabActive:      boolean;UIState.blinkTabActive36,1263
+  consoleExpanded:     boolean;consoleExpanded37,1295
+  consoleExpanded:     boolean;UIState.consoleExpanded37,1295
+  currentBlinkFlag:    string;currentBlinkFlag38,1327
+  currentBlinkFlag:    string;UIState.currentBlinkFlag38,1327
+  displayImageUrl:     string | null;displayImageUrl39,1358
+  displayImageUrl:     string | null;UIState.displayImageUrl39,1358
+  frameRefreshToken:   number;frameRefreshToken40,1396
+  frameRefreshToken:   number;UIState.frameRefreshToken40,1396
+  keywordModalOpen:    boolean;keywordModalOpen41,1427
+  keywordModalOpen:    boolean;UIState.keywordModalOpen41,1427
+  logViewerOpen:       boolean;logViewerOpen42,1459
+  logViewerOpen:       boolean;UIState.logViewerOpen42,1459
+  macroEditorFile:     { id: number | null; name: string; displayName: string; script: string } macroEditorFile43,1491
+  macroEditorFile:     { id: number | null; name: string; displayName: string; script: string } UIState.macroEditorFile43,1491
+  preferencesOpen:     boolean;preferencesOpen44,1595
+  preferencesOpen:     boolean;UIState.preferencesOpen44,1595
+  quickLaunchVisible:  boolean;quickLaunchVisible45,1627
+  quickLaunchVisible:  boolean;UIState.quickLaunchVisible45,1627
+  showQualityFlags:    boolean;showQualityFlags46,1659
+  showQualityFlags:    boolean;UIState.showQualityFlags46,1659
+  stackImageUrl:       string | null;stackImageUrl47,1691
+  stackImageUrl:       string | null;UIState.stackImageUrl47,1691
+  theme:               Theme;theme48,1729
+  theme:               Theme;UIState.theme48,1729
+  viewerClearToken:    number;viewerClearToken49,1759
+  viewerClearToken:    number;UIState.viewerClearToken49,1759
+  zoomLevel:           ZoomLevel;zoomLevel50,1790
+  zoomLevel:           ZoomLevel;UIState.zoomLevel50,1790
+const initial: UIState = {initial53,1827
+  activeChannel:       'rgb',activeChannel55,1884
+  activeView:          null,activeView57,1943
+  analysisParametersOpen: false,analysisParametersOpen58,1972
+  annotationToken:     0,annotationToken59,2005
+  blinkCached:         false,blinkCached61,2060
+  blinkCaching:        false,blinkCaching62,2090
+  blinkImageUrl:       null,blinkImageUrl63,2120
+  blinkModeActive:     false,blinkModeActive64,2149
+  blinkPlaying:        false,blinkPlaying65,2179
+  blinkResolution:     '12',blinkResolution66,2209
+  consoleExpanded:     false,consoleExpanded68,2268
+  currentBlinkFlag:    '',currentBlinkFlag69,2298
+  frameRefreshToken:   0,frameRefreshToken71,2354
+  logViewerOpen:       false,logViewerOpen73,2410
+  macroEditorFile:     null,macroEditorFile74,2440
+  preferencesOpen:     false,preferencesOpen75,2469
+  quickLaunchVisible:  true,quickLaunchVisible76,2499
+  showQualityFlags:    true,showQualityFlags77,2528
+  stackImageUrl:       null,stackImageUrl78,2557
+  theme:               'matrix',   // overwritten by hydrateFromDb()theme79,2586
+function createUIStore() {createUIStore84,2715
+  const { subscribe, set, update } = writable<UIState>(initial);subscribe85,2742
+  const { subscribe, set, update } = writable<UIState>(initial);createUIStore.subscribe85,2742
+  const { subscribe, set, update } = writable<UIState>(initial);set85,2742
+  const { subscribe, set, update } = writable<UIState>(initial);createUIStore.set85,2742
+  const { subscribe, set, update } = writable<UIState>(initial);update85,2742
+  const { subscribe, set, update } = writable<UIState>(initial);createUIStore.update85,2742
+      const validThemes: Theme[] = ['dark', 'light', 'matrix'];validThemes95,3038
+      const validThemes: Theme[] = ['dark', 'light', 'matrix'];createUIStore.validThemes95,3038
+      const savedTheme = prefs['theme'] as Theme;savedTheme96,3102
+      const savedTheme = prefs['theme'] as Theme;createUIStore.savedTheme96,3102
+      const theme = validThemes.includes(savedTheme) ? savedTheme : 'matrix';theme97,3152
+      const theme = validThemes.includes(savedTheme) ? savedTheme : 'matrix';createUIStore.theme97,3152
+      const next = !s.quickLaunchVisible;next119,3908
+      const next = !s.quickLaunchVisible;createUIStore.next119,3908
+export const ui = createUIStore();ui175,7324
+
+src-svelte/lib/stores/quickLaunch.ts,3008
+export interface QuickLaunchEntry {QuickLaunchEntry8,243
+  id:         string;id9,279
+  id:         string;QuickLaunchEntry.id9,279
+  name:       string;name10,301
+  name:       string;QuickLaunchEntry.name10,301
+  script:     string;script11,323
+  script:     string;QuickLaunchEntry.script11,323
+  icon?:      string;icon12,345
+  icon?:      string;QuickLaunchEntry.icon12,345
+function uid(): string {uid16,393
+function defaultEntries(): QuickLaunchEntry[] {defaultEntries21,574
+function toDbFormat(entries: QuickLaunchEntry[]) {toDbFormat29,922
+function createQuickLaunchStore() {createQuickLaunchStore33,1042
+  const { subscribe, set, update } = writable<QuickLaunchEntry[]>(defaultEntries());subscribe34,1078
+  const { subscribe, set, update } = writable<QuickLaunchEntry[]>(defaultEntries());createQuickLaunchStore.subscribe34,1078
+  const { subscribe, set, update } = writable<QuickLaunchEntry[]>(defaultEntries());set34,1078
+  const { subscribe, set, update } = writable<QuickLaunchEntry[]>(defaultEntries());createQuickLaunchStore.set34,1078
+  const { subscribe, set, update } = writable<QuickLaunchEntry[]>(defaultEntries());update34,1078
+  const { subscribe, set, update } = writable<QuickLaunchEntry[]>(defaultEntries());createQuickLaunchStore.update34,1078
+      const entries: QuickLaunchEntry[] = buttons.map(b => ({entries50,1614
+      const entries: QuickLaunchEntry[] = buttons.map(b => ({createQuickLaunchStore.entries50,1614
+        const idx = entries.findIndex(e => e.name === entry.name);idx60,1891
+        const idx = entries.findIndex(e => e.name === entry.name);createQuickLaunchStore.idx60,1891
+        const newEntry: QuickLaunchEntry = { id: uid(), ...entry };newEntry61,1958
+        const newEntry: QuickLaunchEntry = { id: uid(), ...entry };createQuickLaunchStore.newEntry61,1958
+        const next = entries.filter(e => e.id !== id);next75,2358
+        const next = entries.filter(e => e.id !== id);createQuickLaunchStore.next75,2358
+        const next = entries.map(e => e.id === id ? { ...e, name } : e);next83,2540
+        const next = entries.map(e => e.id === id ? { ...e, name } : e);createQuickLaunchStore.next83,2540
+        const i = entries.findIndex(e => e.id === id);i91,2753
+        const i = entries.findIndex(e => e.id === id);createQuickLaunchStore.i91,2753
+        const j = direction === 'left' ? i - 1 : i + 1;j93,2843
+        const j = direction === 'left' ? i - 1 : i + 1;createQuickLaunchStore.j93,2843
+        const j = direction === 'left' ? i - 1 : i + 1;i93,2843
+        const j = direction === 'left' ? i - 1 : i + 1;createQuickLaunchStore.i93,2843
+        const next = [...entries];next95,2957
+        const next = [...entries];createQuickLaunchStore.next95,2957
+      const entries = defaultEntries();entries103,3117
+      const entries = defaultEntries();createQuickLaunchStore.entries103,3117
+export const quickLaunch = createQuickLaunchStore();quickLaunch110,3216
+
+src-svelte/lib/stores/session.ts,2570
+export interface KeywordEntry {KeywordEntry6,147
+  name: string;name7,179
+  name: string;KeywordEntry.name7,179
+  value: string;value8,195
+  value: string;KeywordEntry.value8,195
+  comment: string | null;comment9,212
+  comment: string | null;KeywordEntry.comment9,212
+export interface ImageMeta {ImageMeta12,241
+  filename: string;filename13,270
+  filename: string;ImageMeta.filename13,270
+  width: number;width14,290
+  width: number;ImageMeta.width14,290
+  height: number;height15,307
+  height: number;ImageMeta.height15,307
+  displayWidth: number;displayWidth16,325
+  displayWidth: number;ImageMeta.displayWidth16,325
+  bitDepth: string;bitDepth17,349
+  bitDepth: string;ImageMeta.bitDepth17,349
+  colorSpace: string;colorSpace18,369
+  colorSpace: string;ImageMeta.colorSpace18,369
+  channels: number;channels19,391
+  channels: number;ImageMeta.channels19,391
+  keywords: Record<string, KeywordEntry>;keywords20,411
+  keywords: Record<string, KeywordEntry>;ImageMeta.keywords20,411
+export interface SessionState {SessionState23,456
+  fileList: string[];fileList24,488
+  fileList: string[];SessionState.fileList24,488
+  loadedImages: Record<string, ImageMeta>;loadedImages25,510
+  loadedImages: Record<string, ImageMeta>;SessionState.loadedImages25,510
+  currentFrame: number;currentFrame26,553
+  currentFrame: number;SessionState.currentFrame26,553
+  variables: Record<string, string>;variables27,577
+  variables: Record<string, string>;SessionState.variables27,577
+function createSessionStore() {createSessionStore30,617
+  const initial: SessionState = {initial31,649
+  const initial: SessionState = {createSessionStore.initial31,649
+  const { subscribe, set, update } = writable<SessionState>(initial);subscribe38,769
+  const { subscribe, set, update } = writable<SessionState>(initial);createSessionStore.subscribe38,769
+  const { subscribe, set, update } = writable<SessionState>(initial);set38,769
+  const { subscribe, set, update } = writable<SessionState>(initial);createSessionStore.set38,769
+  const { subscribe, set, update } = writable<SessionState>(initial);update38,769
+  const { subscribe, set, update } = writable<SessionState>(initial);createSessionStore.update38,769
+export const session = createSessionStore();session52,1215
+export const currentImage = derived(session, $s => {currentImage55,1296
+export const fileCount = derived(session, $s => $s.fileList.length);fileCount62,1488
+export const directoryCount = derived(session, $s => {directoryCount65,1608
+
+src-svelte/lib/stores/thresholdProfiles.ts,3256
+export interface ThresholdProfile {ThresholdProfile9,367
+  id:                         number;id10,403
+  id:                         number;ThresholdProfile.id10,403
+  name:                       string;name11,441
+  name:                       string;ThresholdProfile.name11,441
+  description:                string | null;description12,479
+  description:                string | null;ThresholdProfile.description12,479
+  bg_median_reject_sigma:     number;bg_median_reject_sigma13,524
+  bg_median_reject_sigma:     number;ThresholdProfile.bg_median_reject_sigma13,524
+  signal_weight_reject_sigma: number;signal_weight_reject_sigma14,562
+  signal_weight_reject_sigma: number;ThresholdProfile.signal_weight_reject_sigma14,562
+  fwhm_reject_sigma:          number;fwhm_reject_sigma15,600
+  fwhm_reject_sigma:          number;ThresholdProfile.fwhm_reject_sigma15,600
+  star_count_reject_sigma:    number;star_count_reject_sigma16,638
+  star_count_reject_sigma:    number;ThresholdProfile.star_count_reject_sigma16,638
+  eccentricity_reject_abs:    number;eccentricity_reject_abs17,676
+  eccentricity_reject_abs:    number;ThresholdProfile.eccentricity_reject_abs17,676
+export interface ThresholdProfilesState {ThresholdProfilesState20,717
+  profiles:        ThresholdProfile[];profiles21,759
+  profiles:        ThresholdProfile[];ThresholdProfilesState.profiles21,759
+  activeProfileId: number | null;activeProfileId22,798
+  activeProfileId: number | null;ThresholdProfilesState.activeProfileId22,798
+function createThresholdProfilesStore() {createThresholdProfilesStore25,835
+  const { subscribe, set, update } = writable<ThresholdProfilesState>({subscribe26,877
+  const { subscribe, set, update } = writable<ThresholdProfilesState>({createThresholdProfilesStore.subscribe26,877
+  const { subscribe, set, update } = writable<ThresholdProfilesState>({set26,877
+  const { subscribe, set, update } = writable<ThresholdProfilesState>({createThresholdProfilesStore.set26,877
+  const { subscribe, set, update } = writable<ThresholdProfilesState>({update26,877
+  const { subscribe, set, update } = writable<ThresholdProfilesState>({createThresholdProfilesStore.update26,877
+      const [profiles, activeProfileId] = await Promise.all([profiles36,1134
+      const [profiles, activeProfileId] = await Promise.all([createThresholdProfilesStore.profiles36,1134
+      const [profiles, activeProfileId] = await Promise.all([activeProfileId36,1134
+      const [profiles, activeProfileId] = await Promise.all([createThresholdProfilesStore.activeProfileId36,1134
+      const saved = await invoke<ThresholdProfile>('save_threshold_profile', { profile });saved46,1605
+      const saved = await invoke<ThresholdProfile>('save_threshold_profile', { profile });createThresholdProfilesStore.saved46,1605
+        const exists = s.profiles.some(p => p.id === saved.id);exists48,1716
+        const exists = s.profiles.some(p => p.id === saved.id);createThresholdProfilesStore.exists48,1716
+        const profiles = existsprofiles49,1780
+        const profiles = existscreateThresholdProfilesStore.profiles49,1780
+export const thresholdProfiles = createThresholdProfilesStore();thresholdProfiles75,2736
+
+src-svelte/lib/stores/settings.ts,2910
+export interface AppPreferences {AppPreferences18,519
+  jpeg_quality:              number;jpeg_quality19,553
+  jpeg_quality:              number;AppPreferences.jpeg_quality19,553
+  backup_directory:          string;backup_directory20,590
+  backup_directory:          string;AppPreferences.backup_directory20,590
+  console_history_size:      number;console_history_size21,627
+  console_history_size:      number;AppPreferences.console_history_size21,627
+  macro_editor_font_size:    number;macro_editor_font_size22,664
+  macro_editor_font_size:    number;AppPreferences.macro_editor_font_size22,664
+  buffer_pool_memory_limit:  number;  // stored as bytes, converted to/from GB in UIbuffer_pool_memory_limit23,701
+  buffer_pool_memory_limit:  number;  // stored as bytes, converted to/from GB in UIAppPreferences.buffer_pool_memory_limit23,701
+  autostretch_shadow_clip:   number;autostretch_shadow_clip24,786
+  autostretch_shadow_clip:   number;AppPreferences.autostretch_shadow_clip24,786
+  autostretch_target_bg:     number;autostretch_target_bg25,823
+  autostretch_target_bg:     number;AppPreferences.autostretch_target_bg25,823
+const defaults: AppPreferences = {defaults28,863
+  backup_directory:         '',backup_directory30,948
+  macro_editor_font_size:   MACRO_FONT_DEFAULT,macro_editor_font_size32,1033
+  buffer_pool_memory_limit: BUFFER_POOL_DEFAULT_GB * GB,buffer_pool_memory_limit33,1081
+  autostretch_shadow_clip:  SHADOW_CLIP_DEFAULT,autostretch_shadow_clip34,1138
+  autostretch_target_bg:    TARGET_BG_DEFAULT,autostretch_target_bg35,1187
+function createSettingsStore() {createSettingsStore38,1238
+  const { subscribe, set, update } = writable<AppPreferences>({ ...defaults });subscribe39,1271
+  const { subscribe, set, update } = writable<AppPreferences>({ ...defaults });createSettingsStore.subscribe39,1271
+  const { subscribe, set, update } = writable<AppPreferences>({ ...defaults });set39,1271
+  const { subscribe, set, update } = writable<AppPreferences>({ ...defaults });createSettingsStore.set39,1271
+  const { subscribe, set, update } = writable<AppPreferences>({ ...defaults });update39,1271
+  const { subscribe, set, update } = writable<AppPreferences>({ ...defaults });createSettingsStore.update39,1271
+        const n = { ...s };n48,1590
+        const n = { ...s };createSettingsStore.n48,1590
+      const calls: Promise<void>[] = [];calls70,2872
+      const calls: Promise<void>[] = [];createSettingsStore.calls70,2872
+      for (const [key, value] of Object.entries(changed)) {key71,2913
+      for (const [key, value] of Object.entries(changed)) {createSettingsStore.key71,2913
+      for (const [key, value] of Object.entries(changed)) {value71,2913
+      for (const [key, value] of Object.entries(changed)) {createSettingsStore.value71,2913
+export const settings = createSettingsStore();settings82,3174
+
+src-svelte/lib/components/IconSidebar.svelte,0
+
+src-svelte/lib/components/MenuBar.svelte,0
+
+src-svelte/lib/components/StackingWorkspace.svelte,0
+
+src-svelte/lib/components/HelpModal.svelte,0
+
+src-svelte/lib/components/ThresholdProfilesDialog.svelte,0
+
+src-svelte/lib/components/Toolbar.svelte,0
+
+src-svelte/lib/components/StatusBar.svelte,0
+
+src-svelte/lib/components/Viewer.svelte,0
+
+src-svelte/lib/components/AboutModal.svelte,0
+
+src-svelte/lib/components/Console.svelte,0
+
+src-svelte/lib/components/AnalysisResults.svelte,0
+
+src-svelte/lib/components/Dropdown.svelte,0
+
+src-svelte/lib/components/KeywordModal.svelte,0
+
+src-svelte/lib/components/panels/MacroEditor.svelte,0
+
+src-svelte/lib/components/panels/PluginManager.svelte,0
+
+src-svelte/lib/components/panels/FileBrowser.svelte,0
+
+src-svelte/lib/components/panels/KeywordEditor.svelte,0
+
+src-svelte/lib/components/panels/MacroLibrary.svelte,0
+
+src-svelte/lib/components/InfoPanel.svelte,0
+
+src-svelte/lib/components/AnalysisGraph.svelte,0
+
+src-svelte/lib/components/PreferencesDialog.svelte,0
+
+src-svelte/lib/components/StackResult.svelte,0
+
+src-svelte/lib/components/QuickLaunch.svelte,0
+
+src-svelte/lib/components/LogViewer.svelte,0
+
+src-svelte/app.html,0
+
+src-svelte/routes/+layout.ts,36
+export const ssr = false;ssr5,264
+
+src-svelte/routes/+page.svelte,0
+
+svelte.config.js,840
+    preprocess: vitePreprocess(),preprocess10,439
+    preprocess: vitePreprocess(),config.preprocess10,439
+    compilerOptions: {compilerOptions11,473
+    compilerOptions: {config.compilerOptions11,473
+        adapter: adapter({adapter15,584
+        adapter: adapter({config.kit.adapter15,584
+            routes: "src-svelte/routes",routes19,676
+            routes: "src-svelte/routes",config.kit.files.routes19,676
+            appTemplate: "src-svelte/app.html",appTemplate20,717
+            appTemplate: "src-svelte/app.html",config.kit.files.appTemplate20,717
+            assets: "static",assets21,765
+            assets: "static",config.kit.files.assets21,765
+        files: {files18,659
+        files: {config.kit.files18,659
+    kit: {kit14,573
+    kit: {config.kit14,573
+const config = {config9,422
+
+package-lock.json,0
+
+tauri-README.md,0
+
+Cargo.toml,0

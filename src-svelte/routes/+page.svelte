@@ -19,7 +19,7 @@
   import ThresholdProfilesDialog from '../lib/components/ThresholdProfilesDialog.svelte';
   import Toolbar from '../lib/components/Toolbar.svelte';
   import Viewer from '../lib/components/Viewer.svelte';
-  import type { HelpEntry } from '../lib/pcodeHelp';
+  import type { HelpEntry } from '../lib/pcode';
   import { VIEWS } from '../lib/stores/ui.ts';
   import { db } from '../lib/db';
   import { invoke } from '@tauri-apps/api/core';

@@ -11,6 +11,7 @@ pub mod moffat;
 pub mod profiles;
 pub mod session_stats;
 pub mod stack_metrics;
+pub mod star_align;
 pub mod stars;
 
 use serde::{Deserialize, Serialize};

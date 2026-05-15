@@ -1,6 +1,6 @@
 <!-- HelpModal.svelte — Command help modal. Triggered by: help <command> -->
   <script lang="ts">
-    import type { HelpEntry } from '../pcodeHelp';
+    import type { HelpEntry } from '../pcode';
 
     let { entry, onclose }: { entry: HelpEntry; onclose: () => void } = $props();
 
