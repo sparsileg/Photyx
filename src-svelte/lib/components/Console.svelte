@@ -30,10 +30,10 @@
   let nextId = 2;
   let trace = $state(false);
 
-  import { PCODE_COMMANDS } from '../pcodeCommands';
+  import { PCODE_COMMANDS } from '../pcode';
   import { applyAutoStretch, loadFile } from '../commands';
-  import { getHelp } from '../pcodeHelp';
-  import type { HelpEntry } from '../pcodeHelp';
+  import { getHelp, ARG_HINT_STRINGS } from '../pcode';
+  import type { HelpEntry } from '../pcode';
   import { handleClientCommand, CLIENT_COMMAND_NAMES } from '../clientCommands';
 
   let { onhelp }: { onhelp: (entry: HelpEntry) => void } = $props();
@@ -49,69 +49,15 @@
 
   const ALL_COMMANDS = [...PCODE_COMMANDS].sort();
 
-  const ARG_HINTS: Record<string, string> = {
-    abs:                '(#)',
-    addfiles:           'paths=',
-    addkeyword:         'name=  value=  comment=',
-    analyzeframes:      '',
-    assert:             'expression=',
-    autostretch:        'shadowClip=  targetBackground=',
-    binimage:           'factor=',
-    blinksequence:      'fps=',
-    cacheframes:        '',
-    clear:              '',
+  // ARG_HINTS merges the string hints from pcode.ts with the client command
+  // handler functions that must live here (they reference handleClientCommand).
+  const ARG_HINTS: Record<string, string | ((_raw: string) => void)> = {
+    ...ARG_HINT_STRINGS,
     clearannotations:    (_raw: string) => { handleClientCommand('clearannotations'); },
-    clearstack:         '',
-    computefwhm:        '',
-    contourheatmap:     'palette=[viridis|plasma|coolwarm]  contour_levels=#  threshold=  saturation=',
-    copyfile:           'destination=  source=',
-    copykeyword:        'from=  to=',
-    countfiles:         '',
-    cropimage:          'x=  y=  width=  height=',
-    debayerimage:       'method=  pattern=',
-    definemacro:        '',
-    deletekeyword:      'name=  scope=',
-    echo:               '',
-    else:               '',
-    endfor:             '',
-    endif:              '',
-    filterbykeyword:    'name=  value=',
-    floor:              '(#)',
-    for:                '',
-    gethistogram:       '',
-    getimageproperty:   'property=',
-    getkeyword:         'name=',
-    getsessionproperty: 'property=',
-    help:               '',
-    if:                 '',
-    listfile:           '',
-    listkeywords:       '',
-    loadfile:           'path=',
-    log:                'path=  append=',
-    max:                '(#,#)',
-    medianvalue:        '',
-    min:                '(#,#)',
-    modifykeyword:      'name=  value=  comment=  scope=',
-    movefile:           'destination=',
-    print:              'message (or bare: Print "hello")',
-    pwd:                (_raw: string) => { handleClientCommand('pwd'); },
-    readimages:         'path=',
-    round:              '(#)',
-    runmacro:           'filename=',
-    set:                '<varname> = <value>',
-    setframe:           'index=',
-    setzoom:            'level=',
+    pwd:                 (_raw: string) => { handleClientCommand('pwd'); },
     showanalysisgraph:   (_raw: string) => { handleClientCommand('showanalysisgraph'); },
     showanalysisresults: (_raw: string) => { handleClientCommand('showanalysisresults'); },
-    sqrt:               '(#)',
-    stackframes:        '',
-    test:               '',
     version:             (_raw: string) => { handleClientCommand('version'); },
-    writecurrent:       '',
-    writefit:           'destination=  overwrite=',
-    writeframe:         '',
-    writetiff:          'destination=  overwrite=',
-    writexisf:          'destination=  overwrite=  compress=',
   };
 
   function scrollToBottom() {
@@ -172,11 +118,11 @@
         return;
       }
       append('Photyx pcode v1.0     commands:', 'output');
-      append('  File:     ListFiles FilterByKeyword', 'output');
+      append('  File:     FilterByKeyword', 'output');
       append('  I/O:      AddFiles ReadImages WriteFIT WriteXISF WriteTIFF WriteCurrent', 'output');
       append('  Keyword:  AddKeyword DeleteKeyword ModifyKeyword CopyKeyword ListKeywords GetKeyword', 'output');
       append('  Query:    GetImageProperty GetSessionProperty Test', 'output');
-      append('  Process:  AutoStretch CropImage BinImage DebayerImage', 'output');
+      append('  Process:  AutoStretch BinImage DebayerImage', 'output');
       append('  View:     BlinkSequence CacheFrames SetZoom', 'output');
       append('  Analysis: ComputeFWHM CountStars ComputeEccentricity MedianValue ContourHeatmap', 'output');
       append('  Script:   Set Print Echo CountFiles RunMacro', 'output');

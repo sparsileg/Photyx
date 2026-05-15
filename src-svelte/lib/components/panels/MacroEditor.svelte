@@ -6,7 +6,7 @@
   import { notifications } from '../../stores/notifications';
   import { settings } from '../../stores/settings';
   import { MACRO_FONT_MIN, MACRO_FONT_MAX } from '../../settings/constants';
-  import { PCODE_COMMANDS } from '../../pcodeCommands';
+  import { PCODE_COMMANDS } from '../../pcode';
 
   // ── Editor state ─────────────────────────────────────────────────────────
   let macroId      = $state<number | null>(null);

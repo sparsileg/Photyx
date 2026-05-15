@@ -25,7 +25,11 @@ All pcode commands in the initial release. Arguments in brackets are optional.
 | BinImage            | Processing      | Bins the image by an integer factor                                                                                                                         | factor                                                 |
 | BlinkSequence       | Blink & View    | Starts blinking the loaded image set                                                                                                                        | [fps]                                                  |
 | CacheFrames         | Blink & View    | Pre-decodes and caches all frames for blinking at both resolutions                                                                                          | —                                                      |
-| ClearSession        | Session         | Clears all loaded images and resets session state                                                                                                           | —                                                      |
+| ClearAnnotations    | Display         | Removes all star and analysis overlay annotations from the viewer                                                                                           |                                                        |
+| ClearSession        | Session         | Clears all loaded images and resets session state                                                                                                           |                                                        |
+| ClearStack          | Stacking        | Discards the transient stack result and per-frame contribution data                                                                                         |                                                        |
+| CommitStretch       | Stacking        | Permanently applies Auto-STF stretch to the stack result pixel buffer; after commit the buffer holds non-linear data                                         | [shadow_clip], [target_bg]                             |
+
 | ComputeEccentricity | Analysis        | Calculates eccentricity for detected stars on current frame                                                                                                 | —                                                      |
 | ComputeFWHM         | Analysis        | Calculates FWHM for detected stars; displays per-star circle annotations on viewer overlay                                                                  | —                                                      |
 | ContourHeatmap      | Analysis        | Generates spatial FWHM heatmap for current frame; writes XISF to source file's directory; stores output path in `$NEW_FILE`                                 | [palette], [contour_levels], [threshold], [saturation] |
@@ -34,31 +38,31 @@ All pcode commands in the initial release. Arguments in brackets are optional.
 | CountFiles          | Scripting       | Stores number of files in current list in `$filecount`                                                                                                      | —                                                      |
 | CountStars          | Analysis        | Counts detected stars in current frame                                                                                                                      | —                                                      |
 | CropImage           | Processing      | Crops the image to a specified region                                                                                                                       | x, y, width, height                                    |
-| DebayerImage        | Processing      | Debayers a Bayer CFA image on demand                                                                                                                        | [pattern], [method=nearest\|bilinear\|vng\|ahd]        |
+| DebayerImage        | Processing      | Debayers a Bayer CFA image on demand; pattern read from BAYERPAT keyword if present                                                                         | [pattern=RGGB\|BGGR\|GRBG\|GBRG], [method=bilinear]   |
 | DeleteKeyword       | Keyword         | Removes a keyword from loaded images                                                                                                                        | name, [scope=all\|current]                             |
 | FilterByKeyword     | File Management | Filters the active file list by keyword value                                                                                                               | name, value                                            |
-| GetHistogram        | Processing      | Computes histogram statistics for current frame (median, std dev, clipping %)                                                                               | —                                                      |
-| GetImageProperty    | Interrogation   | Retrieves an image property into a variable; see §2 for full property list                                                                                  | property                                               |
-| GetKeyword          | Interrogation   | Retrieves a keyword value; auto-stores in `$<NAME>` (uppercase) — e.g. `GetKeyword name=FILTER` stores result in `$FILTER`                                  | name                                                   |
-| GetSessionProperty  | Interrogation   | Retrieves a session state value into a variable; see §2 for full property list                                                                              | property                                               |
-| ListFiles           | File Management | Lists files in the active file list                                                                                                                         | [filter]                                               |
-| ListKeywords        | Keyword         | Lists all keywords for the current image                                                                                                                    | —                                                      |
+| GetHistogram        | Processing      | Computes histogram statistics for current frame (median, std dev, clipping %)                                                                               |                                                        |
+| GetKeyword          | Interrogation   | Retrieves a keyword value; auto-stores in `$<NAME>` (uppercase)   e.g. `GetKeyword name=FILTER` stores result in `$FILTER`                                  | name                                                   |
+| ListKeywords        | Keyword         | Lists all keywords for the current image                                                                                                                    |                                                        |
 | LoadFile            | File Management | Loads a single image file for display without adding it to the session; stores path in `$LOAD_FILE_PATH`                                                    | path                                                   |
 | Log                 | Scripting       | Writes collected macro output since last Log call to a file                                                                                                 | path, [append]                                         |
 | MedianValue         | Analysis        | Returns the median pixel value per channel                                                                                                                  | —                                                      |
 | ModifyKeyword       | Keyword         | Changes the value of an existing keyword                                                                                                                    | name, value, [comment], [scope=all\|current]           |
 | MoveFile            | File Management | Moves a file to a destination directory; defaults to current frame if source= not specified; stores path in `$NEW_FILE`                                     | [source], destination                                  |
 | Print               | Scripting       | Outputs a message to the pcode console; accepts bare expressions — `Print $x + 1` and `Print "hello"` are both valid                                        | message (positional or bare expression)                |
+| ReadImages          | Session         | Reads a single image or all supported files in a directory                                                                                                  | path                                                   |
 | RunMacro            | Scripting       | Executes a saved macro by name from the database                                                                                                            | name                                                   |
 | Set                 | Scripting       | Assigns a value to a variable; string literals on the RHS must use double quotes                                                                            | varname = value                                        |
 | SetFrame            | Navigation      | Sets the current active frame by index (0-based)                                                                                                            | index                                                  |
 | SetZoom             | Blink & View    | Sets the viewer zoom level                                                                                                                                  | level (fit, 25, 50, 100, 200)                          |
-| Test                | Interrogation   | Performs a boolean test and stores result in `$Result`; see §2 for full test list                                                                           | expression                                             |
-| WriteCurrent        | I/O             | Writes all buffered images back to their source paths in their original format (atomic temp-rename)                                                         | —                                                      |
+| ShowAnalysisGraph   | Display         | Opens the Analysis Graph view in the viewer region                                                                                                          |                                                        |
+| ShowAnalysisResults | Display         | Opens the Analysis Results table view in the viewer region                                                                                                  |                                                        |
+| StackFrames         | Stacking        | Stacks all session frames using FFT alignment and sigma-clipped mean combination; result stored as transient stack buffer                                    | [calibration_dir]                                      |
+| WriteCurrent        | I/O             | Writes all buffered images back to their source paths in their original format (atomic temp-rename)                                                         |                                                        |
 | WriteFIT            | I/O             | Writes all buffered images as FITS files (atomic temp-rename)                                                                                               | destination, [overwrite]                               |
 | WriteFrame          | I/O             | Writes the currently active frame only back to its source format (atomic temp-rename)                                                                       | —                                                      |
 | WriteTIFF           | I/O             | Writes all buffered images as TIFF files with AstroTIFF keyword embedding (atomic temp-rename)                                                              | destination, [overwrite]                               |
-| WriteXISF           | I/O             | Writes all buffered images as XISF files (atomic temp-rename)                                                                                               | destination, [overwrite], [compress=true\|false]       |
+| WriteXISF           | I/O             | Writes all buffered images as XISF files; use stack=true to export the transient stack result instead                                                       | destination, [overwrite], [compress=true\|false], [stack=true\|false] |
 | pwd                 | Console         | Prints the unique source directories of all files currently loaded in the session (client-side only)                                                        | —                                                      |
 
 ### 1.1 Retired Commands
@@ -67,7 +71,12 @@ The following commands have been retired and are no longer available:
 
 | Retired Command | Replacement | Notes                                                                  |
 | --------------- | ----------- | ---------------------------------------------------------------------- |
-| SelectDirectory | AddFiles    | Directory as a first-class entity is replaced by explicit file paths   |
+| SelectDirectory    | AddFiles         | Directory as a first-class entity is replaced by explicit file paths        |
+| GetImageProperty   | (removed)        | Not implemented; interrogation via GetKeyword and CountFiles instead        |
+| GetSessionProperty | (removed)        | Not implemented; interrogation via GetKeyword and CountFiles instead        |
+| ListFiles          | (removed)        | Not implemented                                                             |
+| Test               | (removed)        | Not implemented                                                             |
+| CropImage          | (removed)        | Not implemented in this release                                             |
 | ReadAll         | AddFiles    | Use AddFiles with explicit paths; ClearSession first if starting fresh |
 | ReadFIT         | AddFiles    | Format filtering is now the user's responsibility at selection time    |
 | ReadTIFF        | AddFiles    | Format filtering is now the user's responsibility at selection time    |
@@ -481,42 +490,44 @@ All plugins are Built-in Native in the initial release. WASM user plugins are su
 
 | Plugin              | Category        | Status     |
 | ------------------- | --------------- | ---------- |
-| AddFiles            | Session         | ✅ Complete |
-| AddKeyword          | Keyword         | ✅ Complete |
-| AnalyzeFrames       | Frame Analysis  | ✅ Complete |
-| Assert              | Scripting       | ✅ Complete |
-| AutoStretch         | Processing      | ✅ Complete |
-| CacheFrames         | Blink           | ✅ Complete |
-| ClearSession        | Session         | ✅ Complete |
-| ComputeEccentricity | Analysis        | ✅ Complete |
-| ComputeFWHM         | Analysis        | ✅ Complete |
-| ContourHeatmap      | Analysis        | ✅ Complete |
-| CopyFile            | File Management | ✅ Complete |
-| CopyKeyword         | Keyword         | ✅ Complete |
-| CountFiles          | Scripting       | ✅ Complete |
-| CountStars          | Analysis        | ✅ Complete |
-| DeleteKeyword       | Keyword         | ✅ Complete |
-| GetHistogram        | Analysis        | ✅ Complete |
-| GetKeyword          | Scripting       | ✅ Complete |
-| ListKeywords        | Keyword         | ✅ Complete |
-| LoadFile            | File Management | ✅ Complete |
-| ModifyKeyword       | Keyword         | ✅ Complete |
-| MoveFile            | File Management | ✅ Complete |
-| Print               | Scripting       | ✅ Complete |
-| RunMacro            | Scripting       | ✅ Complete |
-| SetFrame            | Navigation      | ✅ Complete |
-| WriteCurrent        | I/O Writer      | ✅ Complete |
-| WriteFIT            | I/O Writer      | ✅ Complete |
-| WriteFrame          | I/O Writer      | ✅ Complete |
-| WriteTIFF           | I/O Writer      | ✅ Complete |
-| WriteXISF           | I/O Writer      | ✅ Complete |
-| BinImage            | Processing      | ⬜ Planned  |
-| CropImage           | Processing      | ⬜ Planned  |
-| DebayerImage        | Processing      | ⬜ Planned  |
-| FilterByKeyword     | File Management | ⬜ Planned  |
-| GetImageProperty    | Interrogation   | ⬜ Planned  |
-| GetSessionProperty  | Interrogation   | ⬜ Planned  |
-| ListFiles           | File Management | ⬜ Planned  |
-| MedianValue         | Analysis        | ⬜ Planned  |
-| SetZoom             | Blink & View    | ⬜ Planned  |
-| Test                | Interrogation   | ⬜ Planned  |
+| AddFiles            | Session         |  Complete  |
+| AddKeyword          | Keyword         |  Complete  |
+| AnalyzeFrames       | Frame Analysis  |  Complete  |
+| Assert              | Scripting       |  Complete  |
+| AutoStretch         | Processing      |  Complete  |
+| BinImage            | Processing      |  Complete  |
+| CacheFrames         | Blink           |  Complete  |
+| ClearAnnotations    | Display         |  Complete  |
+| ClearSession        | Session         |  Complete  |
+| ClearStack          | Stacking        |  Complete  |
+| CommitStretch       | Stacking        |  Complete  |
+| ComputeEccentricity | Analysis        |  Complete  |
+| ComputeFWHM         | Analysis        |  Complete  |
+| ContourHeatmap      | Analysis        |  Complete  |
+| CopyFile            | File Management |  Complete  |
+| CopyKeyword         | Keyword         |  Complete  |
+| CountFiles          | Scripting       |  Complete  |
+| CountStars          | Analysis        |  Complete  |
+| DebayerImage        | Processing      |  Complete  |
+| DeleteKeyword       | Keyword         |  Complete  |
+| FilterByKeyword     | File Management |  Complete  |
+| GetHistogram        | Analysis        |  Complete  |
+| GetKeyword          | Scripting       |  Complete  |
+| ListKeywords        | Keyword         |  Complete  |
+| LoadFile            | File Management |  Complete  |
+| MedianValue         | Analysis        |  Complete  |
+| ModifyKeyword       | Keyword         |  Complete  |
+| MoveFile            | File Management |  Complete  |
+| Print               | Scripting       |  Complete  |
+| ReadImages          | Session         |  Complete  |
+| RunMacro            | Scripting       |  Complete  |
+| SetFrame            | Navigation      |  Complete  |
+| SetZoom             | Blink & View    |  Complete  |
+| ShowAnalysisGraph   | Display         |  Complete  |
+| ShowAnalysisResults | Display         |  Complete  |
+| StackFrames         | Stacking        |  Complete  |
+| WriteCurrent        | I/O Writer      |  Complete  |
+| WriteFIT            | I/O Writer      |  Complete  |
+| WriteFrame          | I/O Writer      |  Complete  |
+| WriteTIFF           | I/O Writer      |  Complete  |
+| WriteXISF           | I/O Writer      |  Complete  |
