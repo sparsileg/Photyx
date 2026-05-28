@@ -37,7 +37,7 @@ use crate::analysis::{
     eccentricity::compute_eccentricity,
     fft_align::compute_translation,
     fwhm::compute_fwhm,
-    star_align::{compose, estimate_rigid_transform, AffineRigid},
+    star_align::{compose, estimate_rigid_transform, estimate_rigid_transform_triangles, AffineRigid},
     stars::detect_stars,
     stack_metrics::{ExclusionReason, FrameContribution, StackSummary},
     SigmaClipConfig, StarDetectionConfig,
@@ -200,6 +200,24 @@ impl PhotonPlugin for StackFrames {
             // To get full M_cross from raw-group-ref coordinates, we compose
             // the flip in front.
 
+            // Triangle-based cross-group solve (replaces FFT+RANSAC for cross-group).
+            // Works directly in flipped-luma coordinates without FFT pre-translation.
+            let post_flip = match estimate_rigid_transform_triangles(
+                &master_ref_stars, &flipped_stars,
+            ) {
+                Some(r) => {
+                    let theta = r.theta();
+                    info!("StackFrames: cross-group {} triangle match — tx={:.2} ty={:.2} θ={:.4}rad ({:.3}°)",
+                        g, r.tx, r.ty, theta, theta.to_degrees());
+                    r
+                }
+                None => {
+                    info!("StackFrames: cross-group {} triangle match failed — falling back to FFT-only", g);
+                    AffineRigid::translation(fft_t.dx, fft_t.dy)
+                }
+            };
+
+            /*
             let post_flip = match ransac {
                 Some(r) => {
                     let theta = r.theta();
@@ -236,12 +254,41 @@ impl PhotonPlugin for StackFrames {
                 }
             };
 
+            */
             // Compose with the flip: M_cross = post_flip ∘ flip_180
             let flip = AffineRigid::flip_180(width, height);
             m_cross[g] = compose(&post_flip, &flip);
 
             info!("StackFrames: M_cross[{}] = a={:.4} b={:.4} tx={:.2} ty={:.2}",
                 g, m_cross[g].a, m_cross[g].b, m_cross[g].tx, m_cross[g].ty);
+
+            // Diagnostic: verify M_cross by applying it to group-ref stars and
+            // measuring residual against master reference stars.
+            {
+                let mut residuals: Vec<f32> = Vec::new();
+                for gs in &gref_snap.stars {
+                    let (mx, my) = m_cross[g].apply_forward(gs.cx, gs.cy);
+                    if let Some(closest) = master_ref_stars.iter()
+                        .map(|r| {
+                            let d = ((r.cx - mx).powi(2) + (r.cy - my).powi(2)).sqrt();
+                            d
+                        })
+                        .reduce(f32::min)
+                    {
+                        if closest < 10.0 {
+                            residuals.push(closest);
+                        }
+                    }
+                }
+                if residuals.is_empty() {
+                    info!("StackFrames: M_cross[{}] verification — no stars matched within 10px", g);
+                } else {
+                    let mean = residuals.iter().sum::<f32>() / residuals.len() as f32;
+                    let max  = residuals.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                    info!("StackFrames: M_cross[{}] verification — {} stars matched, mean residual={:.2}px, max={:.2}px",
+                        g, residuals.len(), mean, max);
+                }
+            }
         }
 
         // ── Step 5: Pass 1 — per-frame within-group + composed transforms ────
@@ -321,6 +368,8 @@ impl PhotonPlugin for StackFrames {
                         contrib.alignment_validated = Some(true);
 
                         // RANSAC refinement against the group's own stars (same coord system)
+                        info!("Frame {}: RANSAC input — {} ref stars, {} frame stars, fft=({:.2},{:.2})",
+                            snap.index, g_ref_stars.len(), snap.stars.len(), t.dx, t.dy);
                         let xform = try_rigid_refinement(
                             g_ref_stars, &snap.stars,
                             t.dx, t.dy, width, height,
@@ -705,7 +754,7 @@ fn try_rigid_refinement(
                 ty: aft_y + rigid.ty,
             };
             // Sanity: RANSAC residual should be small
-            if rigid.tx.abs() > 5.0 || rigid.ty.abs() > 5.0 {
+            if rigid.tx.abs() > 15.0 || rigid.ty.abs() > 15.0 {
                 info!("Frame {}: rigid refinement rejected (residual {:.1},{:.1} too large) — using FFT only",
                     frame_index, rigid.tx, rigid.ty);
                 return AffineRigid::translation(fft_dx, fft_dy);
