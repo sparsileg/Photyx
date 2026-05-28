@@ -54,6 +54,9 @@ const MIN_ROTATION_TO_APPLY: f32 = 0.001;
 /// ROTATOR delta tolerance (degrees) for grouping frames.
 const ROTATOR_GROUP_TOLERANCE: f32 = 10.0;
 
+/// Gap in minutes between consecutive frames that indicates a new imaging session.
+const SESSION_GAP_MINUTES: f32 = 120.0;
+
 pub struct StackFrames;
 
 // ── Snapshot type ────────────────────────────────────────────────────────────
@@ -77,6 +80,8 @@ struct FrameSnapshot {
     eccentricity: Option<f32>,
     rotator:      Option<f32>,
     stars:        Vec<crate::analysis::stars::StarCandidate>,
+    /// Observation timestamp as Unix seconds (from DATE-OBS), if available
+    date_obs:     Option<f64>,
     /// Which rotational group this frame belongs to (0-indexed)
     group:        usize,
 }
@@ -593,6 +598,8 @@ fn collect_snapshots(
             .and_then(|kw| kw.value.trim().parse::<f32>().ok());
         let rotator = buf.keywords.get("ROTATOR")
             .and_then(|kw| kw.value.trim().parse::<f32>().ok());
+        let date_obs = buf.keywords.get("DATE-OBS")
+            .and_then(|kw| parse_date_obs(&kw.value));
 
         let width    = buf.width    as usize;
         let height   = buf.height   as usize;
@@ -625,6 +632,7 @@ fn collect_snapshots(
             filter,
             exptime,
             rotator,
+            date_obs,
             fwhm,
             eccentricity,
             stars,
@@ -637,25 +645,98 @@ fn collect_snapshots(
     // are placed in the same group if their ROTATOR is within
     // ROTATOR_GROUP_TOLERANCE of any existing group's anchor, otherwise a new
     // group is created.
-    let mut group_anchors: Vec<f32> = Vec::new();
+    // Group frames by ROTATOR angle AND session continuity.
+    // Two frames belong to the same group only if their ROTATOR angles are
+    // within ROTATOR_GROUP_TOLERANCE and they are part of the same continuous
+    // imaging run (no gap > SESSION_GAP_MINUTES between consecutive frames
+    // in that group).
+    let mut group_anchors:       Vec<f32>        = Vec::new();
+    let mut group_last_date_obs: Vec<Option<f64>> = Vec::new();
+
     for snap in snapshots.iter_mut() {
-        let rot = snap.rotator.unwrap_or(0.0);
-        // Find existing group within tolerance
+        let rot     = snap.rotator.unwrap_or(0.0);
+        let obs_sec = snap.date_obs;
+
         let mut found = None;
         for (g, &anchor) in group_anchors.iter().enumerate() {
             let delta = circular_delta(rot, anchor);
-            if delta <= ROTATOR_GROUP_TOLERANCE {
+            if delta > ROTATOR_GROUP_TOLERANCE {
+                continue;
+            }
+            // Rotator matches — check session gap
+            let within_session = match (obs_sec, group_last_date_obs[g]) {
+                (Some(t), Some(last)) => {
+                    let gap_minutes = (t - last).abs() as f32 / 60.0;
+                    gap_minutes <= SESSION_GAP_MINUTES
+                }
+                // If timestamps unavailable, assume same session
+                _ => true,
+            };
+            if within_session {
                 found = Some(g);
                 break;
             }
         }
+
         snap.group = match found {
-            Some(g) => g,
-            None    => { group_anchors.push(rot); group_anchors.len() - 1 }
+            Some(g) => {
+                // Update last timestamp for this group
+                if obs_sec.is_some() {
+                    group_last_date_obs[g] = obs_sec;
+                }
+                g
+            }
+            None => {
+                group_anchors.push(rot);
+                group_last_date_obs.push(obs_sec);
+                group_anchors.len() - 1
+            }
         };
     }
 
     Ok(snapshots)
+}
+
+/// Parse a DATE-OBS string (ISO 8601) to Unix seconds.
+/// Handles formats: "2026-05-12T02:01:39.502989" and "2026-05-12T02:01:39"
+fn parse_date_obs(s: &str) -> Option<f64> {
+    // Split on T
+    let s = s.trim();
+    let (date_part, time_part) = if let Some(idx) = s.find('T') {
+        (&s[..idx], &s[idx+1..])
+    } else {
+        return None;
+    };
+
+    let date_parts: Vec<&str> = date_part.split('-').collect();
+    if date_parts.len() != 3 { return None; }
+    let year:  i64 = date_parts[0].parse().ok()?;
+    let month: i64 = date_parts[1].parse().ok()?;
+    let day:   i64 = date_parts[2].parse().ok()?;
+
+    let time_parts: Vec<&str> = time_part.split(':').collect();
+    if time_parts.len() < 2 { return None; }
+    let hour: i64 = time_parts[0].parse().ok()?;
+    let min:  i64 = time_parts[1].parse().ok()?;
+    let sec:  f64 = time_parts.get(2)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+
+    // Compute Julian Day Number then convert to Unix seconds.
+    // Formula: JDN for Gregorian calendar.
+    let a = (14 - month) / 12;
+    let y = year + 4800 - a;
+    let m = month + 12 * a - 3;
+    let jdn = day + (153 * m + 2) / 5 + 365 * y + y / 4 - y / 100 + y / 400 - 32045;
+
+    // Unix epoch is JDN 2440588 (1970-01-01)
+    let days_since_epoch = jdn - 2440588;
+    let unix = days_since_epoch as f64 * 86400.0
+        + hour as f64 * 3600.0
+        + min  as f64 * 60.0
+        + sec;
+
+    Some(unix)
 }
 
 /// Smallest absolute circular difference between two angles in degrees.
