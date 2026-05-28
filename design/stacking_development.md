@@ -589,47 +589,39 @@ its group. A cross-group transform (M_cross) bridges the two groups.
 ### 10.2 Current State (May 2026)
 
 **Working:**
-- 56/56 frames stack successfully (validation currently disabled)
-- M64 galaxy clearly visible in output; M_cross correctly encodes 180° flip
-- M_cross consistently: `a ≈ -1.0, b ≈ -0.002, tx ≈ 3024, ty ≈ 3002`
-- FFT translations correct for both groups including dithered offsets
+- 80/80 frames stack successfully across two nights with two meridian flips
+- M64 galaxy clearly visible; stars round across full field
+- Triangle-based cross-group alignment (M_cross) achieves sub-pixel mean
+  residuals (0.26–0.58px across all groups)
+- Session boundary detection splits same-ROTATOR frames from different nights
+  into separate groups, each with its own M_cross solve
+- Within-group RANSAC fires on ~50% of frames, correcting small per-frame
+  field rotation (~0.06–0.12°)
+- Multi-group sessions (5 groups from two nights) handled correctly
 - XISF export reads cleanly in Siril and PixInsight
-- Synthesized FITS keywords in stack output (NAXIS1/2, BITPIX, OBJECT, etc.)
+- Synthesized FITS keywords in stack output
 
 **Known issues:**
 
-1. **Residual rotation ghost (~0.112°).** M_cross reports `b ≈ -0.002`
-   (θ ≈ 0.112°). This appears as a faint secondary star image offset from
-   primary stars, most visible on brighter stars in zoomed crops. The 10
-   pre-flip frames (group 0) are placed with this small rotational offset
-   relative to the 46 post-flip frames (group 1). It is unclear whether this
-   is a real physical field rotation or a RANSAC artifact in the M_cross solve.
+1. **Alignment validation disabled.** `validate_alignment` is currently
+   bypassed (all frames accepted). The validation was causing frames to fail
+   incorrectly. Root cause not fully diagnosed.
 
-2. **Alignment validation disabled.** `validate_alignment` is currently
-   bypassed (all frames accepted). The validation was causing 7 frames to fail
-   incorrectly. Root cause not fully diagnosed — likely a coordinate space
-   mismatch between `snap.stars` (detected from Bayer luma at snapshot time)
-   and `g_ref_stars` (same space), with the FFT running on debayered luma.
+2. **Autocrop not implemented.** After stacking frames with varying offsets,
+   the valid coverage area is an irregular polygon. Computing the largest
+   inscribed rectangle avoiding zero-coverage border pixels is deferred.
 
-3. **Within-group RANSAC rarely fires.** `estimate_rigid_transform` returns
-   `None` for most within-group frames. The RANSAC residual sanity check
-   (`rigid.tx.abs() > 10.0`) may be too tight, or `MATCH_TOLERANCE = 15.0px`
-   too narrow after `+fft` pre-translation. Frame 50 consistently gets a bad
-   RANSAC solve (~52px residual) that is correctly rejected by the sanity check.
+3. **Within-group RANSAC sanity check threshold (15px) may need tuning.**
+   Currently raised from original 5px. Frame 50 consistently gets a bad
+   RANSAC solve (~52px residual) that is correctly rejected.
 
-4. **`snap.stars` vs debayered luma mismatch.** Stars in `snap.stars` are
-   detected at snapshot collection time from debayered luma (this was fixed).
-   However, `g_ref_stars` are also from debayered luma. An attempt to re-detect
-   stars inline from debayered luma during alignment made results worse —
-   reverted.
-
-### 10.3 What Has Been Tried (and Failed)
+### 10.3 What Has Been Tried (and Failed or Succeeded)
 
 | Approach | Result |
 | --- | --- |
 | `Vec::reverse()` on raw Bayer luma | Systematic ~3–4px translation error on all flip frames due to RGGB→BGGR pattern mismatch |
 | Rotation around image center | Wrong rotation center; corner doubling |
-| RANSAC with scale variation ±20% | Corrupted stack |
+| RANSAC scale variation ±20% | Corrupted stack |
 | Flip frame chaining (anchor = normalized luma) | Drift due to background normalization varying frame to frame |
 | Flip frame chaining (anchor = raw luma) | Drift still present; turned out to be real dithering offsets, not errors |
 | Direct FFT of flip frames against master reference | Only 9 frames stacked; flip content too different for reliable FFT |
@@ -637,6 +629,12 @@ its group. A cross-group transform (M_cross) bridges the two groups.
 | Inline debayered star detection for validation/RANSAC | Made residual rotation worse; reverted |
 | RANSAC pre-translate with `-fft` sign | Validation and RANSAC both failed for all frames |
 | `validate_alignment` with `+` sign on predicted position | Correct convention; currently using this |
+| FFT+RANSAC for cross-group M_cross solve | RANSAC consistently returned wrong rotation (~0.112° vs true ~0.37°); ghost stars visible at corners |
+| Zeroing M_cross rotation (b=0) diagnostic | Ghost got worse — confirmed rotation was real, not RANSAC artifact |
+| FFT-only M_cross (no RANSAC) | Verification residual 6.5px mean — worse than with RANSAC |
+| Least-squares refinement of triangle vote result | Numerically unstable with star centroids far from origin; collapsed to wrong solution |
+| **Triangle-based M_cross solve (current)** | **0.26–0.58px mean verification residual; ghost stars eliminated; round stars in multi-night stacks** |
+| **Session boundary detection via DATE-OBS gap** | **Splits same-ROTATOR frames from different nights into separate groups; eliminates elongation from polar alignment differences between sessions** |
 
 ### 10.4 Files Involved
 

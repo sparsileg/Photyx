@@ -1,6 +1,6 @@
 # Photyx — Specification & Requirements Document
 
-**Version:** 25 **Date:** 13 May 2026 **Status:** Active Development — Phase 10 in progress
+**Version:** 26 **Date:** 28 May 2026 **Status:** Active Development — Phase 11 in progress
 
 ---
 
@@ -437,12 +437,12 @@ Local HTTP REST server via Axum. Deferred to post-Phase 9.
 | Phase 8     | Complete    | Moment FWHM, ContourHeatmap, display pipeline refactor, LoadFile, histogram hover, keyword editor, UI pass                                                                                                                                                           |
 | Phase 9     | Complete    | SQLite , Quick Launch , session history , crash recovery , macros in SQLite , AppSettings , Preferences , threshold profiles , rejection categories , Session JSON export/import , commit file move , PXFLAG toggle , analysis results persistence , console history |
 | Phase 10    | Complete    | Memory audit, UI audit, update Star Count algorithm, fix known bugs, replace active directory  with selected files as the global context.                                                                                                                            |
-| Phase 11    | In Progress | Stacking, Live Stacking                                                                                                                                                                                                                                              |
+| Phase 11    | In Progress | Stacking (StackFrames plugin): sigma-clipped mean stacking with two-pass rejection; meridian-flip-aware rotational grouping; triangle-based cross-group alignment; session boundary detection via DATE-OBS gap; per-frame FFT+RANSAC within-group rotation correction. Live Stacking deferred. |
 | Final Phase | ⬜ Planned   | UI audit & testing                                                                                                                                                                                                                                                   |
 
 ### 13.1 Deferred Items
 
-- Simple stacking and live stacking
+- Live stacking
 - Full Async dispatch
 - Based on analysis, set default parameters for both broad and narrow band image sessions.
 
@@ -510,4 +510,4 @@ Session recovery state stores the full file list (absolute paths) and current fr
 
 ---
 
-*Previous version: 24 — Next review: Upon completion of Phase 10*
+*Previous version: 25 — Next review: Upon completion of Phase 11*

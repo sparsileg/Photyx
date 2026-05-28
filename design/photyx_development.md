@@ -517,7 +517,52 @@ Crash recovery now stores `file_list` (JSON array of full paths) only. On recove
 
 ### 3.70 Linux GTK File Picker — Known Issue
 
-On Linux, the native GTK file picker with `multiple: true` silently refuses to confirm a selection that includes both files and directories (e.g. when Ctrl+A selects files alongside a `rejected/` subfolder). Workaround: avoid using Ctrl+A when a `rejected/` subfolder is present in the directory; select files manually instead.
+On Linux, the native GTK file picker with `multiple: true` silently
+refuses to confirm a selection that includes both files and
+directories (e.g. when Ctrl+A selects files alongside a `rejected/`
+subfolder). Workaround: avoid using Ctrl+A when a `rejected/`
+subfolder is present in the directory; select files manually instead.
+
+### 3.71 StackFrames — Alignment Architecture
+
+Two alignment modules in `src-tauri/src/analysis/`:
+
+- **`fft_align.rs`** — FFT phase correlation for coarse
+  translation. Downsamples to ≤1024px, apodizes with Hann window,
+  returns sub-pixel `(dx, dy)`. Used for within-group per-frame
+  alignment.
+- **`star_align.rs`** — Two alignment strategies:
+  - `estimate_rigid_transform()` — FFT-primed RANSAC. Pre-translates
+    frame stars by FFT offset, greedy nearest-neighbour matching
+    within `MATCH_TOLERANCE=15px`, RANSAC over 50 iterations with
+    `INLIER_TOLERANCE=2px`. Used for within-group rotation refinement.
+  - `estimate_rigid_transform_triangles()` — Triangle-based matching
+    without FFT pre-translation. Builds scale-invariant descriptors
+    from top 60 brightest stars (~34k triangles), matches by
+    descriptor distance, votes on implied transforms in binned `(tx,
+    ty, θ)` space, returns winning voted transform directly (no
+    least-squares refinement — numerically unstable with centroids far
+    from origin). Used exclusively for cross-group M_cross solve.
+
+**Rotational grouping** — frames grouped by ROTATOR keyword within
+`ROTATOR_GROUP_TOLERANCE=10°` AND session continuity
+(`SESSION_GAP_MINUTES=120`). Frames with same ROTATOR but DATE-OBS gap
+> 2 hours are separate groups. Each non-master group gets its own
+M_cross solve. Master group = largest group by frame count.
+
+**M_cross verification** — after each M_cross solve, group-ref stars
+are transformed and matched against master-ref stars within
+10px. Mean/max residual logged. Typical results: mean 0.26–0.58px, max
+<10px.
+
+**Per-frame transform** — `T = compose(M_cross, G)` where G is
+within-group FFT + optional RANSAC rotation. Resampled via
+`resample_frame_affine()` when `|θ| ≥ 0.001rad` or flip encoded;
+otherwise `resample_frame()` (translation-only, faster).
+
+**Known limitation** — `validate_alignment` disabled (all frames
+accepted). Within-group RANSAC fires on ~50% of frames; sanity check
+threshold 15px.
 
 ---
 
