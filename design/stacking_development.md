@@ -80,7 +80,7 @@ Before stacking begins, Photyx reads the FILTER keyword from all loaded frames a
 - Any frame whose FILTER keyword does not match the reference frame's FILTER is excluded from the stack
 
 - Each exclusion is reported to the pcode console and written to the stack log file:
-  
+
   ```
   Filter mismatch: frame 14 (OIII) excluded — stack filter is Ha
   ```
@@ -490,9 +490,7 @@ Delivered as a complete unit. Do not begin until Phase A–C are complete and st
 ---
 
 ## 8. Estimated Development Effort
-
 ### 8.1 Batch Stacking (Phases A–C)
-
 | Phase | Component                                   | Estimated Effort |
 | ----- | ------------------------------------------- | ---------------- |
 | A     | Transient ImageBuffer + contribution struct | 1–2 hours        |
@@ -510,7 +508,6 @@ Delivered as a complete unit. Do not begin until Phase A–C are complete and st
 |       | **Total**                                   | **~27–41 hours** |
 
 ### 8.2 Live Stacking (Phase D)
-
 | Component                                             | Estimated Effort |
 | ----------------------------------------------------- | ---------------- |
 | `notify` crate integration + file watcher             | 3–5 hours        |
@@ -524,10 +521,9 @@ Delivered as a complete unit. Do not begin until Phase A–C are complete and st
 ---
 
 ## 9. Future Enhancements (Beyond Second Release)
-
 | Enhancement                            | Notes                                                                      |
 | -------------------------------------- | -------------------------------------------------------------------------- |
-| Rotation and scale alignment           | Extend FFT/star-match to solve similarity transform                        |
+| Rotation and scale alignment           | Implemented (AffineRigid RANSAC) — needs further refinement                |
 | Median stacking                        | More robust; slower                                                        |
 | Calibration frame support              | Bias, dark, flat subtraction                                               |
 | Rejection map                          | Visual overlay showing which pixels were rejected; saved as viewable image |
@@ -537,4 +533,146 @@ Delivered as a complete unit. Do not begin until Phase A–C are complete and st
 
 ---
 
-*Previous version: 3* *Next review: Prior to implementation of Phase A*
+## 10. Meridian Flip Alignment — Implementation Status (May 2026)
+
+### 10.1 Architecture
+
+Batch stacking now handles sessions containing a meridian flip. The pipeline
+detects flip boundaries using the FITS ROTATOR keyword and groups frames by
+orientation. Each group gets its own reference frame and aligns natively within
+its group. A cross-group transform (M_cross) bridges the two groups.
+
+**Key design decisions:**
+
+- **Debayer-first pipeline.** Each frame is debayered to RGB before luma
+  extraction. This eliminates the Bayer pattern mismatch that arises when
+  `Vec::reverse()` is applied to raw Bayer data (RGGB → BGGR), which was
+  causing a systematic ~3–4px translation error on all post-flip frames.
+
+- **Rotational group detection.** Frames are grouped by ROTATOR keyword value
+  within `ROTATOR_GROUP_TOLERANCE = 10°`. Each group gets its own reference
+  frame (best FWHM/eccentricity within the group). The larger group is
+  designated the master group; its reference becomes the master reference for
+  the final output coordinate space.
+
+- **AffineRigid transform type** (`src-tauri/src/analysis/star_align.rs`).
+  Represents a 2D rigid transform as `(a, b, tx, ty)` where `a = cos θ`,
+  `b = sin θ`. Key methods: `apply_forward()`, `apply_inverse()`. Key
+  functions: `compose(outer, inner)`, `AffineRigid::identity()`,
+  `AffineRigid::flip_180(width, height)`.
+
+- **M_cross (cross-group transform).** Solved once per non-master group:
+  1. Load the group reference luma (debayered)
+  2. `reverse()` it (safe on debayered luma — no Bayer mismatch)
+  3. FFT phase correlation against master reference luma → `(fft_dx, fft_dy)`
+  4. Detect stars in the flipped luma
+  5. RANSAC affine rigid solve against master reference stars → residual
+  6. Reconstruct: `post_flip = AffineRigid { a, b, tx: aft_x + residual.tx, ty: aft_y + residual.ty }`
+     where `aft_x = a·fft_dx - b·fft_dy`, `aft_y = b·fft_dx + a·fft_dy`
+  7. `M_cross = compose(post_flip, flip_180(width, height))`
+
+- **Per-frame transform.** `T = compose(M_cross, G)` where `G` is the
+  within-group FFT + RANSAC transform. For master-group frames, `M_cross =
+  identity`. Frames are resampled using `resample_frame_affine()` when `|θ| ≥
+  0.001 rad` or `a < 0.5` (i.e. when a flip is encoded in the transform).
+
+- **Sign conventions** (critical — previously a source of many bugs):
+  - `compute_translation(reference, target)` returns `(dx, dy)` where
+    **positive dx = target shifted right** relative to reference.
+  - Resampler: `src_x = out_x - dx` (subtracts dx to find source pixel).
+  - Star pre-translation for RANSAC: `(cx + fft_dx, cy + fft_dy)` (adds dx to
+    bring frame star into reference coordinate space).
+  - `validate_alignment`: `pred_x = star.cx + dx` (same convention).
+  - RANSAC residual reconstruction: `tx_full = aft_x + residual.tx` where
+    `aft_x = A·fft` (positive, not negated).
+
+### 10.2 Current State (May 2026)
+
+**Working:**
+- 56/56 frames stack successfully (validation currently disabled)
+- M64 galaxy clearly visible in output; M_cross correctly encodes 180° flip
+- M_cross consistently: `a ≈ -1.0, b ≈ -0.002, tx ≈ 3024, ty ≈ 3002`
+- FFT translations correct for both groups including dithered offsets
+- XISF export reads cleanly in Siril and PixInsight
+- Synthesized FITS keywords in stack output (NAXIS1/2, BITPIX, OBJECT, etc.)
+
+**Known issues:**
+
+1. **Residual rotation ghost (~0.112°).** M_cross reports `b ≈ -0.002`
+   (θ ≈ 0.112°). This appears as a faint secondary star image offset from
+   primary stars, most visible on brighter stars in zoomed crops. The 10
+   pre-flip frames (group 0) are placed with this small rotational offset
+   relative to the 46 post-flip frames (group 1). It is unclear whether this
+   is a real physical field rotation or a RANSAC artifact in the M_cross solve.
+
+2. **Alignment validation disabled.** `validate_alignment` is currently
+   bypassed (all frames accepted). The validation was causing 7 frames to fail
+   incorrectly. Root cause not fully diagnosed — likely a coordinate space
+   mismatch between `snap.stars` (detected from Bayer luma at snapshot time)
+   and `g_ref_stars` (same space), with the FFT running on debayered luma.
+
+3. **Within-group RANSAC rarely fires.** `estimate_rigid_transform` returns
+   `None` for most within-group frames. The RANSAC residual sanity check
+   (`rigid.tx.abs() > 10.0`) may be too tight, or `MATCH_TOLERANCE = 15.0px`
+   too narrow after `+fft` pre-translation. Frame 50 consistently gets a bad
+   RANSAC solve (~52px residual) that is correctly rejected by the sanity check.
+
+4. **`snap.stars` vs debayered luma mismatch.** Stars in `snap.stars` are
+   detected at snapshot collection time from debayered luma (this was fixed).
+   However, `g_ref_stars` are also from debayered luma. An attempt to re-detect
+   stars inline from debayered luma during alignment made results worse —
+   reverted.
+
+### 10.3 What Has Been Tried (and Failed)
+
+| Approach | Result |
+| --- | --- |
+| `Vec::reverse()` on raw Bayer luma | Systematic ~3–4px translation error on all flip frames due to RGGB→BGGR pattern mismatch |
+| Rotation around image center | Wrong rotation center; corner doubling |
+| RANSAC with scale variation ±20% | Corrupted stack |
+| Flip frame chaining (anchor = normalized luma) | Drift due to background normalization varying frame to frame |
+| Flip frame chaining (anchor = raw luma) | Drift still present; turned out to be real dithering offsets, not errors |
+| Direct FFT of flip frames against master reference | Only 9 frames stacked; flip content too different for reliable FFT |
+| Centroid remapping `(W-1-cx, H-1-cy)` for flip frames | Made things worse; broke validation which needed original coords |
+| Inline debayered star detection for validation/RANSAC | Made residual rotation worse; reverted |
+| RANSAC pre-translate with `-fft` sign | Validation and RANSAC both failed for all frames |
+| `validate_alignment` with `+` sign on predicted position | Correct convention; currently using this |
+
+### 10.4 Files Involved
+
+| File | Role |
+| --- | --- |
+| `src-tauri/src/plugins/stack_frames.rs` | Main stacking pipeline |
+| `src-tauri/src/analysis/star_align.rs` | AffineRigid type, RANSAC, compose() |
+| `src-tauri/src/analysis/fft_align.rs` | FFT phase correlation (unchanged) |
+| `src-tauri/src/analysis/stars.rs` | Star detection (unchanged) |
+| `src-tauri/src/analysis/stack_metrics.rs` | FrameContribution, StackSummary (unchanged) |
+| `src-tauri/src/plugins/debayer_image.rs` | debayer_bilinear() used per-frame |
+
+### 10.5 Next Steps for New Instance
+
+The primary remaining problem is the residual ~0.112° rotation between groups.
+Before attempting further fixes, the new instance should:
+
+1. Determine whether `b ≈ -0.002` in M_cross is a real physical rotation or a
+   RANSAC artifact. To test: set `b = 0.0` in M_cross after solving (force
+   pure translation) and re-stack. If the ghost disappears, it was a RANSAC
+   artifact. If it persists, the rotation is real and must be corrected.
+
+2. If the rotation is real: the within-group RANSAC needs to fire reliably on
+   pre-flip frames to correct per-frame rotation. Currently it returns None
+   for almost all frames. Investigate why — the `MATCH_TOLERANCE = 15.0px`
+   and `MIN_MATCHES = 4` may need adjustment, or the star coordinate space
+   mismatch needs resolution.
+
+3. Re-enable `validate_alignment` only after RANSAC is working reliably, so
+   that rejected frames are genuinely bad rather than falsely rejected due to
+   coordinate mismatches.
+
+4. The 7 frames that fail validation (3, 9, 10, 26, 40, 48, 50) should be
+   investigated individually — they may be genuinely poor frames or false
+   rejections.
+
+---
+
+*Document version: 4* *Last updated: May 2026*

@@ -8,7 +8,7 @@ My name is Stan. I am the sole developer of Photyx. I will refer to myself in th
 
 Photyx is a high-performance desktop astrophotography application built with **Tauri v2 + Svelte + Rust**. It is emphatically **not** an Electron app and will never become one. The target stack is Tauri, period.
 
-The authoritative requirements document is `photyx_spec.md` . The implementation reference is `development_notes.md` . The UI patterns reference is `photyx_ui_patterns.md`. Do not deviate from the spec or suggest technologies inconsistent with it. There may be other documents that I'll provide that may help you as well.
+The authoritative requirements document is `photyx_spec.md` . The implementation reference is `photyx_development.md` . The UI patterns reference is `photyx_ui_patterns.md`. Do not deviate from the spec or suggest technologies inconsistent with it. There may be other documents that I'll provide that may help you as well.
 
 ### Stack Summary
 
@@ -17,9 +17,9 @@ Tauri v2 + Svelte 5 + TypeScript frontend; Rust backend with plugin registry; SQ
 ### Architecture Overview
 
 - 7:18 PM
-  
+
   ## Claude responded: Photyx is a desktop astrophotography frame analysis tool built on Tauri v2 (Rust backend, Svelte 5 frontend).
-  
+
   Photyx is a desktop astrophotography frame analysis tool built on Tauri v2 (Rust backend, Svelte 5 frontend). The frontend communicates with the backend exclusively via Tauri `invoke()` calls. All backend operations are implemented as `PhotonPlugin` trait objects registered in a plugin registry and dispatched either interactively via the pcode console or programmatically via the script runner. Session state — file lists, raw pixel buffers, derived caches, and analysis results — lives in a single `AppContext` struct protected by a Mutex. Raw pixel buffers are loaded once and never modified; all display representations (display cache, full-res cache, blink caches) are derived JPEG copies. Frame quality analysis runs in parallel via Rayon, computing five metrics per frame, then classifies each frame as PASS or REJECT using iterative sigma clipping against session statistics. Results are written back to source files as PXFLAG keywords. The frontend is organized around a viewer region managed by a view registry (`ui.showView()`), a pcode console, sliding side panels, and a Quick Launch bar. All persistence is via SQLite through `rusqlite`. Supported formats are FITS (via cfitsio), XISF (via the custom `photyx-xisf` crate), and TIFF.
 
 #### Development Environment
@@ -124,6 +124,7 @@ Once I say proceed, deliver **one change at a time** using BEFORE/AFTER blocks:
 | Implementation details       | `photyx_development.md`           |
 | UI patterns & rules          | `photyx_ui_patterns.md`           |
 | Commands, keywords, settings | `photyx_reference.md`             |
+| Stacking implementation      | `stacking_development.md`         |
 | DB schema & persistence      | `photyx_persistence_inventory.md` |
 | Plugin status table          | `photyx_reference.md`             |
 | CSS variables                | `photyx_ui_patterns.md`           |
