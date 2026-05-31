@@ -3,7 +3,7 @@
 // Two-pass stacking with FFT phase correlation + RANSAC affine rigid
 // alignment. Designed to handle meridian-flipped sessions cleanly.
 //
-// Architecture (new):
+// Architecture:
 //
 //   1. Per-frame debayer-first pipeline. Each frame is debayered (if Bayer)
 //      to RGB, then luminance is extracted from RGB. Eliminates the Bayer
@@ -29,6 +29,10 @@
 //   6. Per-frame final transform: T = M_cross ∘ G
 //      where G is the within-group transform (FFT + RANSAC against group ref).
 //      For master-group frames, M_cross = identity, so T = G.
+//
+//   7. Color awareness: if the master reference frame is Bayer or RGB, the
+//      stack accumulates all three RGB channels and outputs ColorSpace::RGB.
+//      Mono input produces a grayscale output as before.
 
 use crate::analysis::{
     self,
@@ -59,31 +63,24 @@ const SESSION_GAP_MINUTES: f32 = 120.0;
 
 pub struct StackFrames;
 
-// ── Snapshot type ────────────────────────────────────────────────────────────
-//
-// A per-frame snapshot captures everything we need to reason about the frame
-// without re-debayering or re-running star detection across multiple passes.
-// Pixel data lives in ctx.image_buffers (one frame held in memory at a time
-// during processing — snapshots only hold detected star centroids).
+// ── Snapshot type ─────────────────────────────────────────────────────────────
 
 struct FrameSnapshot {
-    index:        usize,
-    path:         String,
-    width:        usize,
-    height:       usize,
-    channels:     usize,
-    color_space:  ColorSpace,
+    index:         usize,
+    path:          String,
+    width:         usize,
+    height:        usize,
+    channels:      usize,
+    color_space:   ColorSpace,
     bayer_pattern: BayerPattern,
-    filter:       Option<String>,
-    exptime:      Option<f32>,
-    fwhm:         Option<f32>,
-    eccentricity: Option<f32>,
-    rotator:      Option<f32>,
-    stars:        Vec<crate::analysis::stars::StarCandidate>,
-    /// Observation timestamp as Unix seconds (from DATE-OBS), if available
-    date_obs:     Option<f64>,
-    /// Which rotational group this frame belongs to (0-indexed)
-    group:        usize,
+    filter:        Option<String>,
+    exptime:       Option<f32>,
+    fwhm:          Option<f32>,
+    eccentricity:  Option<f32>,
+    rotator:       Option<f32>,
+    stars:         Vec<crate::analysis::stars::StarCandidate>,
+    date_obs:      Option<f64>,
+    group:         usize,
 }
 
 impl PhotonPlugin for StackFrames {
@@ -91,7 +88,8 @@ impl PhotonPlugin for StackFrames {
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str {
         "Stacks loaded frames with FFT alignment, RANSAC rigid refinement, and \
-         meridian-flip-aware group reference selection. Debayers per-frame before alignment."
+         meridian-flip-aware group reference selection. Debayers per-frame before alignment. \
+         Outputs RGB for OSC/color sessions, grayscale for mono sessions."
     }
     fn parameters(&self) -> Vec<ParamSpec> { vec![] }
 
@@ -118,7 +116,6 @@ impl PhotonPlugin for StackFrames {
         let n_groups = snapshots.iter().map(|s| s.group).max().unwrap_or(0) + 1;
         info!("StackFrames: identified {} rotational group(s)", n_groups);
 
-        // Find best-quality frame within each group → group reference
         let group_refs: Vec<usize> = (0..n_groups)
             .map(|g| select_reference_in_group(&snapshots, g))
             .collect();
@@ -141,8 +138,16 @@ impl PhotonPlugin for StackFrames {
         let ref_filter      = snapshots[master_ref_idx].filter.clone();
         let ref_color_space = snapshots[master_ref_idx].color_space.clone();
 
-        // Master reference luma (debayered)
-        let master_ref_luma = load_debayered_luma(ctx, &snapshots[master_ref_idx])?;
+        // Determine output color mode from the master reference frame.
+        // Bayer and RGB input → color (RGB) output.
+        // Mono input → grayscale output.
+        let is_color = ref_color_space == ColorSpace::Bayer
+                    || ref_color_space == ColorSpace::RGB;
+        let n_channels = if is_color { 3 } else { 1 };
+
+        info!("StackFrames: output mode = {}", if is_color { "RGB (color)" } else { "Mono (grayscale)" });
+
+        let master_ref_luma  = load_debayered_luma(ctx, &snapshots[master_ref_idx])?;
         let master_ref_stars = snapshots[master_ref_idx].stars.clone();
 
         let ref_path   = snapshots[master_ref_idx].path.clone();
@@ -151,11 +156,6 @@ impl PhotonPlugin for StackFrames {
             .map(|kw| kw.value.clone());
 
         // ── Step 4: Solve M_cross for each non-master group ───────────────────
-        //
-        // For master group: M_cross = identity.
-        // For other groups: solve transform from group reference → master reference,
-        // with the geometry of a 180° rotation between groups baked in.
-
         let mut m_cross: Vec<AffineRigid> = (0..n_groups).map(|_| AffineRigid::identity()).collect();
         let mut messages: Vec<String> = Vec::new();
 
@@ -165,12 +165,9 @@ impl PhotonPlugin for StackFrames {
             let gref_snap = &snapshots[group_refs[g]];
             let gref_luma = load_debayered_luma(ctx, gref_snap)?;
 
-            // Apply 180° rotation to the group reference luma (debayered RGB
-            // → luma, so reverse() is now safe with respect to Bayer patterns).
             let mut flipped_luma = gref_luma.clone();
             flipped_luma.reverse();
 
-            // FFT the flipped group reference against the master reference
             let fft_t = match compute_translation(&master_ref_luma, &flipped_luma, width, height) {
                 Some(t) => t,
                 None    => {
@@ -180,7 +177,6 @@ impl PhotonPlugin for StackFrames {
                     );
                     info!("{}", msg);
                     messages.push(msg);
-                    // Mark this group's M_cross as identity but we'll exclude its frames below
                     continue;
                 }
             };
@@ -188,25 +184,13 @@ impl PhotonPlugin for StackFrames {
             info!("StackFrames: cross-group {} FFT vs master ref dx={:.2} dy={:.2}",
                 g, fft_t.dx, fft_t.dy);
 
-            // For RANSAC we need flipped group reference stars.
-            // The flipped luma has stars at remapped positions: (W-1-cx, H-1-cy).
-            // Detect stars directly in the flipped luma for accurate centroids.
             let flipped_stars = detect_stars(&flipped_luma, width, height, &det_config);
 
-            // Now solve RANSAC between flipped-group-ref stars and master ref stars
             let ransac = estimate_rigid_transform(
                 &master_ref_stars, &flipped_stars,
                 fft_t.dx, fft_t.dy, width, height,
             );
 
-            // Build M_cross = (RANSAC ∘ FFT_translation) ∘ flip_180
-            // The flipped_luma was input to FFT/RANSAC, so the resulting
-            // transform maps flipped-group-ref coordinates to master coords.
-            // To get full M_cross from raw-group-ref coordinates, we compose
-            // the flip in front.
-
-            // Triangle-based cross-group solve (replaces FFT+RANSAC for cross-group).
-            // Works directly in flipped-luma coordinates without FFT pre-translation.
             let post_flip = match estimate_rigid_transform_triangles(
                 &master_ref_stars, &flipped_stars,
             ) {
@@ -222,67 +206,23 @@ impl PhotonPlugin for StackFrames {
                 }
             };
 
-            /*
-            let post_flip = match ransac {
-                Some(r) => {
-                    let theta = r.theta();
-                    info!("StackFrames: cross-group {} RANSAC — tx={:.2} ty={:.2} θ={:.4}rad ({:.3}°)",
-                        g, r.tx, r.ty, theta, theta.to_degrees());
+            let _ = ransac; // triangle solver preferred; RANSAC retained as fallback above
 
-                    // RANSAC returns transform from flipped-coords (pre-translated by FFT)
-                    // to master coords. We need transform from flipped-coords (without
-                    // pre-translation) to master coords. That's FFT translation composed
-                    // with RANSAC's residual.
-                    //
-                    // The convention: pre-translate frame star by -fft, then RANSAC says
-                    // ref = A·(frame - fft) + t.
-                    //
-                    // So the transform from frame coords to ref coords is:
-                    //   ref = A·frame - A·fft + t
-                    // i.e. AffineRigid { a: A.a, b: A.b, tx: -A·fft.x + t.tx, ty: -A·fft.y + t.ty }
-                    let cos_t = r.a;
-                    let sin_t = r.b;
-                    let aft_x = cos_t * fft_t.dx - sin_t * fft_t.dy;
-                    let aft_y = sin_t * fft_t.dx + cos_t * fft_t.dy;
-                    AffineRigid {
-                        a:  r.a,
-                        b:  r.b,
-                        tx: aft_x + r.tx,
-                        ty: aft_y + r.ty,
-                    }
-                }
-                None => {
-                    info!("StackFrames: cross-group {} RANSAC unavailable — using FFT translation only", g);
-                    // FFT: target is shifted by (dx,dy) relative to reference,
-                    // so to bring target into reference space: tx = fft_dx, ty = fft_dy
-                    AffineRigid::translation(fft_t.dx, fft_t.dy)
-                }
-            };
-
-            */
-            // Compose with the flip: M_cross = post_flip ∘ flip_180
             let flip = AffineRigid::flip_180(width, height);
             m_cross[g] = compose(&post_flip, &flip);
 
             info!("StackFrames: M_cross[{}] = a={:.4} b={:.4} tx={:.2} ty={:.2}",
                 g, m_cross[g].a, m_cross[g].b, m_cross[g].tx, m_cross[g].ty);
 
-            // Diagnostic: verify M_cross by applying it to group-ref stars and
-            // measuring residual against master reference stars.
             {
                 let mut residuals: Vec<f32> = Vec::new();
                 for gs in &gref_snap.stars {
                     let (mx, my) = m_cross[g].apply_forward(gs.cx, gs.cy);
                     if let Some(closest) = master_ref_stars.iter()
-                        .map(|r| {
-                            let d = ((r.cx - mx).powi(2) + (r.cy - my).powi(2)).sqrt();
-                            d
-                        })
+                        .map(|r| ((r.cx - mx).powi(2) + (r.cy - my).powi(2)).sqrt())
                         .reduce(f32::min)
                     {
-                        if closest < 10.0 {
-                            residuals.push(closest);
-                        }
+                        if closest < 10.0 { residuals.push(closest); }
                     }
                 }
                 if residuals.is_empty() {
@@ -296,17 +236,20 @@ impl PhotonPlugin for StackFrames {
             }
         }
 
-        // ── Step 5: Pass 1 — per-frame within-group + composed transforms ────
-        let mut mean_buf:  Vec<f32> = vec![0.0; n_pixels];
-        let mut m2_buf:    Vec<f32> = vec![0.0; n_pixels];
+        // ── Step 5: Pass 1 — Welford online mean + M2 ────────────────────────
+        //
+        // For mono: mean_buf / m2_buf / count_buf are n_pixels long.
+        // For color: mean_buf / m2_buf are n_pixels * 3 long (interleaved RGB);
+        //            count_buf is n_pixels long (coverage is identical per channel).
+
+        let mut mean_buf:  Vec<f32> = vec![0.0; n_pixels * n_channels];
+        let mut m2_buf:    Vec<f32> = vec![0.0; n_pixels * n_channels];
         let mut count_buf: Vec<u32> = vec![0;   n_pixels];
 
-        // Per-frame cached final transform T = M_cross ∘ G
         let mut cached_transforms: Vec<Option<AffineRigid>> = (0..snapshots.len())
             .map(|_| None).collect();
 
-        // Per-group reference luma cache (in-memory; ~36MB each at 3008x3008 f32 mono)
-        let mut group_ref_luma: Vec<Option<Vec<f32>>> = (0..n_groups).map(|_| None).collect();
+        let mut group_ref_luma: Vec<Option<Vec<f32>>>  = (0..n_groups).map(|_| None).collect();
         let mut group_ref_stars: Vec<Option<Vec<crate::analysis::stars::StarCandidate>>>
             = (0..n_groups).map(|_| None).collect();
         group_ref_luma[master_group]  = Some(master_ref_luma.clone());
@@ -318,9 +261,9 @@ impl PhotonPlugin for StackFrames {
 
         for (i, snap) in snapshots.iter().enumerate() {
             let mut contrib = FrameContribution::new(snap.index, &snap.path);
-            contrib.filter       = snap.filter.clone();
-            contrib.fwhm         = snap.fwhm;
-            contrib.eccentricity = snap.eccentricity;
+            contrib.filter           = snap.filter.clone();
+            contrib.fwhm             = snap.fwhm;
+            contrib.eccentricity     = snap.eccentricity;
             contrib.meridian_flipped = snap.group != master_group;
 
             // Filter validation
@@ -338,7 +281,7 @@ impl PhotonPlugin for StackFrames {
                 }
             }
 
-            // Load debayered luma for this frame
+            // Load luma for alignment (always mono for FFT/RANSAC)
             let luma = match load_debayered_luma(ctx, snap) {
                 Ok(l) => l,
                 Err(_) => continue,
@@ -354,12 +297,12 @@ impl PhotonPlugin for StackFrames {
             let g_ref_luma  = group_ref_luma[snap.group].as_ref().unwrap();
             let g_ref_stars = group_ref_stars[snap.group].as_ref().unwrap();
 
-            // Normalize by sigma-clipped background
+            // Background normalize luma for alignment
             let bg_est   = estimate_background(&luma, &bg_sigma_config);
             let bg_level = bg_est.median;
             contrib.background_level = Some(bg_level);
             let divisor  = if bg_level > 1e-6 { bg_level } else { 1.0 };
-            let normalized: Vec<f32> = luma.par_iter().map(|&v| v / divisor).collect();
+            let normalized_luma: Vec<f32> = luma.par_iter().map(|&v| v / divisor).collect();
 
             // Within-group transform G
             let g_transform: Option<AffineRigid> = if i == group_refs[snap.group] {
@@ -367,12 +310,10 @@ impl PhotonPlugin for StackFrames {
                 contrib.alignment_validated = Some(true);
                 Some(AffineRigid::identity())
             } else {
-                match compute_translation(g_ref_luma, &normalized, width, height) {
+                match compute_translation(g_ref_luma, &normalized_luma, width, height) {
                     Some(t) => {
-                        contrib.fft_translation    = Some((t.dx, t.dy));
+                        contrib.fft_translation     = Some((t.dx, t.dy));
                         contrib.alignment_validated = Some(true);
-
-                        // RANSAC refinement against the group's own stars (same coord system)
                         info!("Frame {}: RANSAC input — {} ref stars, {} frame stars, fft=({:.2},{:.2})",
                             snap.index, g_ref_stars.len(), snap.stars.len(), t.dx, t.dy);
                         let xform = try_rigid_refinement(
@@ -394,27 +335,51 @@ impl PhotonPlugin for StackFrames {
             let g_xform = g_transform.unwrap();
             let t_final = compose(&m_cross[snap.group], &g_xform);
 
+            // Load pixel data for accumulation — mono luma or full RGB
+            let frame_pixels = load_frame_pixels(ctx, snap, is_color, divisor);
+
             // Resample and accumulate
             let theta = t_final.theta();
-            let aligned = if theta.abs() >= MIN_ROTATION_TO_APPLY
-                       || t_final.a < 0.5
-            {
-                resample_frame_affine(&normalized, width, height, &t_final)
-            } else {
-                resample_frame(&normalized, width, height, t_final.tx, t_final.ty)
-            };
+            if is_color {
+                // Resample all three channels using the same spatial transform
+                let aligned_rgb = if theta.abs() >= MIN_ROTATION_TO_APPLY || t_final.a < 0.5 {
+                    resample_frame_rgb_affine(&frame_pixels, width, height, &t_final)
+                } else {
+                    resample_frame_rgb(&frame_pixels, width, height, t_final.tx, t_final.ty)
+                };
 
-            mean_buf.par_iter_mut()
-                .zip(m2_buf.par_iter_mut())
-                .zip(count_buf.par_iter_mut())
-                .zip(aligned.par_iter())
-                .for_each(|(((mean, m2), count), &val)| {
-                    *count += 1;
-                    let delta  = val - *mean;
-                    *mean     += delta / *count as f32;
-                    let delta2 = val - *mean;
-                    *m2       += delta * delta2;
-                });
+                // Welford accumulation across all channels
+                for px in 0..n_pixels {
+                    count_buf[px] += 1;
+                    let count = count_buf[px] as f32;
+                    for ch in 0..3 {
+                        let idx    = px * 3 + ch;
+                        let val    = aligned_rgb[idx];
+                        let delta  = val - mean_buf[idx];
+                        mean_buf[idx] += delta / count;
+                        let delta2 = val - mean_buf[idx];
+                        m2_buf[idx]  += delta * delta2;
+                    }
+                }
+            } else {
+                let aligned = if theta.abs() >= MIN_ROTATION_TO_APPLY || t_final.a < 0.5 {
+                    resample_frame_affine(&frame_pixels, width, height, &t_final)
+                } else {
+                    resample_frame(&frame_pixels, width, height, t_final.tx, t_final.ty)
+                };
+
+                mean_buf.par_iter_mut()
+                    .zip(m2_buf.par_iter_mut())
+                    .zip(count_buf.par_iter_mut())
+                    .zip(aligned.par_iter())
+                    .for_each(|(((mean, m2), count), &val)| {
+                        *count += 1;
+                        let delta  = val - *mean;
+                        *mean     += delta / *count as f32;
+                        let delta2 = val - *mean;
+                        *m2       += delta * delta2;
+                    });
+            }
 
             cached_transforms[i] = Some(t_final);
 
@@ -430,23 +395,34 @@ impl PhotonPlugin for StackFrames {
 
         let stacked_count = contributions.iter().filter(|c| c.included).count();
         if stacked_count == 0 {
-            return Err(PluginError::new(
-                "NO_FRAMES_STACKED",
-                "No frames could be stacked.",
-            ));
+            return Err(PluginError::new("NO_FRAMES_STACKED", "No frames could be stacked."));
         }
 
-        // Stddev between passes
-        let stddev_buf: Vec<f32> = count_buf.par_iter()
-            .zip(m2_buf.par_iter())
-            .map(|(&count, &m2)| {
-                if count > 1 { (m2 / count as f32).sqrt() } else { 0.0 }
-            })
-            .collect();
+        // Per-pixel (per-channel) stddev from Welford M2
+        let stddev_buf: Vec<f32> = if is_color {
+            // stddev per channel per pixel — same length as mean_buf (n_pixels * 3)
+            let m2_ref = &m2_buf;
+            count_buf.par_iter()
+                .enumerate()
+                .flat_map_iter(|(px, &count)| {
+                    (0..3).map(move |ch| {
+                        let idx = px * 3 + ch;
+                        if count > 1 { (m2_ref[idx] / count as f32).sqrt() } else { 0.0 }
+                    })
+                })
+                .collect()
+        } else {
+            count_buf.par_iter()
+                .zip(m2_buf.par_iter())
+                .map(|(&count, &m2)| {
+                    if count > 1 { (m2 / count as f32).sqrt() } else { 0.0 }
+                })
+                .collect()
+        };
 
         // ── Pass 2 — sigma-clipped accumulation ───────────────────────────────
         let sigma           = 2.5f32;
-        let mut sum_buf:    Vec<f64> = vec![0.0; n_pixels];
+        let mut sum_buf:    Vec<f64> = vec![0.0; n_pixels * n_channels];
         let mut clip_count: Vec<u32> = vec![0;  n_pixels];
 
         for (i, snap) in snapshots.iter().enumerate() {
@@ -463,49 +439,78 @@ impl PhotonPlugin for StackFrames {
             let bg_est   = estimate_background(&luma, &bg_sigma_config);
             let bg_level = bg_est.median;
             let divisor  = if bg_level > 1e-6 { bg_level } else { 1.0 };
-            let normalized: Vec<f32> = luma.par_iter().map(|&v| v / divisor).collect();
+
+            let frame_pixels = load_frame_pixels(ctx, snap, is_color, divisor);
 
             let theta = xform.theta();
-            let aligned = if theta.abs() >= MIN_ROTATION_TO_APPLY
-                       || xform.a < 0.5
-            {
-                resample_frame_affine(&normalized, width, height, xform)
-            } else {
-                resample_frame(&normalized, width, height, xform.tx, xform.ty)
-            };
+            if is_color {
+                let aligned_rgb = if theta.abs() >= MIN_ROTATION_TO_APPLY || xform.a < 0.5 {
+                    resample_frame_rgb_affine(&frame_pixels, width, height, xform)
+                } else {
+                    resample_frame_rgb(&frame_pixels, width, height, xform.tx, xform.ty)
+                };
 
-            sum_buf.par_iter_mut()
-                .zip(clip_count.par_iter_mut())
-                .zip(aligned.par_iter())
-                .zip(mean_buf.par_iter())
-                .zip(stddev_buf.par_iter())
-                .for_each(|((((sum, count), &val), &mean), &sd)| {
-                    let threshold = sigma * sd;
-                    if sd < 1e-10 || (val - mean).abs() <= threshold {
-                        *sum   += val as f64;
-                        *count += 1;
+                // Sigma clip decision uses green channel (≈ luma); apply same
+                // accept/reject to all three channels per pixel.
+                for px in 0..n_pixels {
+                    let mean_luma = mean_buf[px * 3 + 1];
+                    let sd_luma   = stddev_buf[px * 3 + 1];
+                    let val_luma  = aligned_rgb[px * 3 + 1];
+                    let threshold = sigma * sd_luma;
+                    if sd_luma < 1e-10 || (val_luma - mean_luma).abs() <= threshold {
+                        clip_count[px] += 1;
+                        for ch in 0..3 {
+                            sum_buf[px * 3 + ch] += aligned_rgb[px * 3 + ch] as f64;
+                        }
                     }
-                });
+                }
+            } else {
+                let normalized: Vec<f32> = luma.par_iter().map(|&v| v / divisor).collect();
+                let aligned = if theta.abs() >= MIN_ROTATION_TO_APPLY || xform.a < 0.5 {
+                    resample_frame_affine(&normalized, width, height, xform)
+                } else {
+                    resample_frame(&normalized, width, height, xform.tx, xform.ty)
+                };
+
+                sum_buf.par_iter_mut()
+                    .zip(clip_count.par_iter_mut())
+                    .zip(aligned.par_iter())
+                    .zip(mean_buf.par_iter())
+                    .zip(stddev_buf.par_iter())
+                    .for_each(|((((sum, count), &val), &mean), &sd)| {
+                        let threshold = sigma * sd;
+                        if sd < 1e-10 || (val - mean).abs() <= threshold {
+                            *sum   += val as f64;
+                            *count += 1;
+                        }
+                    });
+            }
 
             let pct = ((i + 1) as f32 / total as f32 * 100.0).round() as u32;
             messages.push(format!("Pass 2 — frame {} / {} ({}%)…", i + 1, total, pct));
         }
 
-        // ── Build output ──────────────────────────────────────────────────────
-        let raw_pixels: Vec<f32> = sum_buf.par_iter()
-            .zip(clip_count.par_iter())
-            .map(|(&sum, &count)| {
-                if count > 0 { sum as f32 / count as f32 } else { 0.0 }
-            })
-            .collect();
+        // ── Build output pixels ───────────────────────────────────────────────
+        let raw_pixels: Vec<f32> = if is_color {
+            sum_buf.par_iter()
+                .enumerate()
+                .map(|(flat_idx, &sum)| {
+                    let px    = flat_idx / 3;
+                    let count = clip_count[px];
+                    if count > 0 { sum as f32 / count as f32 } else { 0.0 }
+                })
+                .collect()
+        } else {
+            sum_buf.par_iter()
+                .zip(clip_count.par_iter())
+                .map(|(&sum, &count)| {
+                    if count > 0 { sum as f32 / count as f32 } else { 0.0 }
+                })
+                .collect()
+        };
 
-        let max_val = raw_pixels.par_iter().cloned().reduce(|| f32::NEG_INFINITY, f32::max);
-        let min_val = raw_pixels.par_iter().cloned().reduce(|| f32::INFINITY, f32::min);
-        let range   = (max_val - min_val).max(1e-6);
-
-        let stack_pixels: Vec<f32> = raw_pixels.par_iter()
-            .map(|&v| ((v - min_val) / range).clamp(0.0, 1.0))
-            .collect();
+        // Normalize output to [0, 1] per-channel for color, globally for mono
+        let stack_pixels = normalize_output(&raw_pixels, is_color, n_pixels);
 
         let completed_at      = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let timestamp_display = Utc::now().format("%Y-%m-%d %H:%M").to_string();
@@ -515,10 +520,8 @@ impl PhotonPlugin for StackFrames {
             stacked_count, total, timestamp_display
         );
 
-        // Output is mono luminance. Was Bayer? Mark Mono now since we've
-        // debayered upstream and extracted luma.
-        let _ = ref_color_space; // unused — we don't auto-debayer the output anymore
-        let output_color_space = ColorSpace::Mono;
+        let output_color_space = if is_color { ColorSpace::RGB } else { ColorSpace::Mono };
+        let output_channels    = if is_color { 3u8 } else { 1u8 };
 
         let stack_buf = ImageBuffer {
             filename:      stack_label.clone(),
@@ -527,14 +530,13 @@ impl PhotonPlugin for StackFrames {
             display_width: width  as u32,
             bit_depth:     BitDepth::F32,
             color_space:   output_color_space,
-            channels:      1,
+            channels:      output_channels,
             keywords:      build_stack_keywords(width, height, &ctx.stack_summary),
             pixels:        Some(PixelData::F32(stack_pixels)),
         };
 
         ctx.stack_result = Some(stack_buf);
 
-        // Summary
         let mut summary = StackSummary::compute(&contributions, &completed_at);
         summary.target              = ref_target;
         summary.filter              = ref_filter;
@@ -544,10 +546,11 @@ impl PhotonPlugin for StackFrames {
         ctx.stack_summary       = Some(summary.clone());
 
         let quality_summary = format!(
-            "Stack Quality Summary:\n  Frames stacked:        {} / {}\n  SNR improvement:       ~{:.1}x (vs single frame)\n  Alignment success:     {:.1}%\n  Background uniformity: {}",
+            "Stack Quality Summary:\n  Frames stacked:        {} / {}\n  SNR improvement:       ~{:.1}x (vs single frame)\n  Alignment success:     {:.1}%\n  Background uniformity: {}\n  Output mode:           {}",
             summary.stacked_frames, summary.total_frames,
             summary.snr_improvement, summary.alignment_success_rate * 100.0,
             summary.background_uniformity,
+            if is_color { "RGB color" } else { "Grayscale" },
         );
 
         messages.push(format!(
@@ -566,6 +569,97 @@ impl PhotonPlugin for StackFrames {
             "message":         full_message,
             "stack_available": true,
         })))
+    }
+}
+
+// ── Output normalization ──────────────────────────────────────────────────────
+
+/// Normalize stacked pixels to [0, 1].
+/// Mono: single global min/max.
+/// Color: per-channel min/max to preserve color balance.
+fn normalize_output(raw: &[f32], is_color: bool, n_pixels: usize) -> Vec<f32> {
+    if !is_color {
+        let max_val = raw.par_iter().cloned().reduce(|| f32::NEG_INFINITY, f32::max);
+        let min_val = raw.par_iter().cloned().reduce(|| f32::INFINITY,     f32::min);
+        let range   = (max_val - min_val).max(1e-6);
+        return raw.par_iter().map(|&v| ((v - min_val) / range).clamp(0.0, 1.0)).collect();
+    }
+
+    // Color: normalize each channel independently
+    let mut out = vec![0.0f32; raw.len()];
+    for ch in 0..3 {
+        let ch_vals: Vec<f32> = (0..n_pixels).map(|px| raw[px * 3 + ch]).collect();
+        let max_val = ch_vals.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let min_val = ch_vals.iter().cloned().fold(f32::INFINITY,     f32::min);
+        let range   = (max_val - min_val).max(1e-6);
+        for px in 0..n_pixels {
+            out[px * 3 + ch] = ((raw[px * 3 + ch] - min_val) / range).clamp(0.0, 1.0);
+        }
+    }
+    out
+}
+
+// ── Frame pixel loader ────────────────────────────────────────────────────────
+
+/// Load a frame's pixels for accumulation.
+/// - Mono sessions: returns background-normalized luma (n_pixels f32).
+/// - Color sessions: returns background-normalized interleaved RGB (n_pixels * 3 f32).
+///   Bayer frames are debayered; already-RGB frames are used directly.
+fn load_frame_pixels(
+    ctx:      &AppContext,
+    snap:     &FrameSnapshot,
+    is_color: bool,
+    divisor:  f32,
+) -> Vec<f32> {
+    let buf = match ctx.image_buffers.get(&snap.path) {
+        Some(b) => b,
+        None    => return vec![0.0; if is_color { snap.width * snap.height * 3 } else { snap.width * snap.height }],
+    };
+    let pixels = match &buf.pixels {
+        Some(p) => p,
+        None    => return vec![0.0; if is_color { snap.width * snap.height * 3 } else { snap.width * snap.height }],
+    };
+
+    if !is_color {
+        // Reuse existing luma path, already normalized by caller via divisor
+        let luma = extract_or_debayer_luma(
+            pixels, snap.width, snap.height, snap.channels,
+            &snap.color_space, snap.bayer_pattern,
+        );
+        luma.into_iter().map(|v| v / divisor).collect()
+    } else {
+        // Produce interleaved RGB f32
+        let rgb = match snap.color_space {
+            ColorSpace::Bayer => {
+                // Debayer raw mono → RGB
+                let mono: Vec<f32> = match pixels {
+                    PixelData::U8(v)  => v.iter().map(|&p| p as f32 / 255.0).collect(),
+                    PixelData::U16(v) => v.iter().map(|&p| p as f32 / 65535.0).collect(),
+                    PixelData::F32(v) => v.clone(),
+                };
+                debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern)
+            }
+            ColorSpace::RGB => {
+                // Already RGB — normalize to f32
+                match pixels {
+                    PixelData::U8(v)  => v.iter().map(|&p| p as f32 / 255.0).collect(),
+                    PixelData::U16(v) => v.iter().map(|&p| p as f32 / 65535.0).collect(),
+                    PixelData::F32(v) => v.clone(),
+                }
+            }
+            ColorSpace::Mono => {
+                // Shouldn't reach here in color mode but handle gracefully:
+                // replicate mono across R, G, B
+                let mono: Vec<f32> = match pixels {
+                    PixelData::U8(v)  => v.iter().map(|&p| p as f32 / 255.0).collect(),
+                    PixelData::U16(v) => v.iter().map(|&p| p as f32 / 65535.0).collect(),
+                    PixelData::F32(v) => v.clone(),
+                };
+                mono.iter().flat_map(|&v| [v, v, v]).collect()
+            }
+        };
+        // Background-normalize all channels by the same divisor (computed from luma)
+        rgb.into_iter().map(|v| v / divisor).collect()
     }
 }
 
@@ -593,10 +687,10 @@ fn collect_snapshots(
             (None, None)
         };
 
-        let filter  = buf.keywords.get("FILTER").map(|kw| kw.value.clone());
-        let exptime = buf.keywords.get("EXPTIME")
+        let filter   = buf.keywords.get("FILTER").map(|kw| kw.value.clone());
+        let exptime  = buf.keywords.get("EXPTIME")
             .and_then(|kw| kw.value.trim().parse::<f32>().ok());
-        let rotator = buf.keywords.get("ROTATOR")
+        let rotator  = buf.keywords.get("ROTATOR")
             .and_then(|kw| kw.value.trim().parse::<f32>().ok());
         let date_obs = buf.keywords.get("DATE-OBS")
             .and_then(|kw| parse_date_obs(&kw.value));
@@ -610,15 +704,12 @@ fn collect_snapshots(
             .map(|kw| BayerPattern::from_str(&kw.value))
             .unwrap_or(BayerPattern::RGGB);
 
-        // Debayer for star detection.
-        // If Bayer: debayer mono Bayer data → RGB, then luma.
-        // If RGB or Mono: extract luma directly.
         let luma = extract_or_debayer_luma(pixels, width, height, channels,
             &buf.color_space, bayer_pattern);
 
         let stars = detect_stars(&luma, width, height, det_config);
 
-        let fwhm = cached_fwhm.or_else(|| compute_fwhm(&stars, None).map(|r| r.fwhm_pixels));
+        let fwhm         = cached_fwhm.or_else(|| compute_fwhm(&stars, None).map(|r| r.fwhm_pixels));
         let eccentricity = cached_ecc.or_else(|| compute_eccentricity(&stars).map(|r| r.eccentricity));
 
         snapshots.push(FrameSnapshot {
@@ -636,22 +727,13 @@ fn collect_snapshots(
             fwhm,
             eccentricity,
             stars,
-            group: 0, // will be assigned below
+            group: 0,
         });
     }
 
-    // Assign rotational groups.
-    // Group 0 is established by the first frame's ROTATOR. Subsequent frames
-    // are placed in the same group if their ROTATOR is within
-    // ROTATOR_GROUP_TOLERANCE of any existing group's anchor, otherwise a new
-    // group is created.
-    // Group frames by ROTATOR angle AND session continuity.
-    // Two frames belong to the same group only if their ROTATOR angles are
-    // within ROTATOR_GROUP_TOLERANCE and they are part of the same continuous
-    // imaging run (no gap > SESSION_GAP_MINUTES between consecutive frames
-    // in that group).
-    let mut group_anchors:       Vec<f32>        = Vec::new();
-    let mut group_last_date_obs: Vec<Option<f64>> = Vec::new();
+    // Assign rotational groups
+    let mut group_anchors:        Vec<f32>         = Vec::new();
+    let mut group_last_date_obs:  Vec<Option<f64>> = Vec::new();
 
     for snap in snapshots.iter_mut() {
         let rot     = snap.rotator.unwrap_or(0.0);
@@ -660,30 +742,20 @@ fn collect_snapshots(
         let mut found = None;
         for (g, &anchor) in group_anchors.iter().enumerate() {
             let delta = circular_delta(rot, anchor);
-            if delta > ROTATOR_GROUP_TOLERANCE {
-                continue;
-            }
-            // Rotator matches — check session gap
+            if delta > ROTATOR_GROUP_TOLERANCE { continue; }
             let within_session = match (obs_sec, group_last_date_obs[g]) {
                 (Some(t), Some(last)) => {
                     let gap_minutes = (t - last).abs() as f32 / 60.0;
                     gap_minutes <= SESSION_GAP_MINUTES
                 }
-                // If timestamps unavailable, assume same session
                 _ => true,
             };
-            if within_session {
-                found = Some(g);
-                break;
-            }
+            if within_session { found = Some(g); break; }
         }
 
         snap.group = match found {
             Some(g) => {
-                // Update last timestamp for this group
-                if obs_sec.is_some() {
-                    group_last_date_obs[g] = obs_sec;
-                }
+                if obs_sec.is_some() { group_last_date_obs[g] = obs_sec; }
                 g
             }
             None => {
@@ -698,9 +770,7 @@ fn collect_snapshots(
 }
 
 /// Parse a DATE-OBS string (ISO 8601) to Unix seconds.
-/// Handles formats: "2026-05-12T02:01:39.502989" and "2026-05-12T02:01:39"
 fn parse_date_obs(s: &str) -> Option<f64> {
-    // Split on T
     let s = s.trim();
     let (date_part, time_part) = if let Some(idx) = s.find('T') {
         (&s[..idx], &s[idx+1..])
@@ -722,14 +792,10 @@ fn parse_date_obs(s: &str) -> Option<f64> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(0.0);
 
-    // Compute Julian Day Number then convert to Unix seconds.
-    // Formula: JDN for Gregorian calendar.
     let a = (14 - month) / 12;
     let y = year + 4800 - a;
     let m = month + 12 * a - 3;
     let jdn = day + (153 * m + 2) / 5 + 365 * y + y / 4 - y / 100 + y / 400 - 32045;
-
-    // Unix epoch is JDN 2440588 (1970-01-01)
     let days_since_epoch = jdn - 2440588;
     let unix = days_since_epoch as f64 * 86400.0
         + hour as f64 * 3600.0
@@ -748,7 +814,7 @@ fn circular_delta(a: f32, b: f32) -> f32 {
 // ── Per-frame luma loader (debayered) ─────────────────────────────────────────
 
 fn load_debayered_luma(
-    ctx: &AppContext,
+    ctx:  &AppContext,
     snap: &FrameSnapshot,
 ) -> Result<Vec<f32>, PluginError> {
     let buf = ctx.image_buffers.get(&snap.path)
@@ -771,17 +837,14 @@ fn extract_or_debayer_luma(
     bayer_pattern: BayerPattern,
 ) -> Vec<f32> {
     if *color_space == ColorSpace::Bayer {
-        // Convert raw Bayer mono → f32 normalized → debayered RGB → luma
         let mono: Vec<f32> = match pixels {
             PixelData::U8(v)  => v.iter().map(|&p| p as f32 / 255.0).collect(),
             PixelData::U16(v) => v.iter().map(|&p| p as f32 / 65535.0).collect(),
             PixelData::F32(v) => v.clone(),
         };
         let rgb = debayer_bilinear(&mono, width, height, bayer_pattern);
-        // Extract luma from RGB
         analysis::extract_luminance(&rgb, width, height, 3)
     } else {
-        // Already RGB or Mono — use existing pathway
         analysis::to_luminance(pixels, channels)
     }
 }
@@ -821,9 +884,6 @@ fn try_rigid_refinement(
 ) -> AffineRigid {
     match estimate_rigid_transform(ref_stars, frame_stars, fft_dx, fft_dy, width, height) {
         Some(rigid) => {
-            // RANSAC worked on pre-translated stars (frame + fft).
-            // Reconstruct full transform: tx = fft + residual correction.
-            // Sanity check: final tx/ty must stay within 10px of FFT.
             let cos_t = rigid.a;
             let sin_t = rigid.b;
             let aft_x = cos_t * fft_dx - sin_t * fft_dy;
@@ -834,13 +894,11 @@ fn try_rigid_refinement(
                 tx: aft_x + rigid.tx,
                 ty: aft_y + rigid.ty,
             };
-            // Sanity: RANSAC residual should be small
             if rigid.tx.abs() > 15.0 || rigid.ty.abs() > 15.0 {
                 info!("Frame {}: rigid refinement rejected (residual {:.1},{:.1} too large) — using FFT only",
                     frame_index, rigid.tx, rigid.ty);
                 return AffineRigid::translation(fft_dx, fft_dy);
             }
-
             let theta = final_xform.theta();
             if theta.abs() >= MIN_ROTATION_TO_APPLY {
                 let msg = format!(
@@ -854,8 +912,7 @@ fn try_rigid_refinement(
             final_xform
         }
         None => {
-            info!("Frame {}: rigid refinement not available — using FFT translation only",
-                frame_index);
+            info!("Frame {}: rigid refinement not available — using FFT translation only", frame_index);
             AffineRigid::translation(fft_dx, fft_dy)
         }
     }
@@ -870,17 +927,14 @@ fn alignment_failed(
     contrib:       &mut FrameContribution,
     contributions: &mut Vec<FrameContribution>,
 ) {
-    let msg = format!(
-        "Alignment failed: frame {} — {}, skipped",
-        frame_index, reason
-    );
+    let msg = format!("Alignment failed: frame {} — {}, skipped", frame_index, reason);
     info!("{}", msg);
     messages.push(msg);
     contrib.exclusion_reason = Some(ExclusionReason::AlignmentFailed);
     contributions.push(contrib.clone());
 }
 
-// ── Frame resampling ──────────────────────────────────────────────────────────
+// ── Frame resampling (mono) ───────────────────────────────────────────────────
 
 fn resample_frame(
     normalized: &[f32],
@@ -926,6 +980,60 @@ fn resample_frame_affine(
         .collect()
 }
 
+// ── Frame resampling (RGB) ────────────────────────────────────────────────────
+
+/// Resample interleaved RGB pixels by (dx, dy) translation.
+fn resample_frame_rgb(
+    rgb:    &[f32],
+    width:  usize,
+    height: usize,
+    dx:     f32,
+    dy:     f32,
+) -> Vec<f32> {
+    (0..height * width)
+        .into_par_iter()
+        .flat_map_iter(|idx| {
+            let out_y = idx / width;
+            let out_x = idx % width;
+            let src_x = out_x as f32 - dx;
+            let src_y = out_y as f32 - dy;
+            let x0 = src_x.floor() as i32;
+            let y0 = src_y.floor() as i32;
+            let fx  = src_x - x0 as f32;
+            let fy  = src_y - y0 as f32;
+            (0..3).map(move |ch| {
+                bilinear_rgb(rgb, width, height, x0, y0, x0 + 1, y0 + 1, fx, fy, ch)
+            })
+        })
+        .collect()
+}
+
+/// Resample interleaved RGB pixels using an affine transform.
+fn resample_frame_rgb_affine(
+    rgb:    &[f32],
+    width:  usize,
+    height: usize,
+    xform:  &AffineRigid,
+) -> Vec<f32> {
+    (0..height * width)
+        .into_par_iter()
+        .flat_map_iter(|idx| {
+            let out_y = idx / width;
+            let out_x = idx % width;
+            let (src_x, src_y) = xform.apply_inverse(out_x as f32, out_y as f32);
+            let x0 = src_x.floor() as i32;
+            let y0 = src_y.floor() as i32;
+            let fx  = src_x - x0 as f32;
+            let fy  = src_y - y0 as f32;
+            (0..3).map(move |ch| {
+                bilinear_rgb(rgb, width, height, x0, y0, x0 + 1, y0 + 1, fx, fy, ch)
+            })
+        })
+        .collect()
+}
+
+// ── Bilinear interpolation ────────────────────────────────────────────────────
+
 fn bilinear(
     pixels: &[f32],
     width:  usize,
@@ -949,31 +1057,29 @@ fn bilinear(
     top * (1.0 - fy) + bottom * fy
 }
 
-// ── Alignment validation ──────────────────────────────────────────────────────
-
-fn validate_alignment(
-    frame_stars:    &[crate::analysis::stars::StarCandidate],
-    ref_stars:      &[crate::analysis::stars::StarCandidate],
-    dx:             f32,
-    dy:             f32,
-    tolerance:      f32,
-    min_match_rate: f32,
-) -> bool {
-    let sample: Vec<_> = frame_stars.iter().take(20).collect();
-    if sample.is_empty() {
-        return false;
-    }
-    // Frame star at (cx, cy) → reference coordinate is (cx - dx, cy - dy)
-    // (consistent with resampler's src = out - d convention)
-    let matched = sample.iter().filter(|s| {
-        let pred_x = s.cx + dx;
-        let pred_y = s.cy + dy;
-        ref_stars.iter().any(|r| {
-            let d = ((r.cx - pred_x).powi(2) + (r.cy - pred_y).powi(2)).sqrt();
-            d <= tolerance
-        })
-    }).count();
-    (matched as f32 / sample.len() as f32) >= min_match_rate
+/// Bilinear interpolation for a single channel of interleaved RGB.
+fn bilinear_rgb(
+    pixels: &[f32],
+    width:  usize,
+    height: usize,
+    x0:     i32,
+    y0:     i32,
+    x1:     i32,
+    y1:     i32,
+    fx:     f32,
+    fy:     f32,
+    ch:     usize,
+) -> f32 {
+    let w = width  as i32;
+    let h = height as i32;
+    let clamp = |x: i32, max: i32| x.clamp(0, max - 1) as usize;
+    let p00 = pixels[(clamp(y0, h) * width + clamp(x0, w)) * 3 + ch];
+    let p10 = pixels[(clamp(y0, h) * width + clamp(x1, w)) * 3 + ch];
+    let p01 = pixels[(clamp(y1, h) * width + clamp(x0, w)) * 3 + ch];
+    let p11 = pixels[(clamp(y1, h) * width + clamp(x1, w)) * 3 + ch];
+    let top    = p00 * (1.0 - fx) + p10 * fx;
+    let bottom = p01 * (1.0 - fx) + p11 * fx;
+    top * (1.0 - fy) + bottom * fy
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1023,3 +1129,29 @@ fn build_stack_keywords(
 
     kw
 }
+
+// ── Alignment validation (retained for future use) ────────────────────────────
+
+#[allow(dead_code)]
+fn validate_alignment(
+    frame_stars:    &[crate::analysis::stars::StarCandidate],
+    ref_stars:      &[crate::analysis::stars::StarCandidate],
+    dx:             f32,
+    dy:             f32,
+    tolerance:      f32,
+    min_match_rate: f32,
+) -> bool {
+    let sample: Vec<_> = frame_stars.iter().take(20).collect();
+    if sample.is_empty() { return false; }
+    let matched = sample.iter().filter(|s| {
+        let pred_x = s.cx + dx;
+        let pred_y = s.cy + dy;
+        ref_stars.iter().any(|r| {
+            let d = ((r.cx - pred_x).powi(2) + (r.cy - pred_y).powi(2)).sqrt();
+            d <= tolerance
+        })
+    }).count();
+    (matched as f32 / sample.len() as f32) >= min_match_rate
+}
+
+// ----------------------------------------------------------------------
