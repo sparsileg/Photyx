@@ -115,7 +115,7 @@ struct CalibrationMasters {
 /// Scan caldir for master bias, dark, and flat files.
 /// Identified by filename containing "bias", "dark", or "flat" (case-insensitive).
 /// Supports .fit, .fits, .fts, .xisf extensions.
-fn load_calibration_masters(caldir: &str, messages: &mut Vec<String>) -> CalibrationMasters {
+fn load_calibration_masters(caldir: &str, load_flat: bool, messages: &mut Vec<String>) -> CalibrationMasters {
     let mut bias_buf: Option<Vec<f32>> = None;
     let mut dark_buf: Option<Vec<f32>> = None;
     let mut flat_buf: Option<Vec<f32>> = None;
@@ -153,6 +153,7 @@ fn load_calibration_masters(caldir: &str, messages: &mut Vec<String>) -> Calibra
         } else if filename.contains("dark") {
             "dark"
         } else if filename.contains("flat") {
+            if !load_flat { continue; }
             "flat"
         } else {
             continue;
@@ -377,19 +378,18 @@ fn stack_flat_frames(
         })
         .collect();
 
-    // Normalize master flat so each channel's mean is 1.0
-    // This ensures the flat displays as neutral gray and is correctly
-    // balanced for use as a calibration master regardless of the
-    // light source color temperature.
+    // Normalize master flat to [0, 1] per channel so the autostretch
+    // pipeline (which assumes input in [0, 1]) works correctly.
+    // Relative channel ratios are preserved because each channel is
+    // scaled independently by its own min/max.
     let mut master_pixels = master_pixels;
     for ch in 0..out_ch {
-        let mean: f32 = (0..n_pixels)
-            .map(|px| master_pixels[px * out_ch + ch])
-            .sum::<f32>() / n_pixels as f32;
-        if mean > 1e-6 {
-            for px in 0..n_pixels {
-                master_pixels[px * out_ch + ch] /= mean;
-            }
+        let ch_vals: Vec<f32> = (0..n_pixels).map(|px| master_pixels[px * out_ch + ch]).collect();
+        let min_val = ch_vals.iter().cloned().fold(f32::INFINITY,     f32::min);
+        let max_val = ch_vals.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let range   = (max_val - min_val).max(1e-6);
+        for px in 0..n_pixels {
+            master_pixels[px * out_ch + ch] = ((master_pixels[px * out_ch + ch] - min_val) / range).clamp(0.0, 1.0);
         }
     }
 
@@ -476,7 +476,7 @@ impl PhotonPlugin for StackFrames {
         // ── Load calibration masters ──────────────────────────────────────────
         let mut messages: Vec<String> = Vec::new();
         let cal = if let Some(ref dir) = caldir {
-            load_calibration_masters(dir, &mut messages)
+            load_calibration_masters(dir, frame_type == FrameType::Light, &mut messages)
         } else {
             CalibrationMasters { bias: None, dark: None, flat: None, channels: 1 }
         };

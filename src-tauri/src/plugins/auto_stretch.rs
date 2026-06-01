@@ -100,6 +100,13 @@ pub fn compute_autostretch_jpeg_from_buffer(
     let channels = buffer.channels as usize;
     let is_rgb   = channels == 3 && buffer.color_space == ColorSpace::RGB;
 
+    let step_probe = if src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
+    info!(
+        "autostretch_from_buffer: src={}x{} channels={} color_space={:?} is_rgb={} step={} disp={}x{}",
+        src_w, src_h, channels, buffer.color_space, is_rgb,
+        step_probe, src_w / step_probe, src_h / step_probe
+    );
+
     // ── Downsample to display resolution ─────────────────────────────────────
     const MAX_DISPLAY_W: usize = 1200;
     let (disp_w, disp_h, step) = if src_w > MAX_DISPLAY_W {

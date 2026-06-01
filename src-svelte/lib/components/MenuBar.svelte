@@ -145,7 +145,7 @@
       const response = await invoke<{
         results: Array<{ success: boolean; message: string | null }>;
       }>('run_script', {
-        script: `WriteFIT destination="${destPath.replace(/\\/g, '/')}"${stackArg}`
+        script: `WriteFIT destination="${destPath.replace(/\\/g, '/')}" overwrite=true${stackArg}`
       });
       const last = response.results[response.results.length - 1];
       if (last?.success) {
