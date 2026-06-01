@@ -76,7 +76,7 @@
     try {
       let script = 'StackFrames';
       if (calibrationDir) {
-        script += ` calibration_dir="${calibrationDir}"`;
+        script += ` caldir="${calibrationDir}"`;
       }
 
       const response = await invoke<{

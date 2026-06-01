@@ -150,10 +150,10 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   showanalysisgraph:   '',
   showanalysisresults: '',
   sqrt:                '(#)',
-  stackframes:         '[calibration_dir=]',
+  stackframes:         '[caldir=]',
   version:             '',
   writecurrent:        '',
-  writefit:            'destination=  overwrite=',
+  writefit:            'destination=  [overwrite=]  [stack=]',
   writeframe:          '',
   writetiff:           'destination=  overwrite=',
   writexisf:           'destination=  overwrite=  compress=  stack=',
@@ -230,14 +230,15 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   writefit: {
     name:        'WriteFIT',
-    description: 'Writes all session files to a destination directory in FITS format.',
-    syntax:      'WriteFIT destination=<path> [overwrite=<bool>]',
+    description: 'Writes session files to a destination directory in FITS format. Use stack=true to write the transient stack result as a single file instead. The .fit extension is appended automatically if not specified.',
+    syntax:      'WriteFIT destination=<path> [overwrite=<bool>] [stack=<bool>]',
     arguments: [
-      { name: 'destination', type: 'path',    required: true,  description: 'Directory to write files to' },
-      { name: 'overwrite',   type: 'boolean', required: false, default: 'false', description: 'Whether to overwrite existing files' },
+      { name: 'destination', type: 'path',    required: true,  description: 'Output directory (session frames) or file path (stack=true). Extension .fit appended automatically if omitted.' },
+      { name: 'overwrite',   type: 'boolean', required: false, default: 'false', description: 'Overwrite existing files' },
+      { name: 'stack',       type: 'boolean', required: false, default: 'false', description: 'Write the transient stack result as a single FITS file instead of all session frames' },
     ],
-    output:  'Writes all session files to the destination directory.',
-    example: 'WriteFIT destination="/data/Output" overwrite=true',
+    output:  'Writes FITS file(s) to the destination path.',
+    example: 'WriteFIT destination="/data/Output" overwrite=true\nWriteFIT destination="/data/masters/flat_master" stack=true',
   },
 
   writetiff: {
@@ -324,13 +325,13 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   stackframes: {
     name:        'StackFrames',
-    description: 'Stacks all session frames into a single result image using reference frame selection, background normalization, FFT alignment, and sigma-clipped mean combination.',
-    syntax:      'StackFrames [calibration_dir=<path>]',
+    description: 'Stacks loaded frames. Frame type is detected automatically from filename or IMAGETYP keyword. Light frames: FFT alignment, RANSAC rigid refinement, meridian-flip-aware group reference selection, two-pass sigma-clipped mean combination, optional calibration. Flat frames: bias subtract, single-scalar normalization per sub, median combine, per-channel master normalization.',
+    syntax:      'StackFrames [caldir=<path>]',
     arguments: [
-      { name: 'calibration_dir', type: 'path', required: false, description: 'Optional directory containing calibration frames' },
+      { name: 'caldir', type: 'path', required: false, description: 'Directory containing master calibration files. Files identified by filename containing "bias", "dark", or "flat". Supports .fit, .fits, .fts, .xisf.' },
     ],
-    output:  'Produces a transient stacked ImageBuffer displayed in the Stacking Workspace. Reports per-frame progress and a quality summary to the console.',
-    example: 'ReadImages path="/data/lights"\nStackFrames\nCommitStretch shadow_clip=-3.5 target_bg=0.10\nWriteXISF destination="/data/output" stack=true',
+    output:  'Produces a transient stacked ImageBuffer in the Stacking Workspace. For flat frames, produces a normalized master flat. Reports progress and a quality summary to the console.',
+    example: 'StackFrames\nStackFrames caldir="/data/masters"\nReadImages path="/data/lights"\nStackFrames caldir="/data/masters"\nCommitStretch shadow_clip=-3.5 target_bg=0.10\nWriteXISF destination="/data/output" stack=true',
   },
 
   clearstack: {
