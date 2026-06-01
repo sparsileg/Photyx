@@ -189,7 +189,7 @@ pub fn compute_autostretch_jpeg_from_buffer(
         }
     }
 
-    // ── Compute Auto-STF parameters per channel ───────────────────────────────
+    //    Compute Auto-STF parameters per channel
     let stf_params: Vec<(f32, f32)> = display_channels.iter()
         .map(|ch| compute_stf_params(ch, shadow_clip, target_bg))
         .collect();

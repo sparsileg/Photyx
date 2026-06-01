@@ -25,6 +25,11 @@ pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, Strin
         .map(|kw| kw.value == "HEATMAP")
         .unwrap_or(false);
 
+    tracing::info!(
+        "get_current_frame: src={}x{} channels={} color_space={:?} is_rgb={}",
+        src_w, src_h, channels, buffer.color_space, is_rgb
+    );
+
     const MAX_DISPLAY_W: usize = 1200;
     let step = if src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
     let disp_w = src_w / step;
