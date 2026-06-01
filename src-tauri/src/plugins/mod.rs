@@ -4,6 +4,7 @@
 pub mod add_files;
 pub mod analyze_frames;
 pub mod auto_stretch;
+pub mod background_extract;
 pub mod background_median;
 pub mod cache_frames;
 pub mod clear_session;

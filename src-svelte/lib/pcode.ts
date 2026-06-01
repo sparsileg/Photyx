@@ -50,6 +50,7 @@ export const PCODE_COMMANDS = new Set([
   'MedianValue',
   //    Image processing
   'AutoStretch',
+  'BackgroundExtract',
   'BinImage',
   'DebayerImage',
   //    Display & navigation
@@ -103,6 +104,7 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   analyzeframes:       '',
   assert:              'expression=',
   autostretch:         'shadowClip=  targetBackground=',
+  backgroundextract:   '[grid=]  [degree=]  [stack=]',
   binimage:            'factor=',
   blinksequence:       'fps=',
   cacheframes:         '',
@@ -518,6 +520,19 @@ export const HELP_DB: Record<string, HelpEntry> = {
     ],
     output:  'Converts the current frame from mono Bayer to interleaved RGB in place.',
     example: 'DebayerImage pattern=RGGB\nDebayerImage pattern=BGGR method=bilinear',
+  },
+
+  backgroundextract: {
+    name:        'BackgroundExtract',
+    description: 'Fits a 2D polynomial surface to the image background and subtracts it, correcting light pollution gradients and vignetting residuals. Operates on the current session frame by default, or the transient stack result when stack=true.',
+    syntax:      'BackgroundExtract [grid=<integer>] [degree=<integer>] [stack=<bool>]',
+    arguments: [
+      { name: 'grid',   type: 'integer', required: false, default: '32',    description: 'Sampling grid size N (N×N cells, 8–64). Finer grids capture more local variation but are more sensitive to nebulosity contamination.' },
+      { name: 'degree', type: 'integer', required: false, default: '2',     description: 'Polynomial degree (1–3). Degree 2 handles the vast majority of real-world gradients. Degree 3 risks overfitting.' },
+      { name: 'stack',  type: 'boolean', required: false, default: 'false', description: 'Operate on the transient stack result instead of the current session frame.' },
+    ],
+    output:  'Modifies the pixel buffer in place. Invalidates display caches so the viewer reloads automatically.',
+    example: 'BackgroundExtract\nBackgroundExtract grid=16 degree=3\nBackgroundExtract stack=true\nBackgroundExtract stack=true grid=16 degree=2',
   },
 
   binimage: {

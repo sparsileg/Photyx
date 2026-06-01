@@ -187,6 +187,7 @@ pub fn run() {
     registry.register(Arc::new(plugins::add_files::AddFiles));
     registry.register(Arc::new(plugins::analyze_frames::AnalyzeFrames));
     registry.register(Arc::new(plugins::auto_stretch::AutoStretch));
+    registry.register(Arc::new(plugins::background_extract::BackgroundExtract));
     registry.register(Arc::new(plugins::background_median::BackgroundGradientPlugin));
     registry.register(Arc::new(plugins::background_median::BackgroundMedianPlugin));
     registry.register(Arc::new(plugins::background_median::BackgroundStdDevPlugin));

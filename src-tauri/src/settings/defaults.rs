@@ -45,6 +45,15 @@ pub const DEFAULT_AUTOSTRETCH_TARGET_BG:    f64 = 0.15;
 pub const AUTOSTRETCH_TARGET_BG_MIN:        f64 = 0.01;
 pub const AUTOSTRETCH_TARGET_BG_MAX:        f64 = 0.50;
 
+// ── BackgroundExtract ─────────────────────────────────────────────────────────
+
+pub const DEFAULT_BE_GRID:   usize = 32;
+pub const MIN_BE_GRID:       usize = 8;
+pub const MAX_BE_GRID:       usize = 64;
+pub const DEFAULT_BE_DEGREE: usize = 2;
+pub const MIN_BE_DEGREE:     usize = 1;
+pub const MAX_BE_DEGREE:     usize = 3;
+
 // ── Crash Recovery ────────────────────────────────────────────────────────────
 
 pub const DEFAULT_CRASH_RECOVERY_INTERVAL_SECS: i64 = 60;

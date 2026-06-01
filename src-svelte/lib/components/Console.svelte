@@ -122,7 +122,7 @@
       append('  I/O:      AddFiles ReadImages WriteFIT WriteXISF WriteTIFF WriteCurrent', 'output');
       append('  Keyword:  AddKeyword DeleteKeyword ModifyKeyword CopyKeyword ListKeywords GetKeyword', 'output');
       append('  Query:    GetImageProperty GetSessionProperty Test', 'output');
-      append('  Process:  AutoStretch BinImage DebayerImage', 'output');
+      append('  Process:  AutoStretch BackgroundExtract BinImage DebayerImage', 'output');
       append('  View:     BlinkSequence CacheFrames SetZoom', 'output');
       append('  Analysis: ComputeFWHM CountStars ComputeEccentricity MedianValue ContourHeatmap', 'output');
       append('  Script:   Set Print Echo CountFiles RunMacro', 'output');
@@ -261,7 +261,7 @@
       }
     }
 
-    if (cmd === 'linearstretch' || cmd === 'histogramequalization') ui.requestFrameRefresh();
+    if (cmd === 'linearstretch' || cmd === 'histogramequalization' || cmd === 'backgroundextract') ui.requestFrameRefresh();
     if (cmd === 'contourheatmap') {
       const filePath = data?.output as string | null;
       if (filePath) await loadFile(filePath);
