@@ -72,8 +72,9 @@ impl PhotonPlugin for WriteFIT {
                 let _ = std::fs::remove_file(&out_path);
             }
 
-            // Ensure parent directory exists
-            if let Some(parent) = Path::new(&out_path).parent() {
+            // Ensure parent directory exists (use original destination, not out_path,
+            // to avoid treating the filename stem as a directory name).
+            if let Some(parent) = Path::new(&destination).parent() {
                 std::fs::create_dir_all(parent).map_err(|e| {
                     PluginError::new("IO_ERROR", &format!("Cannot create directory: {}", e))
                 })?;

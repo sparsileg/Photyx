@@ -165,6 +165,20 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
             let data: Vec<f32> = hdu.read_image(&mut fitsfile)
                 .map_err(|e| format!("Cannot read pixel data: {}", e))?;
             if data.is_empty() { return Err("Pixel data is empty".to_string()); }
+            let data = if channels == 3 {
+                // FITS stores color as planar [R plane, G plane, B plane].
+                // Photyx expects interleaved [R0,G0,B0,R1,G1,B1,...].
+                let n_pixels = (width * height) as usize;
+                let mut interleaved = vec![0.0f32; data.len()];
+                for ch in 0..3 {
+                    for px in 0..n_pixels {
+                        interleaved[px * 3 + ch] = data[ch * n_pixels + px];
+                    }
+                }
+                interleaved
+            } else {
+                data
+            };
             Some(PixelData::F32(data))
         }
     };

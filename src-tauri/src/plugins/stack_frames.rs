@@ -1,6 +1,6 @@
 // plugins/stack_frames.rs   StackFrames built-in plugin
 //
-// Two-pass stacking with FFT phase correlation + RANSAC affine rigid
+// Two-pass stacking with FFT phase correlation + triangle-based rigid
 // alignment. Designed to handle meridian-flipped sessions cleanly.
 //
 // Architecture:
@@ -11,23 +11,24 @@
 //
 //   2. Frames are grouped by ROTATOR keyword. Within a session containing a
 //      meridian flip there are two groups (pre-flip, post-flip). For sessions
-//      without a flip there is a single group.
+//      without a flip there is a single group. A rotator change > 90° always
+//      triggers a new group (catches same-night meridian flips regardless of
+//      time gap).
 //
 //   3. The larger group is designated the "master group". Its best-quality
 //      frame becomes the master reference for the entire stack output.
 //
 //   4. Each group has its own group reference (best-quality frame within
 //      that group). Frames within a group align natively to their group
-//      reference   no reverse() per frame, no Bayer pattern issues.
+//      reference — no reverse() per frame, no Bayer pattern issues.
 //
 //   5. For each non-master group, a cross-group transform M_cross is solved
 //      ONCE that maps that group's reference into master coordinates. This
 //      uses an explicit 180° pre-rotation (AffineRigid::flip_180) composed
-//      with the FFT + RANSAC result. Because both inputs are debayered RGB
-//      luma, the FFT correlation is clean.
+//      with the triangle match result.
 //
 //   6. Per-frame final transform: T = M_cross · G
-//      where G is the within-group transform (FFT + RANSAC against group ref).
+//      where G is the within-group transform (triangle match against group ref).
 //      For master-group frames, M_cross = identity, so T = G.
 //
 //   7. Color awareness: if the master reference frame is Bayer or RGB, the
@@ -36,10 +37,12 @@
 //
 //   8. Calibration: if caldir= is provided, StackFrames loads master bias,
 //      dark, and flat from that directory (identified by filename). Calibration
-//      is applied per light frame before Welford accumulation:
+//      is applied to raw [0,1] pixel values BEFORE background normalization:
 //      bias subtract → dark subtract → flat divide.
-//      For flat stacking, bias and dark are applied but flat is never loaded,
-//      since applying a flat master to flat subs makes no sense.
+//      Background normalization (divisor) is then applied to the calibrated
+//      pixels for accumulation. This ensures flat division operates on the
+//      correct scale. For flat stacking, the flat master is never loaded from
+//      caldir since applying a flat to flat subs makes no sense.
 
 use crate::analysis::{
     self,
@@ -63,11 +66,14 @@ use tracing::info;
 /// Rotation magnitude (radians) below which we skip the affine resampler.
 const MIN_ROTATION_TO_APPLY: f32 = 0.001;
 
-/// ROTATOR delta tolerance (degrees) for grouping frames.
+/// ROTATOR delta tolerance (degrees) for grouping frames across sessions.
 const ROTATOR_GROUP_TOLERANCE: f32 = 10.0;
 
 /// Gap in minutes between consecutive frames that indicates a new imaging session.
 const SESSION_GAP_MINUTES: f32 = 120.0;
+
+/// Rotator change above this threshold always triggers a new group (meridian flip).
+const MERIDIAN_FLIP_THRESHOLD: f32 = 90.0;
 
 pub struct StackFrames;
 
@@ -107,9 +113,9 @@ fn detect_frame_type(
 //  ── Calibration masters ───────────────────────────────────────────────────────
 
 struct CalibrationMasters {
-    bias:          Option<Vec<f32>>,  // normalized f32, interleaved channels
+    bias:          Option<Vec<f32>>,  // normalized f32 [0,1], interleaved channels
     bias_channels: usize,
-    dark:          Option<Vec<f32>>,  // normalized f32, interleaved channels
+    dark:          Option<Vec<f32>>,  // normalized f32 [0,1], interleaved channels
     dark_channels: usize,
     flat:          Option<Vec<f32>>,  // normalized f32 centered ~1.0, interleaved channels
     flat_channels: usize,
@@ -238,6 +244,8 @@ fn to_f32_normalized_cal(pixels: &PixelData) -> Vec<f32> {
 }
 
 /// Normalize a flat master in place so each channel's mean is 1.0.
+/// Retained for potential future use.
+#[allow(dead_code)]
 fn normalize_flat_inplace(flat: &mut Vec<f32>, channels: usize) {
     let n_pixels = flat.len() / channels.max(1);
     if n_pixels == 0 { return; }
@@ -253,14 +261,40 @@ fn normalize_flat_inplace(flat: &mut Vec<f32>, channels: usize) {
     }
 }
 
-/// Apply calibration to a normalized f32 frame buffer in place.
+/// Apply calibration to a raw [0,1] normalized f32 frame buffer in place.
 /// Order: bias subtract → dark subtract → flat divide.
-/// Per-channel, per-pixel. Values clamped to [0, 1].
-/// Each calibration master uses its own channel count to avoid
-/// indexing errors when masters have different channel counts
-/// (e.g. mono bias/dark applied to a color frame).
+/// Must be called on raw pixel values BEFORE background normalization.
+/// Each calibration master uses its own channel count to avoid indexing
+/// errors when masters have different channel counts (e.g. mono bias/dark
+/// applied to a color frame). Values are floored at 0.0 after bias/dark;
+/// no upper clamp is applied since flat division may produce values > 1.0
+/// in bright regions.
 fn apply_calibration(frame: &mut Vec<f32>, cal: &CalibrationMasters, channels: usize) {
     let n_pixels = frame.len() / channels.max(1);
+
+    // Diagnostic: log corner and center pixels before calibration
+    if n_pixels > 0 {
+        let center_px = n_pixels / 2;
+        let before0: Vec<f32> = (0..channels).map(|ch| frame[ch]).collect();
+        let before_c: Vec<f32> = (0..channels).map(|ch| frame[center_px * channels + ch]).collect();
+        let flat_px0: Vec<f32> = if let Some(ref flat) = cal.flat {
+            (0..channels).map(|ch| {
+                let flat_ch  = ch.min(cal.flat_channels.saturating_sub(1));
+                let flat_idx = flat_ch;
+                if flat_idx < flat.len() { flat[flat_idx] } else { 1.0 }
+            }).collect()
+        } else { vec![1.0; channels] };
+        let flat_pxc: Vec<f32> = if let Some(ref flat) = cal.flat {
+            (0..channels).map(|ch| {
+                let flat_ch  = ch.min(cal.flat_channels.saturating_sub(1));
+                let flat_idx = center_px * cal.flat_channels + flat_ch;
+                if flat_idx < flat.len() { flat[flat_idx] } else { 1.0 }
+            }).collect()
+        } else { vec![1.0; channels] };
+        info!("apply_calibration: px0 before={:?} flat={:?} | center before={:?} flat={:?}",
+            before0, flat_px0, before_c, flat_pxc);
+    }
+
     for px in 0..n_pixels {
         for ch in 0..channels {
             let idx = px * channels + ch;
@@ -276,6 +310,9 @@ fn apply_calibration(frame: &mut Vec<f32>, cal: &CalibrationMasters, channels: u
                 let dark_idx = px * cal.dark_channels + dark_ch;
                 if dark_idx < dark.len() { val -= dark[dark_idx]; }
             }
+
+            val = val.max(0.0);
+
             if let Some(ref flat) = cal.flat {
                 let flat_ch  = ch.min(cal.flat_channels.saturating_sub(1));
                 let flat_idx = px * cal.flat_channels + flat_ch;
@@ -288,12 +325,20 @@ fn apply_calibration(frame: &mut Vec<f32>, cal: &CalibrationMasters, channels: u
             frame[idx] = val.max(0.0);
         }
     }
+
+    // Diagnostic: log corner and center pixels after calibration
+    if n_pixels > 0 {
+        let center_px = n_pixels / 2;
+        let after0: Vec<f32> = (0..channels).map(|ch| frame[ch]).collect();
+        let after_c: Vec<f32> = (0..channels).map(|ch| frame[center_px * channels + ch]).collect();
+        info!("apply_calibration: px0 after={:?} | center after={:?}", after0, after_c);
+    }
 }
 
 //  ── Flat stacking ─────────────────────────────────────────────────────────────
 
-/// Stack flat frames: subtract bias (if available), normalize each sub by its
-/// per-channel mean, then median-combine. Returns a master flat ImageBuffer
+/// Stack flat frames: subtract bias and dark (if available), normalize each sub
+/// by its overall mean, then median-combine. Returns a master flat ImageBuffer
 /// with F32 pixels normalized by global mean (centered around 1.0) for
 /// correct use as a calibration master.
 fn stack_flat_frames(
@@ -375,7 +420,6 @@ fn stack_flat_frames(
 
         // Normalize each sub by a single scalar (overall mean across all channels)
         // so relative channel ratios are preserved through the median combine.
-        // Per-channel normalization is applied once on the final master instead.
         let overall_mean: f32 = rgb.iter().sum::<f32>() / rgb.len() as f32;
         if overall_mean > 1e-6 {
             for v in rgb.iter_mut() {
@@ -417,7 +461,6 @@ fn stack_flat_frames(
 
     // Normalize flat master by a single global mean so channel ratios are
     // preserved. Values center around 1.0 for correct calibration use.
-    // The display pipeline handles values outside [0, 1] by clamping.
     let mut master_pixels = master_pixels;
     let global_mean: f32 = master_pixels.iter().sum::<f32>() / master_pixels.len() as f32;
     if global_mean > 1e-6 {
@@ -470,9 +513,9 @@ impl PhotonPlugin for StackFrames {
     fn name(&self) -> &str { "StackFrames" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str {
-        "Stacks loaded frames. Light frames: FFT alignment, RANSAC rigid refinement, \
+        "Stacks loaded frames. Light frames: FFT alignment, triangle rigid refinement, \
          meridian-flip-aware group reference selection, optional calibration via caldir=. \
-         Flat frames: bias-subtract, dark-subtract, normalize per sub, median-combine to master flat. \
+         Flat frames: bias-subtract, dark-subtract, normalize per sub, median-combine. \
          Frame type is detected automatically from filename or IMAGETYP keyword."
     }
 
@@ -484,7 +527,8 @@ impl PhotonPlugin for StackFrames {
                 required:    false,
                 description: "Directory containing master calibration files. Files are \
                               identified by filename containing 'bias', 'dark', or 'flat'. \
-                              When stacking flats, any flat master in caldir is ignored.".to_string(),
+                              Calibration is applied to raw pixels before background \
+                              normalization. When stacking flats, flat masters are ignored.".to_string(),
                 default:     None,
             },
         ]
@@ -519,6 +563,8 @@ impl PhotonPlugin for StackFrames {
                 flat: None, flat_channels: 1,
             }
         };
+
+        let has_cal = cal.bias.is_some() || cal.dark.is_some() || cal.flat.is_some();
 
         //  ── Branch: flat vs light ─────────────────────────────────────────────
         if frame_type == FrameType::Flat {
@@ -711,9 +757,20 @@ impl PhotonPlugin for StackFrames {
                 }
             }
 
-            let luma = match load_debayered_luma(ctx, snap) {
-                Ok(l)  => l,
-                Err(_) => continue,
+            // Load raw [0,1] pixels
+            let mut frame_pixels = load_frame_pixels(ctx, snap, is_color);
+
+            // Apply calibration to raw pixels BEFORE background normalization.
+            // bias subtract → dark subtract → flat divide on [0,1] values.
+            if has_cal {
+                apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });
+            }
+
+            // Extract calibrated luma for background estimation and FFT alignment.
+            let cal_luma = if is_color {
+                analysis::extract_luminance(&frame_pixels, width, height, 3)
+            } else {
+                frame_pixels.clone()
             };
 
             if group_ref_luma[snap.group].is_none() {
@@ -725,11 +782,20 @@ impl PhotonPlugin for StackFrames {
             let g_ref_luma  = group_ref_luma[snap.group].as_ref().unwrap();
             let g_ref_stars = group_ref_stars[snap.group].as_ref().unwrap();
 
-            let bg_est   = estimate_background(&luma, &bg_sigma_config);
+            // Compute background from calibrated luma
+            let bg_est   = estimate_background(&cal_luma, &bg_sigma_config);
             let bg_level = bg_est.median;
             contrib.background_level = Some(bg_level);
-            let divisor  = if bg_level > 1e-6 { bg_level } else { 1.0 };
-            let normalized_luma: Vec<f32> = luma.par_iter().map(|&v| v / divisor).collect();
+            let divisor = if bg_level > 1e-6 { bg_level } else { 1.0 };
+            if i == 0 {
+                info!("Pass 1 frame 0: bg_level={:.6} divisor={:.6} cal_luma_min={:.6} cal_luma_max={:.6}",
+                    bg_level, divisor,
+                    cal_luma.iter().cloned().fold(f32::INFINITY, f32::min),
+                    cal_luma.iter().cloned().fold(f32::NEG_INFINITY, f32::max));
+            }
+
+            // Normalize calibrated luma by background for FFT alignment
+            let normalized_luma: Vec<f32> = cal_luma.par_iter().map(|&v| v / divisor).collect();
 
             let g_transform: Option<AffineRigid> = if i == group_refs[snap.group] {
                 contrib.fft_translation     = Some((0.0, 0.0));
@@ -760,18 +826,21 @@ impl PhotonPlugin for StackFrames {
             let g_xform = g_transform.unwrap();
             let t_final = compose(&m_cross[snap.group], &g_xform);
 
-            // Load and calibrate frame pixels
-            let mut frame_pixels = load_frame_pixels(ctx, snap, is_color, divisor);
-            if cal.bias.is_some() || cal.dark.is_some() || cal.flat.is_some() {
-                apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });
-            }
+            // Divide calibrated frame pixels by background for accumulation.
+            // When calibration is applied the pedestal is already removed, so
+            // background normalization would amplify near-zero values destructively.
+            let accum_pixels: Vec<f32> = if has_cal {
+                frame_pixels.clone()
+            } else {
+                frame_pixels.iter().map(|&v| v / divisor).collect()
+            };
 
             let theta = t_final.theta();
             if is_color {
                 let aligned_rgb = if theta.abs() >= MIN_ROTATION_TO_APPLY || t_final.a < 0.5 {
-                    resample_frame_rgb_affine(&frame_pixels, width, height, &t_final)
+                    resample_frame_rgb_affine(&accum_pixels, width, height, &t_final)
                 } else {
-                    resample_frame_rgb(&frame_pixels, width, height, t_final.tx, t_final.ty)
+                    resample_frame_rgb(&accum_pixels, width, height, t_final.tx, t_final.ty)
                 };
 
                 for px in 0..n_pixels {
@@ -788,9 +857,9 @@ impl PhotonPlugin for StackFrames {
                 }
             } else {
                 let aligned = if theta.abs() >= MIN_ROTATION_TO_APPLY || t_final.a < 0.5 {
-                    resample_frame_affine(&frame_pixels, width, height, &t_final)
+                    resample_frame_affine(&accum_pixels, width, height, &t_final)
                 } else {
-                    resample_frame(&frame_pixels, width, height, t_final.tx, t_final.ty)
+                    resample_frame(&accum_pixels, width, height, t_final.tx, t_final.ty)
                 };
 
                 mean_buf.par_iter_mut()
@@ -853,26 +922,37 @@ impl PhotonPlugin for StackFrames {
                 None    => continue,
             };
 
-            let luma = match load_debayered_luma(ctx, snap) {
-                Ok(l)  => l,
-                Err(_) => continue,
+            // Load raw [0,1] pixels and apply calibration
+            let mut frame_pixels = load_frame_pixels(ctx, snap, is_color);
+            if has_cal {
+                apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });
+            }
+
+            // Extract calibrated luma for background estimation
+            let cal_luma = if is_color {
+                analysis::extract_luminance(&frame_pixels, width, height, 3)
+            } else {
+                frame_pixels.clone()
             };
 
-            let bg_est   = estimate_background(&luma, &bg_sigma_config);
+            let bg_est   = estimate_background(&cal_luma, &bg_sigma_config);
             let bg_level = bg_est.median;
             let divisor  = if bg_level > 1e-6 { bg_level } else { 1.0 };
 
-            let mut frame_pixels = load_frame_pixels(ctx, snap, is_color, divisor);
-            if cal.bias.is_some() || cal.dark.is_some() || cal.flat.is_some() {
-                apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });
-            }
+            // Divide calibrated pixels by background for accumulation.
+            // Skip background normalization when calibration is applied.
+            let accum_pixels: Vec<f32> = if has_cal {
+                frame_pixels.clone()
+            } else {
+                frame_pixels.iter().map(|&v| v / divisor).collect()
+            };
 
             let theta = xform.theta();
             if is_color {
                 let aligned_rgb = if theta.abs() >= MIN_ROTATION_TO_APPLY || xform.a < 0.5 {
-                    resample_frame_rgb_affine(&frame_pixels, width, height, xform)
+                    resample_frame_rgb_affine(&accum_pixels, width, height, xform)
                 } else {
-                    resample_frame_rgb(&frame_pixels, width, height, xform.tx, xform.ty)
+                    resample_frame_rgb(&accum_pixels, width, height, xform.tx, xform.ty)
                 };
 
                 for px in 0..n_pixels {
@@ -888,7 +968,7 @@ impl PhotonPlugin for StackFrames {
                     }
                 }
             } else {
-                let normalized: Vec<f32> = luma.par_iter().map(|&v| v / divisor).collect();
+                let normalized: Vec<f32> = cal_luma.par_iter().map(|&v| v / divisor).collect();
                 let aligned = if theta.abs() >= MIN_ROTATION_TO_APPLY || xform.a < 0.5 {
                     resample_frame_affine(&normalized, width, height, xform)
                 } else {
@@ -1108,8 +1188,11 @@ fn assign_groups(snapshots: &mut Vec<FrameSnapshot>) {
             (Some(a), Some(b)) => (b - a).abs(),
             _ => 0.0,
         };
-        if (time_gap > SESSION_GAP_MINUTES as f64 && rot_diff > ROTATOR_GROUP_TOLERANCE)
-            || rot_diff > 90.0
+        // A rotation > MERIDIAN_FLIP_THRESHOLD always triggers a new group
+        // regardless of time gap (catches same-night meridian flips).
+        // A long time gap combined with any significant rotation also splits.
+        if rot_diff > MERIDIAN_FLIP_THRESHOLD
+            || (time_gap > SESSION_GAP_MINUTES as f64 && rot_diff > ROTATOR_GROUP_TOLERANCE)
         {
             group += 1;
         }
@@ -1149,11 +1232,12 @@ fn load_debayered_luma(ctx: &AppContext, snap: &FrameSnapshot) -> Result<Vec<f32
     }
 }
 
+/// Load raw [0,1] normalized pixels without any background normalization.
+/// Calibration must be applied separately before background normalization.
 fn load_frame_pixels(
     ctx:      &AppContext,
     snap:     &FrameSnapshot,
     is_color: bool,
-    divisor:  f32,
 ) -> Vec<f32> {
     let empty = || vec![0.0f32; snap.width * snap.height * if is_color { 3 } else { 1 }];
 
@@ -1167,18 +1251,14 @@ fn load_frame_pixels(
     };
 
     if is_color {
-        let rgb = if snap.color_space == ColorSpace::Bayer {
+        if snap.color_space == ColorSpace::Bayer {
             let mono = analysis::to_f32_normalized(pixels);
             debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern)
         } else {
             analysis::to_f32_normalized(pixels)
-        };
-        rgb.iter().map(|&v| v / divisor).collect()
+        }
     } else {
         analysis::to_luminance(pixels, snap.channels)
-            .iter()
-            .map(|&v| v / divisor)
-            .collect()
     }
 }
 
@@ -1410,8 +1490,8 @@ fn build_stack_keywords(
     insert("ROWORDER", "TOP-DOWN",          "row order");
     insert("CREATOR",  "Photyx",            "software that created this file");
     if let Some(s) = summary {
-        if let Some(ref target) = s.target  { insert("OBJECT",   target,                           "target object name"); }
-        if let Some(ref filter) = s.filter  { insert("FILTER",   filter,                           "filter used"); }
+        if let Some(ref target) = s.target  { insert("OBJECT",   target,                                    "target object name"); }
+        if let Some(ref filter) = s.filter  { insert("FILTER",   filter,                                    "filter used"); }
         if s.integration_seconds > 0.0      { insert("EXPTIME",  &format!("{:.1}", s.integration_seconds), "total integration time in seconds"); }
         insert("STACKCNT", &s.stacked_frames.to_string(), "number of frames stacked");
     }
