@@ -137,6 +137,41 @@ impl PhotonPlugin for WriteFIT {
     }
 }
 
+/// Convert interleaved RGB pixels [R0,G0,B0,R1,G1,B1,...] to planar [R plane, G plane, B plane].
+/// For mono images (channels == 1), returns the data unchanged.
+fn deinterleave_u8(data: &[u8], n_pixels: usize, channels: usize) -> Vec<u8> {
+    if channels == 1 { return data.to_vec(); }
+    let mut out = vec![0u8; data.len()];
+    for ch in 0..channels {
+        for px in 0..n_pixels {
+            out[ch * n_pixels + px] = data[px * channels + ch];
+        }
+    }
+    out
+}
+
+fn deinterleave_u16(data: &[u16], n_pixels: usize, channels: usize) -> Vec<u16> {
+    if channels == 1 { return data.to_vec(); }
+    let mut out = vec![0u16; data.len()];
+    for ch in 0..channels {
+        for px in 0..n_pixels {
+            out[ch * n_pixels + px] = data[px * channels + ch];
+        }
+    }
+    out
+}
+
+fn deinterleave_f32(data: &[f32], n_pixels: usize, channels: usize) -> Vec<f32> {
+    if channels == 1 { return data.to_vec(); }
+    let mut out = vec![0.0f32; data.len()];
+    for ch in 0..channels {
+        for px in 0..n_pixels {
+            out[ch * n_pixels + px] = data[px * channels + ch];
+        }
+    }
+    out
+}
+
 /// Create a new FITS file from scratch with pixel data and keywords.
 pub(crate) fn write_fits_new(out_path: &str, buffer: &ImageBuffer) -> Result<(), String> {
     let image_type = match buffer.bit_depth {
@@ -164,23 +199,26 @@ pub(crate) fn write_fits_new(out_path: &str, buffer: &ImageBuffer) -> Result<(),
     let pixels = buffer.pixels.as_ref()
         .ok_or_else(|| "No pixel data".to_string())?;
 
+    let n_pixels = buffer.width as usize * buffer.height as usize;
+    let channels = buffer.channels as usize;
+
     match pixels {
         PixelData::U8(data) => {
-            hdu.write_image(&mut fitsfile, data.as_slice())
+            let planar = deinterleave_u8(data, n_pixels, channels);
+            hdu.write_image(&mut fitsfile, planar.as_slice())
                 .map_err(|e| format!("Cannot write pixel data: {}", e))?;
         }
         PixelData::U16(data) => {
-            // FITS stores unsigned 16-bit as signed 16-bit with BZERO=32768.
-            // Subtract 32768 before writing so that adding BZERO back on read
-            // restores the original unsigned value.
-            let data_i16: Vec<i16> = data.iter()
+            let planar = deinterleave_u16(data, n_pixels, channels);
+            let data_i16: Vec<i16> = planar.iter()
                 .map(|&v| (v as i32 - 32768) as i16)
                 .collect();
             hdu.write_image(&mut fitsfile, data_i16.as_slice())
                 .map_err(|e| format!("Cannot write pixel data: {}", e))?;
         }
         PixelData::F32(data) => {
-            hdu.write_image(&mut fitsfile, data.as_slice())
+            let planar = deinterleave_f32(data, n_pixels, channels);
+            hdu.write_image(&mut fitsfile, planar.as_slice())
                 .map_err(|e| format!("Cannot write pixel data: {}", e))?;
         }
     }
