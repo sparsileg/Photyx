@@ -6,7 +6,7 @@
 // result (stack=true). Modifies the pixel buffer in place.
 
 use crate::analysis::background::sigma_clipped_background;
-use crate::context::{AppContext, BitDepth, ColorSpace, PixelData};
+use crate::context::{AppContext, ColorSpace, PixelData};
 use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
 use crate::settings::defaults::{
     DEFAULT_BE_DEGREE, DEFAULT_BE_GRID, MAX_BE_DEGREE, MAX_BE_GRID, MIN_BE_DEGREE, MIN_BE_GRID,

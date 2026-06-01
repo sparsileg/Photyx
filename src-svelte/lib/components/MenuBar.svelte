@@ -45,6 +45,7 @@
     case 'preferences':         ui.openPreferences(); break;
     case 'restore-database':    restoreDatabase(); break;
     case 'run-macro':           ui.togglePanel('macro-editor'); break;
+    case 'save-as-fits':        saveAsFits(); break;
     case 'stacking-workspace':  ui.showView('stackingWorkspace'); break;
     case 'theme-dark':          ui.setTheme('dark'); break;
     case 'theme-light':         ui.setTheme('light'); break;
@@ -120,6 +121,42 @@
     const path = typeof selected === 'string' ? selected : selected[0];
     if (!path) return;
     await loadFile(path);
+  }
+
+  async function saveAsFits() {
+    let destPath: string | null;
+    try {
+      destPath = await save({
+        title:   'Save as FITS',
+        filters: [{ name: 'FITS Image', extensions: ['fit'] }],
+      });
+    } catch (e) {
+      notifications.error(`Save cancelled: ${e}`);
+      return;
+    }
+    if (!destPath) return;
+
+    // Determine whether there is a stack result or a current session frame
+    const isStackingWorkspace = document.getElementById('sw-root') !== null;
+    const stackArg = isStackingWorkspace ? ' stack=true' : '';
+
+    notifications.running('Saving FITS…');
+    try {
+      const response = await invoke<{
+        results: Array<{ success: boolean; message: string | null }>;
+      }>('run_script', {
+        script: `WriteFIT destination="${destPath.replace(/\\/g, '/')}"${stackArg}`
+      });
+      const last = response.results[response.results.length - 1];
+      if (last?.success) {
+        notifications.success(`Saved: ${destPath}`);
+        pipeToConsole(`Saved FITS: ${destPath}`, 'success');
+      } else {
+        throw new Error(last?.message ?? 'WriteFIT failed');
+      }
+    } catch (e) {
+      notifications.error(`Save failed: ${e}`);
+    }
   }
 
   async function backupDatabase() {
@@ -346,7 +383,9 @@
 <div id="menu-bar">
   {#each [
     { name: 'File', items: [
-      { label: 'Load Single Image…', action: 'load-single-image' },
+      { label: 'Load Single Image ', action: 'load-single-image' },
+      { sep: true },
+      { label: 'Save as FITS',       action: 'save-as-fits' },
       { sep: true },
       { label: 'Exit',               action: 'exit' },
     ]},

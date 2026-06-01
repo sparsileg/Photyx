@@ -41,7 +41,52 @@ impl PhotonPlugin for WriteFIT {
             ctx.common_parent().as_ref().and_then(|p| p.to_str()),
         );
 
-        let overwrite = args.get("overwrite").map(|v| v == "true").unwrap_or(false);
+        let overwrite  = args.get("overwrite").map(|v| v == "true").unwrap_or(false);
+        let use_stack  = args.get("stack").map(|v| v.eq_ignore_ascii_case("true")).unwrap_or(false);
+
+        // ── Stack result path: write single file ──────────────────────────────
+        if use_stack {
+            let buffer = ctx.stack_result.as_ref()
+                .ok_or_else(|| PluginError::new("NO_STACK", "No stack result available."))?;
+
+            // If destination looks like a file path, use it directly.
+            // Otherwise treat it as a directory and auto-generate the filename.
+            let out_path = {
+                let ext = Path::new(&destination)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                if matches!(ext.as_str(), "fit" | "fits" | "fts") {
+                    destination.clone()
+                } else {
+                    format!("{}.fit", destination.trim_end_matches('/'))
+                }
+            };
+
+            if !overwrite && Path::new(&out_path).exists() {
+                return Err(PluginError::new("FILE_EXISTS",
+                    &format!("File already exists: '{}'. Use overwrite=true to replace.", out_path)));
+            }
+            if Path::new(&out_path).exists() {
+                let _ = std::fs::remove_file(&out_path);
+            }
+
+            // Ensure parent directory exists
+            if let Some(parent) = Path::new(&out_path).parent() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    PluginError::new("IO_ERROR", &format!("Cannot create directory: {}", e))
+                })?;
+            }
+
+            write_fits_new(&out_path, buffer)
+                .map_err(|e| PluginError::new("WRITE_ERROR", &e))?;
+
+            info!("Wrote stack FITS: {}", out_path);
+            return Ok(PluginOutput::Message(format!("Wrote stack result to '{}'", out_path)));
+        }
+
+        // ── Session frames: write all to directory ────────────────────────────
 
         if ctx.file_list.is_empty() {
             return Ok(PluginOutput::Message("No files loaded.".to_string()));

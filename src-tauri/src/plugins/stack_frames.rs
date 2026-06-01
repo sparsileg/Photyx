@@ -33,6 +33,12 @@
 //   7. Color awareness: if the master reference frame is Bayer or RGB, the
 //      stack accumulates all three RGB channels and outputs ColorSpace::RGB.
 //      Mono input produces a grayscale output as before.
+//
+//   8. Calibration: if caldir= is provided, StackFrames loads master bias,
+//      dark, and flat from that directory (identified by filename). Calibration
+//      is applied per light frame before Welford accumulation:
+//      bias subtract → dark subtract → flat divide.
+//      For flat stacking, bias is subtracted before normalization.
 
 use crate::analysis::{
     self,
@@ -47,7 +53,8 @@ use crate::analysis::{
     SigmaClipConfig, StarDetectionConfig,
 };
 use crate::context::{AppContext, BitDepth, ColorSpace, ImageBuffer, PixelData};
-use crate::plugin::{ArgMap, ParamSpec, PhotonPlugin, PluginError, PluginOutput};
+use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
+use crate::plugins::image_reader::read_image_file;
 use chrono::Utc;
 use rayon::prelude::*;
 use tracing::info;
@@ -62,6 +69,349 @@ const ROTATOR_GROUP_TOLERANCE: f32 = 10.0;
 const SESSION_GAP_MINUTES: f32 = 120.0;
 
 pub struct StackFrames;
+
+// ── Frame type detection ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+enum FrameType {
+    Light,
+    Flat,
+}
+
+/// Detect whether a frame is a light or flat sub.
+/// Checks filename first (case-insensitive contains "flat"), then IMAGETYP keyword.
+fn detect_frame_type(
+    path:     &str,
+    keywords: &std::collections::HashMap<String, crate::context::KeywordEntry>,
+) -> FrameType {
+    let filename = std::path::Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if filename.contains("flat") {
+        return FrameType::Flat;
+    }
+
+    if let Some(kw) = keywords.get("IMAGETYP") {
+        if kw.value.to_lowercase().contains("flat") {
+            return FrameType::Flat;
+        }
+    }
+
+    FrameType::Light
+}
+
+// ── Calibration masters ───────────────────────────────────────────────────────
+
+struct CalibrationMasters {
+    bias:     Option<Vec<f32>>,  // normalized f32, interleaved channels
+    dark:     Option<Vec<f32>>,  // normalized f32, interleaved channels
+    flat:     Option<Vec<f32>>,  // normalized f32 centered ~1.0, interleaved channels
+    channels: usize,
+}
+
+/// Scan caldir for master bias, dark, and flat files.
+/// Identified by filename containing "bias", "dark", or "flat" (case-insensitive).
+/// Supports .fit, .fits, .fts, .xisf extensions.
+fn load_calibration_masters(caldir: &str, messages: &mut Vec<String>) -> CalibrationMasters {
+    let mut bias_buf: Option<Vec<f32>> = None;
+    let mut dark_buf: Option<Vec<f32>> = None;
+    let mut flat_buf: Option<Vec<f32>> = None;
+    let mut cal_channels = 1usize;
+
+    let entries = match std::fs::read_dir(caldir) {
+        Ok(e) => e,
+        Err(e) => {
+            messages.push(format!(
+                "Warning: cannot read calibration directory '{}': {}", caldir, e
+            ));
+            return CalibrationMasters { bias: None, dark: None, flat: None, channels: 1 };
+        }
+    };
+
+    let mut files: Vec<std::path::PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .filter(|p| {
+            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            matches!(ext.as_str(), "fit" | "fits" | "fts" | "xisf")
+        })
+        .collect();
+    files.sort();
+
+    for path in &files {
+        let filename = path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        let cal_type = if filename.contains("bias") {
+            "bias"
+        } else if filename.contains("dark") {
+            "dark"
+        } else if filename.contains("flat") {
+            "flat"
+        } else {
+            continue;
+        };
+
+        let path_str = match path.to_str() {
+            Some(s) => s,
+            None    => continue,
+        };
+
+        let buf = match read_image_file(path_str) {
+            Ok(b)  => b,
+            Err(e) => {
+                messages.push(format!(
+                    "Warning: cannot load {} master '{}': {}", cal_type, path_str, e
+                ));
+                continue;
+            }
+        };
+
+        let pixels = match buf.pixels {
+            Some(p) => p,
+            None    => {
+                messages.push(format!(
+                    "Warning: {} master '{}' has no pixel data", cal_type, path_str
+                ));
+                continue;
+            }
+        };
+
+        let c = buf.channels as usize;
+        let normalized = to_f32_normalized_cal(&pixels);
+
+        messages.push(format!(
+            "Calibration: loaded {} master '{}' ({}×{} {} ch)",
+            cal_type, filename, buf.width, buf.height, c
+        ));
+
+        cal_channels = cal_channels.max(c);
+
+        match cal_type {
+            "bias" => bias_buf = Some(normalized),
+            "dark" => dark_buf = Some(normalized),
+            "flat" => flat_buf = Some(normalized),
+            _      => {}
+        }
+    }
+
+    // Normalize flat master so values center around 1.0 per channel
+    if let Some(ref mut flat) = flat_buf {
+        normalize_flat_inplace(flat, cal_channels);
+    }
+
+    CalibrationMasters { bias: bias_buf, dark: dark_buf, flat: flat_buf, channels: cal_channels }
+}
+
+/// Convert PixelData to normalized f32 for calibration masters.
+fn to_f32_normalized_cal(pixels: &PixelData) -> Vec<f32> {
+    match pixels {
+        PixelData::U8(v)  => v.iter().map(|&x| x as f32 / 255.0).collect(),
+        PixelData::U16(v) => v.iter().map(|&x| x as f32 / 65535.0).collect(),
+        PixelData::F32(v) => v.clone(),
+    }
+}
+
+/// Normalize a flat master in place so each channel's mean is 1.0.
+fn normalize_flat_inplace(flat: &mut Vec<f32>, channels: usize) {
+    let n_pixels = flat.len() / channels.max(1);
+    if n_pixels == 0 { return; }
+    for ch in 0..channels {
+        let mean: f32 = (0..n_pixels)
+            .map(|px| flat[px * channels + ch])
+            .sum::<f32>() / n_pixels as f32;
+        if mean > 1e-6 {
+            for px in 0..n_pixels {
+                flat[px * channels + ch] /= mean;
+            }
+        }
+    }
+}
+
+/// Apply calibration to a normalized f32 frame buffer in place.
+/// Order: bias subtract → dark subtract → flat divide.
+/// Per-channel, per-pixel. Values clamped to [0, 1].
+fn apply_calibration(frame: &mut Vec<f32>, cal: &CalibrationMasters, channels: usize) {
+    let n_pixels = frame.len() / channels.max(1);
+    for px in 0..n_pixels {
+        for ch in 0..channels {
+            let idx = px * channels + ch;
+            let mut val = frame[idx];
+
+            if let Some(ref bias) = cal.bias {
+                let bias_ch  = ch.min(cal.channels.saturating_sub(1));
+                let bias_idx = px * cal.channels + bias_ch;
+                if bias_idx < bias.len() { val -= bias[bias_idx]; }
+            }
+            if let Some(ref dark) = cal.dark {
+                let dark_ch  = ch.min(cal.channels.saturating_sub(1));
+                let dark_idx = px * cal.channels + dark_ch;
+                if dark_idx < dark.len() { val -= dark[dark_idx]; }
+            }
+            if let Some(ref flat) = cal.flat {
+                let flat_ch  = ch.min(cal.channels.saturating_sub(1));
+                let flat_idx = px * cal.channels + flat_ch;
+                if flat_idx < flat.len() {
+                    let f = flat[flat_idx];
+                    if f > 1e-6 { val /= f; }
+                }
+            }
+
+            frame[idx] = val.clamp(0.0, 1.0);
+        }
+    }
+}
+
+// ── Flat stacking ─────────────────────────────────────────────────────────────
+
+/// Stack flat frames: subtract bias (if available), normalize each sub by its
+/// per-channel mean, then median-combine. Returns a master flat ImageBuffer
+/// with F32 pixels centered around 1.0.
+fn stack_flat_frames(
+    ctx:      &AppContext,
+    messages: &mut Vec<String>,
+    cal:      &CalibrationMasters,
+) -> Result<ImageBuffer, PluginError> {
+    let first_path = ctx.file_list.iter()
+        .find(|p| ctx.image_buffers.get(*p).and_then(|b| b.pixels.as_ref()).is_some())
+        .ok_or_else(|| PluginError::new("NO_PIXELS", "No flat frames with pixel data."))?
+        .clone();
+
+    let first_buf = ctx.image_buffers.get(&first_path).unwrap();
+    let width     = first_buf.width  as usize;
+    let height    = first_buf.height as usize;
+    let n_pixels  = width * height;
+
+    let bayer_pattern = first_buf.keywords.get("BAYERPAT")
+        .map(|kw| BayerPattern::from_str(&kw.value))
+        .unwrap_or(BayerPattern::RGGB);
+
+    let is_color = first_buf.color_space == ColorSpace::Bayer
+                || first_buf.color_space == ColorSpace::RGB;
+    let out_ch   = if is_color { 3usize } else { 1usize };
+    let total    = ctx.file_list.len();
+
+    messages.push(format!("FlatStack: {} frames, {}×{} {}",
+        total, width, height, if is_color { "color" } else { "mono" }));
+
+    let mut flat_planes: Vec<Vec<f32>> = Vec::with_capacity(total);
+
+    for (i, path) in ctx.file_list.iter().enumerate() {
+        let buf = match ctx.image_buffers.get(path) {
+            Some(b) => b,
+            None    => { messages.push(format!("FlatStack: frame {} skipped — no buffer", i + 1)); continue; }
+        };
+        let pixels = match &buf.pixels {
+            Some(p) => p,
+            None    => { messages.push(format!("FlatStack: frame {} skipped — no pixels", i + 1)); continue; }
+        };
+
+        // Decode to normalized f32 RGB or mono
+        let mut rgb: Vec<f32> = if buf.color_space == ColorSpace::Bayer {
+            let mono = analysis::to_f32_normalized(pixels);
+            debayer_bilinear(&mono, width, height, bayer_pattern)
+        } else {
+            analysis::to_f32_normalized(pixels)
+        };
+
+        // Subtract bias master (per channel)
+        if let Some(ref bias) = cal.bias {
+            let bc = cal.channels.max(1);
+            for px in 0..n_pixels {
+                for ch in 0..out_ch {
+                    let bias_ch  = ch.min(bc - 1);
+                    let bias_idx = px * bc + bias_ch;
+                    let rgb_idx  = px * out_ch + ch;
+                    if bias_idx < bias.len() && rgb_idx < rgb.len() {
+                        rgb[rgb_idx] = (rgb[rgb_idx] - bias[bias_idx]).max(0.0);
+                    }
+                }
+            }
+        }
+
+        // Normalize each sub by a single scalar (overall mean across all channels)
+        // so relative channel ratios are preserved through the median combine.
+        // Per-channel normalization is applied once on the final master instead.
+        let overall_mean: f32 = rgb.iter().sum::<f32>() / rgb.len() as f32;
+        if overall_mean > 1e-6 {
+            for v in rgb.iter_mut() {
+                *v /= overall_mean;
+            }
+        }
+
+        flat_planes.push(rgb);
+
+        let pct = ((i + 1) as f32 / total as f32 * 100.0).round() as u32;
+        messages.push(format!("FlatStack: normalizing frame {} / {} ({}%)…", i + 1, total, pct));
+    }
+
+    if flat_planes.is_empty() {
+        return Err(PluginError::new("NO_FRAMES_STACKED", "No flat frames could be loaded."));
+    }
+
+    let n_frames = flat_planes.len();
+    messages.push(format!("FlatStack: median-combining {} frames…", n_frames));
+
+    // Median-combine per pixel per channel in parallel
+    let master_pixels: Vec<f32> = (0..n_pixels * out_ch)
+        .into_par_iter()
+        .map(|flat_idx| {
+            let mut samples: Vec<f32> = flat_planes.iter()
+                .map(|plane| plane[flat_idx])
+                .collect();
+            samples.sort_unstable_by(|a, b| {
+                a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            let n = samples.len();
+            if n % 2 == 1 {
+                samples[n / 2]
+            } else {
+                (samples[n / 2 - 1] + samples[n / 2]) * 0.5
+            }
+        })
+        .collect();
+
+    // Normalize master flat so each channel's mean is 1.0
+    // This ensures the flat displays as neutral gray and is correctly
+    // balanced for use as a calibration master regardless of the
+    // light source color temperature.
+    let mut master_pixels = master_pixels;
+    for ch in 0..out_ch {
+        let mean: f32 = (0..n_pixels)
+            .map(|px| master_pixels[px * out_ch + ch])
+            .sum::<f32>() / n_pixels as f32;
+        if mean > 1e-6 {
+            for px in 0..n_pixels {
+                master_pixels[px * out_ch + ch] /= mean;
+            }
+        }
+    }
+
+    let timestamp_display = Utc::now().format("%Y-%m-%d %H:%M").to_string();
+    let stack_label = format!(
+        "MASTER FLAT \u{2014} {} frames \u{2014} {}", n_frames, timestamp_display
+    );
+
+    messages.push(format!("FlatStack: master flat created from {} frames", n_frames));
+
+    Ok(ImageBuffer {
+        filename:      stack_label,
+        width:         width  as u32,
+        height:        height as u32,
+        display_width: width  as u32,
+        bit_depth:     BitDepth::F32,
+        color_space:   if is_color { ColorSpace::RGB } else { ColorSpace::Mono },
+        channels:      out_ch as u8,
+        keywords:      build_flat_keywords(width, height, n_frames),
+        pixels:        Some(PixelData::F32(master_pixels)),
+    })
+}
 
 // ── Snapshot type ─────────────────────────────────────────────────────────────
 
@@ -87,19 +437,71 @@ impl PhotonPlugin for StackFrames {
     fn name(&self) -> &str { "StackFrames" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str {
-        "Stacks loaded frames with FFT alignment, RANSAC rigid refinement, and \
-         meridian-flip-aware group reference selection. Debayers per-frame before alignment. \
-         Outputs RGB for OSC/color sessions, grayscale for mono sessions."
+        "Stacks loaded frames. Light frames: FFT alignment, RANSAC rigid refinement, \
+         meridian-flip-aware group reference selection, optional calibration via caldir=. \
+         Flat frames: bias-subtract, normalize per sub, median-combine to master flat. \
+         Frame type is detected automatically from filename or IMAGETYP keyword."
     }
-    fn parameters(&self) -> Vec<ParamSpec> { vec![] }
 
-    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError> {
+    fn parameters(&self) -> Vec<ParamSpec> {
+        vec![
+            ParamSpec {
+                name:        "caldir".to_string(),
+                param_type:  ParamType::Path,
+                required:    false,
+                description: "Directory containing master calibration files. Files are \
+                              identified by filename containing 'bias', 'dark', or 'flat'.".to_string(),
+                default:     None,
+            },
+        ]
+    }
+
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
         if ctx.file_list.is_empty() {
             return Err(PluginError::new("NO_FILES", "No files loaded."));
         }
         ctx.clear_stack();
 
-        // ── Step 1: Snapshot collection (debayer-first) ───────────────────────
+        let caldir = args.get("caldir").map(|s| s.trim_matches('"').to_string());
+
+        // ── Detect frame type from first file ─────────────────────────────────
+        let first_path = ctx.file_list.first().unwrap().clone();
+        let first_keywords = ctx.image_buffers.get(&first_path)
+            .map(|b| b.keywords.clone())
+            .unwrap_or_default();
+        let frame_type = detect_frame_type(&first_path, &first_keywords);
+
+        info!("StackFrames: detected frame type = {:?}", frame_type);
+
+        // ── Load calibration masters ──────────────────────────────────────────
+        let mut messages: Vec<String> = Vec::new();
+        let cal = if let Some(ref dir) = caldir {
+            load_calibration_masters(dir, &mut messages)
+        } else {
+            CalibrationMasters { bias: None, dark: None, flat: None, channels: 1 }
+        };
+
+        // ── Branch: flat vs light ─────────────────────────────────────────────
+        if frame_type == FrameType::Flat {
+            let flat_buf = stack_flat_frames(ctx, &mut messages, &cal)?;
+            let n_frames = ctx.file_list.len();
+            ctx.stack_result = Some(flat_buf);
+
+            let full_message = messages.join("\n");
+            info!("StackFrames (flat): {}", full_message);
+
+            return Ok(PluginOutput::Data(serde_json::json!({
+                "plugin":          "StackFrames",
+                "frame_type":      "flat",
+                "stacked_frames":  n_frames,
+                "total_frames":    n_frames,
+                "message":         full_message,
+                "stack_available": true,
+            })));
+        }
+
+        // ── Light frame stacking ──────────────────────────────────────────────
+
         let det_config = StarDetectionConfig::default();
         let snapshots  = collect_snapshots(ctx, &det_config)?;
 
@@ -112,7 +514,6 @@ impl PhotonPlugin for StackFrames {
         let n_pixels = width * height;
         let total    = snapshots.len();
 
-        // ── Step 2: Group frames by ROTATOR ───────────────────────────────────
         let n_groups = snapshots.iter().map(|s| s.group).max().unwrap_or(0) + 1;
         info!("StackFrames: identified {} rotational group(s)", n_groups);
 
@@ -126,8 +527,7 @@ impl PhotonPlugin for StackFrames {
                 g, count, snapshots[ridx].index, short_name(&snapshots[ridx].path));
         }
 
-        // ── Step 3: Designate master group (largest) ──────────────────────────
-        let master_group = (0..n_groups)
+        let master_group   = (0..n_groups)
             .max_by_key(|&g| snapshots.iter().filter(|s| s.group == g).count())
             .unwrap();
         let master_ref_idx = group_refs[master_group];
@@ -138,11 +538,8 @@ impl PhotonPlugin for StackFrames {
         let ref_filter      = snapshots[master_ref_idx].filter.clone();
         let ref_color_space = snapshots[master_ref_idx].color_space.clone();
 
-        // Determine output color mode from the master reference frame.
-        // Bayer and RGB input → color (RGB) output.
-        // Mono input → grayscale output.
-        let is_color = ref_color_space == ColorSpace::Bayer
-                    || ref_color_space == ColorSpace::RGB;
+        let is_color   = ref_color_space == ColorSpace::Bayer
+                      || ref_color_space == ColorSpace::RGB;
         let n_channels = if is_color { 3 } else { 1 };
 
         info!("StackFrames: output mode = {}", if is_color { "RGB (color)" } else { "Mono (grayscale)" });
@@ -155,9 +552,8 @@ impl PhotonPlugin for StackFrames {
             .and_then(|b| b.keywords.get("OBJECT"))
             .map(|kw| kw.value.clone());
 
-        // ── Step 4: Solve M_cross for each non-master group ───────────────────
+        // ── Solve M_cross for each non-master group ───────────────────────────
         let mut m_cross: Vec<AffineRigid> = (0..n_groups).map(|_| AffineRigid::identity()).collect();
-        let mut messages: Vec<String> = Vec::new();
 
         for g in 0..n_groups {
             if g == master_group { continue; }
@@ -172,8 +568,7 @@ impl PhotonPlugin for StackFrames {
                 Some(t) => t,
                 None    => {
                     let msg = format!(
-                        "StackFrames: cross-group {} FFT failed — frames from this group will be excluded",
-                        g
+                        "StackFrames: cross-group {} FFT failed — frames from this group will be excluded", g
                     );
                     info!("{}", msg);
                     messages.push(msg);
@@ -206,9 +601,9 @@ impl PhotonPlugin for StackFrames {
                 }
             };
 
-            let _ = ransac; // triangle solver preferred; RANSAC retained as fallback above
+            let _ = ransac;
 
-            let flip = AffineRigid::flip_180(width, height);
+            let flip   = AffineRigid::flip_180(width, height);
             m_cross[g] = compose(&post_flip, &flip);
 
             info!("StackFrames: M_cross[{}] = a={:.4} b={:.4} tx={:.2} ty={:.2}",
@@ -236,11 +631,7 @@ impl PhotonPlugin for StackFrames {
             }
         }
 
-        // ── Step 5: Pass 1 — Welford online mean + M2 ────────────────────────
-        //
-        // For mono: mean_buf / m2_buf / count_buf are n_pixels long.
-        // For color: mean_buf / m2_buf are n_pixels * 3 long (interleaved RGB);
-        //            count_buf is n_pixels long (coverage is identical per channel).
+        // ── Pass 1 — Welford online mean + M2 ────────────────────────────────
 
         let mut mean_buf:  Vec<f32> = vec![0.0; n_pixels * n_channels];
         let mut m2_buf:    Vec<f32> = vec![0.0; n_pixels * n_channels];
@@ -249,13 +640,13 @@ impl PhotonPlugin for StackFrames {
         let mut cached_transforms: Vec<Option<AffineRigid>> = (0..snapshots.len())
             .map(|_| None).collect();
 
-        let mut group_ref_luma: Vec<Option<Vec<f32>>>  = (0..n_groups).map(|_| None).collect();
+        let mut group_ref_luma:  Vec<Option<Vec<f32>>> = (0..n_groups).map(|_| None).collect();
         let mut group_ref_stars: Vec<Option<Vec<crate::analysis::stars::StarCandidate>>>
             = (0..n_groups).map(|_| None).collect();
         group_ref_luma[master_group]  = Some(master_ref_luma.clone());
         group_ref_stars[master_group] = Some(master_ref_stars.clone());
 
-        let bg_sigma_config = SigmaClipConfig::default();
+        let bg_sigma_config    = SigmaClipConfig::default();
         let mut contributions: Vec<FrameContribution> = Vec::new();
         let mut total_integration = 0.0f32;
 
@@ -281,15 +672,13 @@ impl PhotonPlugin for StackFrames {
                 }
             }
 
-            // Load luma for alignment (always mono for FFT/RANSAC)
             let luma = match load_debayered_luma(ctx, snap) {
-                Ok(l) => l,
+                Ok(l)  => l,
                 Err(_) => continue,
             };
 
-            // Ensure group reference luma is loaded
             if group_ref_luma[snap.group].is_none() {
-                let g_ref = &snapshots[group_refs[snap.group]];
+                let g_ref  = &snapshots[group_refs[snap.group]];
                 let g_luma = load_debayered_luma(ctx, g_ref)?;
                 group_ref_stars[snap.group] = Some(g_ref.stars.clone());
                 group_ref_luma[snap.group]  = Some(g_luma);
@@ -297,14 +686,12 @@ impl PhotonPlugin for StackFrames {
             let g_ref_luma  = group_ref_luma[snap.group].as_ref().unwrap();
             let g_ref_stars = group_ref_stars[snap.group].as_ref().unwrap();
 
-            // Background normalize luma for alignment
             let bg_est   = estimate_background(&luma, &bg_sigma_config);
             let bg_level = bg_est.median;
             contrib.background_level = Some(bg_level);
             let divisor  = if bg_level > 1e-6 { bg_level } else { 1.0 };
             let normalized_luma: Vec<f32> = luma.par_iter().map(|&v| v / divisor).collect();
 
-            // Within-group transform G
             let g_transform: Option<AffineRigid> = if i == group_refs[snap.group] {
                 contrib.fft_translation     = Some((0.0, 0.0));
                 contrib.alignment_validated = Some(true);
@@ -331,24 +718,23 @@ impl PhotonPlugin for StackFrames {
                 }
             };
 
-            // Compose: T = M_cross ∘ G
             let g_xform = g_transform.unwrap();
             let t_final = compose(&m_cross[snap.group], &g_xform);
 
-            // Load pixel data for accumulation — mono luma or full RGB
-            let frame_pixels = load_frame_pixels(ctx, snap, is_color, divisor);
+            // Load and calibrate frame pixels
+            let mut frame_pixels = load_frame_pixels(ctx, snap, is_color, divisor);
+            if cal.bias.is_some() || cal.dark.is_some() || cal.flat.is_some() {
+                apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });
+            }
 
-            // Resample and accumulate
             let theta = t_final.theta();
             if is_color {
-                // Resample all three channels using the same spatial transform
                 let aligned_rgb = if theta.abs() >= MIN_ROTATION_TO_APPLY || t_final.a < 0.5 {
                     resample_frame_rgb_affine(&frame_pixels, width, height, &t_final)
                 } else {
                     resample_frame_rgb(&frame_pixels, width, height, t_final.tx, t_final.ty)
                 };
 
-                // Welford accumulation across all channels
                 for px in 0..n_pixels {
                     count_buf[px] += 1;
                     let count = count_buf[px] as f32;
@@ -384,9 +770,7 @@ impl PhotonPlugin for StackFrames {
             cached_transforms[i] = Some(t_final);
 
             contrib.included = true;
-            if let Some(et) = snap.exptime {
-                total_integration += et;
-            }
+            if let Some(et) = snap.exptime { total_integration += et; }
 
             let pct = ((i + 1) as f32 / total as f32 * 100.0).round() as u32;
             messages.push(format!("Pass 1 — frame {} / {} ({}%)…", i + 1, total, pct));
@@ -398,9 +782,8 @@ impl PhotonPlugin for StackFrames {
             return Err(PluginError::new("NO_FRAMES_STACKED", "No frames could be stacked."));
         }
 
-        // Per-pixel (per-channel) stddev from Welford M2
+        // Per-pixel stddev from Welford M2
         let stddev_buf: Vec<f32> = if is_color {
-            // stddev per channel per pixel — same length as mean_buf (n_pixels * 3)
             let m2_ref = &m2_buf;
             count_buf.par_iter()
                 .enumerate()
@@ -432,7 +815,7 @@ impl PhotonPlugin for StackFrames {
             };
 
             let luma = match load_debayered_luma(ctx, snap) {
-                Ok(l) => l,
+                Ok(l)  => l,
                 Err(_) => continue,
             };
 
@@ -440,7 +823,10 @@ impl PhotonPlugin for StackFrames {
             let bg_level = bg_est.median;
             let divisor  = if bg_level > 1e-6 { bg_level } else { 1.0 };
 
-            let frame_pixels = load_frame_pixels(ctx, snap, is_color, divisor);
+            let mut frame_pixels = load_frame_pixels(ctx, snap, is_color, divisor);
+            if cal.bias.is_some() || cal.dark.is_some() || cal.flat.is_some() {
+                apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });
+            }
 
             let theta = xform.theta();
             if is_color {
@@ -450,8 +836,6 @@ impl PhotonPlugin for StackFrames {
                     resample_frame_rgb(&frame_pixels, width, height, xform.tx, xform.ty)
                 };
 
-                // Sigma clip decision uses green channel (≈ luma); apply same
-                // accept/reject to all three channels per pixel.
                 for px in 0..n_pixels {
                     let mean_luma = mean_buf[px * 3 + 1];
                     let sd_luma   = stddev_buf[px * 3 + 1];
@@ -509,7 +893,6 @@ impl PhotonPlugin for StackFrames {
                 .collect()
         };
 
-        // Normalize output to [0, 1] per-channel for color, globally for mono
         let stack_pixels = normalize_output(&raw_pixels, is_color, n_pixels);
 
         let completed_at      = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
@@ -545,17 +928,27 @@ impl PhotonPlugin for StackFrames {
         ctx.stack_contributions = contributions;
         ctx.stack_summary       = Some(summary.clone());
 
+        let cal_note = if caldir.is_some() {
+            format!("  Calibration:           applied ({}{}{})",
+                if cal.bias.is_some() { "bias " } else { "" },
+                if cal.dark.is_some() { "dark " } else { "" },
+                if cal.flat.is_some() { "flat" }  else { "" },
+            )
+        } else {
+            "  Calibration:           none".to_string()
+        };
+
         let quality_summary = format!(
-            "Stack Quality Summary:\n  Frames stacked:        {} / {}\n  SNR improvement:       ~{:.1}x (vs single frame)\n  Alignment success:     {:.1}%\n  Background uniformity: {}\n  Output mode:           {}",
+            "Stack Quality Summary:\n  Frames stacked:        {} / {}\n  SNR improvement:       ~{:.1}x (vs single frame)\n  Alignment success:     {:.1}%\n  Background uniformity: {}\n  Output mode:           {}\n{}",
             summary.stacked_frames, summary.total_frames,
             summary.snr_improvement, summary.alignment_success_rate * 100.0,
             summary.background_uniformity,
             if is_color { "RGB color" } else { "Grayscale" },
+            cal_note,
         );
 
         messages.push(format!(
-            "Stacking complete \u{2014} {} / {} frames stacked",
-            stacked_count, total
+            "Stacking complete \u{2014} {} / {} frames stacked", stacked_count, total
         ));
         messages.push(quality_summary);
 
@@ -564,6 +957,7 @@ impl PhotonPlugin for StackFrames {
 
         Ok(PluginOutput::Data(serde_json::json!({
             "plugin":          "StackFrames",
+            "frame_type":      "light",
             "stacked_frames":  stacked_count,
             "total_frames":    total,
             "message":         full_message,
@@ -574,9 +968,6 @@ impl PhotonPlugin for StackFrames {
 
 // ── Output normalization ──────────────────────────────────────────────────────
 
-/// Normalize stacked pixels to [0, 1].
-/// Mono: single global min/max.
-/// Color: per-channel min/max to preserve color balance.
 fn normalize_output(raw: &[f32], is_color: bool, n_pixels: usize) -> Vec<f32> {
     if !is_color {
         let max_val = raw.par_iter().cloned().reduce(|| f32::NEG_INFINITY, f32::max);
@@ -585,7 +976,6 @@ fn normalize_output(raw: &[f32], is_color: bool, n_pixels: usize) -> Vec<f32> {
         return raw.par_iter().map(|&v| ((v - min_val) / range).clamp(0.0, 1.0)).collect();
     }
 
-    // Color: normalize each channel independently
     let mut out = vec![0.0f32; raw.len()];
     for ch in 0..3 {
         let ch_vals: Vec<f32> = (0..n_pixels).map(|px| raw[px * 3 + ch]).collect();
@@ -599,74 +989,10 @@ fn normalize_output(raw: &[f32], is_color: bool, n_pixels: usize) -> Vec<f32> {
     out
 }
 
-// ── Frame pixel loader ────────────────────────────────────────────────────────
-
-/// Load a frame's pixels for accumulation.
-/// - Mono sessions: returns background-normalized luma (n_pixels f32).
-/// - Color sessions: returns background-normalized interleaved RGB (n_pixels * 3 f32).
-///   Bayer frames are debayered; already-RGB frames are used directly.
-fn load_frame_pixels(
-    ctx:      &AppContext,
-    snap:     &FrameSnapshot,
-    is_color: bool,
-    divisor:  f32,
-) -> Vec<f32> {
-    let buf = match ctx.image_buffers.get(&snap.path) {
-        Some(b) => b,
-        None    => return vec![0.0; if is_color { snap.width * snap.height * 3 } else { snap.width * snap.height }],
-    };
-    let pixels = match &buf.pixels {
-        Some(p) => p,
-        None    => return vec![0.0; if is_color { snap.width * snap.height * 3 } else { snap.width * snap.height }],
-    };
-
-    if !is_color {
-        // Reuse existing luma path, already normalized by caller via divisor
-        let luma = extract_or_debayer_luma(
-            pixels, snap.width, snap.height, snap.channels,
-            &snap.color_space, snap.bayer_pattern,
-        );
-        luma.into_iter().map(|v| v / divisor).collect()
-    } else {
-        // Produce interleaved RGB f32
-        let rgb = match snap.color_space {
-            ColorSpace::Bayer => {
-                // Debayer raw mono → RGB
-                let mono: Vec<f32> = match pixels {
-                    PixelData::U8(v)  => v.iter().map(|&p| p as f32 / 255.0).collect(),
-                    PixelData::U16(v) => v.iter().map(|&p| p as f32 / 65535.0).collect(),
-                    PixelData::F32(v) => v.clone(),
-                };
-                debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern)
-            }
-            ColorSpace::RGB => {
-                // Already RGB — normalize to f32
-                match pixels {
-                    PixelData::U8(v)  => v.iter().map(|&p| p as f32 / 255.0).collect(),
-                    PixelData::U16(v) => v.iter().map(|&p| p as f32 / 65535.0).collect(),
-                    PixelData::F32(v) => v.clone(),
-                }
-            }
-            ColorSpace::Mono => {
-                // Shouldn't reach here in color mode but handle gracefully:
-                // replicate mono across R, G, B
-                let mono: Vec<f32> = match pixels {
-                    PixelData::U8(v)  => v.iter().map(|&p| p as f32 / 255.0).collect(),
-                    PixelData::U16(v) => v.iter().map(|&p| p as f32 / 65535.0).collect(),
-                    PixelData::F32(v) => v.clone(),
-                };
-                mono.iter().flat_map(|&v| [v, v, v]).collect()
-            }
-        };
-        // Background-normalize all channels by the same divisor (computed from luma)
-        rgb.into_iter().map(|v| v / divisor).collect()
-    }
-}
-
-// ── Snapshot collection (debayer-first) ───────────────────────────────────────
+// ── Snapshot collection ───────────────────────────────────────────────────────
 
 fn collect_snapshots(
-    ctx: &AppContext,
+    ctx:        &AppContext,
     det_config: &StarDetectionConfig,
 ) -> Result<Vec<FrameSnapshot>, PluginError> {
     let mut snapshots: Vec<FrameSnapshot> = Vec::new();
@@ -681,257 +1007,195 @@ fn collect_snapshots(
             None    => continue,
         };
 
-        let (cached_fwhm, cached_ecc) = if let Some(ar) = ctx.analysis_results.get(path) {
-            (ar.fwhm, ar.eccentricity)
-        } else {
-            (None, None)
-        };
-
-        let filter   = buf.keywords.get("FILTER").map(|kw| kw.value.clone());
-        let exptime  = buf.keywords.get("EXPTIME")
-            .and_then(|kw| kw.value.trim().parse::<f32>().ok());
-        let rotator  = buf.keywords.get("ROTATOR")
-            .and_then(|kw| kw.value.trim().parse::<f32>().ok());
-        let date_obs = buf.keywords.get("DATE-OBS")
-            .and_then(|kw| parse_date_obs(&kw.value));
-
-        let width    = buf.width    as usize;
-        let height   = buf.height   as usize;
+        let width    = buf.width  as usize;
+        let height   = buf.height as usize;
         let channels = buf.channels as usize;
 
         let bayer_pattern = buf.keywords.get("BAYERPAT")
-            .or_else(|| buf.keywords.get("BAYER_PATTERN"))
             .map(|kw| BayerPattern::from_str(&kw.value))
             .unwrap_or(BayerPattern::RGGB);
 
-        let luma = extract_or_debayer_luma(pixels, width, height, channels,
-            &buf.color_space, bayer_pattern);
+        let luma = if buf.color_space == ColorSpace::Bayer {
+            let mono = analysis::to_f32_normalized(pixels);
+            let rgb  = debayer_bilinear(&mono, width, height, bayer_pattern);
+            analysis::extract_luminance(&rgb, width, height, 3)
+        } else {
+            analysis::to_luminance(pixels, channels)
+        };
 
-        let stars = detect_stars(&luma, width, height, det_config);
+        let stars       = detect_stars(&luma, width, height, det_config);
+        let fwhm         = if stars.len() >= 5 { compute_fwhm(&stars, None).map(|r| r.fwhm_pixels) } else { None };
+        let eccentricity = if stars.len() >= 5 { compute_eccentricity(&stars).map(|r| r.eccentricity) } else { None };
 
-        let fwhm         = cached_fwhm.or_else(|| compute_fwhm(&stars, None).map(|r| r.fwhm_pixels));
-        let eccentricity = cached_ecc.or_else(|| compute_eccentricity(&stars).map(|r| r.eccentricity));
+        let filter   = buf.keywords.get("FILTER").map(|kw| kw.value.clone());
+        let exptime  = buf.keywords.get("EXPTIME").and_then(|kw| kw.value.parse::<f32>().ok());
+        let rotator  = buf.keywords.get("ROTATOR").and_then(|kw| kw.value.parse::<f32>().ok());
+        let date_obs = buf.keywords.get("DATE-OBS").and_then(|kw| parse_date_obs(&kw.value));
 
         snapshots.push(FrameSnapshot {
             index,
             path: path.clone(),
-            width,
-            height,
-            channels,
-            color_space: buf.color_space.clone(),
+            width, height, channels,
+            color_space:   buf.color_space.clone(),
             bayer_pattern,
-            filter,
-            exptime,
-            rotator,
-            date_obs,
-            fwhm,
-            eccentricity,
-            stars,
+            filter, exptime, fwhm, eccentricity, rotator, stars, date_obs,
             group: 0,
         });
     }
 
-    // Assign rotational groups
-    let mut group_anchors:        Vec<f32>         = Vec::new();
-    let mut group_last_date_obs:  Vec<Option<f64>> = Vec::new();
-
-    for snap in snapshots.iter_mut() {
-        let rot     = snap.rotator.unwrap_or(0.0);
-        let obs_sec = snap.date_obs;
-
-        let mut found = None;
-        for (g, &anchor) in group_anchors.iter().enumerate() {
-            let delta = circular_delta(rot, anchor);
-            if delta > ROTATOR_GROUP_TOLERANCE { continue; }
-            let within_session = match (obs_sec, group_last_date_obs[g]) {
-                (Some(t), Some(last)) => {
-                    let gap_minutes = (t - last).abs() as f32 / 60.0;
-                    gap_minutes <= SESSION_GAP_MINUTES
-                }
-                _ => true,
-            };
-            if within_session { found = Some(g); break; }
-        }
-
-        snap.group = match found {
-            Some(g) => {
-                if obs_sec.is_some() { group_last_date_obs[g] = obs_sec; }
-                g
-            }
-            None => {
-                group_anchors.push(rot);
-                group_last_date_obs.push(obs_sec);
-                group_anchors.len() - 1
-            }
-        };
+    if !snapshots.is_empty() {
+        assign_groups(&mut snapshots);
     }
 
     Ok(snapshots)
 }
 
-/// Parse a DATE-OBS string (ISO 8601) to Unix seconds.
-fn parse_date_obs(s: &str) -> Option<f64> {
-    let s = s.trim();
-    let (date_part, time_part) = if let Some(idx) = s.find('T') {
-        (&s[..idx], &s[idx+1..])
-    } else {
-        return None;
-    };
+// ── Group assignment ──────────────────────────────────────────────────────────
 
-    let date_parts: Vec<&str> = date_part.split('-').collect();
-    if date_parts.len() != 3 { return None; }
-    let year:  i64 = date_parts[0].parse().ok()?;
-    let month: i64 = date_parts[1].parse().ok()?;
-    let day:   i64 = date_parts[2].parse().ok()?;
+fn assign_groups(snapshots: &mut Vec<FrameSnapshot>) {
+    snapshots.sort_by(|a, b| {
+        a.date_obs.partial_cmp(&b.date_obs).unwrap_or(std::cmp::Ordering::Equal)
+    });
 
-    let time_parts: Vec<&str> = time_part.split(':').collect();
-    if time_parts.len() < 2 { return None; }
-    let hour: i64 = time_parts[0].parse().ok()?;
-    let min:  i64 = time_parts[1].parse().ok()?;
-    let sec:  f64 = time_parts.get(2)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0.0);
+    let mut group = 0usize;
+    snapshots[0].group = 0;
 
-    let a = (14 - month) / 12;
-    let y = year + 4800 - a;
-    let m = month + 12 * a - 3;
-    let jdn = day + (153 * m + 2) / 5 + 365 * y + y / 4 - y / 100 + y / 400 - 32045;
-    let days_since_epoch = jdn - 2440588;
-    let unix = days_since_epoch as f64 * 86400.0
-        + hour as f64 * 3600.0
-        + min  as f64 * 60.0
-        + sec;
-
-    Some(unix)
-}
-
-/// Smallest absolute circular difference between two angles in degrees.
-fn circular_delta(a: f32, b: f32) -> f32 {
-    let d = (a - b).rem_euclid(360.0);
-    if d > 180.0 { 360.0 - d } else { d }
-}
-
-// ── Per-frame luma loader (debayered) ─────────────────────────────────────────
-
-fn load_debayered_luma(
-    ctx:  &AppContext,
-    snap: &FrameSnapshot,
-) -> Result<Vec<f32>, PluginError> {
-    let buf = ctx.image_buffers.get(&snap.path)
-        .ok_or_else(|| PluginError::new("NO_BUF", &format!("Buffer missing: {}", snap.path)))?;
-    let pixels = buf.pixels.as_ref()
-        .ok_or_else(|| PluginError::new("NO_PIXELS", &format!("No pixels: {}", snap.path)))?;
-
-    Ok(extract_or_debayer_luma(
-        pixels, snap.width, snap.height, snap.channels,
-        &snap.color_space, snap.bayer_pattern,
-    ))
-}
-
-fn extract_or_debayer_luma(
-    pixels:        &PixelData,
-    width:         usize,
-    height:        usize,
-    channels:      usize,
-    color_space:   &ColorSpace,
-    bayer_pattern: BayerPattern,
-) -> Vec<f32> {
-    if *color_space == ColorSpace::Bayer {
-        let mono: Vec<f32> = match pixels {
-            PixelData::U8(v)  => v.iter().map(|&p| p as f32 / 255.0).collect(),
-            PixelData::U16(v) => v.iter().map(|&p| p as f32 / 65535.0).collect(),
-            PixelData::F32(v) => v.clone(),
+    for i in 1..snapshots.len() {
+        let time_gap = match (snapshots[i - 1].date_obs, snapshots[i].date_obs) {
+            (Some(a), Some(b)) => (b - a) / 60.0,
+            _ => 0.0,
         };
-        let rgb = debayer_bilinear(&mono, width, height, bayer_pattern);
-        analysis::extract_luminance(&rgb, width, height, 3)
-    } else {
-        analysis::to_luminance(pixels, channels)
+        let rot_diff = match (snapshots[i - 1].rotator, snapshots[i].rotator) {
+            (Some(a), Some(b)) => (b - a).abs(),
+            _ => 0.0,
+        };
+        if time_gap > SESSION_GAP_MINUTES as f64 && rot_diff > ROTATOR_GROUP_TOLERANCE {
+            group += 1;
+        }
+        snapshots[i].group = group;
     }
 }
 
-// ── Reference frame selection within a group ──────────────────────────────────
+// ── Reference selection ───────────────────────────────────────────────────────
 
 fn select_reference_in_group(snapshots: &[FrameSnapshot], group: usize) -> usize {
     snapshots.iter()
         .enumerate()
         .filter(|(_, s)| s.group == group)
         .min_by(|(_, a), (_, b)| {
-            let fa = a.fwhm.unwrap_or(f32::MAX);
-            let fb = b.fwhm.unwrap_or(f32::MAX);
-            fa.partial_cmp(&fb)
+            a.fwhm.unwrap_or(f32::MAX)
+                .partial_cmp(&b.fwhm.unwrap_or(f32::MAX))
                 .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| {
-                    let ea = a.eccentricity.unwrap_or(f32::MAX);
-                    let eb = b.eccentricity.unwrap_or(f32::MAX);
-                    ea.partial_cmp(&eb).unwrap_or(std::cmp::Ordering::Equal)
-                })
         })
         .map(|(i, _)| i)
         .unwrap_or(0)
 }
 
-// ── RANSAC helper ─────────────────────────────────────────────────────────────
+// ── Pixel loading helpers ─────────────────────────────────────────────────────
+
+fn load_debayered_luma(ctx: &AppContext, snap: &FrameSnapshot) -> Result<Vec<f32>, PluginError> {
+    let buf = ctx.image_buffers.get(&snap.path)
+        .ok_or_else(|| PluginError::new("NO_PIXELS", "Frame buffer missing."))?;
+    let pixels = buf.pixels.as_ref()
+        .ok_or_else(|| PluginError::new("NO_PIXELS", "Frame has no pixel data."))?;
+
+    if snap.color_space == ColorSpace::Bayer {
+        let mono = analysis::to_f32_normalized(pixels);
+        let rgb  = debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern);
+        Ok(analysis::extract_luminance(&rgb, snap.width, snap.height, 3))
+    } else {
+        Ok(analysis::to_luminance(pixels, snap.channels))
+    }
+}
+
+fn load_frame_pixels(
+    ctx:      &AppContext,
+    snap:     &FrameSnapshot,
+    is_color: bool,
+    divisor:  f32,
+) -> Vec<f32> {
+    let empty = || vec![0.0f32; snap.width * snap.height * if is_color { 3 } else { 1 }];
+
+    let buf = match ctx.image_buffers.get(&snap.path) {
+        Some(b) => b,
+        None    => return empty(),
+    };
+    let pixels = match &buf.pixels {
+        Some(p) => p,
+        None    => return empty(),
+    };
+
+    if is_color {
+        let rgb = if snap.color_space == ColorSpace::Bayer {
+            let mono = analysis::to_f32_normalized(pixels);
+            debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern)
+        } else {
+            analysis::to_f32_normalized(pixels)
+        };
+        rgb.iter().map(|&v| v / divisor).collect()
+    } else {
+        analysis::to_luminance(pixels, snap.channels)
+            .iter()
+            .map(|&v| v / divisor)
+            .collect()
+    }
+}
+
+// ── Alignment helpers ─────────────────────────────────────────────────────────
 
 fn try_rigid_refinement(
     ref_stars:   &[crate::analysis::stars::StarCandidate],
     frame_stars: &[crate::analysis::stars::StarCandidate],
-    fft_dx:      f32,
-    fft_dy:      f32,
+    dx:          f32,
+    dy:          f32,
     width:       usize,
     height:      usize,
-    frame_index: usize,
+    frame_idx:   usize,
     messages:    &mut Vec<String>,
 ) -> AffineRigid {
-    match estimate_rigid_transform(ref_stars, frame_stars, fft_dx, fft_dy, width, height) {
-        Some(rigid) => {
-            let cos_t = rigid.a;
-            let sin_t = rigid.b;
-            let aft_x = cos_t * fft_dx - sin_t * fft_dy;
-            let aft_y = sin_t * fft_dx + cos_t * fft_dy;
-            let final_xform = AffineRigid {
-                a:  rigid.a,
-                b:  rigid.b,
-                tx: aft_x + rigid.tx,
-                ty: aft_y + rigid.ty,
-            };
-            if rigid.tx.abs() > 15.0 || rigid.ty.abs() > 15.0 {
-                info!("Frame {}: rigid refinement rejected (residual {:.1},{:.1} too large) — using FFT only",
-                    frame_index, rigid.tx, rigid.ty);
-                return AffineRigid::translation(fft_dx, fft_dy);
-            }
-            let theta = final_xform.theta();
-            if theta.abs() >= MIN_ROTATION_TO_APPLY {
-                let msg = format!(
-                    "Frame {}: rigid alignment — tx={:.2} ty={:.2} θ={:.4}rad ({:.3}°)",
-                    frame_index, final_xform.tx, final_xform.ty,
-                    theta, theta.to_degrees()
-                );
-                info!("{}", msg);
-                messages.push(msg);
-            }
-            final_xform
+    match estimate_rigid_transform_triangles(ref_stars, frame_stars) {
+        Some(r) => {
+            let theta = r.theta();
+            info!("Frame {}: triangle match tx={:.2} ty={:.2} θ={:.4}rad",
+                frame_idx, r.tx, r.ty, theta);
+            r
         }
         None => {
-            info!("Frame {}: rigid refinement not available — using FFT translation only", frame_index);
-            AffineRigid::translation(fft_dx, fft_dy)
+            let fallback = estimate_rigid_transform(ref_stars, frame_stars, dx, dy, width, height)
+                .unwrap_or_else(|| AffineRigid::translation(dx, dy));
+            let msg = format!(
+                "Frame {}: triangle match failed — using FFT+RANSAC tx={:.2} ty={:.2}",
+                frame_idx, fallback.tx, fallback.ty
+            );
+            info!("{}", msg);
+            messages.push(msg);
+            fallback
         }
     }
 }
 
-// ── Alignment failure helper ──────────────────────────────────────────────────
-
 fn alignment_failed(
-    frame_index:   usize,
+    frame_idx:     usize,
     reason:        &str,
     messages:      &mut Vec<String>,
     contrib:       &mut FrameContribution,
     contributions: &mut Vec<FrameContribution>,
 ) {
-    let msg = format!("Alignment failed: frame {} — {}, skipped", frame_index, reason);
+    let msg = format!("Frame {}: alignment failed — {} — excluded", frame_idx, reason);
     info!("{}", msg);
     messages.push(msg);
     contrib.exclusion_reason = Some(ExclusionReason::AlignmentFailed);
     contributions.push(contrib.clone());
+}
+
+// ── Date parsing ──────────────────────────────────────────────────────────────
+
+fn parse_date_obs(s: &str) -> Option<f64> {
+    let s = s.trim().trim_matches('\'');
+    let dt = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
+        .ok()?;
+    Some(dt.and_utc().timestamp() as f64)
 }
 
 // ── Frame resampling (mono) ───────────────────────────────────────────────────
@@ -982,7 +1246,6 @@ fn resample_frame_affine(
 
 // ── Frame resampling (RGB) ────────────────────────────────────────────────────
 
-/// Resample interleaved RGB pixels by (dx, dy) translation.
 fn resample_frame_rgb(
     rgb:    &[f32],
     width:  usize,
@@ -1008,7 +1271,6 @@ fn resample_frame_rgb(
         .collect()
 }
 
-/// Resample interleaved RGB pixels using an affine transform.
 fn resample_frame_rgb_affine(
     rgb:    &[f32],
     width:  usize,
@@ -1057,7 +1319,6 @@ fn bilinear(
     top * (1.0 - fy) + bottom * fy
 }
 
-/// Bilinear interpolation for a single channel of interleaved RGB.
 fn bilinear_rgb(
     pixels: &[f32],
     width:  usize,
@@ -1095,11 +1356,37 @@ fn build_stack_keywords(
 ) -> std::collections::HashMap<String, crate::context::KeywordEntry> {
     use crate::context::KeywordEntry;
     let mut kw = std::collections::HashMap::new();
-
     let mut insert = |name: &str, value: &str, comment: &str| {
         kw.insert(name.to_string(), KeywordEntry::new(name, value, Some(comment)));
     };
+    insert("SIMPLE",   "T",                 "file conforms to FITS standard");
+    insert("BITPIX",   "-32",               "32-bit floating point");
+    insert("NAXIS",    "2",                 "number of axes");
+    insert("NAXIS1",   &width.to_string(),  "image width in pixels");
+    insert("NAXIS2",   &height.to_string(), "image height in pixels");
+    insert("BZERO",    "0",                 "offset for unsigned integers");
+    insert("BSCALE",   "1",                 "default scaling factor");
+    insert("ROWORDER", "TOP-DOWN",          "row order");
+    insert("CREATOR",  "Photyx",            "software that created this file");
+    if let Some(s) = summary {
+        if let Some(ref target) = s.target  { insert("OBJECT",   target,                           "target object name"); }
+        if let Some(ref filter) = s.filter  { insert("FILTER",   filter,                           "filter used"); }
+        if s.integration_seconds > 0.0      { insert("EXPTIME",  &format!("{:.1}", s.integration_seconds), "total integration time in seconds"); }
+        insert("STACKCNT", &s.stacked_frames.to_string(), "number of frames stacked");
+    }
+    kw
+}
 
+fn build_flat_keywords(
+    width:    usize,
+    height:   usize,
+    n_frames: usize,
+) -> std::collections::HashMap<String, crate::context::KeywordEntry> {
+    use crate::context::KeywordEntry;
+    let mut kw = std::collections::HashMap::new();
+    let mut insert = |name: &str, value: &str, comment: &str| {
+        kw.insert(name.to_string(), KeywordEntry::new(name, value, Some(comment)));
+    };
     insert("SIMPLE",   "T",                    "file conforms to FITS standard");
     insert("BITPIX",   "-32",                  "32-bit floating point");
     insert("NAXIS",    "2",                    "number of axes");
@@ -1109,24 +1396,8 @@ fn build_stack_keywords(
     insert("BSCALE",   "1",                    "default scaling factor");
     insert("ROWORDER", "TOP-DOWN",             "row order");
     insert("CREATOR",  "Photyx",               "software that created this file");
-
-    if let Some(s) = summary {
-        if let Some(ref target) = s.target {
-            insert("OBJECT", target, "target object name");
-        }
-        if let Some(ref filter) = s.filter {
-            insert("FILTER", filter, "filter used");
-        }
-        if s.integration_seconds > 0.0 {
-            insert("EXPTIME",
-                &format!("{:.1}", s.integration_seconds),
-                "total integration time in seconds");
-        }
-        insert("STACKCNT",
-            &s.stacked_frames.to_string(),
-            "number of frames stacked");
-    }
-
+    insert("IMAGETYP", "Flat Field",           "frame type");
+    insert("STACKCNT", &n_frames.to_string(),  "number of frames combined");
     kw
 }
 
