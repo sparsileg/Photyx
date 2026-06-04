@@ -27,8 +27,9 @@ All pcode commands in the initial release. Arguments in brackets are optional.
 | CacheFrames         | Blink & View    | Pre-decodes and caches all frames for blinking at both resolutions                                                                                          | —                                                      |
 | ClearAnnotations    | Display         | Removes all star and analysis overlay annotations from the viewer                                                                                           |                                                        |
 | ClearSession        | Session         | Clears all loaded images and resets session state                                                                                                           |                                                        |
-| ClearStack          | Stacking        | Discards the transient stack result and per-frame contribution data                                                                                         |                                                        |
-| CommitStretch       | Stacking        | Permanently applies Auto-STF stretch to the stack result pixel buffer; after commit the buffer holds non-linear data                                         | [shadow_clip], [target_bg]                             |
+| ClearStack          | Stacking        | Discards the transient stack result and per-frame contribution data                                                                                                                                                                                                  |                                                        |
+| CommitAnalysis      | Frame Analysis  | Moves all REJECT frames to a rejected/ subfolder within each frame's source directory and removes them from the session; pass frames remain loaded                                                                                                                   | [append]                                               |
+| CommitStretch       | Stacking        | Permanently applies Auto-STF stretch to the stack result pixel buffer; after commit the buffer holds non-linear data                                                                                                                                                 | [shadow_clip], [target_bg]                             |
 
 | ComputeEccentricity | Analysis        | Calculates eccentricity for detected stars on current frame                                                                                                 | —                                                      |
 | ComputeFWHM         | Analysis        | Calculates FWHM for detected stars; displays per-star circle annotations on viewer overlay                                                                  | —                                                      |
@@ -40,7 +41,8 @@ All pcode commands in the initial release. Arguments in brackets are optional.
 | CropImage           | Processing      | Crops the image to a specified region                                                                                                                       | x, y, width, height                                    |
 | DebayerImage        | Processing      | Debayers a Bayer CFA image on demand; pattern read from BAYERPAT keyword if present                                                                         | [pattern=RGGB\|BGGR\|GRBG\|GBRG], [method=bilinear]   |
 | DeleteKeyword       | Keyword         | Removes a keyword from loaded images                                                                                                                        | name, [scope=all\|current]                             |
-| FilterByKeyword     | File Management | Filters the active file list by keyword value                                                                                                               | name, value                                            |
+| ExportAnalysisReport | Frame Analysis | Exports the current analysis results as a Photyx session JSON file; if path is omitted, derives filename from the first frame and writes to the system Downloads folder                                     | [path]                                                 |
+| FilterByKeyword     | File Management | Filters the active file list by keyword value                                                                                                                                                               | name, value                                            |
 | GetHistogram        | Processing      | Computes histogram statistics for current frame (median, std dev, clipping %)                                                                               |                                                        |
 | GetKeyword          | Interrogation   | Retrieves a keyword value; auto-stores in `$<NAME>` (uppercase)   e.g. `GetKeyword name=FILTER` stores result in `$FILTER`                                  | name                                                   |
 | ListKeywords        | Keyword         | Lists all keywords for the current image                                                                                                                    |                                                        |
@@ -500,6 +502,7 @@ All plugins are Built-in Native in the initial release. WASM user plugins are su
 | ClearAnnotations    | Display         |  Complete  |
 | ClearSession        | Session         |  Complete  |
 | ClearStack          | Stacking        |  Complete  |
+| CommitAnalysis      | Frame Analysis  |  Complete  |
 | CommitStretch       | Stacking        |  Complete  |
 | ComputeEccentricity | Analysis        |  Complete  |
 | ComputeFWHM         | Analysis        |  Complete  |
@@ -510,6 +513,7 @@ All plugins are Built-in Native in the initial release. WASM user plugins are su
 | CountStars          | Analysis        |  Complete  |
 | DebayerImage        | Processing      |  Complete  |
 | DeleteKeyword       | Keyword         |  Complete  |
+| ExportAnalysisReport | Frame Analysis |  Complete  |
 | FilterByKeyword     | File Management |  Complete  |
 | GetHistogram        | Analysis        |  Complete  |
 | GetKeyword          | Scripting       |  Complete  |

@@ -162,7 +162,7 @@
 
     notifications.running('Committing results…');
     try {
-      const msg = await invoke<string>('commit_analysis_results');
+      const msg = await invoke<string>('commit_analysis_results', { append: '' });
       notifications.success(msg);
       const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
       session.setFileList(s.fileList);

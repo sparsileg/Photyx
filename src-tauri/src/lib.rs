@@ -194,11 +194,13 @@ pub fn run() {
     registry.register(Arc::new(plugins::cache_frames::CacheFrames));
     registry.register(Arc::new(plugins::clear_session::ClearSession));
     registry.register(Arc::new(plugins::clear_stack::ClearStack));
+    registry.register(Arc::new(plugins::commit_analysis::CommitAnalysis));
     registry.register(Arc::new(plugins::commit_stretch::CommitStretch));
     registry.register(Arc::new(plugins::compute_eccentricity::ComputeEccentricity));
     registry.register(Arc::new(plugins::compute_fwhm::ComputeFWHM));
     registry.register(Arc::new(plugins::contour_heatmap::ContourHeatmap));
     registry.register(Arc::new(plugins::debayer_image::DebayerImage));
+    registry.register(Arc::new(plugins::export_analysis_report::ExportAnalysisReport));
     registry.register(Arc::new(plugins::get_histogram::GetHistogram));
     registry.register(Arc::new(plugins::keywords::AddKeyword));
     registry.register(Arc::new(plugins::keywords::CopyKeyword));

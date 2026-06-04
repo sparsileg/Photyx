@@ -80,9 +80,13 @@ Photyx/
 │           ├── background_median.rs
 │           ├── cache_frames.rs
 │           ├── clear_session.rs
+│           ├── clear_stack.rs
+│           ├── commit_analysis.rs
 │           ├── compute_eccentricity.rs
 │           ├── compute_fwhm.rs
+│           ├── commit_stretch.rs
 │           ├── contour_heatmap.rs
+│           ├── export_analysis_report.rs
 │           ├── get_histogram.rs
 │           ├── image_reader.rs
 │           ├── highlight_clipping.rs

@@ -128,9 +128,9 @@
   }
 
   async function commitResults() {
-    notifications.running('Writing PXFLAG to files…');
+    notifications.running('Committing analysis results…');
     try {
-      const msg = await invoke<string>('commit_analysis_results');
+      const msg = await invoke<string>('commit_analysis_results', { append: '' });
       notifications.success(msg);
     } catch (e) {
       notifications.error(`Commit failed: ${e}`);

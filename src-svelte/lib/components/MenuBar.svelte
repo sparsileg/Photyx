@@ -7,7 +7,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { notifications } from '../stores/notifications';
   import { open, save } from '@tauri-apps/plugin-dialog';
-  import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
+  import { readTextFile } from '@tauri-apps/plugin-fs';
   import { quickLaunch } from '../stores/quickLaunch';
   import { addFiles, closeSession, applyAutoStretch, loadFile } from '../commands';
   import { ui } from '../stores/ui';
@@ -228,82 +228,25 @@
   // ── Session JSON export ───────────────────────────────────────────────────
 
   async function exportSessionJson() {
-    // Fetch current analysis results from Rust
-    let data: any;
-    try {
-      data = await invoke('get_analysis_results');
-    } catch (e) {
-      notifications.error(`Export failed: could not load analysis results: ${e}`);
-      return;
-    }
-
-    if (!data.frames || data.frames.length === 0) {
-      notifications.error('No analysis results to export. Run AnalyzeFrames first.');
-      return;
-    }
-
-    // Fetch current threshold profile for metadata
-    let activeProfileId: number | null = null;
-    let profileName = 'Default';
-    let thresholds: any = {};
-    try {
-      activeProfileId = await invoke('get_active_threshold_profile_id');
-      const profiles: any[] = await invoke('get_threshold_profiles');
-      const active = profiles.find((p: any) => p.id === activeProfileId) ?? profiles[0];
-      if (active) {
-        profileName = active.name;
-        thresholds = {
-          bg_median_reject_sigma:      active.bg_median_reject_sigma,
-          signal_weight_reject_sigma:  active.signal_weight_reject_sigma,
-          fwhm_reject_sigma:           active.fwhm_reject_sigma,
-          star_count_reject_sigma:     active.star_count_reject_sigma,
-          eccentricity_reject_abs:     active.eccentricity_reject_abs,
-        };
-      }
-    } catch (e) {
-      // Non-fatal — continue with empty thresholds
-    }
-
-    // Build per-frame array using basenames only for portability
-    const frames = data.frames.map((f: any) => ({
-      filename:           f.filename,
-      fwhm:               f.fwhm,
-      eccentricity:       f.eccentricity,
-      star_count:         f.star_count,
-      signal_weight:      f.signal_weight,
-      background_median:  f.background_median,
-      flag:               f.flag || 'PASS',
-      triggered_by:       f.triggered ?? [],
-      rejection_category: f.rejection_category ?? null,
-    }));
-
-    // Outlier paths — preserve full paths for multi-directory sessions
-    const outlierPaths = (data.outlier_paths ?? []).map((p: string) =>
-      p.replace(/\\/g, '/')
-    );
-
-    const json = {
-      photyx_version:         '1.0.0',
-      exported_at:            new Date().toISOString(),
-      threshold_profile_name: profileName,
-      thresholds,
-      session_stats:          data.session_stats ?? {},
-      outlier_paths:          outlierPaths,
-      frames,
-    };
-
-    // Derive default filename from the first frame: Light_<target>_..._<YYYYMMDD>-######_...
-    // e.g. Light_M82_180.0s_Bin1_gain101_20240206-190228_-20.0C_0001.fit → M82_20240206.json
+    // Derive a default filename suggestion from analysis results for the save dialog
     let defName = 'session.json';
-    if (data.frames.length > 0) {
+    try {
+      const data = await invoke<any>('get_analysis_results');
+      if (!data.frames || data.frames.length === 0) {
+        notifications.error('No analysis results to export. Run AnalyzeFrames first.');
+        return;
+      }
       const first = (data.frames[0].short_name as string) ?? '';
       const targetMatch = first.match(/^Light_([^_]+)_/);
       const dateMatch   = first.match(/(\d{8})-\d{6}/);
       if (targetMatch && dateMatch) {
-        defName = `${targetMatch[1]}_${dateMatch[1]}.json`;
+        defName = `${targetMatch[1]}_${dateMatch[1]}_analysis.json`;
       } else if (targetMatch) {
-        defName = `${targetMatch[1]}.json`;
+        defName = `${targetMatch[1]}_analysis.json`;
       }
+    } catch (e) {
+      notifications.error(`Export failed: could not load analysis results: ${e}`);
+      return;
     }
 
     let savePath: string | null;
@@ -319,9 +262,20 @@
     }
     if (!savePath) return;
 
+    notifications.running('Exporting analysis report…');
     try {
-      await writeTextFile(savePath, JSON.stringify(json, null, 2));
-      notifications.success('Session exported.');
+      const response = await invoke<{
+        results: Array<{ success: boolean; message: string | null }>;
+      }>('run_script', {
+        script: `ExportAnalysisReport path="${savePath.replace(/\\/g, '/')}"`
+      });
+      const last = response.results[response.results.length - 1];
+      if (last?.success) {
+        notifications.success('Session exported.');
+        pipeToConsole(last.message ?? 'Analysis report exported.', 'success');
+      } else {
+        throw new Error(last?.message ?? 'ExportAnalysisReport failed');
+      }
     } catch (e) {
       notifications.error(`Export failed: ${e}`);
     }

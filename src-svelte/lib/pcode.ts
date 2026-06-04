@@ -42,6 +42,8 @@ export const PCODE_COMMANDS = new Set([
   'StackFrames',
   //    Image analysis
   'AnalyzeFrames',
+  'CommitAnalysis',
+  'ExportAnalysisReport',
   'ComputeEccentricity',
   'ComputeFWHM',
   'ContourHeatmap',
@@ -102,6 +104,8 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   addfiles:            'paths=',
   addkeyword:          'name=  value=  comment=',
   analyzeframes:       '',
+  commitanalysis:      '[append=]',
+  exportanalysisreport: '[path=]',
   assert:              'expression=',
   autostretch:         'shadowClip=  targetBackground=',
   backgroundextract:   '[grid=]  [degree=]  [stack=]',
@@ -545,6 +549,28 @@ export const HELP_DB: Record<string, HelpEntry> = {
     ],
     output:  'Replaces the current frame with the binned result.',
     example: 'BinImage factor=2',
+  },
+
+  commitanalysis: {
+    name:        'CommitAnalysis',
+    description: 'Moves all REJECT frames to a rejected/ subfolder within each frame\'s source directory and removes them from the session. Pass frames remain loaded. Optionally appends a suffix to each moved filename.',
+    syntax:      'CommitAnalysis [append=<ext>]',
+    arguments: [
+      { name: 'append', type: 'string', required: false, default: '', description: 'Suffix appended after the original filename extension (e.g. append=.session → frame.fit.session). Leading dot is optional. Defaults to no suffix.' },
+    ],
+    output:  'Reports pass count, reject count, and number of files moved.',
+    example: 'CommitAnalysis\nCommitAnalysis append=.session',
+  },
+
+  exportanalysisreport: {
+    name:        'ExportAnalysisReport',
+    description: 'Exports the current analysis results as a Photyx session JSON file. If path is omitted, a filename is derived from the first frame and written to the system Downloads folder.',
+    syntax:      'ExportAnalysisReport [path=<path>]',
+    arguments: [
+      { name: 'path', type: 'path', required: false, description: 'Full destination path for the JSON file. If omitted, written to the Downloads folder with an auto-derived filename.' },
+    ],
+    output:  'Writes the JSON file and reports the output path.',
+    example: 'ExportAnalysisReport\nExportAnalysisReport path="D:/projects/M64/M64_sess_20241112.json"',
   },
 
   //    Display & navigation

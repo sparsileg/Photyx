@@ -244,45 +244,53 @@ pub fn load_analysis_json(
 
 // ── commit_analysis_results ───────────────────────────────────────────────────
 
-/// Move REJECT files to a `rejected/` subfolder with `.rejected` appended.
+/// Move REJECT files to a `rejected/` subfolder. If `append` is non-empty it
+/// is added after the original filename (leading dot optional, e.g. ".session"
+/// or "session" both produce `frame.fit.session`). If `append` is empty the
+/// file is moved with its original name unchanged.
 /// Does not write PXFLAG keywords or flush files to disk — the move itself
 /// is the persistence action.
 #[tauri::command]
-pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String, String> {
+pub fn commit_analysis_results(
+    append: String,
+    state:  State<Arc<PhotoxState>>,
+) -> Result<String, String> {
+    let mut ctx = state.context.lock().expect("context lock poisoned");
+    do_commit(&mut ctx, &append).map_err(|e| e.to_string())
+}
 
+/// Shared commit implementation called by both the Tauri command and the
+/// CommitAnalysis pcode plugin.
+pub fn do_commit(ctx: &mut crate::context::AppContext, append: &str) -> Result<String, String> {
     // ── Step 1: collect reject paths ─────────────────────────────────────────
-    let (reject_paths, pass_count, reject_count) = {
-        let ctx = state.context.lock().expect("context lock poisoned");
+    if ctx.analysis_results.is_empty() {
+        return Err("No analysis results to commit. Run AnalyzeFrames first.".to_string());
+    }
+    if ctx.is_imported_session {
+        return Err("Cannot commit an imported session — no images are loaded.".to_string());
+    }
 
-        if ctx.analysis_results.is_empty() {
-            return Err("No analysis results to commit. Run AnalyzeFrames first.".to_string());
-        }
-        if ctx.is_imported_session {
-            return Err("Cannot commit an imported session — no images are loaded.".to_string());
-        }
+    let mut pass_count   = 0u32;
+    let mut reject_count = 0u32;
+    let mut reject_paths: Vec<String> = Vec::new();
 
-        let mut pass_count   = 0u32;
-        let mut reject_count = 0u32;
-        let mut reject_paths: Vec<String> = Vec::new();
-
-        for path in &ctx.file_list {
-            if let Some(result) = ctx.analysis_results.get(path) {
-                match result.flag {
-                    Some(crate::analysis::PxFlag::Pass) => pass_count += 1,
-                    Some(crate::analysis::PxFlag::Reject) => {
-                        reject_count += 1;
-                        reject_paths.push(path.clone());
-                    }
-                    None => {}
+    for path in &ctx.file_list {
+        if let Some(result) = ctx.analysis_results.get(path) {
+            match result.flag {
+                Some(crate::analysis::PxFlag::Pass) => pass_count += 1,
+                Some(crate::analysis::PxFlag::Reject) => {
+                    reject_count += 1;
+                    reject_paths.push(path.clone());
                 }
+                None => {}
             }
         }
+    }
 
-        tracing::info!("CommitResults: {} PASS, {} REJECT", pass_count, reject_count);
-        (reject_paths, pass_count, reject_count)
-    };
+    tracing::info!("CommitResults: {} PASS, {} REJECT", pass_count, reject_count);
 
     // ── Step 2: move REJECT files to rejected/ subfolder ─────────────────────
+    let suffix = append.trim_start_matches('.');
     let mut move_errors: Vec<String> = Vec::new();
     let mut moved_count = 0u32;
 
@@ -307,7 +315,11 @@ pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String,
             None    => { move_errors.push(format!("No filename: {}", old_path)); continue; }
         };
 
-        let new_filename = format!("{}.rejected", filename.to_string_lossy());
+        let new_filename = if suffix.is_empty() {
+            filename.to_string_lossy().into_owned()
+        } else {
+            format!("{}.{}", filename.to_string_lossy(), suffix)
+        };
         let new_path     = rejected_dir.join(&new_filename);
         let new_path_str = new_path.to_string_lossy().replace('\\', "/");
 
@@ -323,7 +335,6 @@ pub fn commit_analysis_results(state: State<Arc<PhotoxState>>) -> Result<String,
     }
 
     // ── Step 3: remove rejected files from session; leave pass frames loaded ──
-    let mut ctx = state.context.lock().expect("context lock poisoned");
     ctx.remove_rejected_files(&reject_paths);
 
     // ── Build result message ──────────────────────────────────────────────────

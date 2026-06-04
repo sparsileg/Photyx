@@ -9,11 +9,13 @@ pub mod background_median;
 pub mod cache_frames;
 pub mod clear_session;
 pub mod clear_stack;
+pub mod commit_analysis;
 pub mod compute_eccentricity;
 pub mod compute_fwhm;
 pub mod commit_stretch;
 pub mod contour_heatmap;
 pub mod debayer_image;
+pub mod export_analysis_report;
 pub mod get_histogram;
 pub mod image_reader;
 pub mod keywords;
@@ -29,6 +31,5 @@ pub mod write_fits;
 pub mod write_frame;
 pub mod write_tiff;
 pub mod write_xisf;
-
 
 // ----------------------------------------------------------------------
