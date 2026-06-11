@@ -4,6 +4,98 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
 
 ---
 
+## Table of Contents
+
+- [Basics](#basics)
+  - [Comments](#comments)
+  - [Command syntax](#command-syntax)
+  - [Running a macro from the console](#running-a-macro-from-the-console)
+- [Variables](#variables)
+  - [Arithmetic](#arithmetic)
+  - [String concatenation](#string-concatenation)
+  - [Math functions](#math-functions)
+  - [System-set variables](#system-set-variables)
+- [Flow Control](#flow-control)
+  - [Conditionals](#conditionals)
+  - [Loops — iterating over a numeric range](#loops--iterating-over-a-numeric-range)
+  - [Loops — iterating over all session files](#loops--iterating-over-all-session-files)
+- [Error Handling](#error-handling)
+- [Console Output](#console-output)
+  - [Print](#print)
+  - [Log](#log)
+- [Trace Mode](#trace-mode)
+- [Command Reference](#command-reference)
+  - [Session](#session)
+    - [AddFiles](#addfiles)
+    - [ReadImages](#readimages)
+    - [ClearSession](#clearsession)
+    - [LoadFile](#loadfile)
+    - [CountFiles](#countfiles)
+    - [FilterByKeyword](#filterbykeyword)
+  - [Write / Export](#write--export)
+    - [WriteCurrent](#writecurrent)
+    - [WriteFrame](#writeframe)
+    - [WriteFIT](#writefit)
+    - [WriteTIFF](#writetiff)
+    - [WriteXISF](#writexisf)
+    - [CopyFile](#copyfile)
+    - [MoveFile](#movefile)
+  - [Keywords](#keywords)
+    - [AddKeyword](#addkeyword)
+    - [ModifyKeyword](#modifykeyword)
+    - [DeleteKeyword](#deletekeyword)
+    - [CopyKeyword](#copykeyword)
+    - [GetKeyword](#getkeyword)
+    - [ListKeywords](#listkeywords)
+  - [Analysis](#analysis)
+    - [AnalyzeFrames](#analyzeframes)
+    - [CommitAnalysis](#commitanalysis)
+    - [ExportAnalysisReport](#exportanalysisreport)
+    - [ComputeFWHM](#computefwhm)
+    - [ComputeEccentricity](#computeeccentricity)
+    - [CountStars](#countstars)
+    - [MedianValue](#medianvalue)
+    - [GetHistogram](#gethistogram)
+    - [ContourHeatmap](#contourheatmap)
+  - [Image Processing](#image-processing)
+    - [AutoStretch](#autostretch)
+    - [DebayerImage](#debayerimage)
+    - [BinImage](#binimage)
+  - [Stacking](#stacking)
+    - [StackFrames](#stackframes)
+    - [CommitStretch](#commitstretch)
+    - [ClearStack](#clearstack)
+  - [Display & Navigation](#display--navigation)
+    - [SetFrame](#setframe)
+    - [SetZoom](#setzoom)
+    - [CacheFrames](#cacheframes)
+    - [BlinkSequence](#blinksequence)
+    - [ClearAnnotations](#clearannotations)
+    - [ShowAnalysisGraph](#showanalysisgraph)
+    - [ShowAnalysisResults](#showanalysisresults)
+  - [Scripting Utilities](#scripting-utilities)
+    - [Set](#set)
+    - [Print](#print-1)
+    - [Assert](#assert)
+    - [RunMacro](#runmacro)
+    - [Log](#log-1)
+    - [If / Else / EndIf](#if--else--endif)
+    - [For / EndFor](#for--endfor)
+  - [Console Built-ins](#console-built-ins)
+- [Deprecated Commands](#deprecated-commands)
+- [Complete Examples](#complete-examples)
+  - [Batch format conversion: FITS → XISF](#batch-format-conversion-fits--xisf)
+  - [Quality analysis and review workflow](#quality-analysis-and-review-workflow)
+  - [Filter session by keyword then write](#filter-session-by-keyword-then-write)
+  - [Per-frame FWHM report with log](#per-frame-fwhm-report-with-log)
+  - [Numeric loop: step through frames by index](#numeric-loop-step-through-frames-by-index)
+  - [Conditional processing based on keyword](#conditional-processing-based-on-keyword)
+  - [Heatmap generation with file capture](#heatmap-generation-with-file-capture)
+  - [Full stack pipeline](#full-stack-pipeline)
+  - [Calling a sub-macro](#calling-a-sub-macro)
+
+---
+
 ## Basics
 
 ### Comments
@@ -534,6 +626,44 @@ AnalyzeFrames
 ```
 
 Results are visible in the Analysis Results and Analysis Graph views. See `ShowAnalysisGraph` and `ShowAnalysisResults`.
+
+---
+
+#### `CommitAnalysis`
+
+Moves all REJECT frames to a `rejected/` subfolder within each frame's source directory and removes them from the session. Pass frames remain loaded. Optionally appends a suffix to each moved filename.
+
+```
+CommitAnalysis [append=<ext>]
+```
+
+| Argument | Required | Default | Description |
+| -------- | -------- | ------- | ----------- |
+| `append` | No | | Suffix appended after the original filename extension (e.g. `append=.session` → `frame.fit.session`). Leading dot is optional. Defaults to no suffix. |
+
+```
+CommitAnalysis
+CommitAnalysis append=.session
+```
+
+---
+
+#### `ExportAnalysisReport`
+
+Exports the current analysis results as a Photyx session JSON file. If `path` is omitted, a filename is derived from the first frame and written to the system Downloads folder.
+
+```
+ExportAnalysisReport [path=<path>]
+```
+
+| Argument | Required | Description |
+| -------- | -------- | ----------- |
+| `path` | No | Full destination path for the JSON file. If omitted, written to the Downloads folder with an auto-derived filename. |
+
+```
+ExportAnalysisReport
+ExportAnalysisReport path="D:/projects/M64/M64_sess_20241112_analysis.json"
+```
 
 ---
 
