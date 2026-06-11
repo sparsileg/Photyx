@@ -15,7 +15,7 @@
     justify-content: center;
     cursor: pointer;
     border: 1px solid transparent;
-    font-size: 15px;
+    font-size: 0.94rem;
     color: var(--text-secondary);
     transition: color 0.15s, border-color 0.15s, background 0.15s;
     position: relative;
@@ -43,7 +43,7 @@
     background: var(--card-bg);
     border: 1px solid var(--border-color);
     color: var(--text-color);
-    font-size: 11px;
+    font-size: 0.69rem;
     padding: 3px 8px;
     white-space: nowrap;
     pointer-events: none;
@@ -71,7 +71,7 @@
 
 .panel-close {
     cursor: pointer;
-    font-size: 14px;
+    font-size: 0.88rem;
     color: var(--text-secondary);
     padding: 2px 4px;
     line-height: 1;
@@ -93,7 +93,7 @@
 
 .dir-path {
     flex: 1;
-    font-size: 10px;
+    font-size: 0.63rem;
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -102,7 +102,7 @@
 
 .dir-browse-btn {
     flex: 0 0 auto;
-    font-size: 10px;
+    font-size: 0.63rem;
     padding: 2px 6px;
     cursor: pointer;
     border: 1px solid var(--border-color);
@@ -125,7 +125,7 @@
     align-items: center;
     gap: 6px;
     padding: 4px 8px;
-    font-size: 11px;
+    font-size: 0.69rem;
     cursor: pointer;
     color: var(--text-color);
     border-bottom: 1px solid var(--border-color-light);
@@ -143,7 +143,7 @@
 }
 
 .file-icon {
-    font-size: 10px;
+    font-size: 0.63rem;
     color: var(--text-secondary);
     flex: 0 0 auto;
 }
@@ -154,7 +154,7 @@
 }
 
 .file-ext {
-    font-size: 9px;
+    font-size: 0.56rem;
     color: var(--text-secondary);
     padding: 1px 4px;
     border: 1px solid var(--border-color);
@@ -164,7 +164,7 @@
 
 .kw-empty {
     padding: 12px 8px;
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--text-secondary);
     text-align: center;
 }
@@ -177,7 +177,7 @@
 .kw-input {
     width: 100%;
     font-family: inherit;
-    font-size: 14px;
+    font-size: 0.88rem;
     background: var(--input-bg);
     border: 1px solid var(--primary-color);
     color: var(--text-color);
@@ -203,13 +203,13 @@
 .keyword-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 14px;
+    font-size: 0.88rem;
 }
 
 .keyword-table th {
     text-align: left;
     padding: 4px 6px;
-    font-size: 13px;
+    font-size: 0.81rem;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -240,7 +240,7 @@
 
 .kw-comment {
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .kw-actions {
@@ -252,7 +252,7 @@
 .kw-btn {
     flex: 1;
     padding: 4px 0;
-    font-size: 10px;
+    font-size: 0.63rem;
     font-family: inherit;
     cursor: pointer;
     border: 1px solid var(--border-color);
@@ -283,7 +283,7 @@
 
 .macro-btn {
     padding: 3px 8px;
-    font-size: 10px;
+    font-size: 0.63rem;
     font-family: inherit;
     cursor: pointer;
     border: 1px solid var(--border-color);
@@ -310,7 +310,7 @@
 #macro-textarea {
     flex: 1;
     font-family: inherit;
-    font-size: 12px;
+    font-size: 1.2rem;
     line-height: 1.6;
     resize: none;
     outline: none;
@@ -338,7 +338,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 0.88rem;
     color: var(--text-secondary);
     padding: 2px 4px;
     line-height: 1;
@@ -350,7 +350,7 @@
 
 .ml-empty {
     padding: 12px 8px;
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--text-secondary);
     line-height: 1.6;
 }
@@ -371,6 +371,12 @@
     gap: 6px;
 }
 
+.ml-item-middle {
+    display: flex;
+    align-items: center;
+    margin-top: 3px;
+}
+
 .ml-item-bottom {
     display: flex;
     align-items: center;
@@ -380,20 +386,22 @@
 }
 
 .ml-name {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--primary-color);
     font-weight: 600;
-    word-break: break-word;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .ml-size {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     flex-shrink: 0;
 }
 
 .ml-filename {
-    font-size: 10px;
+    font-size: 0.63rem;
     color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
@@ -410,7 +418,7 @@
     background: none;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    font-size: 10px;
+    font-size: 0.63rem;
     padding: 1px 6px;
     cursor: pointer;
     white-space: nowrap;
@@ -460,7 +468,7 @@
     margin-top: 4px;
     background: rgba(255, 0, 0, 0.08);
     border: 1px solid var(--error-color);
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--error-color);
 }
 
@@ -478,7 +486,7 @@
     background: none;
     border: 1px solid var(--error-color);
     color: var(--error-color);
-    font-size: 10px;
+    font-size: 0.63rem;
     padding: 1px 8px;
     cursor: pointer;
 }
@@ -492,7 +500,7 @@
     background: none;
     border: 1px solid var(--text-secondary);
     color: var(--text-secondary);
-    font-size: 10px;
+    font-size: 0.63rem;
     padding: 1px 8px;
     cursor: pointer;
 }
@@ -504,7 +512,7 @@
 
 .ml-footer {
     padding: 4px 8px;
-    font-size: 10px;
+    font-size: 0.63rem;
     color: var(--text-secondary);
     border-top: 1px solid var(--border-color);
     background: var(--card-bg);
@@ -524,13 +532,13 @@
 }
 
 .macro-lib-name {
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--primary-color);
     font-weight: 600;
 }
 
 .macro-lib-desc {
-    font-size: 10px;
+    font-size: 0.63rem;
     color: var(--text-secondary);
     margin-top: 2px;
 }
@@ -543,7 +551,7 @@
 }
 
 .plugin-name {
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--text-color);
     font-weight: 600;
     display: flex;
@@ -552,7 +560,7 @@
 }
 
 .plugin-type {
-    font-size: 9px;
+    font-size: 0.56rem;
     padding: 1px 5px;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
@@ -571,7 +579,7 @@
 }
 
 .plugin-version {
-    font-size: 10px;
+    font-size: 0.63rem;
     color: var(--text-secondary);
     margin-top: 2px;
 }
@@ -588,7 +596,7 @@
 
 .format-filter-select {
     font-family: inherit;
-    font-size: 10px;
+    font-size: 0.63rem;
     padding: 2px 4px;
     border: 1px solid var(--border-color);
     background: var(--card-bg);
@@ -612,7 +620,7 @@
 
 .load-btn {
     flex: 0 0 auto;
-    font-size: 10px;
+    font-size: 0.63rem;
     font-family: inherit;
     padding: 2px 10px;
     cursor: pointer;

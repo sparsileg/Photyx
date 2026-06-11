@@ -2,6 +2,13 @@
 // All hard-coded defaults, bounds, and labels for user-facing preferences.
 // The Preferences dialog imports from here — no inline literals anywhere else.
 
+// ── UI ────────────────────────────────────────────────────────────────────────
+
+export const DEFAULT_FONT_SIZE     = 16; // also change in :root in themes css files
+export const MIN_FONT_SIZE         = 8;
+export const MAX_FONT_SIZE         = 32;
+export const FONT_SIZE_STEP        = 1;
+
 // ── File & Path ───────────────────────────────────────────────────────────────
 
 export const JPEG_QUALITY_DEFAULT = 75;

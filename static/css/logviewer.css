@@ -18,7 +18,7 @@
 
 .lv-selected-name {
     flex: 1;
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -29,7 +29,7 @@
     background: none;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    font-size: 10px;
+    font-size: 0.63rem;
     padding: 2px 8px;
     cursor: pointer;
     white-space: nowrap;
@@ -58,7 +58,7 @@
     align-items: center;
     gap: 5px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 0.81rem;
     font-weight: 600;
     font-family: monospace;
     user-select: none;
@@ -78,7 +78,7 @@
 
 .lv-line-count {
     margin-left: auto;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
 }
 
@@ -97,18 +97,18 @@
 .lv-ts {
     color: var(--text-secondary);
     white-space: nowrap;
-    font-size: 13px;
+    font-size: 0.81rem;
 }
 
 .lv-level {
     font-weight: bold;
     white-space: nowrap;
-    font-size: 13px;
+    font-size: 0.81rem;
 }
 
 .lv-msg {
     white-space: nowrap;
-    font-size: 13px;
+    font-size: 0.81rem;
 }
 
 .lv-error .lv-level { color: var(--error-color); }
@@ -130,6 +130,6 @@
 
 .lv-tail-indicator {
     color: var(--warning-color);
-    font-size: 10px;
+    font-size: 0.63rem;
     animation: status-pulse 1.2s ease-in-out infinite;
 }

@@ -39,7 +39,7 @@
 }
 
 .tp-title {
-    font-size:      13px;
+    font-size:      0.81rem;
     font-weight:    600;
     color:          var(--primary-color);
     letter-spacing: 0.04em;
@@ -51,7 +51,7 @@
     border:      none;
     color:       var(--text-secondary);
     cursor:      pointer;
-    font-size:   14px;
+    font-size:   0.88rem;
     padding:     2px 6px;
     line-height: 1;
 }
@@ -91,7 +91,7 @@
     border:        1px solid var(--border-color);
     border-radius: 3px;
     color:         var(--text-color);
-    font-size:     12px;
+    font-size:     0.75rem;
     padding:       4px 7px;
     outline:       none;
     cursor:        pointer;
@@ -107,7 +107,7 @@
     border-radius: 3px;
     color:         var(--text-color);
     cursor:        pointer;
-    font-size:     14px;
+    font-size:     0.88rem;
     line-height:   1;
     padding:       4px 8px;
 }
@@ -141,7 +141,7 @@
     border:        1px solid var(--border-color);
     border-radius: 3px;
     color:         var(--text-color);
-    font-size:     12px;
+    font-size:     0.75rem;
     padding:       4px 7px;
     outline:       none;
 }
@@ -160,7 +160,7 @@
     border-radius: 3px;
     color:         var(--text-color);
     cursor:        pointer;
-    font-size:     11px;
+    font-size:     0.69rem;
     padding:       4px 10px;
 }
 
@@ -187,7 +187,7 @@
 /* ── Active profile indicator ────────────────────────────────────────────── */
 
 .tp-active-label {
-    font-size:     11px;
+    font-size:     0.69rem;
     color:         var(--primary-color);
     margin-bottom: 14px;
     padding-left:  2px;
@@ -204,7 +204,7 @@
     background:    var(--card-bg);
     border:        1px solid var(--error-color);
     border-radius: 3px;
-    font-size:     12px;
+    font-size:     0.75rem;
     color:         var(--text-color);
 }
 
@@ -218,7 +218,7 @@
     border-radius: 3px;
     color:         var(--text-color);
     cursor:        pointer;
-    font-size:     11px;
+    font-size:     0.69rem;
     padding:       3px 10px;
 }
 
@@ -242,12 +242,12 @@
 .tp-table {
     width:           100%;
     border-collapse: collapse;
-    font-size:       12px;
+    font-size:       0.75rem;
 }
 
 .tp-table th {
     text-align:     left;
-    font-size:      11px;
+    font-size:      0.69rem;
     font-weight:    600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -282,7 +282,7 @@
 }
 
 .tp-direction {
-    font-size:   12px;
+    font-size:   0.75rem;
     color:       var(--text-secondary);
     font-family: monospace;
     min-width:   16px;
@@ -294,7 +294,7 @@
     border:        1px solid var(--border-color);
     border-radius: 3px;
     color:         var(--text-color);
-    font-size:     12px;
+    font-size:     0.75rem;
     padding:       3px 6px;
     outline:       none;
     cursor:        pointer;
@@ -305,7 +305,7 @@
 }
 
 .tp-unit {
-    font-size:  11px;
+    font-size:  0.69rem;
     color:      var(--text-secondary);
     min-width:  12px;
 }
@@ -315,7 +315,7 @@
     border:        1px solid var(--border-color);
     border-radius: 3px;
     color:         var(--text-color);
-    font-size:     12px;
+    font-size:     0.75rem;
     padding:       3px 6px;
     outline:       none;
     width:         70px;
@@ -331,7 +331,7 @@
 }
 
 .tp-error {
-    font-size: 11px;
+    font-size: 0.69rem;
     color:     var(--error-color);
     padding:   4px 8px 0;
 }
@@ -351,7 +351,7 @@
 .tp-btn {
     border-radius: 3px;
     cursor:        pointer;
-    font-size:     12px;
+    font-size:     0.75rem;
     padding:       5px 16px;
     border:        1px solid var(--border-color);
 }

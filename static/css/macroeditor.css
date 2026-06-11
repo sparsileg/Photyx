@@ -39,7 +39,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -48,7 +48,7 @@
 .me-icon { font-size: 14px; }
 .me-filename {
     font-weight: 400;
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--panel-fg-muted);
     max-width: 200px;
     overflow: hidden;
@@ -57,7 +57,7 @@
 }
 .me-expand-hint {
     margin-left: auto;
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--panel-fg-muted);
 }
 .me-close-btn {
@@ -66,7 +66,7 @@
     color: var(--panel-fg-muted);
     cursor: pointer;
     padding: 2px 4px;
-    font-size: 13px;
+    font-size: 0.81rem;
     line-height: 1;
     flex-shrink: 0;
 }
@@ -89,7 +89,7 @@
     border: 1px solid var(--btn-border);
     border-radius: 3px;
     padding: 3px 10px;
-    font-size: 12px;
+    font-size: 0.75rem;
     cursor: pointer;
     white-space: nowrap;
     font-family: inherit;
@@ -115,7 +115,7 @@
 
 .me-btn-font {
     padding: 2px 6px;
-    font-size: 13px;
+    font-size: 0.81rem;
     font-weight: 600;
     min-width: 24px;
 }
@@ -130,14 +130,14 @@
 .me-spacer { flex: 1; }
 
 .me-font-label {
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--panel-fg-muted);
     font-family: inherit;
     user-select: none;
 }
 .me-font-label-lg { font-size: 15px; }
 .me-font-size {
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--panel-fg-muted);
     min-width: 32px;
     text-align: center;
@@ -246,7 +246,7 @@
     align-items: center;
     gap: 6px;
     padding: 4px 12px;
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--panel-fg-muted);
     background: var(--panel-header-bg);
     border-top: 1px solid var(--panel-border);
@@ -268,7 +268,7 @@
     background: rgba(255, 170, 0, 0.12);
     border-bottom: 1px solid var(--warning-color);
     color: var(--warning-color);
-    font-size: 12px;
+    font-size: 0.75rem;
     flex-shrink: 0;
 }
 
@@ -278,7 +278,7 @@
 
 .me-confirm-btn {
     padding: 2px 12px;
-    font-size: 11px;
+    font-size: 0.69rem;
     font-family: inherit;
     cursor: pointer;
     border: 1px solid;

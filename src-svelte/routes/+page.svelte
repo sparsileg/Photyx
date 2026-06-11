@@ -23,6 +23,7 @@
   import { VIEWS } from '../lib/stores/ui.ts';
   import { db } from '../lib/db';
   import { invoke } from '@tauri-apps/api/core';
+  import { DEFAULT_FONT_SIZE } from '../lib/settings/constants';
   import { onMount } from 'svelte';
   import { quickLaunch } from '../lib/stores/quickLaunch';
   import { session } from '../lib/stores/session';
@@ -65,6 +66,8 @@
       prefs = await db.getAllPreferences();
       ui.hydrateFromDb(prefs);
       settings.hydrate(prefs);
+      const fontSize = parseFloat(prefs['ui_font_size'] ?? String(DEFAULT_FONT_SIZE)) || DEFAULT_FONT_SIZE;
+      document.documentElement.style.fontSize = `${fontSize}px`;
       const buttons = await db.getQuickLaunchButtons();
       quickLaunch.hydrate(buttons);
       await thresholdProfiles.hydrate();

@@ -274,16 +274,20 @@
             autofocus
             />
             <button class="ml-action-btn" onclick={() => confirmRename(macro.id)}>OK</button>
-            <button class="ml-action-btn" onclick={cancelRename}>✕</button>
+            <button class="ml-action-btn" onclick={cancelRename}> </button>
           {:else}
             <span class="ml-name">{macro.display_name}</span>
-            <div class="ml-item-actions">
-              <button class="ml-action-btn" onclick={() => editMacro(macro)} title="Edit macro">✎ Edit</button>
-              <button class="ml-action-btn" onclick={() => startRename(macro)} title="Rename macro">Rename</button>
-              <button class="ml-action-btn ml-delete-btn" onclick={() => requestDelete(macro)} title="Delete macro">🗑</button>
-            </div>
           {/if}
         </div>
+        {#if renamingId !== macro.id}
+        <div class="ml-item-middle">
+          <div class="ml-item-actions">
+            <button class="ml-action-btn" onclick={() => editMacro(macro)} title="Edit macro">Edit</button>
+            <button class="ml-action-btn" onclick={() => startRename(macro)} title="Rename macro">Rename</button>
+            <button class="ml-action-btn ml-delete-btn" onclick={() => requestDelete(macro)} title="Delete macro">Delete</button>
+          </div>
+        </div>
+        {/if}
         <div class="ml-item-bottom">
           <span class="ml-size">{formatRunCount(macro)}</span>
           <div class="ml-item-actions">

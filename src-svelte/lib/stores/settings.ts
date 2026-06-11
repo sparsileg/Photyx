@@ -6,6 +6,7 @@
 import { writable } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import {
+  DEFAULT_FONT_SIZE,
   JPEG_QUALITY_DEFAULT,
   CONSOLE_HISTORY_DEFAULT,
   MACRO_FONT_DEFAULT,
@@ -23,6 +24,7 @@ export interface AppPreferences {
   buffer_pool_memory_limit:  number;  // stored as bytes, converted to/from GB in UI
   autostretch_shadow_clip:   number;
   autostretch_target_bg:     number;
+  ui_font_size:              number;  // root font size in px
 }
 
 const defaults: AppPreferences = {
@@ -33,6 +35,7 @@ const defaults: AppPreferences = {
   buffer_pool_memory_limit: BUFFER_POOL_DEFAULT_GB * GB,
   autostretch_shadow_clip:  SHADOW_CLIP_DEFAULT,
   autostretch_target_bg:    TARGET_BG_DEFAULT,
+  ui_font_size:             DEFAULT_FONT_SIZE,
 };
 
 function createSettingsStore() {
@@ -60,6 +63,8 @@ function createSettingsStore() {
           n.autostretch_shadow_clip = parseFloat(prefs['autostretch_shadow_clip']) || s.autostretch_shadow_clip;
         if (prefs['autostretch_target_bg'])
           n.autostretch_target_bg = parseFloat(prefs['autostretch_target_bg']) || s.autostretch_target_bg;
+        if (prefs['ui_font_size'])
+          n.ui_font_size = parseFloat(prefs['ui_font_size']) || s.ui_font_size;
         return n;
       });
     },

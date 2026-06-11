@@ -30,7 +30,7 @@
     flex: 0 0 auto;
 }
 .modal-title {
-    font-size: 11px;
+    font-size: 0.69rem;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -40,7 +40,7 @@
 .modal-search {
     flex: 1;
     font-family: inherit;
-    font-size: 13px;
+    font-size: 0.81rem;
     background: var(--input-bg);
     border: 1px solid var(--border-color);
     color: var(--text-color);
@@ -52,7 +52,7 @@
 }
 .modal-close {
     cursor: pointer;
-    font-size: 14px;
+    font-size: 0.88rem;
     color: var(--text-secondary);
     padding: 2px 4px;
     flex: 0 0 auto;
@@ -68,13 +68,13 @@
 .modal-loading {
     padding: 20px;
     text-align: center;
-    font-size: 13px;
+    font-size: 0.81rem;
     color: var(--text-secondary);
 }
 .modal-footer {
     flex: 0 0 auto;
     padding: 4px 12px;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     border-top: 1px solid var(--border-color);
     background: var(--card-bg);
@@ -82,12 +82,12 @@
 .kw-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-size: 0.81rem;
 }
 .kw-table th {
     text-align: left;
     padding: 4px 10px;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -120,7 +120,7 @@
 
 .kw-comment {
     color: var(--text-secondary);
-    font-size: 10px;
+    font-size: 0.63rem;
 }
 
 /* ── About modal ─────────────────────────────────────────────────────────── */
@@ -140,7 +140,7 @@
 }
 
 .about-title {
-    font-size: 28px;
+    font-size: 1.75rem;
     font-weight: 700;
     letter-spacing: 0.2em;
     color: var(--primary-color);
@@ -148,7 +148,7 @@
 }
 
 .about-version {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     text-align: center;
     letter-spacing: 0.05em;
@@ -161,7 +161,7 @@
 }
 
 .about-text {
-    font-size: 13px;
+    font-size: 0.81rem;
     color: var(--text-color);
     line-height: 1.7;
     text-align: left;
@@ -171,13 +171,13 @@
 .about-stack {
     display: flex;
     gap: 8px;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     letter-spacing: 0.04em;
 }
 
 .about-copy {
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--text-secondary);
     text-align: center;
 }

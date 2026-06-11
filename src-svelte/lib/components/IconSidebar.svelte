@@ -36,7 +36,7 @@
   </div>
 
 {#if $ui.activePanel !== null && $ui.activePanel !== 'macro-editor'}
-  <div id="panel-container" class="open" class:wide={$ui.activePanel === 'keywords'}>
+  <div id="panel-container" class="open" class:wide={$ui.activePanel === 'keywords'} class:wide-macro={$ui.activePanel === 'macro-lib'}>
     {#if $ui.activePanel === 'files'}
       <FileBrowser />
     {:else if $ui.activePanel === 'keywords'}

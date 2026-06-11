@@ -11,7 +11,7 @@ html, body {
     height: 100%;
     overflow: hidden;
     font-family: 'JetBrains Mono', 'Fira Mono', 'Courier New', monospace;
-    font-size: 13px;
+    font-size: 0.81rem;
     line-height: 1.4;
 }
 
@@ -113,6 +113,10 @@ html, body {
     width: 65vw !important;
 }
 
+#panel-container.wide-macro {
+    width: 420px !important;
+}
+
 #panel-container.open {
     transform: translateX(0);
 }
@@ -134,7 +138,7 @@ html, body {
     align-items: center;
     justify-content: space-between;
     padding: 8px 12px;
-    font-size: 11px;
+    font-size: 0.69rem;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -180,7 +184,7 @@ html, body {
     left: 0;
     right: 0;
     text-align: center;
-    font-size: 11px;
+    font-size: 0.69rem;
     color: #ffffff;
     background: rgba(0, 0, 0, 0.55);
     padding: 3px 10px;
@@ -232,7 +236,7 @@ html, body {
     padding: 8px 16px;
     background: var(--warning-color);
     color: var(--bg-color);
-    font-size: 13px;
+    font-size: 0.81rem;
 }
 
 .recovery-bar strong {
@@ -246,7 +250,7 @@ html, body {
     background: var(--bg-color);
     color: var(--text-color);
     cursor: pointer;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .recovery-bar button:hover {

@@ -46,7 +46,7 @@
 }
 
 .console-title {
-    font-size: 10px;
+    font-size: 0.63rem;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -54,7 +54,7 @@
 }
 
 #console-panel.expanded .console-title {
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .console-actions {
@@ -64,7 +64,7 @@
 }
 
 .console-action-btn {
-    font-size: 10px;
+    font-size: 0.63rem;
     color: var(--text-secondary);
     cursor: pointer;
     padding: 1px 5px;
@@ -79,7 +79,7 @@
 }
 
 #console-panel.expanded .console-action-btn {
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 /* ── Collapsed: output area ──────────────────────────────────────────────── */
@@ -89,7 +89,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding: 4px 8px;
-    font-size: 11px;
+    font-size: 0.69rem;
     line-height: 1.6;
 }
 
@@ -101,7 +101,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding: 10px 14px;
-    font-size: 14px;
+    font-size: 0.88rem;
     line-height: 1.7;
     display: flex;
     flex-direction: column;
@@ -158,15 +158,15 @@
 .console-line.info {
     color: var(--text-secondary);
     padding-left: 14px;
-    font-size: 10px;
+    font-size: 0.63rem;
 }
 
 #console-panel.expanded .console-line {
-    font-size: 15px;
+    font-size: 0.94rem;
 }
 
 #console-panel.expanded .console-line.info {
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 /* Inline input line in expanded terminal */
@@ -195,7 +195,7 @@
 }
 
 .console-prompt {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--primary-color);
     font-weight: 700;
     flex: 0 0 auto;
@@ -211,7 +211,7 @@
     border: none;
     outline: none;
     font-family: inherit;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--text-color);
     caret-color: var(--primary-color);
     resize: none;
@@ -222,24 +222,24 @@
 }
 
 #console-panel.expanded #console-textarea {
-    font-size: 15px;
+    font-size: 0.94rem;
     line-height: 1.7;
 }
 
 #console-textarea::placeholder {
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: 0.69rem;
 }
 
 #console-panel.expanded #console-textarea::placeholder {
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 /* ── Tab hint ────────────────────────────────────────────────────────────── */
 
 #tab-hint {
     flex: 0 0 auto;
-    font-size: 10px;
+    font-size: 0.63rem;
     color: var(--warning-color);
     padding: 2px 8px;
     border-top: 1px solid var(--border-color);
@@ -248,5 +248,5 @@
 }
 
 #console-panel.expanded #tab-hint {
-    font-size: 26px;
+    font-size: 1.63rem;
 }

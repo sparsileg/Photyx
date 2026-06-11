@@ -9,7 +9,7 @@
     background: var(--bg-color);
     color: var(--text-color);
     font-family: monospace;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
@@ -26,7 +26,7 @@
 }
 
 #sw-title {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--primary-color);
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -42,13 +42,13 @@
 }
 
 .sw-label {
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--text-secondary);
     white-space: nowrap;
 }
 
 .sw-label-highlight {
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--primary-color);
     font-family: monospace;
     white-space: nowrap;
@@ -61,7 +61,7 @@
     background: var(--input-bg);
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: 0.69rem;
     font-family: monospace;
     padding: 3px 10px;
     border-radius: 2px;
@@ -104,23 +104,20 @@
 
 .sw-close {
     margin-left: auto;
-    color: var(--error-color);
+    color: var(--text-color);
     border-color: var(--border-color);
-    opacity: 0.6;
 }
-
 .sw-close:hover {
     background: var(--card-hover);
     color: var(--error-color);
     border-color: var(--error-color);
-    opacity: 1;
 }
 
 .sw-select {
     background: var(--input-bg);
     border: 1px solid var(--border-color);
     color: var(--text-color);
-    font-size: 11px;
+    font-size: 0.69rem;
     font-family: monospace;
     padding: 3px 6px;
     border-radius: 2px;
@@ -165,13 +162,13 @@
     align-items: center;
     justify-content: center;
     gap: 12px;
-    font-size: 13px;
+    font-size: 0.81rem;
     color: var(--text-secondary);
     font-family: monospace;
 }
 
 .sw-status-hint {
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--text-secondary);
     opacity: 0.6;
 }
@@ -189,7 +186,7 @@
     border: 1px solid var(--primary-color);
     color: var(--primary-color);
     font-family: monospace;
-    font-size: 11px;
+    font-size: 0.69rem;
     padding: 4px 12px;
     border-radius: 2px;
     pointer-events: none;

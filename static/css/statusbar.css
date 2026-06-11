@@ -3,7 +3,7 @@
 #status-bar {
     background: var(--card-bg);
     border-top: 1px solid var(--border-color);
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--text-secondary);
     user-select: none;
     transition: background 0.2s;
@@ -42,7 +42,7 @@
     left: 0;
     right: 0;
     height: 66px;
-    font-size: 33px;
+    font-size: 2.06rem;
     padding: 12px 16px;
     z-index: 400;
     transition: height 0.3s ease, font-size 0.3s ease, padding 0.3s ease;
@@ -52,7 +52,7 @@
     animation: status-pulse 1.2s ease-in-out infinite;
 }
 #status-bar.status-running #status-icon {
-    font-size: 36px;
+    font-size: 2.25rem;
 }
 
 #status-bar.status-running #status-text,
@@ -61,7 +61,7 @@
 }
 
 #status-bar.status-running #status-icon {
-    font-size: 36px;
+    font-size: 2.25rem;
 }
 
 @keyframes status-pulse {
@@ -79,7 +79,7 @@
     left: 0;
     right: 0;
     height: 66px;
-    font-size: 33px;
+    font-size: 2.06rem;
     padding: 12px 16px;
     z-index: 400;
     transition: height 0.3s ease, font-size 0.3s ease, padding 0.3s ease;
@@ -91,7 +91,7 @@
 }
 
 #status-bar.status-alert #status-icon {
-    font-size: 36px;
+    font-size: 2.25rem;
 }
 
 #notif-history.alert {
@@ -99,7 +99,7 @@
 }
 
 #status-icon {
-    font-size: 12px;
+    font-size: 0.75rem;
     flex: 0 0 auto;
 }
 
@@ -112,7 +112,7 @@
 
 #status-right {
     flex: 0 0 auto;
-    font-size: 10px;
+    font-size: 0.63rem;
     color: var(--text-secondary);
     display: flex;
     gap: 12px;
@@ -126,7 +126,7 @@
 }
 
 .status-item-label {
-    font-size: 9px;
+    font-size: 0.56rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--text-secondary);
@@ -166,7 +166,7 @@
     justify-content: space-between;
     padding: 6px 12px;
     border-bottom: 1px solid var(--border-color);
-    font-size: 10px;
+    font-size: 0.63rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.07em;
@@ -176,7 +176,7 @@
 
 .notif-close {
     cursor: pointer;
-    font-size: 13px;
+    font-size: 0.81rem;
     color: var(--text-secondary);
 }
 
@@ -190,11 +190,11 @@
     gap: 10px;
     padding: 5px 12px;
     border-bottom: 1px solid var(--border-color-light);
-    font-size: 11px;
+    font-size: 0.69rem;
 }
 
 .notif-time {
-    font-size: 10px;
+    font-size: 0.63rem;
     color: var(--text-secondary);
     flex: 0 0 auto;
     white-space: nowrap;

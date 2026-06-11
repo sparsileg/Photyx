@@ -9,7 +9,7 @@
     background: var(--bg-color);
     color: var(--text-color);
     font-family: monospace;
-    font-size: 12px;
+    font-size: 0.75rem;
 }
 
 .ar-toolbar {
@@ -27,7 +27,7 @@
 }
 
 .ar-title {
-    font-size: 13px;
+    font-size: 0.81rem;
     font-weight: bold;
     color: var(--primary-color);
 }
@@ -36,7 +36,7 @@
     background: var(--input-bg);
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: 0.69rem;
     font-family: monospace;
     padding: 3px 10px;
     border-radius: 2px;
@@ -56,21 +56,21 @@
     color: var(--text-secondary);
     border-color: var(--border-color);
 }
+
 .ar-close-btn {
     background: none;
     border: 1px solid var(--border-color);
-    color: var(--error-color);
+    color: var(--text-color);
     padding: 3px 10px;
     cursor: pointer;
-    font-size: 11px;
+    font-size: 0.69rem;
     font-family: monospace;
     border-radius: 2px;
-    opacity: 0.6;
 }
 .ar-close-btn:hover {
     background: var(--card-hover);
+    color: var(--error-color);
     border-color: var(--error-color);
-    opacity: 1;
 }
 
 /* ── Session path row ────────────────────────────────────────────────────── */
@@ -83,7 +83,7 @@
     background: var(--card-bg);
     border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
-    font-size: 11px;
+    font-size: 0.69rem;
     color: var(--text-secondary);
 }
 
@@ -100,7 +100,7 @@
 }
 
 .ar-imported-badge {
-    font-size: 10px;
+    font-size: 0.63rem;
     font-weight: bold;
     padding: 1px 5px;
     border-radius: 2px;
@@ -196,7 +196,7 @@
 
 .ar-context-item {
     padding: 6px 14px;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-family: monospace;
     color: var(--text-color);
     cursor: pointer;
@@ -223,7 +223,7 @@
 
 .ar-cat-badge {
     display: inline-block;
-    font-size: 10px;
+    font-size: 0.63rem;
     font-family: monospace;
     font-weight: bold;
     padding: 1px 5px;

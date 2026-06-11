@@ -39,7 +39,7 @@
 }
 
 .pref-title {
-    font-size:   13px;
+    font-size:   0.81rem;
     font-weight: 600;
     color:       var(--primary-color);
     letter-spacing: 0.04em;
@@ -51,7 +51,7 @@
     border:      none;
     color:       var(--text-secondary);
     cursor:      pointer;
-    font-size:   14px;
+    font-size:   0.88rem;
     padding:     2px 6px;
     line-height: 1;
 }
@@ -75,7 +75,7 @@
 }
 
 .pref-section-title {
-    font-size:      11px;
+    font-size:      0.69rem;
     font-weight:    600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -96,7 +96,7 @@
 }
 
 .pref-label {
-    font-size:  12px;
+    font-size:  0.75rem;
     color:      var(--text-color);
     padding-top: 5px;
     text-align: right;
@@ -116,7 +116,7 @@
     border:        1px solid var(--border-color);
     border-radius: 3px;
     color:         var(--text-color);
-    font-size:     12px;
+    font-size:     0.75rem;
     padding:       4px 7px;
     outline:       none;
 }
@@ -147,20 +147,20 @@
 }
 
 .pref-unit {
-    font-size: 11px;
+    font-size: 0.69rem;
     color:     var(--text-secondary);
 }
 
 /* ── Helper & error text ─────────────────────────────────────────────────── */
 
 .pref-helper {
-    font-size: 11px;
+    font-size: 0.69rem;
     color:     var(--text-secondary);
     line-height: 1.4;
 }
 
 .pref-error {
-    font-size:  11px;
+    font-size:  0.69rem;
     color:      var(--error-color);
     animation:  pref-error-pulse 0.8s ease-in-out infinite;
 }
@@ -183,7 +183,7 @@
     border-radius: 3px;
     color:         var(--text-color);
     cursor:        pointer;
-    font-size:     11px;
+    font-size:     0.69rem;
     padding:       4px 8px;
     white-space:   nowrap;
 }
@@ -208,7 +208,7 @@
 .pref-btn {
     border-radius: 3px;
     cursor:        pointer;
-    font-size:     12px;
+    font-size:     0.75rem;
     padding:       5px 16px;
     border:        1px solid var(--border-color);
 }

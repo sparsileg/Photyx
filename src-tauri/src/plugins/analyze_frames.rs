@@ -29,6 +29,47 @@ use tracing::info;
 
 pub struct AnalyzeFrames;
 
+fn load_thresholds_by_name(
+    name: &str,
+) -> Result<crate::analysis::session_stats::AnalysisThresholds, PluginError> {
+    let db = crate::GLOBAL_DB
+        .get()
+        .ok_or_else(|| PluginError::new("DB_UNAVAILABLE", "Global DB not initialised."))?
+        .lock()
+        .expect("global db lock poisoned");
+
+    let result = db.query_row(
+        "SELECT bg_median_reject_sigma, signal_weight_reject_sigma,
+                fwhm_reject_sigma, star_count_reject_sigma, eccentricity_reject_abs
+         FROM threshold_profiles WHERE name = ?1 COLLATE NOCASE",
+        rusqlite::params![name],
+        |row| {
+            Ok(crate::analysis::session_stats::AnalysisThresholds {
+                background_median: crate::analysis::session_stats::MetricThresholds {
+                    reject: row.get::<_, f64>(0)? as f32,
+                },
+                signal_weight: crate::analysis::session_stats::MetricThresholds {
+                    reject: row.get::<_, f64>(1)? as f32,
+                },
+                fwhm: crate::analysis::session_stats::MetricThresholds {
+                    reject: row.get::<_, f64>(2)? as f32,
+                },
+                star_count: crate::analysis::session_stats::MetricThresholds {
+                    reject: row.get::<_, f64>(3)? as f32,
+                },
+                eccentricity: crate::analysis::session_stats::MetricThresholds {
+                    reject: row.get::<_, f64>(4)? as f32,
+                },
+            })
+        },
+    );
+
+    result.map_err(|_| PluginError::new(
+        "PROFILE_NOT_FOUND",
+        &format!("Threshold profile '{}' not found.", name),
+    ))
+}
+
 impl PhotonPlugin for AnalyzeFrames {
     fn name(&self)        -> &str { "AnalyzeFrames" }
     fn version(&self)     -> &str { "1.0.0" }
@@ -41,25 +82,11 @@ impl PhotonPlugin for AnalyzeFrames {
     fn parameters(&self) -> Vec<ParamSpec> {
         vec![
             ParamSpec {
-                name:        "scope".to_string(),
+                name:        "profile".to_string(),
                 param_type:  ParamType::String,
                 required:    false,
-                description: "all (default) — all loaded frames; current — current frame only (diagnostic, no keywords written)".to_string(),
-                default:     Some("all".to_string()),
-            },
-            ParamSpec {
-                name:        "threshold".to_string(),
-                param_type:  ParamType::Float,
-                required:    false,
-                description: "Star detection threshold in units of background std dev (default: 5.0)".to_string(),
-                default:     Some("5.0".to_string()),
-            },
-            ParamSpec {
-                name:        "saturation".to_string(),
-                param_type:  ParamType::Float,
-                required:    false,
-                description: "Saturation threshold for star rejection (default: 0.98)".to_string(),
-                default:     Some("0.98".to_string()),
+                description: "Threshold profile name to use for this run (e.g. profile=Session). If omitted, uses the active profile set in Edit > Analysis Parameters.".to_string(),
+                default:     None,
             },
         ]
     }
@@ -77,6 +104,19 @@ impl PhotonPlugin for AnalyzeFrames {
             det_config.saturation_threshold = s.parse::<f32>().map_err(|_| {
                 PluginError::invalid_arg("saturation", "must be a float between 0.0 and 1.0")
             })?;
+        }
+
+        // Optional profile= argument — look up thresholds by name from DB
+        if let Some(profile_name) = args.get("profile") {
+            let thresholds = load_thresholds_by_name(profile_name)?;
+            let saved = ctx.analysis_thresholds.clone();
+            ctx.analysis_thresholds = thresholds;
+            let result = match scope.to_lowercase().as_str() {
+                "current" => execute_current(ctx, &det_config),
+                _         => execute_all(ctx, &det_config),
+            };
+            ctx.analysis_thresholds = saved;
+            return result;
         }
 
         match scope.to_lowercase().as_str() {

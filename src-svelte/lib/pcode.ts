@@ -103,7 +103,7 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   abs:                 '(#)',
   addfiles:            'paths=',
   addkeyword:          'name=  value=  comment=',
-  analyzeframes:       '',
+  analyzeframes:       '[profile=]',
   commitanalysis:      '[append=]',
   exportanalysisreport: '[path=]',
   assert:              'expression=',
@@ -438,10 +438,12 @@ export const HELP_DB: Record<string, HelpEntry> = {
   analyzeframes: {
     name:        'AnalyzeFrames',
     description: 'Computes five quality metrics for all loaded frames (FWHM, eccentricity, star count, signal weight, background median) and classifies each frame as PASS or REJECT using iterative sigma clipping.',
-    syntax:      'AnalyzeFrames',
-    arguments:   [],
+    syntax:      'AnalyzeFrames [profile=<name>]',
+    arguments: [
+      { name: 'profile', type: 'string', required: false, description: 'Threshold profile name to use for this run (e.g. profile=Session). If omitted, uses the active profile set in Edit > Analysis Parameters.' },
+    ],
     output:  'Populates analysis results for all frames. Results visible in Analysis Results and Analysis Graph views.',
-    example: 'AnalyzeFrames',
+    example: 'AnalyzeFrames\nAnalyzeFrames profile=Session\nAnalyzeFrames profile=Project',
   },
 
   autostretch: {
