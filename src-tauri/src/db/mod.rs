@@ -33,16 +33,24 @@ pub fn open_db(app_data_dir: PathBuf) -> Result<Connection> {
 fn seed_defaults(conn: &Connection) -> Result<()> {
     let now = now_unix();
 
-    // Default "Default" threshold profile
-    conn.execute(
-        "INSERT OR IGNORE INTO threshold_profiles
-            (name, description,
-             bg_median_reject_sigma, bg_stddev_reject_sigma, bg_gradient_reject_sigma,
-             signal_weight_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
-             eccentricity_reject_abs, created_at, updated_at)
-         VALUES (?1, ?2, 2.5, 2.5, 2.5, 2.5, 2.5, 1.5, 0.85, ?3, ?3)",
-        rusqlite::params!["Default", "Default rejection thresholds", now],
-    )?;
+    // Protected built-in threshold profiles — seeded on every launch via OR IGNORE
+    let profiles: &[(&str, &str, f64, f64, f64, f64, f64)] = &[
+        // name       description                          bg_med  sw    fwhm  stars  ecc
+        ("Default", "Default rejection thresholds",        2.5,   2.5,  2.5,  1.5,  0.85),
+        ("Project", "Cross-session project analysis",      2.5,   2.5,  2.5,  1.5,  0.85),
+        ("Session", "Per-session broad outlier rejection", 3.0,   3.0,  3.0,  2.5,  0.85),
+    ];
+    for (name, desc, bg_med, sw, fwhm, stars, ecc) in profiles {
+        conn.execute(
+            "INSERT OR IGNORE INTO threshold_profiles
+                (name, description,
+                 bg_median_reject_sigma,
+                 signal_weight_reject_sigma, fwhm_reject_sigma, star_count_reject_sigma,
+                 eccentricity_reject_abs, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+            rusqlite::params![name, desc, bg_med, sw, fwhm, stars, ecc, now],
+        )?;
+    }
 
     // Algorithm set version 1
     conn.execute(

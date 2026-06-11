@@ -84,6 +84,7 @@ impl PhotonPlugin for WriteFIT {
                 .map_err(|e| PluginError::new("WRITE_ERROR", &e))?;
 
             info!("Wrote stack FITS: {}", out_path);
+            ctx.variables.insert("STACKED".to_string(), out_path.clone());
             return Ok(PluginOutput::Message(format!("Wrote stack result to '{}'", out_path)));
         }
 
@@ -171,6 +172,84 @@ fn deinterleave_f32(data: &[f32], n_pixels: usize, channels: usize) -> Vec<f32> 
         }
     }
     out
+}
+
+/// Update only the FITS keywords on an existing file without touching pixel data.
+/// Deletes all non-structural keywords then rewrites from the buffer's keyword map.
+pub(crate) fn update_fits_keywords(path: &str, buffer: &ImageBuffer) -> Result<(), String> {
+    let mut fitsfile = FitsFile::edit(path)
+        .map_err(|e| format!("Cannot open FITS file for editing: {}", e))?;
+
+    let hdu = fitsfile.hdu(0)
+        .map_err(|e| format!("Cannot access primary HDU: {}", e))?;
+
+    // ── Delete all existing non-structural keywords ───────────────────────────
+    // We read the full keyword list first, then delete by name.
+    let key_names: Vec<String> = {
+        let mut names = Vec::new();
+        let mut idx = 1i32;
+        loop {
+            let mut name    = [0i8; 72];
+            let mut value   = [0i8; 72];
+            let mut comment = [0i8; 72];
+            let mut status  = 0i32;
+            unsafe {
+                fitsio_sys::ffgkyn(
+                    fitsfile.as_raw(),
+                    idx,
+                    name.as_mut_ptr(),
+                    value.as_mut_ptr(),
+                    comment.as_mut_ptr(),
+                    &mut status,
+                );
+            }
+            if status != 0 { break; }
+            let kname = unsafe {
+                std::ffi::CStr::from_ptr(name.as_ptr())
+                    .to_string_lossy()
+                    .trim()
+                    .to_string()
+            };
+            match kname.as_str() {
+                "" | "SIMPLE" | "BITPIX" | "NAXIS" | "NAXIS1" | "NAXIS2" | "NAXIS3"
+                    | "EXTEND" | "END" | "BZERO" | "BSCALE"
+                    | "EXTNAME" | "ROWORDER" => {}
+                _ => names.push(kname),
+            }
+            idx += 1;
+        }
+        names
+    };
+
+    for name in &key_names {
+        let c_name = std::ffi::CString::new(name.as_str())
+            .map_err(|e| format!("Invalid keyword name '{}': {}", name, e))?;
+        let mut status = 0i32;
+        unsafe {
+            fitsio_sys::ffdkey(fitsfile.as_raw(), c_name.as_ptr(), &mut status);
+        }
+        // Ignore errors on delete — keyword may have already been removed
+    }
+
+    // ── Write current keywords from buffer ────────────────────────────────────
+    for kw in buffer.keywords.values() {
+        match kw.name.as_str() {
+            "SIMPLE" | "BITPIX" | "NAXIS" | "NAXIS1" | "NAXIS2" | "NAXIS3"
+                | "EXTEND" | "END" | "FILENAME" | "BZERO" | "BSCALE"
+                | "EXTNAME" | "ROWORDER" => continue,
+            _ => {}
+        }
+        let result = if let Some(comment) = &kw.comment {
+            hdu.write_key(&mut fitsfile, &kw.name, (kw.value.as_str(), comment.as_str()))
+        } else {
+            hdu.write_key(&mut fitsfile, &kw.name, kw.value.as_str())
+        };
+        if let Err(e) = result {
+            warn!("Could not write keyword {}: {}", kw.name, e);
+        }
+    }
+
+    Ok(())
 }
 
 /// Create a new FITS file from scratch with pixel data and keywords.

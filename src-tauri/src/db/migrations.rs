@@ -6,7 +6,7 @@
 use rusqlite::{Connection, Result};
 use crate::db::schema;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     let version = get_version(conn)?;
     tracing::info!("DB schema version on open: {}", version);
@@ -14,6 +14,7 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
         migrate_v1,  // version 0 → 1: create all tables
         migrate_v2,  // version 1 → 2: rename snr_reject_sigma → signal_weight_reject_sigma
         migrate_v3,  // version 2 → 3: drop active_directory from crash_recovery
+        migrate_v4,  // version 3 → 4: drop bg_stddev_reject_sigma and bg_gradient_reject_sigma
     ];
 
     for (i, migration) in migrations.iter().enumerate() {
@@ -37,16 +38,23 @@ fn set_version(conn: &Connection, version: u32) -> Result<()> {
     conn.execute_batch(&format!("PRAGMA user_version = {}", version))
 }
 
-fn migrate_v2(conn: &Connection) -> Result<()> {
+fn migrate_v4(conn: &Connection) -> Result<()> {
     conn.execute_batch(
-        "ALTER TABLE threshold_profiles
-         RENAME COLUMN snr_reject_sigma TO signal_weight_reject_sigma;"
+        "ALTER TABLE threshold_profiles DROP COLUMN bg_stddev_reject_sigma;
+         ALTER TABLE threshold_profiles DROP COLUMN bg_gradient_reject_sigma;"
     )
 }
 
 fn migrate_v3(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "ALTER TABLE crash_recovery DROP COLUMN active_directory;"
+    )
+}
+
+fn migrate_v2(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "ALTER TABLE threshold_profiles
+         RENAME COLUMN snr_reject_sigma TO signal_weight_reject_sigma;"
     )
 }
 

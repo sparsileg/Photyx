@@ -303,7 +303,7 @@ Log path="/logs/fwhm.log"
 
 
 # Second segment goes to the star count log
-For 
+For
   CountStars
   Print $starcount
 EndFor
@@ -443,19 +443,22 @@ WriteFrame
 
 #### `WriteFIT`
 
-Writes all session files to a destination directory in FITS format.
+Writes all session files to a destination directory in FITS format. Use `stack=true` to write the transient stack result as a single file. The `.fit` extension is appended automatically if not specified. When `stack=true`, stores the output path in `$STACKED`.
 
 ```
-WriteFIT destination=<path> [overwrite=<bool>]
+WriteFIT destination=<path> [overwrite=<bool>] [stack=<bool>]
 ```
 
-| Argument      | Required | Default | Description                 |
-| ------------- | -------- | ------- | --------------------------- |
-| `destination` | Yes      |         | Directory to write files to |
-| `overwrite`   | No       | `false` | Overwrite existing files    |
+| Argument      | Required | Default | Description                                                                          |
+| ------------- | -------- | ------- | ------------------------------------------------------------------------------------ |
+| `destination` | Yes      |         | Output directory (session frames) or file path (stack=true)                          |
+| `overwrite`   | No       | `false` | Overwrite existing files                                                             |
+| `stack`       | No       | `false` | Write the transient stack result as a single FITS file instead of all session frames |
 
 ```
 WriteFIT destination="/data/output" overwrite=true
+WriteFIT destination="/data/masters/flat_master" stack=true
+Print $STACKED
 ```
 
 ---
@@ -472,7 +475,7 @@ WriteTIFF destination=<path> [overwrite=<bool>]
 
 #### `WriteXISF`
 
-Writes all session files to a destination directory in XISF format. Use `stack=true` to export the transient stack result instead using the default format: Photyx_stack_OBJECT_FILTER_INTEGRATIONTIME_DTG.xisf (Photyx_stack_M64_ircut_24000s_20260528113121Z.xisf).
+Writes all session files to a destination directory in XISF format. Use `stack=true` to export the transient stack result instead using the default format: Photyx_stack_OBJECT_FILTER_INTEGRATIONTIME_DTG.xisf (Photyx_stack_M64_ircut_24000s_20260528113121Z.xisf). When `stack=true`, stores the output path in `$STACKED`.
 
 ```
 WriteXISF destination=<path> [overwrite=<bool>] [compress=<bool>] [stack=<bool>]
@@ -488,6 +491,7 @@ WriteXISF destination=<path> [overwrite=<bool>] [compress=<bool>] [stack=<bool>]
 ```
 WriteXISF destination="/data/output" overwrite=true compress=false
 WriteXISF destination="/data/output" stack=true
+Print $STACKED
 ```
 
 ---

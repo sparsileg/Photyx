@@ -166,6 +166,7 @@ fn write_stack_result(
         .map_err(|e| PluginError::new("WRITE_ERROR", &format!("Failed to write '{}': {}", out_path, e)))?;
 
     info!("Wrote stack XISF: {}", out_path);
+    ctx.variables.insert("STACKED".to_string(), out_path.replace('\\', "/"));
     Ok(PluginOutput::Message(format!("Stack exported: {}", out_path)))
 }
 

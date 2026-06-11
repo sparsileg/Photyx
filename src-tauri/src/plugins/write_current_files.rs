@@ -5,7 +5,6 @@
 use tracing::{info, warn};
 use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
-use super::write_fits::write_fits_new;
 use super::write_tiff::write_tiff_file;
 
 pub struct WriteCurrent;
@@ -35,25 +34,13 @@ impl PhotonPlugin for WriteCurrent {
                         Some(b) => b,
                         None => { errors += 1; continue; }
                     };
-                    // Write to temp file then atomically replace.
-                    // This ensures deleted keywords are not preserved and avoids
-                    // duplicate keyword issues from in-place editing.
-                    let temp_path = format!("{}.tmp", path);
-                    let _ = std::fs::remove_file(&temp_path);
-                    match write_fits_new(&temp_path, buffer) {
+                    match super::write_fits::update_fits_keywords(&path, buffer) {
                         Ok(()) => {
-                            if let Err(e) = std::fs::rename(&temp_path, &path) {
-                                warn!("WriteCurrent: cannot replace {}: {}", path, e);
-                                let _ = std::fs::remove_file(&temp_path);
-                                errors += 1;
-                            } else {
-                                info!("WriteCurrent: updated FITS {}", path);
-                                written += 1;
-                            }
+                            info!("WriteCurrent: updated FITS keywords {}", path);
+                            written += 1;
                         }
                         Err(e) => {
-                            warn!("WriteCurrent: FITS write error {}: {}", path, e);
-                            let _ = std::fs::remove_file(&temp_path);
+                            warn!("WriteCurrent: FITS keyword update error {}: {}", path, e);
                             errors += 1;
                         }
                     }

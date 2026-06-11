@@ -160,7 +160,8 @@
       if (newSelected !== null) loadDraft(newSelected);
       confirmingDelete = false;
     } catch (e) {
-      notifications.error(`Failed to delete profile: ${e}`);
+      confirmingDelete = false;
+      notifications.error(String(e));
     }
   }
 

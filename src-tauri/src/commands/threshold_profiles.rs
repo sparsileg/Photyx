@@ -107,6 +107,13 @@ pub fn delete_threshold_profile(
     let db = state.db.lock().expect("db lock poisoned");
     let mut settings = state.settings.lock().expect("settings lock poisoned");
 
+    // Refuse to delete protected built-in profiles
+    if let Some(profile) = settings.threshold_profiles.iter().find(|p| p.id == id) {
+        if crate::constants::PROTECTED_THRESHOLD_PROFILES.contains(&profile.name.as_str()) {
+            return Err(format!("'{}' is a built-in profile and cannot be deleted.", profile.name));
+        }
+    }
+
     db.execute("DELETE FROM threshold_profiles WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
 

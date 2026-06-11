@@ -241,8 +241,8 @@ export const HELP_DB: Record<string, HelpEntry> = {
       { name: 'overwrite',   type: 'boolean', required: false, default: 'false', description: 'Overwrite existing files' },
       { name: 'stack',       type: 'boolean', required: false, default: 'false', description: 'Write the transient stack result as a single FITS file instead of all session frames' },
     ],
-    output:  'Writes FITS file(s) to the destination path.',
-    example: 'WriteFIT destination="/data/Output" overwrite=true\nWriteFIT destination="/data/masters/flat_master" stack=true',
+    output:  'Writes FITS file(s) to the destination path. When stack=true, stores the output path in $STACKED.',
+    example: 'WriteFIT destination="/data/Output" overwrite=true\nWriteFIT destination="/data/masters/flat_master" stack=true\nPrint $STACKED',
   },
 
   writetiff: {
@@ -267,8 +267,8 @@ export const HELP_DB: Record<string, HelpEntry> = {
       { name: 'compress',    type: 'boolean', required: false, default: 'false', description: 'Whether to apply LZ4HC XISF compression' },
       { name: 'stack',       type: 'boolean', required: false, default: 'false', description: 'Write the transient stack result instead of session files' },
     ],
-    output:  'Writes files to the destination directory.',
-    example: 'WriteXISF destination="/data/Output" overwrite=true compress=false\nWriteXISF destination="/data/Output" stack=true',
+    output:  'Writes files to the destination directory. When stack=true, stores the output path in $STACKED.',
+    example: 'WriteXISF destination="/data/Output" overwrite=true compress=false\nWriteXISF destination="/data/Output" stack=true\nWriteXISF destination="/data/Output" stack=true\nPrint $STACKED',
   },
 
   writecurrent: {

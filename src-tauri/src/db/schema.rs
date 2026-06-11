@@ -31,8 +31,6 @@ CREATE TABLE IF NOT EXISTS threshold_profiles (
     name                        TEXT NOT NULL UNIQUE,
     description                 TEXT,
     bg_median_reject_sigma      REAL NOT NULL DEFAULT 2.5,
-    bg_stddev_reject_sigma      REAL NOT NULL DEFAULT 2.5,
-    bg_gradient_reject_sigma    REAL NOT NULL DEFAULT 2.5,
     signal_weight_reject_sigma  REAL NOT NULL DEFAULT 2.5,
     fwhm_reject_sigma           REAL NOT NULL DEFAULT 2.5,
     star_count_reject_sigma     REAL NOT NULL DEFAULT 1.5,
