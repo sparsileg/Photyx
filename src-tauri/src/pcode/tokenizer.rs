@@ -28,7 +28,12 @@ pub enum PcodeLine {
         from: String,
         to:   String,
     },
-    /// EndFor — closes a For block
+    /// For varname in "glob_pattern" — begins a glob iterator loop
+    ForIn {
+        var:     String,
+        pattern: String,
+    },
+    /// EndFor — closes a For or ForIn block
     EndFor,
     /// A comment or blank line — skip silently
     Skip,
@@ -74,7 +79,15 @@ pub fn tokenize_line(line: &str) -> PcodeLine {
             return PcodeLine::EndIf;
         }
         "for" => {
-            // Form: varname = N to M
+            // Form: for varname in "glob_pattern"
+            if let Some(in_pos) = find_word(&rest, "in") {
+                let var     = rest[..in_pos].trim().to_string();
+                let pattern = rest[in_pos + 2..].trim().trim_matches('"').to_string();
+                if !var.is_empty() && !pattern.is_empty() {
+                    return PcodeLine::ForIn { var, pattern };
+                }
+            }
+            // Form: for varname = N to M
             if let Some(eq_pos) = rest.find('=') {
                 let var       = rest[..eq_pos].trim().to_string();
                 let after_eq  = rest[eq_pos + 1..].trim();

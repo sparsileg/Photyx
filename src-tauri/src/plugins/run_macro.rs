@@ -75,24 +75,39 @@ impl PhotonPlugin for RunMacro {
             .collect();
         client_actions.extend(legacy);
 
+        // Collect inner output messages (exclude assignments, include Print and command output)
+        let inner_output: Vec<String> = results.iter()
+            .filter(|r| r.success && !r.command.to_lowercase().starts_with("set "))
+            .filter_map(|r| r.message.clone())
+            .filter(|m| !m.is_empty())
+            .collect();
+
         if errors.is_empty() {
-            let msg = format!("Macro '{}' complete ({} commands)", name, lines_run);
+            let summary = format!("Macro '{}' complete ({} commands)", name, lines_run);
+            let mut full_msg = inner_output.join("\n");
+            if !full_msg.is_empty() { full_msg.push('\n'); }
+            full_msg.push_str(&summary);
+
             if client_actions.is_empty() {
-                Ok(PluginOutput::Message(msg))
+                Ok(PluginOutput::Message(full_msg))
             } else {
                 Ok(PluginOutput::Data(serde_json::json!({
-                    "message":        msg,
+                    "message":        full_msg,
                     "client_action":  client_actions.first(),
                     "client_actions": client_actions,
                 })))
             }
         } else {
-            Ok(PluginOutput::Message(format!(
+            let summary = format!(
                 "Macro '{}' halted after {} command(s): {}",
                 name,
                 lines_run,
                 errors[0].message.as_deref().unwrap_or("unknown error")
-            )))
+            );
+            let mut full_msg = inner_output.join("\n");
+            if !full_msg.is_empty() { full_msg.push('\n'); }
+            full_msg.push_str(&summary);
+            Ok(PluginOutput::Message(full_msg))
         }
     }
 }

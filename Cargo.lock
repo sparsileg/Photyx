@@ -3421,6 +3421,7 @@ dependencies = [
  "dirs-next",
  "fitsio",
  "fitsio-sys",
+ "glob",
  "image",
  "num_cpus",
  "once_cell",

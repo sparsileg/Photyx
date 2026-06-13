@@ -4,6 +4,7 @@
 use tracing::info;
 use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::AppContext;
+use glob::glob;
 use crate::plugins::image_reader::{read_image_file, peek_fits_dimensions, peek_xisf_dimensions, peek_tiff_dimensions};
 
 pub struct AddFiles;
@@ -29,15 +30,40 @@ impl PhotonPlugin for AddFiles {
         let raw = args.get("paths")
             .ok_or_else(|| PluginError::missing_arg("paths"))?;
 
-        // Split on comma, trim whitespace and quotes
-        let paths: Vec<String> = raw
-            .split(',')
-            .map(|s| s.trim().trim_matches('"').to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
+        // Split on comma, trim whitespace and quotes; expand glob patterns
+        let mut paths: Vec<String> = Vec::new();
+        let mut glob_warnings: Vec<String> = Vec::new();
 
-        if paths.is_empty() {
+        for token in raw.split(',').map(|s| s.trim().trim_matches('"')).filter(|s| !s.is_empty()) {
+            let is_glob = token.contains('*') || token.contains('?') || token.contains('[');
+            if is_glob {
+                match glob(token) {
+                    Ok(entries) => {
+                        let mut matched = 0usize;
+                        for entry in entries.flatten() {
+                            if let Some(p) = entry.to_str() {
+                                paths.push(p.to_string());
+                                matched += 1;
+                            }
+                        }
+                        if matched == 0 {
+                            glob_warnings.push(format!("No files matched pattern: '{}'", token));
+                        }
+                    }
+                    Err(e) => {
+                        glob_warnings.push(format!("Invalid glob pattern '{}': {}", token, e));
+                    }
+                }
+            } else {
+                paths.push(token.to_string());
+            }
+        }
+
+        if paths.is_empty() && glob_warnings.is_empty() {
             return Err(PluginError::new("NO_FILES", "No file paths provided"));
+        }
+        if paths.is_empty() {
+            return Err(PluginError::new("NO_FILES", &glob_warnings.join("; ")));
         }
 
         // Validate all paths exist before clearing session
@@ -117,6 +143,12 @@ impl PhotonPlugin for AddFiles {
             "Loaded {} file(s) (~{} MB raw, ~{} MB peak with analysis).",
             loaded, raw_mb, peak_mb
         );
+        if !glob_warnings.is_empty() {
+            for w in &glob_warnings {
+                tracing::warn!("AddFiles: {}", w);
+            }
+            msg.push_str(&format!(" {} glob warning(s): {}", glob_warnings.len(), glob_warnings.join("; ")));
+        }
         if !errors.is_empty() {
             msg.push_str(&format!(" {} error(s).", errors.len()));
             for e in &errors {

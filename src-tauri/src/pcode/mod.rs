@@ -55,6 +55,12 @@ enum Block {
         to:          String,
         body:        Vec<Block>,
     },
+    ForIn {
+        line_number: usize,
+        var:         String,
+        pattern:     String,
+        body:        Vec<Block>,
+    },
 }
 
 fn parse_blocks(lines: &[(usize, PcodeLine)]) -> Result<Vec<Block>, String> {
@@ -120,7 +126,7 @@ fn parse_blocks(lines: &[(usize, PcodeLine)]) -> Result<Vec<Block>, String> {
                 while i < lines.len() {
                     let (ln, ref pl) = lines[i];
                     match pl {
-                        PcodeLine::For { .. } => {
+                        PcodeLine::For { .. } | PcodeLine::ForIn { .. } => {
                             depth += 1;
                             body_lines.push((ln, pl.clone()));
                             i += 1;
@@ -143,6 +149,41 @@ fn parse_blocks(lines: &[(usize, PcodeLine)]) -> Result<Vec<Block>, String> {
                     var,
                     from,
                     to,
+                    body: parse_blocks(&body_lines)?,
+                });
+            }
+
+            PcodeLine::ForIn { var, pattern } => {
+                let (var, pattern) = (var.clone(), pattern.clone());
+                i += 1;
+                let mut body_lines: Vec<(usize, PcodeLine)> = Vec::new();
+                let mut depth = 1usize;
+
+                while i < lines.len() {
+                    let (ln, ref pl) = lines[i];
+                    match pl {
+                        PcodeLine::For { .. } | PcodeLine::ForIn { .. } => {
+                            depth += 1;
+                            body_lines.push((ln, pl.clone()));
+                            i += 1;
+                        }
+                        PcodeLine::EndFor => {
+                            depth -= 1;
+                            if depth == 0 { i += 1; break; }
+                            body_lines.push((ln, pl.clone()));
+                            i += 1;
+                        }
+                        _ => {
+                            body_lines.push((ln, pl.clone()));
+                            i += 1;
+                        }
+                    }
+                }
+
+                blocks.push(Block::ForIn {
+                    line_number,
+                    var,
+                    pattern,
                     body: parse_blocks(&body_lines)?,
                 });
             }
@@ -233,6 +274,52 @@ fn execute_blocks(
                     branch, ctx, registry, halt_on_error,
                     variables, results, last_log_index, halted,
                 );
+            }
+
+            Block::ForIn { line_number, var, pattern, body } => {
+                let pattern_resolved = substitute_vars(pattern, variables);
+                info!("pcode line {}: ForIn {} in \"{}\"", line_number, var, pattern_resolved);
+
+                match glob::glob(&pattern_resolved) {
+                    Ok(entries) => {
+                        let matched: Vec<String> = entries
+                            .flatten()
+                            .filter_map(|p| p.to_str().map(|s| s.to_string()))
+                            .collect();
+                        if matched.is_empty() {
+                            results.push(PcodeResult {
+                                line_number: *line_number,
+                                command:    "ForIn".to_string(),
+                                success:    true,
+                                message:    Some(format!("ForIn: no matches for pattern '{}'", pattern_resolved)),
+                                data:       None,
+                                trace_line: None,
+                                client_actions: vec![],
+                            });
+                        }
+                        for item in matched {
+                            if *halted { return; }
+                            variables.insert(var.clone(), item.clone());
+                            ctx.variables.insert(var.clone(), item.clone());
+                            execute_blocks(
+                                body, ctx, registry, halt_on_error,
+                                variables, results, last_log_index, halted,
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        results.push(PcodeResult {
+                            line_number: *line_number,
+                            command:    "ForIn".to_string(),
+                            success:    false,
+                            message:    Some(format!("ForIn: invalid pattern '{}': {}", pattern_resolved, e)),
+                            data:       None,
+                            trace_line: None,
+                            client_actions: vec![],
+                        });
+                        if halt_on_error { *halted = true; }
+                    }
+                }
             }
 
             Block::For { line_number, var, from, to, body } => {
