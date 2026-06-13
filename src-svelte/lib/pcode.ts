@@ -101,7 +101,7 @@ export type ArgHintValue = string | ((_raw: string) => void);
 // The ARG_HINTS object is defined there using this type; see Console.svelte.
 export const ARG_HINT_STRINGS: Record<string, string> = {
   abs:                 '(#)',
-  addfiles:            'paths=',
+  addfiles:            'paths=<path|glob>[,<path|glob>...]',
   addkeyword:          'name=  value=  comment=',
   analyzeframes:       '[profile=]',
   commitanalysis:      '[append=]',
@@ -190,13 +190,13 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   addfiles: {
     name:        'AddFiles',
-    description: 'Appends a list of explicit file paths to the session. Files already loaded are skipped. Use ClearSession first if you want to start fresh.',
-    syntax:      'AddFiles paths=<path>[,<path>...]',
+    description: 'Appends one or more files to the session. Accepts explicit file paths, glob patterns, or a mix of both in a comma-separated list. Files already loaded are skipped. Use ClearSession first if you want to start fresh.',
+    syntax:      'AddFiles paths=<path|glob>[,<path|glob>...]',
     arguments: [
-      { name: 'paths', type: 'string', required: true, description: 'Comma-separated list of full file paths to load' },
+      { name: 'paths', type: 'string', required: true, description: 'Comma-separated list of file paths and/or glob patterns. Wildcards: * matches any characters, ? matches one character, [...] matches a character class. Unmatched glob patterns produce a warning rather than an error.' },
     ],
-    output:  'Appends the specified files to the session file list.',
-    example: 'AddFiles paths="/data/M31/frame001.fit,/data/M31/frame002.fit"',
+    output:  'Appends matched files to the session file list. Reports load count, estimated memory usage, and any glob warnings.',
+    example: 'AddFiles paths="/data/M31/frame001.fit,/data/M31/frame002.fit"\nAddFiles paths="/data/M31/lights/*.fit"\nAddFiles paths="J:/projects/M82/M82-*-sess-*/lights/*.fit"',
   },
 
   readimages: {
@@ -729,11 +729,11 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   for: {
     name:        'For',
-    description: 'Iterates over all files in the current session, setting the current frame on each iteration.',
-    syntax:      'For\n  ...\nEndFor',
+    description: 'Two forms: (1) numeric range loop — iterates from N to M inclusive; (2) glob iterator loop — expands a glob pattern and iterates over each matched path, binding it to the loop variable as a string. Both forms use EndFor to close. Loops may be nested and mixed.',
+    syntax:      'For <var> = N To M\n  ...\nEndFor\n\nfor <var> in "<glob_pattern>"\n  ...\nEndFor',
     arguments:   [],
-    output:  'Executes the block once per session file.',
-    example: 'For\n  ComputeFWHM\n  Print $fwhm\nEndFor',
+    output:  'Executes the block once per iteration. Glob loop binds the full matched path to $<var> on each iteration. Unmatched glob patterns produce a warning and the loop body does not execute.',
+    example: 'For i = 1 To 5\n  Print "Frame " + $i\nEndFor\n\nfor d in "J:/projects/M82/M82-*-sess-*"\n  ClearSession\n  AddFiles paths="$d/lights/*.fit"\n  AnalyzeFrames profile="Session"\n  CommitAnalysis append=.session\nEndFor',
   },
 
   //    Console only

@@ -242,6 +242,33 @@ For i = 1 To $frames
 EndFor
 ```
 
+### Loops — iterating over a glob pattern
+
+`for <var> in "<pattern>"` expands a glob pattern and iterates over each matched path, binding it to the loop variable. The variable holds the full matched path as a string. Patterns may include wildcards in any path segment.
+
+```
+for d in "<glob_pattern>"
+  ...
+EndFor
+```
+
+```
+for d in "J:/projects/M82/M82-*-sess-*"
+  Print $d
+EndFor
+```
+
+Loops may be nested. Numeric and glob loops can be mixed.
+
+```
+for d in "J:/projects/M82/M82-ircut-sess-*"
+  ClearSession
+  AddFiles paths="$d/lights/*.fit"
+  AnalyzeFrames profile="Session"
+  CommitAnalysis append=.session
+EndFor
+```
+
 ### Loops — iterating over all session files
 
 This is the standard way to process all frames in a session.
@@ -329,18 +356,29 @@ Commands are grouped by function. Arguments in `[brackets]` are optional.
 
 #### `AddFiles`
 
-Appends one or more files to the current session. Files already loaded are skipped. Use `ClearSession` first to start a fresh session.
+Appends one or more files to the current session. Accepts explicit file
+paths, glob patterns, or a mix of both in a comma-separated list. Files
+already loaded are skipped. Use `ClearSession` first to start a fresh
+session.
 
 ```
-AddFiles paths=<path>[,<path>...]
+AddFiles paths=<path|glob>[,<path|glob>...]
 ```
 
-| Argument | Required | Description                             |
-| -------- | -------- | --------------------------------------- |
-| `paths`  | Yes      | Comma-separated list of full file paths |
+| Argument | Required | Description                                             |
+| -------- | -------- | ------------------------------------------------------- |
+| `paths`  | Yes      | Comma-separated list of file paths and/or glob patterns |
+
+Glob wildcards: `*` matches any sequence of characters, `?` matches a
+single character, `[...]` matches a character class. Glob patterns can
+appear anywhere in the path, including intermediate directory
+segments. Unmatched patterns produce a warning rather than an error.
 
 ```
 AddFiles paths="/data/M31/frame001.fit,/data/M31/frame002.fit"
+AddFiles paths="/data/M31/lights/*.fit"
+AddFiles paths="J:/projects/M82/M82-*-sess-*/lights/*.fit"
+AddFiles paths="/data/M31/lights/*.fit,/data/M31/extra/frame099.fit"
 ```
 
 ---
@@ -1026,7 +1064,23 @@ Conditional execution. See [Flow Control](#flow-control).
 
 #### `For / EndFor`
 
-Loop over a numeric range or all session files. See [Flow Control](#flow-control).
+Two loop forms — numeric range and glob iterator — both closed with `EndFor`. Loops may be nested and mixed.
+
+**Numeric range:**
+```
+For <var> = N To M
+  ...
+EndFor
+```
+
+**Glob iterator:**
+```
+for <var> in "<glob_pattern>"
+  ...
+EndFor
+```
+
+See [Flow Control](#flow-control) for full details and examples.
 
 ---
 
@@ -1174,6 +1228,48 @@ CommitStretch shadow_clip=-3.5 target_bg=0.10
 WriteXISF destination="/data/M31/stacked" stack=true
 Print "Stack complete."
 ```
+
+### Session and project analysis workflow
+
+This example runs a two-pass analysis across a multi-session project. The
+first pass analyzes each session independently using forgiving
+session-level thresholds, moving the worst outliers to `rejected/`
+subfolders. The second pass loads all surviving frames together and applies
+stricter project-level thresholds to select the best material for
+stacking.
+
+```
+# ── Pass 1: session-level rejection ─────────────────────────────────────────
+# Process each session directory independently.
+# Rejects are moved to <session>/lights/rejected/*.fit.session
+
+for d in "J:/projects/M82/M82-ircut-sess-*"
+  ClearSession
+  AddFiles paths="$d/lights/*.fit"
+  CountFiles
+  Assert expression="$filecount > 0"
+  Print "Session: " + $d + " — " + $filecount + " frames"
+  AnalyzeFrames profile="Session"
+  CommitAnalysis append=.session
+EndFor
+
+# ── Pass 2: project-level rejection ──────────────────────────────────────────
+# Load surviving frames from all sessions together.
+# Rejects from this pass are moved to rejected/*.fit (no suffix).
+
+ClearSession
+AddFiles paths="J:/projects/M82/M82-ircut-sess-*/lights/*.fit"
+CountFiles
+Assert expression="$filecount > 0"
+Print "Project pool: " + $filecount + " frames"
+AnalyzeFrames profile="Project"
+commitAnalysis append=.project
+ShowAnalysisResults
+```
+
+After reviewing the Analysis Results table, click **Commit Results** to
+finalize project-level rejections. Pass frames remain loaded and are ready
+for stacking.
 
 ---
 
