@@ -63,10 +63,12 @@ export const PCODE_COMMANDS = new Set([
   //    Scripting
   'Assert',
   'CountFiles',
+  'CountMatches',
   'Else',
   'EndFor',
   'EndIf',
   'For',
+  'GetSystemPath',
   'If',
   'LoadFile',
   'Log',
@@ -104,18 +106,19 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   addfiles:            'paths=<path|glob>[,<path|glob>...]',
   addkeyword:          'name=  value=  comment=',
   analyzeframes:       '[profile=]',
-  commitanalysis:      '[append=]',
-  exportanalysisreport: '[path=]',
   assert:              'expression=',
   autostretch:         'shadowClip=  targetBackground=',
   backgroundextract:   '[grid=]  [degree=]  [stack=]',
+  basename:            '($path)',
   binimage:            'factor=',
   blinksequence:       'fps=',
   cacheframes:         '',
+  ceil:                '(#)',
   clear:               '',
   clearannotations:    '',
   clearsession:        '',
   clearstack:          '',
+  commitanalysis:      '[append=]',
   commitstretch:       'shadow_clip=  target_bg=',
   computeeccentricity: '',
   computefwhm:         '',
@@ -123,16 +126,20 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   copyfile:            'destination=  source=',
   copykeyword:         'from=  to=',
   countfiles:          '',
+  countmatches:        'pattern=<glob>',
   debayerimage:        'pattern=[RGGB|BGGR|GRBG|GBRG]  method=[bilinear]',
   deletekeyword:       'name=  scope=',
+  dirof:               '($path)',
   else:                '',
   endfor:              '',
   endif:               '',
+  exportanalysisreport: '[path=]',
   filterbykeyword:     'name=  value=',
   floor:               '(#)',
-  for:                 '',
+  for:                 '<var> = N To M  |  <var> in "<glob>"',
   gethistogram:        '',
   getkeyword:          'name=',
+  getsystempath:       'name=[downloads|documents|desktop|temp]',
   help:                '',
   if:                  '',
   listkeywords:        '',
@@ -142,7 +149,7 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   medianvalue:         '',
   min:                 '(#,#)',
   modifykeyword:       'name=  value=  comment=  scope=',
-  movefile:            'destination=',
+  movefile:            'destination=  [source=]',
   print:               'message (or bare: Print "hello")',
   pwd:                 '',
   readimages:          'path=',
@@ -155,6 +162,7 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   showanalysisresults: '',
   sqrt:                '(#)',
   stackframes:         '[caldir=]',
+  stripext:            '($path)',
   version:             '',
   writecurrent:        '',
   writefit:            'destination=  [overwrite=]  [stack=]',
@@ -196,7 +204,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
       { name: 'paths', type: 'string', required: true, description: 'Comma-separated list of file paths and/or glob patterns. Wildcards: * matches any characters, ? matches one character, [...] matches a character class. Unmatched glob patterns produce a warning rather than an error.' },
     ],
     output:  'Appends matched files to the session file list. Reports load count, estimated memory usage, and any glob warnings.',
-    example: 'AddFiles paths="/data/M31/frame001.fit,/data/M31/frame002.fit"\nAddFiles paths="/data/M31/lights/*.fit"\nAddFiles paths="J:/projects/M82/M82-*-sess-*/lights/*.fit"',
+    example: 'AddFiles paths="/data/M31/frame001.fit,/data/M31/frame002.fit"\nAddFiles paths="/data/M31/lights/*.fit"\nAddFiles paths="J:/projects/M82/M82-*-sess-*/lights/*.fit"\nAddFiles paths="/data/M31/lights/*.fit,/data/M31/extra/frame099.fit"',
   },
 
   readimages: {
@@ -268,7 +276,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
       { name: 'stack',       type: 'boolean', required: false, default: 'false', description: 'Write the transient stack result instead of session files' },
     ],
     output:  'Writes files to the destination directory. When stack=true, stores the output path in $STACKED.',
-    example: 'WriteXISF destination="/data/Output" overwrite=true compress=false\nWriteXISF destination="/data/Output" stack=true\nWriteXISF destination="/data/Output" stack=true\nPrint $STACKED',
+    example: 'WriteXISF destination="/data/Output" overwrite=true compress=false\nWriteXISF destination="/data/Output" stack=true\nPrint $STACKED',
   },
 
   writecurrent: {
@@ -303,14 +311,14 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   movefile: {
     name:        'MoveFile',
-    description: 'Moves a file to a destination directory. Uses the current frame if no source is specified. Stores the destination path in $NEW_FILE.',
+    description: 'Moves a file to a destination. Uses the current frame if no source is specified. If the destination is an existing directory, the file is moved into it preserving its filename. If the destination is a full file path (mv semantics), the file is moved and renamed in one step. The destination parent directory is created automatically if needed.',
     syntax:      'MoveFile destination=<path> [source=<path>]',
     arguments: [
-      { name: 'destination', type: 'path', required: true,  description: 'Destination directory path' },
-      { name: 'source',      type: 'path', required: false, description: 'Source file path (default: current frame)' },
+      { name: 'destination', type: 'path', required: true,  description: 'Destination directory path, or full destination file path for rename-during-move.' },
+      { name: 'source',      type: 'path', required: false, description: 'Source file path (default: current frame). May be a file outside the session.' },
     ],
-    output:  'Moves the file and removes it from the session file list.',
-    example: 'MoveFile destination="/data/Rejects"',
+    output:  'Moves (and optionally renames) the file. Removes it from the session file list if it was a session file.',
+    example: 'MoveFile destination="/data/Rejects"\nMoveFile source="$f" destination="/data/Rejects"\n# Rename during move (mv semantics):\nSet cleaned = stripext($f)\nMoveFile source="$f" destination="$cleaned"',
   },
 
   filterbykeyword: {
@@ -534,8 +542,8 @@ export const HELP_DB: Record<string, HelpEntry> = {
     description: 'Fits a 2D polynomial surface to the image background and subtracts it, correcting light pollution gradients and vignetting residuals. Operates on the current session frame by default, or the transient stack result when stack=true.',
     syntax:      'BackgroundExtract [grid=<integer>] [degree=<integer>] [stack=<bool>]',
     arguments: [
-      { name: 'grid',   type: 'integer', required: false, default: '32',    description: 'Sampling grid size N (N×N cells, 8–64). Finer grids capture more local variation but are more sensitive to nebulosity contamination.' },
-      { name: 'degree', type: 'integer', required: false, default: '2',     description: 'Polynomial degree (1–3). Degree 2 handles the vast majority of real-world gradients. Degree 3 risks overfitting.' },
+      { name: 'grid',   type: 'integer', required: false, default: '32',    description: 'Sampling grid size N (NxN cells, 8-64). Finer grids capture more local variation but are more sensitive to nebulosity contamination.' },
+      { name: 'degree', type: 'integer', required: false, default: '2',     description: 'Polynomial degree (1-3). Degree 2 handles the vast majority of real-world gradients. Degree 3 risks overfitting.' },
       { name: 'stack',  type: 'boolean', required: false, default: 'false', description: 'Operate on the transient stack result instead of the current session frame.' },
     ],
     output:  'Modifies the pixel buffer in place. Invalidates display caches so the viewer reloads automatically.',
@@ -558,10 +566,10 @@ export const HELP_DB: Record<string, HelpEntry> = {
     description: 'Moves all REJECT frames to a rejected/ subfolder within each frame\'s source directory and removes them from the session. Pass frames remain loaded. Optionally appends a suffix to each moved filename.',
     syntax:      'CommitAnalysis [append=<ext>]',
     arguments: [
-      { name: 'append', type: 'string', required: false, default: '', description: 'Suffix appended after the original filename extension (e.g. append=.session → frame.fit.session). Leading dot is optional. Defaults to no suffix.' },
+      { name: 'append', type: 'string', required: false, default: '', description: 'Suffix appended after the original filename extension (e.g. append=.session produces frame.fit.session). Leading dot is optional. Defaults to no suffix.' },
     ],
     output:  'Reports pass count, reject count, and number of files moved.',
-    example: 'CommitAnalysis\nCommitAnalysis append=.session',
+    example: 'CommitAnalysis\nCommitAnalysis append=.session\nCommitAnalysis append=.project',
   },
 
   exportanalysisreport: {
@@ -572,7 +580,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
       { name: 'path', type: 'path', required: false, description: 'Full destination path for the JSON file. If omitted, written to the Downloads folder with an auto-derived filename.' },
     ],
     output:  'Writes the JSON file and reports the output path.',
-    example: 'ExportAnalysisReport\nExportAnalysisReport path="D:/projects/M64/M64_sess_20241112.json"',
+    example: 'ExportAnalysisReport\nExportAnalysisReport path="$downloads/M82-Project-Duo-Analysis.json"',
   },
 
   //    Display & navigation
@@ -650,14 +658,14 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   set: {
     name:        'Set',
-    description: 'Assigns a value to a script variable. Supports arithmetic expressions, string concatenation, and math functions. String literals on the RHS must use double quotes.',
+    description: 'Assigns a value to a script variable. Supports arithmetic expressions, string concatenation, and path functions. String literals on the RHS must use double quotes.',
     syntax:      'Set <varname> = <expression>',
     arguments: [
       { name: 'varname',    type: 'string',     required: true, description: 'Variable name (no $ prefix)' },
       { name: 'expression', type: 'expression', required: true, description: 'Value or expression to assign' },
     ],
     output:  'Stores the result in $<varname> for use in subsequent commands.',
-    example: 'Set x = 10\nSet label = "Frame " + $x\nSet sd = sqrt(($x - 5) ^ 2)',
+    example: 'Set x = 10\nSet label = "Frame " + $x\nSet sd = sqrt(($x - 5) ^ 2)\nSet dir = dirof($f)\nSet name = basename($f)\nSet clean = stripext($f)',
   },
 
   print: {
@@ -668,7 +676,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
       { name: 'message', type: 'expression', required: true, description: 'Value, variable, or expression to print' },
     ],
     output:  'Writes the evaluated result to the console.',
-    example: 'Print "Hello world"\nPrint $x + 1\nPrint "FWHM: " + $fwhm',
+    example: 'Print "Hello world"\nPrint $x + 1\nPrint "FWHM: " + $fwhm\nPrint dirof($f) + "/" + basename($f)',
   },
 
   assert: {
@@ -691,9 +699,31 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'CountFiles\nPrint $filecount',
   },
 
+  countmatches: {
+    name:        'CountMatches',
+    description: 'Counts filesystem entries (files or directories) matching a glob pattern and stores the result in $matchcount. Useful for conditionally executing blocks only when matching entries exist.',
+    syntax:      'CountMatches pattern=<glob>',
+    arguments: [
+      { name: 'pattern', type: 'string', required: true, description: 'Glob pattern to match. Supports *, ?, and [...] wildcards anywhere in the path.' },
+    ],
+    output:  'Stores match count in $matchcount.',
+    example: 'CountMatches pattern="$project/*-duo-*"\nIf $matchcount > 0\n  Print "Found " + $matchcount + " duo sessions"\nEndIf',
+  },
+
+  getsystempath: {
+    name:        'GetSystemPath',
+    description: 'Retrieves a well-known system directory path and stores it in a variable named after the requested path. Supported names: downloads, documents, desktop, temp.',
+    syntax:      'GetSystemPath name=<downloads|documents|desktop|temp>',
+    arguments: [
+      { name: 'name', type: 'string', required: true, description: 'System path to retrieve: downloads, documents, desktop, or temp. The result is stored in $<name> (e.g. name=downloads stores in $downloads).' },
+    ],
+    output:  'Stores the resolved path in $<name>, normalized to forward slashes.',
+    example: 'GetSystemPath name=downloads\nPrint $downloads\nExportAnalysisReport path="$downloads/M82-Project-Analysis.json"\n\nGetSystemPath name=temp\nPrint $temp',
+  },
+
   runmacro: {
     name:        'RunMacro',
-    description: 'Executes a saved macro by name from the database.',
+    description: 'Executes a saved macro by name from the database. Inner command output and Print statements appear in the console line by line.',
     syntax:      'RunMacro name=<string>',
     arguments: [
       { name: 'name', type: 'string', required: true, description: 'Name of the macro to execute' },
@@ -724,16 +754,16 @@ export const HELP_DB: Record<string, HelpEntry> = {
       { name: 'expression', type: 'condition', required: true, description: 'Boolean condition' },
     ],
     output:  'Executes the block conditionally.',
-    example: 'If $fwhm > 3.0\n  Print "Poor focus"\nEndIf',
+    example: 'If $fwhm > 3.0\n  Print "Poor focus"\nEndIf\n\nCountMatches pattern="$project/*-duo-*"\nIf $matchcount > 0\n  Print "Duo sessions found"\nEndIf',
   },
 
   for: {
     name:        'For',
-    description: 'Two forms: (1) numeric range loop — iterates from N to M inclusive; (2) glob iterator loop — expands a glob pattern and iterates over each matched path, binding it to the loop variable as a string. Both forms use EndFor to close. Loops may be nested and mixed.',
+    description: 'Two loop forms, both closed with EndFor:\n\n(1) Numeric range — iterates from N to M inclusive. Both bounds may be variables or expressions.\n\n(2) Glob iterator — expands a glob pattern at runtime and iterates over each matched path as a string, binding it to the loop variable. Unmatched patterns produce a warning and the body does not execute.\n\nLoops may be nested. Numeric and glob loops can be mixed.',
     syntax:      'For <var> = N To M\n  ...\nEndFor\n\nfor <var> in "<glob_pattern>"\n  ...\nEndFor',
     arguments:   [],
-    output:  'Executes the block once per iteration. Glob loop binds the full matched path to $<var> on each iteration. Unmatched glob patterns produce a warning and the loop body does not execute.',
-    example: 'For i = 1 To 5\n  Print "Frame " + $i\nEndFor\n\nfor d in "J:/projects/M82/M82-*-sess-*"\n  ClearSession\n  AddFiles paths="$d/lights/*.fit"\n  AnalyzeFrames profile="Session"\n  CommitAnalysis append=.session\nEndFor',
+    output:  'Numeric: executes the block M-N+1 times. Glob: executes once per matched path, binding the full path string to $<var>.',
+    example: 'For i = 1 To 5\n  Print "Frame " + $i\nEndFor\n\nfor d in "J:/projects/M82/M82-*-sess-*"\n  ClearSession\n  AddFiles paths="$d/lights/*.fit"\n  AnalyzeFrames profile="Session"\n  CommitAnalysis append=.session\nEndFor\n\n# Restore rejected files:\nfor f in "$project/*/lights/rejected/*.fit.session"\n  Set cleaned = stripext($f)\n  Set dest = dirof(dirof($f)) + "/" + basename($cleaned)\n  MoveFile source="$f" destination="$dest"\nEndFor',
   },
 
   //    Console only
@@ -746,7 +776,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
       { name: 'command', type: 'string', required: false, description: 'Command name to get help for' },
     ],
     output:  'Opens the help modal for the specified command, or prints the command list.',
-    example: 'Help\nHelp AutoStretch\nHelp Set',
+    example: 'Help\nHelp AutoStretch\nHelp Set\nHelp For',
   },
 
   clear: {
@@ -775,6 +805,99 @@ export const HELP_DB: Record<string, HelpEntry> = {
     output:  'Outputs one directory path per line to the console.',
     example: 'pwd',
   },
+
+//    Expression functions (searchable via help)
+
+  abs: {
+    name:        'abs()',
+    description: 'Expression function. Returns the absolute value of a number.',
+    syntax:      'abs(x)',
+    arguments:   [],
+    output:      'Returns a number.',
+    example:     'Set a = abs(-5)\n# $a = 5\nSet a = abs($x - $mean)',
+  },
+
+  ceil: {
+    name:        'ceil()',
+    description: 'Expression function. Rounds a number up to the nearest integer.',
+    syntax:      'ceil(x)',
+    arguments:   [],
+    output:      'Returns a number.',
+    example:     'Set c = ceil(3.2)\n# $c = 4',
+  },
+
+  floor: {
+    name:        'floor()',
+    description: 'Expression function. Rounds a number down to the nearest integer.',
+    syntax:      'floor(x)',
+    arguments:   [],
+    output:      'Returns a number.',
+    example:     'Set f = floor(3.9)\n# $f = 3',
+  },
+
+  max: {
+    name:        'max()',
+    description: 'Expression function. Returns the larger of two numeric values.',
+    syntax:      'max(x, y)',
+    arguments:   [],
+    output:      'Returns a number.',
+    example:     'Set m = max($a, $b)\nSet clipped = max($value, 0)',
+  },
+
+  min: {
+    name:        'min()',
+    description: 'Expression function. Returns the smaller of two numeric values.',
+    syntax:      'min(x, y)',
+    arguments:   [],
+    output:      'Returns a number.',
+    example:     'Set m = min($a, $b)\nSet clipped = min($value, 65535)',
+  },
+
+  round: {
+    name:        'round()',
+    description: 'Expression function. Rounds a number to the nearest integer.',
+    syntax:      'round(x)',
+    arguments:   [],
+    output:      'Returns a number.',
+    example:     'Set r = round(3.5)\n# $r = 4\nSet r = round($fwhm)',
+  },
+
+  sqrt: {
+    name:        'sqrt()',
+    description: 'Expression function. Returns the square root of a number. Errors if the argument is negative.',
+    syntax:      'sqrt(x)',
+    arguments:   [],
+    output:      'Returns a number.',
+    example:     'Set s = sqrt(9)\n# $s = 3\nSet sigma = sqrt(($x - $mean) ^ 2)',
+  },
+
+  basename: {
+    name:        'basename()',
+    description: 'Expression function. Returns the filename portion of a path, stripping all leading directory components. Path separators are normalized before processing.',
+    syntax:      'basename($path)',
+    arguments:   [],
+    output:  'Returns a string containing only the filename.',
+    example: 'Set name = basename($f)\n# If $f = "/data/lights/frame001.fit.session"\n# $name = "frame001.fit.session"\nPrint basename($f)',
+  },
+
+  dirof: {
+    name:        'dirof()',
+    description: 'Expression function. Returns the directory portion of a path, stripping the filename. Path separators are normalized to forward slashes. Returns "." if no directory component exists.',
+    syntax:      'dirof($path)',
+    arguments:   [],
+    output:  'Returns a string containing the directory path.',
+    example: 'Set dir = dirof($f)\n# If $f = "/data/lights/rejected/frame001.fit"\n# $dir = "/data/lights/rejected"\n\n# Walk up two levels:\nSet parent = dirof(dirof($f))',
+  },
+
+  stripext: {
+    name:        'stripext()',
+    description: 'Expression function. Strips any suffix appended after the last known image extension (.fit, .fits, .fts, .xisf). Used to remove .session or .project suffixes added by CommitAnalysis. Returns the path unchanged if no known image extension is found.',
+    syntax:      'stripext($path)',
+    arguments:   [],
+    output:  'Returns the path with the trailing suffix removed.',
+    example: 'Set cleaned = stripext($f)\n# If $f = "/data/lights/rejected/frame001.fit.session"\n# $cleaned = "/data/lights/rejected/frame001.fit"\n\n# Full restore pattern:\nSet cleaned = stripext($f)\nSet dest = dirof(dirof($f)) + "/" + basename($cleaned)\nMoveFile source="$f" destination="$dest"',
+  },
+
 };
 
 // ---------------------------------------------------------------------------

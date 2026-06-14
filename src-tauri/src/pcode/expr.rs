@@ -427,12 +427,42 @@ fn call_function(name: &str, tokens: &[Token], pos: &mut usize, variables: &Hash
             if x < 0.0 { return Err(format!("sqrt() of negative value {}", x)); }
             Ok(Value::Num(x.sqrt()))
         }
-        "abs"   => Ok(Value::Num(one_numeric_arg(&args, "abs")?.abs())),
-        "round" => Ok(Value::Num(one_numeric_arg(&args, "round")?.round())),
-        "floor" => Ok(Value::Num(one_numeric_arg(&args, "floor")?.floor())),
+        "abs"      => Ok(Value::Num(one_numeric_arg(&args, "abs")?.abs())),
+        "basename" => {
+            let s = one_string_arg(&args, "basename")?;
+            let normalized = s.replace('\\', "/");
+            let base = match normalized.rfind('/') {
+                Some(pos) => normalized[pos + 1..].to_string(),
+                None      => normalized,
+            };
+            Ok(Value::Str(base))
+        }
         "ceil"  => Ok(Value::Num(one_numeric_arg(&args, "ceil")?.ceil())),
-        "min"   => two_numeric_args(&args, "min").map(|(a, b)| Value::Num(a.min(b))),
+        "dirof" => {
+            let s = one_string_arg(&args, "dirof")?;
+            let normalized = s.replace('\\', "/");
+            let dir = match normalized.rfind('/') {
+                Some(pos) => normalized[..pos].to_string(),
+                None      => ".".to_string(),
+            };
+            Ok(Value::Str(dir))
+        }
+        "floor" => Ok(Value::Num(one_numeric_arg(&args, "floor")?.floor())),
         "max"   => two_numeric_args(&args, "max").map(|(a, b)| Value::Num(a.max(b))),
+        "min"   => two_numeric_args(&args, "min").map(|(a, b)| Value::Num(a.min(b))),
+        "round" => Ok(Value::Num(one_numeric_arg(&args, "round")?.round())),
+        "stripext" => {
+            let s = one_string_arg(&args, "stripext")?;
+            let normalized = s.replace('\\', "/");
+            // Find the last known image extension and truncate there
+            for ext in &[".xisf", ".fits", ".fts", ".fit"] {
+                if let Some(pos) = normalized.to_lowercase().rfind(ext) {
+                    return Ok(Value::Str(normalized[..pos + ext.len()].to_string()));
+                }
+            }
+            // No known extension found — return as-is
+            Ok(Value::Str(s))
+        }
         _       => Err(format!("Unknown function '{}()'", name)),
     }
 }
@@ -455,7 +485,14 @@ fn two_numeric_args(args: &[Value], fname: &str) -> Result<(f64, f64), String> {
     Ok((a, b))
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+fn one_string_arg(args: &[Value], fname: &str) -> Result<String, String> {
+    if args.len() != 1 {
+        return Err(format!("{}() takes 1 argument, got {}", fname, args.len()));
+    }
+    Ok(args[0].as_str())
+}
+
+//    Helpers
 
 fn find_comparison_op(expr: &str, op: &str) -> Option<usize> {
     let bytes = expr.as_bytes();

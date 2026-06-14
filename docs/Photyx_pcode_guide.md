@@ -14,10 +14,12 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
   - [Arithmetic](#arithmetic)
   - [String concatenation](#string-concatenation)
   - [Math functions](#math-functions)
+  - [Path functions](#path-functions)
   - [System-set variables](#system-set-variables)
 - [Flow Control](#flow-control)
   - [Conditionals](#conditionals)
   - [Loops — iterating over a numeric range](#loops--iterating-over-a-numeric-range)
+  - [Loops — iterating over a glob pattern](#loops--iterating-over-a-glob-pattern)
   - [Loops — iterating over all session files](#loops--iterating-over-all-session-files)
 - [Error Handling](#error-handling)
 - [Console Output](#console-output)
@@ -31,7 +33,9 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
     - [ClearSession](#clearsession)
     - [LoadFile](#loadfile)
     - [CountFiles](#countfiles)
+    - [CountMatches](#countmatches)
     - [FilterByKeyword](#filterbykeyword)
+    - [GetSystemPath](#getsystempath)
   - [Write / Export](#write--export)
     - [WriteCurrent](#writecurrent)
     - [WriteFrame](#writeframe)
@@ -92,6 +96,8 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
   - [Conditional processing based on keyword](#conditional-processing-based-on-keyword)
   - [Heatmap generation with file capture](#heatmap-generation-with-file-capture)
   - [Full stack pipeline](#full-stack-pipeline)
+  - [Session and project analysis workflow](#session-and-project-analysis-workflow)
+  - [Restore rejected files](#restore-rejected-files)
   - [Calling a sub-macro](#calling-a-sub-macro)
 
 ---
@@ -175,18 +181,48 @@ Set sigma = sqrt(($x - $mean) ^ 2)
 Set clipped = min($value, 65535)
 ```
 
+### Path functions
+
+These functions operate on path strings and are used in `Set` expressions and anywhere an expression is evaluated.
+
+| Function       | Description                                                                 |
+| -------------- | --------------------------------------------------------------------------- |
+| `dirof($path)` | Returns the directory portion of a path, normalized to forward slashes      |
+| `basename($path)` | Returns the filename portion of a path, stripping all directory components |
+| `stripext($path)` | Strips any suffix after the last known image extension (`.fit`, `.fits`, `.fts`, `.xisf`) |
+
+```
+Set f = "/data/lights/rejected/frame001.fit.session"
+Set dir  = dirof($f)        # /data/lights/rejected
+Set name = basename($f)     # frame001.fit.session
+Set clean = stripext($f)    # /data/lights/rejected/frame001.fit
+
+# Walk up two directory levels:
+Set parent = dirof(dirof($f))   # /data/lights
+
+# Full restore pattern — rename and move in one step:
+Set cleaned = stripext($f)
+Set dest = dirof(dirof($f)) + "/" + basename($cleaned)
+MoveFile source="$f" destination="$dest"
+```
+
 ### System-set variables
 
 Several commands automatically store their results in variables.
 
-| Variable         | Set by                                       |
-| ---------------- | -------------------------------------------- |
-| `$fwhm`          | `ComputeFWHM`                                |
-| `$eccentricity`  | `ComputeEccentricity`                        |
-| `$starcount`     | `CountStars`                                 |
-| `$filecount`     | `CountFiles`                                 |
-| `$NEW_FILE`      | `ContourHeatmap`, `CopyFile`, `MoveFile`     |
-| `$<KEYWORDNAME>` | `GetKeyword name=<KEYWORDNAME>` (uppercased) |
+| Variable         | Set by                                                          |
+| ---------------- | --------------------------------------------------------------- |
+| `$fwhm`          | `ComputeFWHM`                                                   |
+| `$eccentricity`  | `ComputeEccentricity`                                           |
+| `$starcount`     | `CountStars`                                                    |
+| `$filecount`     | `CountFiles`                                                    |
+| `$matchcount`    | `CountMatches`                                                  |
+| `$downloads`     | `GetSystemPath name=downloads`                                  |
+| `$documents`     | `GetSystemPath name=documents`                                  |
+| `$desktop`       | `GetSystemPath name=desktop`                                    |
+| `$temp`          | `GetSystemPath name=temp`                                       |
+| `$NEW_FILE`      | `ContourHeatmap`, `CopyFile`, `MoveFile`                        |
+| `$<KEYWORDNAME>` | `GetKeyword name=<KEYWORDNAME>` (uppercased)                    |
 
 Example — reading a keyword into a variable:
 
@@ -225,6 +261,15 @@ If $FILTER == "Ha"
 EndIf
 ```
 
+Use `CountMatches` to conditionally execute a block only when matching filesystem entries exist:
+
+```
+CountMatches pattern="$project/*-duo-*"
+If $matchcount > 0
+  Print "Found " + $matchcount + " duo sessions"
+EndIf
+```
+
 ### Loops — iterating over a numeric range
 
 ```
@@ -247,7 +292,7 @@ EndFor
 `for <var> in "<pattern>"` expands a glob pattern and iterates over each matched path, binding it to the loop variable. The variable holds the full matched path as a string. Patterns may include wildcards in any path segment.
 
 ```
-for d in "<glob_pattern>"
+for <var> in "<glob_pattern>"
   ...
 EndFor
 ```
@@ -268,6 +313,8 @@ for d in "J:/projects/M82/M82-ircut-sess-*"
   CommitAnalysis append=.session
 EndFor
 ```
+
+If the glob pattern matches no entries, a warning is printed and the loop body does not execute. This makes glob loops safe to use without explicit existence checks.
 
 ### Loops — iterating over all session files
 
@@ -328,14 +375,13 @@ For i = 0 to $filecount - 1
 EndFor
 Log path="/logs/fwhm.log"
 
-
 # Second segment goes to the star count log
-For
+CountFiles
+For i = 0 to $filecount - 1
   CountStars
   Print $starcount
 EndFor
 Log path="/logs/starcounts.log"
-
 ```
 
 ---
@@ -356,10 +402,7 @@ Commands are grouped by function. Arguments in `[brackets]` are optional.
 
 #### `AddFiles`
 
-Appends one or more files to the current session. Accepts explicit file
-paths, glob patterns, or a mix of both in a comma-separated list. Files
-already loaded are skipped. Use `ClearSession` first to start a fresh
-session.
+Appends one or more files to the current session. Accepts explicit file paths, glob patterns, or a mix of both in a comma-separated list. Files already loaded are skipped. Use `ClearSession` first to start a fresh session.
 
 ```
 AddFiles paths=<path|glob>[,<path|glob>...]
@@ -369,10 +412,7 @@ AddFiles paths=<path|glob>[,<path|glob>...]
 | -------- | -------- | ------------------------------------------------------- |
 | `paths`  | Yes      | Comma-separated list of file paths and/or glob patterns |
 
-Glob wildcards: `*` matches any sequence of characters, `?` matches a
-single character, `[...]` matches a character class. Glob patterns can
-appear anywhere in the path, including intermediate directory
-segments. Unmatched patterns produce a warning rather than an error.
+Glob wildcards: `*` matches any sequence of characters, `?` matches a single character, `[...]` matches a character class. Glob patterns can appear anywhere in the path, including intermediate directory segments. Unmatched patterns produce a warning rather than an error.
 
 ```
 AddFiles paths="/data/M31/frame001.fit,/data/M31/frame002.fit"
@@ -437,6 +477,27 @@ Print $filecount
 
 ---
 
+#### `CountMatches`
+
+Counts filesystem entries (files or directories) matching a glob pattern and stores the result in `$matchcount`. Useful for conditionally executing a block only when matching entries exist.
+
+```
+CountMatches pattern=<glob>
+```
+
+| Argument  | Required | Description                                                        |
+| --------- | -------- | ------------------------------------------------------------------ |
+| `pattern` | Yes      | Glob pattern to match. Supports `*`, `?`, and `[...]` wildcards.  |
+
+```
+CountMatches pattern="$project/*-duo-*"
+If $matchcount > 0
+  Print "Found " + $matchcount + " duo sessions"
+EndIf
+```
+
+---
+
 #### `FilterByKeyword`
 
 Filters the session file list to only those frames where the specified keyword matches the given value. Non-matching frames are removed from the session.
@@ -453,6 +514,29 @@ FilterByKeyword name=<string> value=<string>
 ```
 FilterByKeyword name=FILTER value=Ha
 FilterByKeyword name=OBJECT value="M31"
+```
+
+---
+
+#### `GetSystemPath`
+
+Retrieves a well-known system directory path and stores it in a variable named after the requested path. Supported names: `downloads`, `documents`, `desktop`, `temp`.
+
+```
+GetSystemPath name=<downloads|documents|desktop|temp>
+```
+
+| Argument | Required | Description                                                                                    |
+| -------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `name`   | Yes      | System path to retrieve. Result stored in `$<name>` (e.g. `name=downloads` → `$downloads`). |
+
+```
+GetSystemPath name=downloads
+Print $downloads
+ExportAnalysisReport path="$downloads/M82-Project-Analysis.json"
+
+GetSystemPath name=temp
+Print $temp
 ```
 
 ---
@@ -513,7 +597,7 @@ WriteTIFF destination=<path> [overwrite=<bool>]
 
 #### `WriteXISF`
 
-Writes all session files to a destination directory in XISF format. Use `stack=true` to export the transient stack result instead using the default format: Photyx_stack_OBJECT_FILTER_INTEGRATIONTIME_DTG.xisf (Photyx_stack_M64_ircut_24000s_20260528113121Z.xisf). When `stack=true`, stores the output path in `$STACKED`.
+Writes all session files to a destination directory in XISF format. Use `stack=true` to export the transient stack result instead. When `stack=true`, stores the output path in `$STACKED`.
 
 ```
 WriteXISF destination=<path> [overwrite=<bool>] [compress=<bool>] [stack=<bool>]
@@ -556,10 +640,30 @@ EndFor
 
 #### `MoveFile`
 
-Moves a file to a destination directory. Uses the current frame if no source is specified. Stores the destination path in `$NEW_FILE`. Removes the file from the session after moving.
+Moves a file to a destination. Uses the current frame if no source is specified. If the destination is an existing directory, the file is moved into it preserving its filename. If the destination is a full file path (mv semantics), the file is moved and renamed in one step. The destination parent directory is created automatically if needed. Removes the file from the session if it was a session file.
 
 ```
 MoveFile destination=<path> [source=<path>]
+```
+
+| Argument      | Required | Description                                                                                   |
+| ------------- | -------- | --------------------------------------------------------------------------------------------- |
+| `destination` | Yes      | Destination directory, or full destination file path for rename-during-move.                  |
+| `source`      | No       | Source file path (default: current frame). May be a file outside the session.                 |
+
+```
+# Move to a directory (filename preserved):
+MoveFile destination="/data/Rejects"
+MoveFile source="$f" destination="/data/Rejects"
+
+# Rename during move (mv semantics):
+Set cleaned = stripext($f)
+MoveFile source="$f" destination="$cleaned"
+
+# Move and rename to parent directory:
+Set cleaned = stripext($f)
+Set dest = dirof(dirof($f)) + "/" + basename($cleaned)
+MoveFile source="$f" destination="$dest"
 ```
 
 ---
@@ -664,7 +768,17 @@ ListKeywords
 Computes five quality metrics for all loaded frames (FWHM, eccentricity, star count, signal weight, background median) and classifies each frame as PASS or REJECT using iterative sigma clipping against session statistics.
 
 ```
+AnalyzeFrames [profile=<name>]
+```
+
+| Argument  | Required | Description                                                                                             |
+| --------- | -------- | ------------------------------------------------------------------------------------------------------- |
+| `profile` | No       | Threshold profile name (e.g. `Session`, `Project`). If omitted, uses the active profile from settings. |
+
+```
 AnalyzeFrames
+AnalyzeFrames profile=Session
+AnalyzeFrames profile=Project
 ```
 
 Results are visible in the Analysis Results and Analysis Graph views. See `ShowAnalysisGraph` and `ShowAnalysisResults`.
@@ -679,13 +793,14 @@ Moves all REJECT frames to a `rejected/` subfolder within each frame's source di
 CommitAnalysis [append=<ext>]
 ```
 
-| Argument | Required | Default | Description |
-| -------- | -------- | ------- | ----------- |
-| `append` | No | | Suffix appended after the original filename extension (e.g. `append=.session` → `frame.fit.session`). Leading dot is optional. Defaults to no suffix. |
+| Argument | Required | Default | Description                                                                                                                   |
+| -------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `append` | No       |         | Suffix appended after the original filename extension (e.g. `append=.session` → `frame.fit.session`). Leading dot optional. |
 
 ```
 CommitAnalysis
 CommitAnalysis append=.session
+CommitAnalysis append=.project
 ```
 
 ---
@@ -698,13 +813,13 @@ Exports the current analysis results as a Photyx session JSON file. If `path` is
 ExportAnalysisReport [path=<path>]
 ```
 
-| Argument | Required | Description |
-| -------- | -------- | ----------- |
-| `path` | No | Full destination path for the JSON file. If omitted, written to the Downloads folder with an auto-derived filename. |
+| Argument | Required | Description                                                                                     |
+| -------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `path`   | No       | Full destination path for the JSON file. If omitted, written to Downloads with auto-derived name. |
 
 ```
 ExportAnalysisReport
-ExportAnalysisReport path="D:/projects/M64/M64_sess_20241112_analysis.json"
+ExportAnalysisReport path="$downloads/M82-Project-Duo-Analysis.json"
 ```
 
 ---
@@ -844,16 +959,16 @@ BinImage factor=2
 Stacks all session frames into a single result image using reference frame selection, background normalization, FFT alignment, and sigma-clipped mean combination.
 
 ```
-StackFrames [calibration_dir=<path>]
+StackFrames [caldir=<path>]
 ```
 
-| Argument          | Required | Description                             |
-| ----------------- | -------- | --------------------------------------- |
-| `calibration_dir` | No       | Directory containing calibration frames |
+| Argument  | Required | Description                             |
+| --------- | -------- | --------------------------------------- |
+| `caldir`  | No       | Directory containing calibration frames |
 
 ```
 StackFrames
-StackFrames calibration_dir="/data/calibration"
+StackFrames caldir="/data/calibration"
 ```
 
 ---
@@ -978,7 +1093,7 @@ ShowAnalysisResults
 
 #### `Set`
 
-Assigns a value to a script variable.
+Assigns a value to a script variable. Supports arithmetic, string concatenation, math functions, and path functions.
 
 ```
 Set <varname> = <expression>
@@ -988,6 +1103,9 @@ Set <varname> = <expression>
 Set x = 10
 Set label = "Frame " + $x
 Set sigma = sqrt(($x - $mean) ^ 2)
+Set dir   = dirof($f)
+Set name  = basename($f)
+Set clean = stripext($f)
 ```
 
 ---
@@ -1004,6 +1122,7 @@ Print <expression>
 Print "Hello world"
 Print $fwhm
 Print "FWHM: " + $fwhm
+Print dirof($f) + "/" + basename($f)
 ```
 
 ---
@@ -1025,7 +1144,7 @@ Assert expression="$fwhm < 5.0"
 
 #### `RunMacro`
 
-Executes a saved macro by name from the database.
+Executes a saved macro by name from the database. Inner `Print` statements and command output appear in the console line by line.
 
 ```
 RunMacro name=<string>
@@ -1102,10 +1221,10 @@ These commands are available in the interactive console but have no effect insid
 
 The following commands remain valid for script compatibility but are no longer used in analysis. They are no-ops or stubs.
 
-| Command              | Notes                                                            |
-| -------------------- | ---------------------------------------------------------------- |
+| Command              | Notes                                                             |
+| -------------------- | ----------------------------------------------------------------- |
 | `BackgroundStdDev`   | Removed from analysis (r = 0.92–0.999 correlation with BgMedian) |
-| `BackgroundGradient` | Removed from analysis (session-dependent sign reversal)          |
+| `BackgroundGradient` | Removed from analysis (session-dependent sign reversal)           |
 
 ---
 
@@ -1160,7 +1279,9 @@ WriteFIT destination="/data/Ha-only" overwrite=true
 # Measure FWHM on every frame and write results to a log file
 ReadImages path="/data/lights"
 
-For
+CountFiles
+For i = 0 to $filecount - 1
+  SetFrame index=$i
   GetKeyword name=DATE-OBS
   ComputeFWHM
   Print $DATE-OBS + "  FWHM=" + $fwhm
@@ -1190,7 +1311,9 @@ EndFor
 # Apply different stretch depending on filter
 ReadImages path="/data/session"
 
-For
+CountFiles
+For i = 0 to $filecount - 1
+  SetFrame index=$i
   GetKeyword name=FILTER
   If $FILTER == "Ha"
     AutoStretch shadowClip=-2.4 targetBackground=0.10
@@ -1229,47 +1352,109 @@ WriteXISF destination="/data/M31/stacked" stack=true
 Print "Stack complete."
 ```
 
+---
+
 ### Session and project analysis workflow
 
-This example runs a two-pass analysis across a multi-session project. The
-first pass analyzes each session independently using forgiving
-session-level thresholds, moving the worst outliers to `rejected/`
-subfolders. The second pass loads all surviving frames together and applies
-stricter project-level thresholds to select the best material for
-stacking.
+This example runs a two-pass analysis across a multi-session project. The first pass analyzes each session independently using forgiving session-level thresholds. The second pass loads all surviving frames and applies stricter project-level thresholds. Duo-band and broadband (ircut) sessions are never mixed — each filter type gets its own project-level analysis.
 
 ```
-# ── Pass 1: session-level rejection ─────────────────────────────────────────
-# Process each session directory independently.
-# Rejects are moved to <session>/lights/rejected/*.fit.session
+# ── Configuration ─────────────────────────────────────────────────────────────
+Set project = "J:/Projects/M82-Cigar-Galaxy"
 
-for d in "J:/projects/M82/M82-ircut-sess-*"
+GetSystemPath name=downloads
+
+# ── Pass 1a: session-level rejection — duo sessions ───────────────────────────
+
+for d in "$project/*-duo-*"
   ClearSession
   AddFiles paths="$d/lights/*.fit"
   CountFiles
   Assert expression="$filecount > 0"
-  Print "Session: " + $d + " — " + $filecount + " frames"
+  Print "Analyzing duo session: " + $d + " (" + $filecount + " frames)"
   AnalyzeFrames profile="Session"
+  ExportAnalysisReport
   CommitAnalysis append=.session
+  Print "Done: " + $d
 EndFor
 
-# ── Pass 2: project-level rejection ──────────────────────────────────────────
-# Load surviving frames from all sessions together.
-# Rejects from this pass are moved to rejected/*.fit (no suffix).
+# ── Pass 1b: session-level rejection — ircut sessions ─────────────────────────
 
-ClearSession
-AddFiles paths="J:/projects/M82/M82-ircut-sess-*/lights/*.fit"
-CountFiles
-Assert expression="$filecount > 0"
-Print "Project pool: " + $filecount + " frames"
-AnalyzeFrames profile="Project"
-commitAnalysis append=.project
-ShowAnalysisResults
+for d in "$project/*-ircut-*"
+  ClearSession
+  AddFiles paths="$d/lights/*.fit"
+  CountFiles
+  Assert expression="$filecount > 0"
+  Print "Analyzing ircut session: " + $d + " (" + $filecount + " frames)"
+  AnalyzeFrames profile="Session"
+  ExportAnalysisReport
+  CommitAnalysis append=.session
+  Print "Done: " + $d
+EndFor
+
+# ── Pass 2a: project-level rejection — duo sessions ───────────────────────────
+
+CountMatches pattern="$project/*-duo-*"
+If $matchcount > 0
+  ClearSession
+  AddFiles paths="$project/*-duo-*/lights/*.fit"
+  CountFiles
+  Assert expression="$filecount > 0"
+  Print "Duo project pool: " + $filecount + " frames"
+  AnalyzeFrames profile="Project"
+  ExportAnalysisReport path="$downloads/Project-Duo-Analysis.json"
+  CommitAnalysis append=.project
+  Print "Duo project analysis complete."
+EndIf
+
+# ── Pass 2b: project-level rejection — ircut sessions ─────────────────────────
+
+CountMatches pattern="$project/*-ircut-*"
+If $matchcount > 0
+  ClearSession
+  AddFiles paths="$project/*-ircut-*/lights/*.fit"
+  CountFiles
+  Assert expression="$filecount > 0"
+  Print "Ircut project pool: " + $filecount + " frames"
+  AnalyzeFrames profile="Project"
+  ExportAnalysisReport path="$downloads/Project-Ircut-Analysis.json"
+  CommitAnalysis append=.project
+  Print "Ircut project analysis complete."
+EndIf
+
+Print "All done."
 ```
 
-After reviewing the Analysis Results table, click **Commit Results** to
-finalize project-level rejections. Pass frames remain loaded and are ready
-for stacking.
+---
+
+### Restore rejected files
+
+Reverses a previous `CommitAnalysis` run by stripping the `.session` or `.project` suffix from each rejected file and moving it back to its parent `lights/` directory. Useful during testing when you want to re-run analysis with different parameters.
+
+```
+# ── Configuration ─────────────────────────────────────────────────────────────
+Set project = "J:/Projects/M82-Cigar-Galaxy"
+
+# ── Restore session-level rejects ─────────────────────────────────────────────
+
+for f in "$project/*/lights/rejected/*.fit.session"
+  Set cleaned = stripext($f)
+  Set dest = dirof(dirof($f)) + "/" + basename($cleaned)
+  Print "Restoring: " + basename($f)
+  MoveFile source="$f" destination="$dest"
+EndFor
+
+# ── Restore project-level rejects ─────────────────────────────────────────────
+
+for f in "$project/*/lights/rejected/*.fit.project"
+  Set cleaned = stripext($f)
+  Set dest = dirof(dirof($f)) + "/" + basename($cleaned)
+  Print "Restoring: " + basename($f)
+  MoveFile source="$f" destination="$dest"
+EndFor
+
+Print "All rejected files restored."
+```
 
 ---
 
