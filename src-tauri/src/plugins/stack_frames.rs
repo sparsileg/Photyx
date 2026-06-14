@@ -44,6 +44,7 @@
 //      correct scale. For flat stacking, the flat master is never loaded from
 //      caldir since applying a flat to flat subs makes no sense.
 
+use crate::settings::defaults::APPLY_BIAS_IN_CALIBRATION;
 use crate::analysis::{
     self,
     background::estimate_background,
@@ -300,10 +301,12 @@ fn apply_calibration(frame: &mut Vec<f32>, cal: &CalibrationMasters, channels: u
             let idx = px * channels + ch;
             let mut val = frame[idx];
 
-            if let Some(ref bias) = cal.bias {
-                let bias_ch  = ch.min(cal.bias_channels.saturating_sub(1));
-                let bias_idx = px * cal.bias_channels + bias_ch;
-                if bias_idx < bias.len() { val -= bias[bias_idx]; }
+            if APPLY_BIAS_IN_CALIBRATION {
+                if let Some(ref bias) = cal.bias {
+                    let bias_ch  = ch.min(cal.bias_channels.saturating_sub(1));
+                    let bias_idx = px * cal.bias_channels + bias_ch;
+                    if bias_idx < bias.len() { val -= bias[bias_idx]; }
+                }
             }
             if let Some(ref dark) = cal.dark {
                 let dark_ch  = ch.min(cal.dark_channels.saturating_sub(1));
