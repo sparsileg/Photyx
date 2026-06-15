@@ -82,7 +82,14 @@ pub const ECCENTRICITY_ABS_MIN:              f64  = 0.10;
 pub const ECCENTRICITY_ABS_MAX:              f64  = 1.00;
 pub const OUTLIER_SIGMA_THRESHOLD:           f64  = 4.0;
 
-// ── Non-persisted runtime constants ──────────────────────────────────────────
+//    Calibration
+// When false, bias master is never applied during calibration.
+// Set to false when dark masters are already bias-subtracted (e.g. created
+// in PixInsight), to prevent double-subtraction which zeros signal.
+
+pub const APPLY_BIAS_IN_CALIBRATION: bool = false;
+
+// Non-persisted runtime constants
 // These are never written to the DB. They live here so they are
 // findable and not scattered as magic numbers through the codebase.
 

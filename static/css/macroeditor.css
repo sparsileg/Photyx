@@ -160,10 +160,13 @@
     padding: 10px 0;
     background: var(--gutter-bg, #0d0d0d);
     border-right: 1px solid var(--panel-border);
-    overflow: hidden;
+    overflow-y: scroll;
+    overflow-x: hidden;
     user-select: none;
     pointer-events: none;
+    scrollbar-width: none;
 }
+.me-gutter::-webkit-scrollbar { display: none; }
 
 .me-line-num {
     font-size: var(--me-font);

@@ -24,6 +24,7 @@
   // ── DOM refs ──────────────────────────────────────────────────────────────
   let textareaEl = $state<HTMLTextAreaElement | undefined>(undefined);
   let backdropEl = $state<HTMLDivElement | undefined>(undefined);
+  let gutterEl   = $state<HTMLDivElement | undefined>(undefined);
 
   // ── Load macro when macroEditorFile changes ───────────────────────────────
   let lastLoadedId = -2; // sentinel: -2 = never loaded
@@ -120,6 +121,9 @@
     if (backdropEl && textareaEl) {
       backdropEl.scrollTop  = textareaEl.scrollTop;
       backdropEl.scrollLeft = textareaEl.scrollLeft;
+    }
+    if (gutterEl && textareaEl) {
+      gutterEl.scrollTop = textareaEl.scrollTop;
     }
   }
 
@@ -238,7 +242,7 @@
 {/if}
 
 <div class="me-editor-wrap">
-  <div class="me-gutter" aria-hidden="true">
+  <div class="me-gutter" bind:this={gutterEl} aria-hidden="true">
     {#each macroText.split('\n') as _line, i}
       <div class="me-line-num">{i + 1}</div>
     {/each}

@@ -116,13 +116,27 @@ impl PhotonPlugin for MoveFile {
         let filename = src.file_name()
             .ok_or_else(|| PluginError::new("BAD_PATH", "MoveFile: cannot determine filename"))?;
 
-        std::fs::create_dir_all(&dest_dir)
-            .map_err(|e| PluginError::new(
-                "IO_ERROR",
-                &format!("MoveFile: cannot create directory '{}': {}", dest_dir, e),
-            ))?;
-
-        let dest_path = Path::new(&dest_dir).join(filename);
+        // If destination is an existing directory or ends with a separator,
+        // move into it preserving the filename. Otherwise treat destination
+        // as a full file path (mv semantics — allows rename during move).
+        let dest_path = if Path::new(&dest_dir).is_dir() || dest_dir.ends_with('/') || dest_dir.ends_with('\\') {
+            std::fs::create_dir_all(&dest_dir)
+                .map_err(|e| PluginError::new(
+                    "IO_ERROR",
+                    &format!("MoveFile: cannot create directory '{}': {}", dest_dir, e),
+                ))?;
+            Path::new(&dest_dir).join(filename)
+        } else {
+            // Full file path — create parent directory if needed
+            let parent = Path::new(&dest_dir).parent()
+                .ok_or_else(|| PluginError::new("BAD_PATH", "MoveFile: cannot determine destination parent directory"))?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| PluginError::new(
+                    "IO_ERROR",
+                    &format!("MoveFile: cannot create directory '{}': {}", parent.display(), e),
+                ))?;
+            Path::new(&dest_dir).to_path_buf()
+        };
 
         std::fs::rename(&src_path, &dest_path)
             .map_err(|e| PluginError::new(
@@ -314,9 +328,107 @@ impl PhotonPlugin for CountFiles {
     }
 }
 
-// ── Registration ──────────────────────────────────────────────────────────────
+//    CountMatches
 
-// ── LoadFile ──────────────────────────────────────────────────────────────────
+/// Counts filesystem entries matching a glob pattern.
+/// Stores result in $matchcount variable.
+/// Usage: CountMatches pattern="J:/projects/M82/*-duo-*"
+pub struct CountMatches;
+
+impl PhotonPlugin for CountMatches {
+    fn name(&self)        -> &str { "CountMatches" }
+    fn version(&self)     -> &str { "1.0.0" }
+    fn description(&self) -> &str { "Counts filesystem entries matching a glob pattern; stores result in $matchcount" }
+
+    fn parameters(&self) -> Vec<ParamSpec> {
+        vec![
+            ParamSpec {
+                name:        "pattern".to_string(),
+                param_type:  ParamType::String,
+                required:    true,
+                description: "Glob pattern to match against".to_string(),
+                default:     None,
+            },
+        ]
+    }
+
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+        let pattern = args.get("pattern")
+            .ok_or_else(|| PluginError::missing_arg("pattern"))?;
+
+        let resolved = crate::pcode::expr::evaluate_expr(pattern, &ctx.variables)
+            .unwrap_or_else(|_| pattern.clone());
+
+        let count = match glob::glob(&resolved) {
+            Ok(entries) => entries.flatten().count(),
+            Err(e) => return Err(PluginError::new(
+                "INVALID_PATTERN",
+                &format!("CountMatches: invalid glob pattern '{}': {}", resolved, e),
+            )),
+        };
+
+        ctx.variables.insert("matchcount".to_string(), count.to_string());
+        Ok(PluginOutput::Value(count.to_string()))
+    }
+}
+
+//    GetSystemPath
+
+/// Retrieves a well-known system directory path and stores it in a variable.
+/// Usage: GetSystemPath name=downloads
+/// Supported names: downloads, documents, desktop, temp
+/// Result is stored in $<name> (e.g. $downloads).
+pub struct GetSystemPath;
+
+impl PhotonPlugin for GetSystemPath {
+    fn name(&self)        -> &str { "GetSystemPath" }
+    fn version(&self)     -> &str { "1.0.0" }
+    fn description(&self) -> &str { "Retrieves a well-known system directory path; stores result in $<name>" }
+
+    fn parameters(&self) -> Vec<ParamSpec> {
+        vec![
+            ParamSpec {
+                name:        "name".to_string(),
+                param_type:  ParamType::String,
+                required:    true,
+                description: "System path to retrieve: downloads, documents, desktop, or temp".to_string(),
+                default:     None,
+            },
+        ]
+    }
+
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+        let name = args.get("name")
+            .ok_or_else(|| PluginError::missing_arg("name"))?
+            .trim()
+            .to_lowercase();
+
+        let path = match name.as_str() {
+            "downloads" => dirs_next::download_dir(),
+            "documents" => dirs_next::document_dir(),
+            "desktop"   => dirs_next::desktop_dir(),
+            "temp"      => Some(std::env::temp_dir()),
+            _ => return Err(PluginError::new(
+                "UNKNOWN_PATH",
+                &format!("GetSystemPath: unknown path name '{}'. Use: downloads, documents, desktop, temp", name),
+            )),
+        };
+
+        let path_str = path
+            .ok_or_else(|| PluginError::new(
+                "NOT_FOUND",
+                &format!("GetSystemPath: could not resolve '{}' on this system", name),
+            ))?
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_string();
+
+        ctx.variables.insert(name.clone(), path_str.clone());
+        Ok(PluginOutput::Value(path_str))
+    }
+}
+
+//    LoadFile
 
 /// Loads a single file from disk and displays it in the viewer without
 /// adding it to the session file list.
@@ -370,10 +482,12 @@ pub fn register_all(registry: &crate::plugin::registry::PluginRegistry) {
     registry.register(Arc::new(Assert));
     registry.register(Arc::new(CopyFile));
     registry.register(Arc::new(CountFiles));
+    registry.register(Arc::new(CountMatches));
     registry.register(Arc::new(GetKeyword));
+    registry.register(Arc::new(GetSystemPath));
     registry.register(Arc::new(LoadFile));
     registry.register(Arc::new(MoveFile));
     registry.register(Arc::new(Print));
-
 }
+
 // ----------------------------------------------------------------------
