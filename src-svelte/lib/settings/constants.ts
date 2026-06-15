@@ -31,6 +31,9 @@ export const BUFFER_POOL_DEFAULT_GB = 4;
 export const BUFFER_POOL_MIN_GB = 0.5;
 export const BUFFER_POOL_MAX_GB = 32;
 
+export const RAYON_THREADS_DEFAULT = -1; // -1 = num_cpus - 1 at runtime
+export const RAYON_THREADS_MIN = 1;
+
 // Conversion helpers — DB stores bytes, UI shows GB
 export const GB = 1024 * 1024 * 1024;
 
@@ -109,6 +112,15 @@ export const PREF_FIELDS: PrefFieldMeta[] = [
     step: 0.1,
     default: BUFFER_POOL_DEFAULT_GB,
     unit: 'GB',
+  },
+  {
+    key: 'rayon_thread_count',
+    label: 'Parallel Thread Count',
+    helper: 'Number of threads used for parallel image processing. Default uses all CPUs minus one.',
+    type: 'integer',
+    min: RAYON_THREADS_MIN,
+    default: RAYON_THREADS_DEFAULT,
+    unit: 'threads',
   },
   // §5.7 AutoStretch
   {
@@ -228,7 +240,7 @@ export const PREF_SECTIONS: PrefSection[] = [
   },
   {
     title: 'Performance',
-    keys: ['buffer_pool_memory_limit'],
+    keys: ['buffer_pool_memory_limit', 'rayon_thread_count'],
   },
   {
     title: 'AutoStretch',

@@ -64,6 +64,7 @@ pub struct AppSettings {
 
     // ── Performance ───────────────────────────────────────────────────
     pub buffer_pool_bytes:           i64,     // persisted, user pref
+    pub rayon_thread_count:          i64,     // persisted, user pref
 
     // ── AutoStretch ───────────────────────────────────────────────────
     pub autostretch_shadow_clip:     f64,     // persisted, user pref
@@ -100,6 +101,7 @@ impl AppSettings {
             macro_editor_font_size:       DEFAULT_MACRO_EDITOR_FONT,
             error_behavior:               DEFAULT_ERROR_BEHAVIOR.to_string(),
             buffer_pool_bytes:            DEFAULT_BUFFER_POOL_BYTES,
+            rayon_thread_count:           RAYON_THREAD_COUNT_DEFAULT,
             autostretch_shadow_clip:      DEFAULT_AUTOSTRETCH_SHADOW_CLIP,
             autostretch_target_bg:        DEFAULT_AUTOSTRETCH_TARGET_BG,
             crash_recovery_interval_secs: DEFAULT_CRASH_RECOVERY_INTERVAL_SECS,
@@ -156,6 +158,11 @@ impl AppSettings {
                 "buffer_pool_memory_limit" => {
                     if let Ok(v) = value.parse::<i64>() {
                         self.buffer_pool_bytes = v.clamp(BUFFER_POOL_MIN_BYTES, BUFFER_POOL_MAX_BYTES);
+                    }
+                }
+                "rayon_thread_count" => {
+                    if let Ok(v) = value.parse::<i64>() {
+                        self.rayon_thread_count = v.max(RAYON_THREAD_COUNT_MIN);
                     }
                 }
                 "autostretch_shadow_clip" => {
@@ -224,6 +231,11 @@ impl AppSettings {
             "buffer_pool_memory_limit"     => {
                 if let Ok(v) = value.parse::<i64>() {
                     self.buffer_pool_bytes = v.clamp(BUFFER_POOL_MIN_BYTES, BUFFER_POOL_MAX_BYTES);
+                }
+            }
+            "rayon_thread_count"           => {
+                if let Ok(v) = value.parse::<i64>() {
+                    self.rayon_thread_count = v.max(RAYON_THREAD_COUNT_MIN);
                 }
             }
             "autostretch_shadow_clip"      => {
@@ -327,6 +339,7 @@ impl AppSettings {
             "console_history_size"         => Some(self.console_history_size.to_string()),
             "macro_editor_font_size"       => Some(self.macro_editor_font_size.to_string()),
             "buffer_pool_memory_limit"     => Some(self.buffer_pool_bytes.to_string()),
+            "rayon_thread_count"           => Some(self.rayon_thread_count.to_string()),
             "autostretch_shadow_clip"      => Some(self.autostretch_shadow_clip.to_string()),
             "autostretch_target_bg"        => Some(self.autostretch_target_bg.to_string()),
             "crash_recovery_interval_secs" => Some(self.crash_recovery_interval_secs.to_string()),

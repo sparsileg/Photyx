@@ -25,6 +25,7 @@ export interface AppPreferences {
   autostretch_shadow_clip:   number;
   autostretch_target_bg:     number;
   ui_font_size:              number;  // root font size in px
+  rayon_thread_count:        number;  // -1 = num_cpus - 1 at runtime
 }
 
 const defaults: AppPreferences = {
@@ -36,6 +37,7 @@ const defaults: AppPreferences = {
   autostretch_shadow_clip:  SHADOW_CLIP_DEFAULT,
   autostretch_target_bg:    TARGET_BG_DEFAULT,
   ui_font_size:             DEFAULT_FONT_SIZE,
+  rayon_thread_count:       -1,
 };
 
 function createSettingsStore() {
@@ -65,6 +67,8 @@ function createSettingsStore() {
           n.autostretch_target_bg = parseFloat(prefs['autostretch_target_bg']) || s.autostretch_target_bg;
         if (prefs['ui_font_size'])
           n.ui_font_size = parseFloat(prefs['ui_font_size']) || s.ui_font_size;
+        if (prefs['rayon_thread_count'])
+          n.rayon_thread_count = parseInt(prefs['rayon_thread_count'], 10) ?? s.rayon_thread_count;
         return n;
       });
     },

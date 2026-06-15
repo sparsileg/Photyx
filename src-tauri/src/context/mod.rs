@@ -151,6 +151,10 @@ pub struct AppContext {
     /// and on preference change. Used by read plugins to gate loading.
     pub buffer_pool_bytes: i64,
 
+    /// Rayon thread count for parallel operations — copied from AppSettings at startup
+    /// and on preference change. -1 means num_cpus - 1 at runtime.
+    pub rayon_thread_count: i64,
+
     /// Current session ID in session_history table — set by open_session, cleared by close_session
     pub current_session_id: Option<i64>,
 
@@ -194,6 +198,7 @@ impl AppContext {
         self.autostretch_shadow_clip = settings.autostretch_shadow_clip as f32;
         self.autostretch_target_bg   = settings.autostretch_target_bg as f32;
         self.buffer_pool_bytes       = settings.buffer_pool_bytes;
+        self.rayon_thread_count      = settings.rayon_thread_count;
     }
 
     pub fn new() -> Self {
@@ -201,6 +206,7 @@ impl AppContext {
         ctx.autostretch_shadow_clip = crate::settings::defaults::DEFAULT_AUTOSTRETCH_SHADOW_CLIP as f32;
         ctx.autostretch_target_bg   = crate::settings::defaults::DEFAULT_AUTOSTRETCH_TARGET_BG as f32;
         ctx.buffer_pool_bytes       = crate::settings::defaults::DEFAULT_BUFFER_POOL_BYTES;
+        ctx.rayon_thread_count      = crate::settings::defaults::RAYON_THREAD_COUNT_DEFAULT;
         ctx
     }
 

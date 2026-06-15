@@ -3,6 +3,7 @@
 
 <script lang="ts">
   import { open } from '@tauri-apps/plugin-dialog';
+  import { invoke } from '@tauri-apps/api/core';
   import { settings } from '../stores/settings';
   import { notifications } from '../stores/notifications';
   import {
@@ -13,6 +14,8 @@
   } from '../settings/constants';
 
   let { onclose }: { onclose: () => void } = $props();
+
+  let cpuCount = $state(32);
 
   // Draft copy — edited freely; nothing is written until OK or Apply.
   // buffer_pool_memory_limit is converted to GB for display.
@@ -33,11 +36,20 @@
       buffer_pool_memory_limit: s.buffer_pool_memory_limit / GB,
       autostretch_shadow_clip:  s.autostretch_shadow_clip,
       autostretch_target_bg:    s.autostretch_target_bg,
+      rayon_thread_count:       s.rayon_thread_count < 1
+                                  ? (cpuCount - 1 || 1)
+                                  : s.rayon_thread_count,
     };
+    invoke<number>('get_cpu_count').then(n => { cpuCount = n; });
   });
 
   function fieldMeta(key: string): PrefFieldMeta | undefined {
     return PREF_FIELDS.find(f => f.key === key);
+  }
+
+  function effectiveMax(field: PrefFieldMeta): number | undefined {
+    if (field.key === 'rayon_thread_count') return cpuCount;
+    return field.max;
   }
 
   function validate(): boolean {
@@ -50,10 +62,11 @@
           errors[field.key] = `Must be a number.`;
           continue;
         }
+        const max = effectiveMax(field);
         if (field.min !== undefined && v < field.min) {
           errors[field.key] = `Minimum is ${field.min}${field.unit ? ' ' + field.unit : ''}.`;
-        } else if (field.max !== undefined && v > field.max) {
-          errors[field.key] = `Maximum is ${field.max}${field.unit ? ' ' + field.unit : ''}.`;
+        } else if (max !== undefined && v > max) {
+          errors[field.key] = `Maximum is ${max}${field.unit ? ' ' + field.unit : ''}.`;
         }
       }
     }
@@ -168,7 +181,7 @@
                         type="number"
                         step={meta.step ?? (meta.type === 'float' ? '0.01' : '1')}
                         min={meta.min}
-                        max={meta.max}
+                        max={effectiveMax(meta)}
                         value={draft[key] ?? meta.default}
                         oninput={(e) => draft[key] = (e.target as HTMLInputElement).value}
                       />

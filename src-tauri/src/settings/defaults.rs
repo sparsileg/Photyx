@@ -36,6 +36,9 @@ pub const DEFAULT_BUFFER_POOL_BYTES:   i64  = 4 * 1024 * 1024 * 1024; // 4 GB
 pub const BUFFER_POOL_MIN_BYTES:       i64  = 512 * 1024 * 1024;       // 512 MB
 pub const BUFFER_POOL_MAX_BYTES:       i64  = 32 * 1024 * 1024 * 1024; // 32 GB
 
+pub const RAYON_THREAD_COUNT_DEFAULT:  i64  = -1; // -1 = num_cpus - 1 at runtime
+pub const RAYON_THREAD_COUNT_MIN:      i64  = 1;
+
 // ── AutoStretch ───────────────────────────────────────────────────────────────
 
 pub const DEFAULT_AUTOSTRETCH_SHADOW_CLIP:  f64 = -2.8;

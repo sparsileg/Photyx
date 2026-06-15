@@ -256,7 +256,15 @@ pub fn start_background_cache(
     }
 
     let app = app.clone();
-    let num_threads = (num_cpus::get()).saturating_sub(1).max(1);
+    let num_threads = {
+        let ctx = state.context.lock().expect("context lock poisoned");
+        let pref = ctx.rayon_thread_count;
+        if pref <= 0 {
+            (num_cpus::get()).saturating_sub(1).max(1)
+        } else {
+            (pref as usize).min(num_cpus::get()).max(1)
+        }
+    };
     tauri::async_runtime::spawn(async move {
         let state_arc = app.state::<Arc<PhotoxState>>();
         let pool = rayon::ThreadPoolBuilder::new()
@@ -994,5 +1002,10 @@ pub fn get_stack_frame(state: State<Arc<PhotoxState>>) -> Result<String, String>
     Ok(format!("data:image/jpeg;base64,{}", b64))
 }
 
+
+#[tauri::command]
+pub fn get_cpu_count() -> usize {
+    num_cpus::get()
+}
 
 // ----------------------------------------------------------------------

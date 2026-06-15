@@ -279,6 +279,7 @@ pub fn run() {
             commands::display::get_autostretch_stack_frame,
             commands::display::get_blink_cache_status,
             commands::display::get_blink_frame,
+            commands::display::get_cpu_count,
             commands::display::get_current_frame,
             commands::display::get_full_frame,
             commands::display::get_histogram,
