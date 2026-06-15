@@ -1090,7 +1090,7 @@ impl PhotonPlugin for StackFrames {
 
 //  ── Output normalization ──────────────────────────────────────────────────────
 
-fn normalize_output(raw: &[f32], is_color: bool, n_pixels: usize) -> Vec<f32> {
+fn normalize_output(raw: &[f32], is_color: bool, _n_pixels: usize) -> Vec<f32> {
     if !is_color {
         let max_val = raw.par_iter().cloned().reduce(|| f32::NEG_INFINITY, f32::max);
         let min_val = raw.par_iter().cloned().reduce(|| f32::INFINITY,     f32::min);
@@ -1098,17 +1098,13 @@ fn normalize_output(raw: &[f32], is_color: bool, n_pixels: usize) -> Vec<f32> {
         return raw.par_iter().map(|&v| ((v - min_val) / range).clamp(0.0, 1.0)).collect();
     }
 
-    let mut out = vec![0.0f32; raw.len()];
-    for ch in 0..3 {
-        let ch_vals: Vec<f32> = (0..n_pixels).map(|px| raw[px * 3 + ch]).collect();
-        let max_val = ch_vals.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-        let min_val = ch_vals.iter().cloned().fold(f32::INFINITY,     f32::min);
-        let range   = (max_val - min_val).max(1e-6);
-        for px in 0..n_pixels {
-            out[px * 3 + ch] = ((raw[px * 3 + ch] - min_val) / range).clamp(0.0, 1.0);
-        }
-    }
-    out
+    // Normalize all channels together using a single global min/max so that
+    // relative channel ratios are preserved. Per-channel normalization would
+    // destroy color balance by stretching each channel independently.
+    let max_val = raw.par_iter().cloned().reduce(|| f32::NEG_INFINITY, f32::max);
+    let min_val = raw.par_iter().cloned().reduce(|| f32::INFINITY,     f32::min);
+    let range   = (max_val - min_val).max(1e-6);
+    raw.par_iter().map(|&v| ((v - min_val) / range).clamp(0.0, 1.0)).collect()
 }
 
 //  ── Snapshot collection ───────────────────────────────────────────────────────
