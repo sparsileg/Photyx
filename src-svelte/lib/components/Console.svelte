@@ -32,7 +32,7 @@
 
   import { PCODE_COMMANDS } from '../pcode';
   import { applyAutoStretch, loadFile } from '../commands';
-  import { getHelp, ARG_HINT_STRINGS } from '../pcode';
+  import { getHelp, ARG_HINT_STRINGS, HELP_DB } from '../pcode';
   import type { HelpEntry } from '../pcode';
   import { handleClientCommand, CLIENT_COMMAND_NAMES } from '../clientCommands';
 
@@ -48,6 +48,7 @@
   });
 
   const ALL_COMMANDS = [...PCODE_COMMANDS].sort();
+  const ALL_HELP_TOPICS = Object.keys(HELP_DB).map(k => HELP_DB[k].name.replace(/\(\)$/, '')).sort();
 
   // ARG_HINTS merges the string hints from pcode.ts with the client command
   // handler functions that must live here (they reference handleClientCommand).
@@ -117,17 +118,13 @@
         }
         return;
       }
-      append('Photyx pcode v1.0     commands:', 'output');
-      append('  File:     FilterByKeyword', 'output');
-      append('  I/O:      AddFiles ReadImages WriteFIT WriteXISF WriteTIFF WriteCurrent', 'output');
-      append('  Keyword:  AddKeyword DeleteKeyword ModifyKeyword CopyKeyword ListKeywords GetKeyword', 'output');
-      append('  Query:    GetImageProperty GetSessionProperty Test', 'output');
-      append('  Process:  AutoStretch BackgroundExtract BinImage DebayerImage', 'output');
-      append('  View:     BlinkSequence CacheFrames SetZoom', 'output');
-      append('  Analysis: ComputeFWHM CountStars ComputeEccentricity MedianValue ContourHeatmap', 'output');
-      append('  Script:   Set Print Echo CountFiles RunMacro', 'output');
-      append('  Files:    MoveFile CopyFile', 'output');
-      append('  Console:  pwd Help Clear Version', 'output');
+      append('Photyx pcode v1.0 — commands:', 'output');
+      const cols = 4;
+      const cmds = ALL_COMMANDS;
+      for (let i = 0; i < cmds.length; i += cols) {
+        append('  ' + cmds.slice(i, i + cols).join('   '), 'output');
+      }
+      append('Expression functions: abs  basename  ceil  dirof  floor  max  min  round  sqrt  stripext', 'output');
     },
     clear: (_raw: string) => { lines = []; },
     version: (_raw: string) => {
@@ -365,7 +362,7 @@
       const cmd = val.slice(0, spacePos).toLowerCase();
       const rest = val.slice(spacePos + 1);
       if (cmd === 'help' && rest.length > 0) {
-        const matches = ALL_COMMANDS.filter(c => c.toLowerCase().startsWith(rest.toLowerCase()));
+        const matches = ALL_HELP_TOPICS.filter(c => c.toLowerCase().startsWith(rest.toLowerCase()));
         if (matches.length === 1) {
           inputValue = 'help ' + matches[0];
           tabHint = '';

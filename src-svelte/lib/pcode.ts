@@ -102,7 +102,6 @@ export type ArgHintValue = string | ((_raw: string) => void);
 // Note: handler functions reference handleClientCommand from Console.svelte.
 // The ARG_HINTS object is defined there using this type; see Console.svelte.
 export const ARG_HINT_STRINGS: Record<string, string> = {
-  abs:                 '(#)',
   addfiles:            'paths=<path|glob>[,<path|glob>...]',
   addkeyword:          'name=  value=  comment=',
   analyzeframes:       '[profile=]',
