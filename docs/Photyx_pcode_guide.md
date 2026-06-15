@@ -661,13 +661,27 @@ ListKeywords
 
 #### `AnalyzeFrames`
 
-Computes five quality metrics for all loaded frames (FWHM, eccentricity, star count, signal weight, background median) and classifies each frame as PASS or REJECT using iterative sigma clipping against session statistics.
+Computes five quality metrics for all loaded frames (FWHM, eccentricity,
+star count, signal weight, background median) and classifies each frame as
+PASS or REJECT using iterative sigma clipping against session statistics.
+
+```
+AnalyzeFrames [profile=<string>]
+```
+
+| Argument  | Required | Default | Description                                                                                                      |
+| --------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
+| `profile` | No       |         | Threshold profile name to use for this run. If omitted, uses the active profile set in Edit > Analysis Parameters. The active profile is not permanently changed. |
 
 ```
 AnalyzeFrames
+AnalyzeFrames profile="Session"
+AnalyzeFrames profile="Project"
 ```
 
-Results are visible in the Analysis Results and Analysis Graph views. See `ShowAnalysisGraph` and `ShowAnalysisResults`.
+Results are visible in the Analysis Results and Analysis Graph views. See
+`ShowAnalysisGraph` and `ShowAnalysisResults`.
+
 
 ---
 

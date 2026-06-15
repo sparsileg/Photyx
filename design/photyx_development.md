@@ -1,6 +1,6 @@
 # Photyx — Developer Notes
 
-**Version:** 29 **Last updated:** 13 May 2026 **Status:** Active development — Phase 9 in progress
+**Version:** 30 **Last updated:** 14 June 2026 **Status:** Active development and debugging
 
 ---
 
@@ -679,6 +679,9 @@ Note: `activeDirectory` has been removed. Directory information is always derive
 
 ## 8. Known Issues & Deferred Items
 
+See the Photyx Github issues project for an up to date accounting of
+outstanding issues.
+
 | Issue                                         | Notes                                                                                                                                      |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | cfitsio parallel loading crashes              | Thread-safety — sequential loading used                                                                                                    |
@@ -706,13 +709,19 @@ Note: `activeDirectory` has been removed. Directory information is always derive
 
 See Section 13 in the Specification.
 
-## 10. Settings Persistence (Phase 9)
+## 10. Settings Persistence
 
-All persistence via SQLite (`photyx.db`). See `photyx_persistence_inventory.md` for schema and `photyx_reference.md` §5 for settings tables.
+All persistence via SQLite (`photyx.db`). See
+`photyx_persistence_inventory.md` for schema and `photyx_reference.md` §5
+for settings tables.
 
-`AppSettings` is the global in-memory settings object. Loaded from `defaults.rs` + `preferences` table; `load_threshold_profiles()` seeds "Default" if table empty. All reads from struct; writes to struct + DB via `save_preference()`.
+`AppSettings` is the global in-memory settings object. Loaded from
+`defaults.rs` + `preferences` table; `load_threshold_profiles()` seeds
+"Default" if table empty. All reads from struct; writes to struct + DB via
+`save_preference()`.
 
-Settings that remain in localStorage: none — migration complete as of Phase 9 sub-phase B.
+Settings that remain in localStorage: none — migration complete as of Phase
+9 sub-phase B.
 
 ---
 
