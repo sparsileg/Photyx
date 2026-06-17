@@ -90,7 +90,12 @@ pub const OUTLIER_SIGMA_THRESHOLD:           f64  = 4.0;
 // Set to false when dark masters are already bias-subtracted (e.g. created
 // in PixInsight), to prevent double-subtraction which zeros signal.
 
-pub const APPLY_BIAS_IN_CALIBRATION: bool = false;
+pub const APPLY_BIAS_IN_CALIBRATION:        bool = false;
+
+// Flat master stacking — Winsorized sigma clipping parameters.
+// PI defaults: 3σ, 5 iterations.
+pub const FLAT_STACK_WINSORIZE_SIGMA:       f32  = 3.0;
+pub const FLAT_STACK_WINSORIZE_ITERATIONS:  u32  = 5;
 
 // Non-persisted runtime constants
 // These are never written to the DB. They live here so they are

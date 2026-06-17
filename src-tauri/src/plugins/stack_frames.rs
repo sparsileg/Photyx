@@ -43,8 +43,18 @@
 //      pixels for accumulation. This ensures flat division operates on the
 //      correct scale. For flat stacking, the flat master is never loaded from
 //      caldir since applying a flat to flat subs makes no sense.
+//
+//   9. Flat stacking: raw Bayer (or mono) data is used directly without
+//      debayering. Each sub is bias/dark-calibrated (respecting
+//      APPLY_BIAS_IN_CALIBRATION), normalized by its scalar mean, then
+//      Winsorized sigma-clipped and mean-combined. Output is always a
+//      1-channel grayscale F32 master normalized to center around 1.0.
 
-use crate::settings::defaults::APPLY_BIAS_IN_CALIBRATION;
+use crate::settings::defaults::{
+    APPLY_BIAS_IN_CALIBRATION,
+    FLAT_STACK_WINSORIZE_ITERATIONS,
+    FLAT_STACK_WINSORIZE_SIGMA,
+};
 use crate::analysis::{
     self,
     background::estimate_background,
@@ -270,6 +280,8 @@ fn normalize_flat_inplace(flat: &mut Vec<f32>, channels: usize) {
 /// applied to a color frame). Values are floored at 0.0 after bias/dark;
 /// no upper clamp is applied since flat division may produce values > 1.0
 /// in bright regions.
+/// Bias subtraction is skipped when APPLY_BIAS_IN_CALIBRATION is false
+/// (e.g. when dark masters are already bias-subtracted in PixInsight).
 fn apply_calibration(frame: &mut Vec<f32>, cal: &CalibrationMasters, channels: usize) {
     let n_pixels = frame.len() / channels.max(1);
 
@@ -340,10 +352,30 @@ fn apply_calibration(frame: &mut Vec<f32>, cal: &CalibrationMasters, channels: u
 
 //  ── Flat stacking ─────────────────────────────────────────────────────────────
 
-/// Stack flat frames: subtract bias and dark (if available), normalize each sub
-/// by its overall mean, then median-combine. Returns a master flat ImageBuffer
-/// with F32 pixels normalized by global mean (centered around 1.0) for
-/// correct use as a calibration master.
+/// Stack flat frames to produce a 1-channel grayscale master flat.
+///
+/// Pipeline per sub:
+///   1. Decode to normalized f32. No debayering — raw Bayer (or mono) data is
+///      used directly as single-channel. This avoids interpolation artifacts
+///      and produces a physically accurate illumination map.
+///   2. Subtract bias master if APPLY_BIAS_IN_CALIBRATION is true and bias
+///      master is present. Respects the same flag as light calibration to
+///      prevent double-subtraction when darks are already bias-subtracted.
+///   3. Subtract dark master if present.
+///   4. Normalize each sub by its scalar mean so all subs contribute equally
+///      regardless of exposure variation (multiplicative normalization,
+///      equalize fluxes — equivalent to PI's approach).
+///
+/// Combining:
+///   - Winsorized sigma clipping (FLAT_STACK_WINSORIZE_SIGMA,
+///     FLAT_STACK_WINSORIZE_ITERATIONS) replaces outlier samples at each pixel
+///     with the clipping boundary value rather than excluding them. This
+///     handles hot pixels, dust motes, and any cosmic rays without discarding
+///     samples, preserving the full frame count for the mean.
+///   - Mean-combine surviving (Winsorized) samples per pixel.
+///
+/// Output: 1-channel F32 ImageBuffer normalized by global mean (~1.0 center)
+/// for use as a calibration master in apply_calibration().
 fn stack_flat_frames(
     ctx:      &AppContext,
     messages: &mut Vec<String>,
@@ -358,19 +390,12 @@ fn stack_flat_frames(
     let width     = first_buf.width  as usize;
     let height    = first_buf.height as usize;
     let n_pixels  = width * height;
+    let total     = ctx.file_list.len();
 
-    let bayer_pattern = first_buf.keywords.get("BAYERPAT")
-        .map(|kw| BayerPattern::from_str(&kw.value))
-        .unwrap_or(BayerPattern::RGGB);
+    messages.push(format!("FlatStack: {} frames, {}×{} → 1-channel grayscale master",
+        total, width, height));
 
-    let is_color = first_buf.color_space == ColorSpace::Bayer
-                || first_buf.color_space == ColorSpace::RGB;
-    let out_ch   = if is_color { 3usize } else { 1usize };
-    let total    = ctx.file_list.len();
-
-    messages.push(format!("FlatStack: {} frames, {}×{} {}",
-        total, width, height, if is_color { "color" } else { "mono" }));
-
+    // Collect normalized single-channel subs
     let mut flat_planes: Vec<Vec<f32>> = Vec::with_capacity(total);
 
     for (i, path) in ctx.file_list.iter().enumerate() {
@@ -383,57 +408,64 @@ fn stack_flat_frames(
             None    => { messages.push(format!("FlatStack: frame {} skipped — no pixels", i + 1)); continue; }
         };
 
-        // Decode to normalized f32 RGB or mono
-        let mut rgb: Vec<f32> = if buf.color_space == ColorSpace::Bayer {
-            let mono = analysis::to_f32_normalized(pixels);
-            debayer_bilinear(&mono, width, height, bayer_pattern)
+        // Decode to normalized f32 as single channel — no debayering.
+        // Raw Bayer data is treated as a grayscale illumination map.
+        let mut mono = analysis::to_f32_normalized(pixels);
+
+        // If the buffer is already multi-channel RGB (pre-debayered), collapse
+        // to single channel by taking the mean across channels.
+        let channels = buf.channels as usize;
+        let mut raw: Vec<f32> = if channels > 1 {
+            (0..n_pixels)
+                .map(|px| {
+                    (0..channels).map(|ch| mono[px * channels + ch]).sum::<f32>()
+                        / channels as f32
+                })
+                .collect()
         } else {
-            analysis::to_f32_normalized(pixels)
+            mono.drain(..).collect()
         };
 
-        // Subtract bias master (per channel)
-        if let Some(ref bias) = cal.bias {
-            let bc = cal.bias_channels.max(1);
-            for px in 0..n_pixels {
-                for ch in 0..out_ch {
-                    let bias_ch  = ch.min(bc - 1);
-                    let bias_idx = px * bc + bias_ch;
-                    let rgb_idx  = px * out_ch + ch;
-                    if bias_idx < bias.len() && rgb_idx < rgb.len() {
-                        rgb[rgb_idx] = (rgb[rgb_idx] - bias[bias_idx]).max(0.0);
+        // Bias subtract (only if APPLY_BIAS_IN_CALIBRATION and bias master present)
+        if APPLY_BIAS_IN_CALIBRATION {
+            if let Some(ref bias) = cal.bias {
+                let bc = cal.bias_channels.max(1);
+                for px in 0..n_pixels {
+                    // For a mono output we always use channel 0 of the master
+                    let bias_idx = px * bc;
+                    if bias_idx < bias.len() {
+                        raw[px] = (raw[px] - bias[bias_idx]).max(0.0);
                     }
                 }
             }
         }
 
-        // Subtract dark master (per channel)
+        // Dark subtract
         if let Some(ref dark) = cal.dark {
             let dc = cal.dark_channels.max(1);
             for px in 0..n_pixels {
-                for ch in 0..out_ch {
-                    let dark_ch  = ch.min(dc - 1);
-                    let dark_idx = px * dc + dark_ch;
-                    let rgb_idx  = px * out_ch + ch;
-                    if dark_idx < dark.len() && rgb_idx < rgb.len() {
-                        rgb[rgb_idx] = (rgb[rgb_idx] - dark[dark_idx]).max(0.0);
-                    }
+                let dark_idx = px * dc;
+                if dark_idx < dark.len() {
+                    raw[px] = (raw[px] - dark[dark_idx]).max(0.0);
                 }
             }
         }
 
-        // Normalize each sub by a single scalar (overall mean across all channels)
-        // so relative channel ratios are preserved through the median combine.
-        let overall_mean: f32 = rgb.iter().sum::<f32>() / rgb.len() as f32;
-        if overall_mean > 1e-6 {
-            for v in rgb.iter_mut() {
-                *v /= overall_mean;
+        // Normalize each sub by its scalar mean (multiplicative normalization,
+        // equalize fluxes). Preserves the illumination pattern while removing
+        // sub-to-sub brightness variation.
+        let mean: f32 = raw.iter().sum::<f32>() / raw.len() as f32;
+        if mean > 1e-6 {
+            for v in raw.iter_mut() {
+                *v /= mean;
             }
         }
 
-        flat_planes.push(rgb);
+        flat_planes.push(raw);
 
         let pct = ((i + 1) as f32 / total as f32 * 100.0).round() as u32;
-        messages.push(format!("FlatStack: normalizing frame {} / {} ({}%)…", i + 1, total, pct));
+        messages.push(format!("FlatStack: calibrating/normalizing frame {} / {} ({}%)…",
+            i + 1, total, pct));
     }
 
     if flat_planes.is_empty() {
@@ -441,34 +473,47 @@ fn stack_flat_frames(
     }
 
     let n_frames = flat_planes.len();
-    messages.push(format!("FlatStack: median-combining {} frames…", n_frames));
+    messages.push(format!(
+        "FlatStack: Winsorized sigma-clipping ({:.1}σ, {} iterations) and mean-combining {} frames…",
+        FLAT_STACK_WINSORIZE_SIGMA, FLAT_STACK_WINSORIZE_ITERATIONS, n_frames
+    ));
 
-    // Median-combine per pixel per channel in parallel
-    let master_pixels: Vec<f32> = (0..n_pixels * out_ch)
+    // Winsorized sigma-clip and mean-combine per pixel in parallel.
+    // For each pixel, iteratively compute mean+stddev, clamp outliers to the
+    // sigma boundary (Winsorize rather than exclude), then repeat. Final master
+    // value is the mean of the Winsorized samples.
+    let master_pixels: Vec<f32> = (0..n_pixels)
         .into_par_iter()
-        .map(|flat_idx| {
+        .map(|px| {
             let mut samples: Vec<f32> = flat_planes.iter()
-                .map(|plane| plane[flat_idx])
+                .map(|plane| plane[px])
                 .collect();
-            samples.sort_unstable_by(|a, b| {
-                a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-            });
-            let n = samples.len();
-            if n % 2 == 1 {
-                samples[n / 2]
-            } else {
-                (samples[n / 2 - 1] + samples[n / 2]) * 0.5
+
+            for _ in 0..FLAT_STACK_WINSORIZE_ITERATIONS {
+                let n      = samples.len() as f32;
+                let mean   = samples.iter().sum::<f32>() / n;
+                let var    = samples.iter().map(|&v| (v - mean).powi(2)).sum::<f32>() / n;
+                let stddev = var.sqrt();
+                if stddev < 1e-10 { break; }
+                let lo = mean - FLAT_STACK_WINSORIZE_SIGMA * stddev;
+                let hi = mean + FLAT_STACK_WINSORIZE_SIGMA * stddev;
+                for v in samples.iter_mut() {
+                    *v = v.clamp(lo, hi);
+                }
             }
+
+            samples.iter().sum::<f32>() / samples.len() as f32
         })
         .collect();
 
-    // Normalize flat master by a single global mean so channel ratios are
-    // preserved. Values center around 1.0 for correct calibration use.
+    // Normalize master flat to [0,1] by dividing by the global maximum so the
+    // file is interchangeable with PI and other tools. Re-normalization to ~1.0
+    // for calibration use happens at load time in load_calibration_masters().
     let mut master_pixels = master_pixels;
-    let global_mean: f32 = master_pixels.iter().sum::<f32>() / master_pixels.len() as f32;
-    if global_mean > 1e-6 {
+    let global_max: f32 = master_pixels.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    if global_max > 1e-6 {
         for v in master_pixels.iter_mut() {
-            *v /= global_mean;
+            *v /= global_max;
         }
     }
 
@@ -477,7 +522,7 @@ fn stack_flat_frames(
         "MASTER FLAT \u{2014} {} frames \u{2014} {}", n_frames, timestamp_display
     );
 
-    messages.push(format!("FlatStack: master flat created from {} frames", n_frames));
+    messages.push(format!("FlatStack: master flat created from {} frames (1-channel grayscale)", n_frames));
 
     Ok(ImageBuffer {
         filename:      stack_label,
@@ -485,8 +530,8 @@ fn stack_flat_frames(
         height:        height as u32,
         display_width: width  as u32,
         bit_depth:     BitDepth::F32,
-        color_space:   if is_color { ColorSpace::RGB } else { ColorSpace::Mono },
-        channels:      out_ch as u8,
+        color_space:   ColorSpace::Mono,
+        channels:      1,
         keywords:      build_flat_keywords(width, height, n_frames),
         pixels:        Some(PixelData::F32(master_pixels)),
     })
@@ -518,7 +563,9 @@ impl PhotonPlugin for StackFrames {
     fn description(&self) -> &str {
         "Stacks loaded frames. Light frames: FFT alignment, triangle rigid refinement, \
          meridian-flip-aware group reference selection, optional calibration via caldir=. \
-         Flat frames: bias-subtract, dark-subtract, normalize per sub, median-combine. \
+         Flat frames: raw single-channel (no debayer), bias/dark calibration respecting \
+         APPLY_BIAS_IN_CALIBRATION, per-sub mean normalization, Winsorized sigma-clipping, \
+         mean-combine, 1-channel grayscale F32 output normalized to ~1.0. \
          Frame type is detected automatically from filename or IMAGETYP keyword."
     }
 
@@ -1199,55 +1246,32 @@ fn assign_groups(snapshots: &mut Vec<FrameSnapshot>) {
     }
 }
 
-//  ── Reference selection ───────────────────────────────────────────────────────
+//  ── Reference frame selection ─────────────────────────────────────────────────
 
 fn select_reference_in_group(snapshots: &[FrameSnapshot], group: usize) -> usize {
     snapshots.iter()
         .enumerate()
         .filter(|(_, s)| s.group == group)
-        .min_by(|(_, a), (_, b)| {
-            a.fwhm.unwrap_or(f32::MAX)
-                .partial_cmp(&b.fwhm.unwrap_or(f32::MAX))
-                .unwrap_or(std::cmp::Ordering::Equal)
+        .max_by(|(_, a), (_, b)| {
+            let score_a = quality_score(a);
+            let score_b = quality_score(b);
+            score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
         })
         .map(|(i, _)| i)
         .unwrap_or(0)
 }
 
-//  ── Pixel loading helpers ─────────────────────────────────────────────────────
-
-fn load_debayered_luma(ctx: &AppContext, snap: &FrameSnapshot) -> Result<Vec<f32>, PluginError> {
-    let buf = ctx.image_buffers.get(&snap.path)
-        .ok_or_else(|| PluginError::new("NO_PIXELS", "Frame buffer missing."))?;
-    let pixels = buf.pixels.as_ref()
-        .ok_or_else(|| PluginError::new("NO_PIXELS", "Frame has no pixel data."))?;
-
-    if snap.color_space == ColorSpace::Bayer {
-        let mono = analysis::to_f32_normalized(pixels);
-        let rgb  = debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern);
-        Ok(analysis::extract_luminance(&rgb, snap.width, snap.height, 3))
-    } else {
-        Ok(analysis::to_luminance(pixels, snap.channels))
-    }
+fn quality_score(snap: &FrameSnapshot) -> f32 {
+    let fwhm_score = snap.fwhm.map(|f| 1.0 / f.max(0.1)).unwrap_or(0.0);
+    let ecc_score  = snap.eccentricity.map(|e| 1.0 - e).unwrap_or(0.0);
+    fwhm_score + ecc_score
 }
 
-/// Load raw [0,1] normalized pixels without any background normalization.
-/// Calibration must be applied separately before background normalization.
-fn load_frame_pixels(
-    ctx:      &AppContext,
-    snap:     &FrameSnapshot,
-    is_color: bool,
-) -> Vec<f32> {
-    let empty = || vec![0.0f32; snap.width * snap.height * if is_color { 3 } else { 1 }];
+//  ── Frame pixel loading ───────────────────────────────────────────────────────
 
-    let buf = match ctx.image_buffers.get(&snap.path) {
-        Some(b) => b,
-        None    => return empty(),
-    };
-    let pixels = match &buf.pixels {
-        Some(p) => p,
-        None    => return empty(),
-    };
+fn load_frame_pixels(ctx: &AppContext, snap: &FrameSnapshot, is_color: bool) -> Vec<f32> {
+    let buf    = ctx.image_buffers.get(&snap.path).unwrap();
+    let pixels = buf.pixels.as_ref().unwrap();
 
     if is_color {
         if snap.color_space == ColorSpace::Bayer {
@@ -1261,35 +1285,50 @@ fn load_frame_pixels(
     }
 }
 
+fn load_debayered_luma(ctx: &AppContext, snap: &FrameSnapshot) -> Result<Vec<f32>, PluginError> {
+    let buf = ctx.image_buffers.get(&snap.path)
+        .ok_or_else(|| PluginError::new("NO_BUFFER", "Frame buffer missing."))?;
+    let pixels = buf.pixels.as_ref()
+        .ok_or_else(|| PluginError::new("NO_PIXELS", "Frame has no pixel data."))?;
+
+    let luma = if snap.color_space == ColorSpace::Bayer {
+        let mono = analysis::to_f32_normalized(pixels);
+        let rgb  = debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern);
+        analysis::extract_luminance(&rgb, snap.width, snap.height, 3)
+    } else {
+        analysis::to_luminance(pixels, snap.channels)
+    };
+    Ok(luma)
+}
+
 //  ── Alignment helpers ─────────────────────────────────────────────────────────
 
 fn try_rigid_refinement(
-    ref_stars:   &[crate::analysis::stars::StarCandidate],
-    frame_stars: &[crate::analysis::stars::StarCandidate],
-    dx:          f32,
-    dy:          f32,
-    width:       usize,
-    height:      usize,
-    frame_idx:   usize,
-    messages:    &mut Vec<String>,
+    ref_stars:  &[crate::analysis::stars::StarCandidate],
+    frm_stars:  &[crate::analysis::stars::StarCandidate],
+    fft_dx:     f32,
+    fft_dy:     f32,
+    width:      usize,
+    height:     usize,
+    frame_idx:  usize,
+    messages:   &mut Vec<String>,
 ) -> AffineRigid {
-    match estimate_rigid_transform_triangles(ref_stars, frame_stars) {
-        Some(r) => {
-            let theta = r.theta();
-            info!("Frame {}: triangle match tx={:.2} ty={:.2} θ={:.4}rad",
-                frame_idx, r.tx, r.ty, theta);
-            r
+    let ransac = estimate_rigid_transform(ref_stars, frm_stars, fft_dx, fft_dy, width, height);
+    match estimate_rigid_transform_triangles(ref_stars, frm_stars) {
+        Some(tri) => {
+            let theta = tri.theta();
+            info!("Frame {}: triangle match — tx={:.2} ty={:.2} θ={:.4}rad ({:.3}°)",
+                frame_idx, tri.tx, tri.ty, theta, theta.to_degrees());
+            let _ = ransac;
+            tri
         }
         None => {
-            let fallback = estimate_rigid_transform(ref_stars, frame_stars, dx, dy, width, height)
-                .unwrap_or_else(|| AffineRigid::translation(dx, dy));
             let msg = format!(
-                "Frame {}: triangle match failed — using FFT+RANSAC tx={:.2} ty={:.2}",
-                frame_idx, fallback.tx, fallback.ty
+                "Frame {}: triangle match failed — using FFT translation only", frame_idx
             );
             info!("{}", msg);
             messages.push(msg);
-            fallback
+            AffineRigid::translation(fft_dx, fft_dy)
         }
     }
 }
@@ -1304,28 +1343,29 @@ fn alignment_failed(
     let msg = format!("Frame {}: alignment failed — {} — excluded", frame_idx, reason);
     info!("{}", msg);
     messages.push(msg);
-    contrib.exclusion_reason = Some(ExclusionReason::AlignmentFailed);
+    contrib.exclusion_reason    = Some(ExclusionReason::AlignmentFailed);
+    contrib.alignment_validated = Some(false);
     contributions.push(contrib.clone());
 }
 
-//  ── Date parsing ──────────────────────────────────────────────────────────────
+//  ── DATE-OBS parsing ─────────────────────────────────────────────────────────
 
 fn parse_date_obs(s: &str) -> Option<f64> {
-    let s = s.trim().trim_matches('\'');
-    let dt = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
-        .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
+    // ISO 8601: "2026-06-15T22:59:16" or "2026-06-15T22:59:16.000"
+    let dt = chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%dT%H:%M:%S")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%dT%H:%M:%S%.f"))
         .ok()?;
     Some(dt.and_utc().timestamp() as f64)
 }
 
-//  ── Frame resampling (mono) ───────────────────────────────────────────────────
+//  ── Frame resampling (translation only) ──────────────────────────────────────
 
 fn resample_frame(
-    normalized: &[f32],
-    width:      usize,
-    height:     usize,
-    dx:         f32,
-    dy:         f32,
+    pixels: &[f32],
+    width:  usize,
+    height: usize,
+    dx:     f32,
+    dy:     f32,
 ) -> Vec<f32> {
     (0..height * width)
         .into_par_iter()
@@ -1338,7 +1378,7 @@ fn resample_frame(
             let y0 = src_y.floor() as i32;
             let fx = src_x - x0 as f32;
             let fy = src_y - y0 as f32;
-            bilinear(normalized, width, height, x0, y0, x0 + 1, y0 + 1, fx, fy)
+            bilinear(pixels, width, height, x0, y0, x0 + 1, y0 + 1, fx, fy)
         })
         .collect()
 }
