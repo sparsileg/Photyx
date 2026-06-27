@@ -26,6 +26,7 @@
 // be large and poorly constrained by local star pairs.
 
 use crate::analysis::stars::StarCandidate;
+use rayon::prelude::*;
 use tracing::info;
 
 // ── Tuning constants (RANSAC) ─────────────────────────────────────────────────
@@ -275,56 +276,71 @@ pub fn estimate_rigid_transform_triangles(
         return None;
     }
 
-    // Match triangles and collect implied transforms as votes.
-    // Each vote is (tx_bin, ty_bin, theta_bin) → count.
-    // We use integer bins to group similar transforms.
-    let mut votes: std::collections::HashMap<(i32, i32, i32), (u32, AffineRigid)>
-        = std::collections::HashMap::new();
+    // Match triangles and collect implied transforms as votes in parallel.
+    // Each rayon thread accumulates its own local HashMap, then we merge
+    // them into a single votes map. This avoids any shared mutable state.
+    type VoteMap = std::collections::HashMap<(i32, i32, i32), (u32, AffineRigid)>;
 
-    let mut match_count = 0u32;
+    let (votes, match_count): (VoteMap, u32) = ref_descs
+        .par_iter()
+        .fold(
+            || (VoteMap::new(), 0u32),
+            |mut acc, rd| {
+                for fd in &frame_descs {
+                    // Orientations must match
+                    if rd.clockwise != fd.clockwise {
+                        continue;
+                    }
 
-    for rd in &ref_descs {
-        for fd in &frame_descs {
-            // Orientations must match
-            if rd.clockwise != fd.clockwise {
-                continue;
-            }
+                    // Descriptor distance
+                    let dr1 = rd.r1 - fd.r1;
+                    let dr2 = rd.r2 - fd.r2;
+                    let desc_dist = (dr1 * dr1 + dr2 * dr2).sqrt();
 
-            // Descriptor distance
-            let dr1 = rd.r1 - fd.r1;
-            let dr2 = rd.r2 - fd.r2;
-            let desc_dist = (dr1 * dr1 + dr2 * dr2).sqrt();
+                    if desc_dist > TRI_DESC_TOLERANCE {
+                        continue;
+                    }
 
-            if desc_dist > TRI_DESC_TOLERANCE {
-                continue;
-            }
+                    // Compute implied transform
+                    let xform = match transform_from_triangle_pair(
+                        ref_stars, frame_stars, rd, fd
+                    ) {
+                        Some(x) => x,
+                        None    => continue,
+                    };
 
-            // Compute implied transform
-            let xform = match transform_from_triangle_pair(
-                ref_stars, frame_stars, rd, fd
-            ) {
-                Some(x) => x,
-                None    => continue,
-            };
+                    // Sanity: scale should be near 1.0 (rigid transform)
+                    let scale_sq = xform.a * xform.a + xform.b * xform.b;
+                    if (scale_sq - 1.0).abs() > 0.1 {
+                        continue;
+                    }
 
-            // Sanity: scale should be near 1.0 (rigid transform)
-            let scale_sq = xform.a * xform.a + xform.b * xform.b;
-            if (scale_sq - 1.0).abs() > 0.1 {
-                continue;
-            }
+                    acc.1 += 1;
 
-            match_count += 1;
+                    // Bin the transform
+                    let tx_bin    = (xform.tx / TRI_TX_BIN).round() as i32;
+                    let ty_bin    = (xform.ty / TRI_TY_BIN).round() as i32;
+                    let theta_bin = (xform.theta() / TRI_THETA_BIN).round() as i32;
+                    let key = (tx_bin, ty_bin, theta_bin);
 
-            // Bin the transform
-            let tx_bin    = (xform.tx / TRI_TX_BIN).round() as i32;
-            let ty_bin    = (xform.ty / TRI_TY_BIN).round() as i32;
-            let theta_bin = (xform.theta() / TRI_THETA_BIN).round() as i32;
-            let key = (tx_bin, ty_bin, theta_bin);
-
-            let entry = votes.entry(key).or_insert((0, xform.clone()));
-            entry.0 += 1;
-        }
-    }
+                    let entry = acc.0.entry(key).or_insert((0, xform.clone()));
+                    entry.0 += 1;
+                }
+                acc
+            },
+        )
+        .reduce(
+            || (VoteMap::new(), 0u32),
+            |mut a, b| {
+                // Merge vote counts from two partial results
+                for (key, (count, xform)) in b.0 {
+                    let entry = a.0.entry(key).or_insert((0, xform));
+                    entry.0 += count;
+                }
+                a.1 += b.1;
+                a
+            },
+        );
 
     info!("tri_align: {} triangle matches, {} vote bins", match_count, votes.len());
 

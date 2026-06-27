@@ -808,20 +808,26 @@ impl PhotonPlugin for StackFrames {
             }
 
             // Load raw [0,1] pixels
+            let t_load = std::time::Instant::now();
             let mut frame_pixels = load_frame_pixels(ctx, snap, is_color);
+            let ms_load = t_load.elapsed().as_secs_f64() * 1000.0;
 
             // Apply calibration to raw pixels BEFORE background normalization.
-            // bias subtract → dark subtract → flat divide on [0,1] values.
+            // bias subtract   dark subtract   flat divide on [0,1] values.
+            let t_cal = std::time::Instant::now();
             if has_cal {
                 apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });
             }
+            let ms_cal = t_cal.elapsed().as_secs_f64() * 1000.0;
 
             // Extract calibrated luma for background estimation and FFT alignment.
+            let t_luma = std::time::Instant::now();
             let cal_luma = if is_color {
                 analysis::extract_luminance(&frame_pixels, width, height, 3)
             } else {
                 frame_pixels.clone()
             };
+            let ms_luma = t_luma.elapsed().as_secs_f64() * 1000.0;
 
             if group_ref_luma[snap.group].is_none() {
                 let g_ref  = &snapshots[group_refs[snap.group]];
@@ -833,8 +839,10 @@ impl PhotonPlugin for StackFrames {
             let g_ref_stars = group_ref_stars[snap.group].as_ref().unwrap();
 
             // Compute background from calibrated luma
+            let t_bg = std::time::Instant::now();
             let bg_est   = estimate_background(&cal_luma, &bg_sigma_config);
             let bg_level = bg_est.median;
+            let ms_bg = t_bg.elapsed().as_secs_f64() * 1000.0;
             contrib.background_level = Some(bg_level);
             let divisor = if bg_level > 1e-6 { bg_level } else { 1.0 };
             if i == 0 {
@@ -847,6 +855,7 @@ impl PhotonPlugin for StackFrames {
             // Normalize calibrated luma by background for FFT alignment
             let normalized_luma: Vec<f32> = cal_luma.par_iter().map(|&v| v / divisor).collect();
 
+            let t_fft = std::time::Instant::now();
             let g_transform: Option<AffineRigid> = if i == group_refs[snap.group] {
                 contrib.fft_translation     = Some((0.0, 0.0));
                 contrib.alignment_validated = Some(true);
@@ -856,7 +865,7 @@ impl PhotonPlugin for StackFrames {
                     Some(t) => {
                         contrib.fft_translation     = Some((t.dx, t.dy));
                         contrib.alignment_validated = Some(true);
-                        info!("Frame {}: RANSAC input — {} ref stars, {} frame stars, fft=({:.2},{:.2})",
+                        info!("Frame {}: RANSAC input   {} ref stars, {} frame stars, fft=({:.2},{:.2})",
                             snap.index, g_ref_stars.len(), snap.stars.len(), t.dx, t.dy);
                         let xform = try_rigid_refinement(
                             g_ref_stars, &snap.stars,
@@ -872,6 +881,7 @@ impl PhotonPlugin for StackFrames {
                     }
                 }
             };
+            let ms_fft = t_fft.elapsed().as_secs_f64() * 1000.0;
 
             let g_xform = g_transform.unwrap();
             let t_final = compose(&m_cross[snap.group], &g_xform);
@@ -885,6 +895,7 @@ impl PhotonPlugin for StackFrames {
                 frame_pixels.iter().map(|&v| v / divisor).collect()
             };
 
+            let t_resample = std::time::Instant::now();
             let theta = t_final.theta();
             if is_color {
                 let aligned_rgb = if theta.abs() >= MIN_ROTATION_TO_APPLY || t_final.a < 0.5 {
@@ -925,13 +936,20 @@ impl PhotonPlugin for StackFrames {
                     });
             }
 
+            let ms_resample = t_resample.elapsed().as_secs_f64() * 1000.0;
+
             cached_transforms[i] = Some(t_final);
 
             contrib.included = true;
             if let Some(et) = snap.exptime { total_integration += et; }
 
+            info!(
+                "Pass1 frame {:3}: load={:6.1}ms cal={:6.1}ms luma={:6.1}ms bg={:6.1}ms fft={:6.1}ms resample={:6.1}ms",
+                snap.index, ms_load, ms_cal, ms_luma, ms_bg, ms_fft, ms_resample
+            );
+
             let pct = ((i + 1) as f32 / total as f32 * 100.0).round() as u32;
-            messages.push(format!("Pass 1 — frame {} / {} ({}%)…", i + 1, total, pct));
+            messages.push(format!("Pass 1   frame {} / {} ({}%) ", i + 1, total, pct));
             contributions.push(contrib);
         }
 
