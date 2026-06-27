@@ -979,86 +979,126 @@ impl PhotonPlugin for StackFrames {
                 .collect()
         };
 
-        //  ── Pass 2 — sigma-clipped accumulation ──────────────────────────────
-        let sigma           = 2.5f32;
+        //     Pass 2   sigma-clipped accumulation (batched parallel)
+        let sigma      = 2.5f32;
+        let n_threads  = if ctx.rayon_thread_count == -1 {
+            rayon::current_num_threads()
+        } else {
+            ctx.rayon_thread_count as usize
+        }.max(1);
+
         let mut sum_buf:    Vec<f64> = vec![0.0; n_pixels * n_channels];
         let mut clip_count: Vec<u32> = vec![0;  n_pixels];
 
-        for (i, snap) in snapshots.iter().enumerate() {
-            let xform = match cached_transforms[i].as_ref() {
-                Some(x) => x,
-                None    => continue,
-            };
+        // Build list of (snapshot_index, xform) for frames that have a cached transform.
+        // This avoids borrowing ctx inside the parallel closure.
+        struct Pass2Input {
+            snap_idx:     usize,
+            xform:        AffineRigid,
+            pixels_f32:   Vec<f32>,
+        }
 
-            // Load raw [0,1] pixels and apply calibration
-            let mut frame_pixels = load_frame_pixels(ctx, snap, is_color);
-            if has_cal {
-                apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });
-            }
-
-            // Extract calibrated luma for background estimation
-            let cal_luma = if is_color {
-                analysis::extract_luminance(&frame_pixels, width, height, 3)
-            } else {
-                frame_pixels.clone()
-            };
-
-            let bg_est   = estimate_background(&cal_luma, &bg_sigma_config);
-            let bg_level = bg_est.median;
-            let divisor  = if bg_level > 1e-6 { bg_level } else { 1.0 };
-
-            // Divide calibrated pixels by background for accumulation.
-            // Skip background normalization when calibration is applied.
-            let accum_pixels: Vec<f32> = if has_cal {
-                frame_pixels.clone()
-            } else {
-                frame_pixels.iter().map(|&v| v / divisor).collect()
-            };
-
-            let theta = xform.theta();
-            if is_color {
-                let aligned_rgb = if theta.abs() >= MIN_ROTATION_TO_APPLY || xform.a < 0.5 {
-                    resample_frame_rgb_affine(&accum_pixels, width, height, xform)
+        let pass2_inputs: Vec<Pass2Input> = snapshots.iter().enumerate()
+            .filter_map(|(i, snap)| {
+                let xform = cached_transforms[i].clone()?;
+                let buf    = ctx.image_buffers.get(&snap.path)?;
+                let pixels = buf.pixels.as_ref()?;
+                let pixels_f32 = if is_color {
+                    if snap.color_space == ColorSpace::Bayer {
+                        let mono = analysis::to_f32_normalized(pixels);
+                        debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern)
+                    } else {
+                        analysis::to_f32_normalized(pixels)
+                    }
                 } else {
-                    resample_frame_rgb(&accum_pixels, width, height, xform.tx, xform.ty)
+                    analysis::to_luminance(pixels, snap.channels)
                 };
+                Some(Pass2Input { snap_idx: i, xform, pixels_f32 })
+            })
+            .collect();
 
-                for px in 0..n_pixels {
-                    let mean_luma = mean_buf[px * 3 + 1];
-                    let sd_luma   = stddev_buf[px * 3 + 1];
-                    let val_luma  = aligned_rgb[px * 3 + 1];
-                    let threshold = sigma * sd_luma;
-                    if sd_luma < 1e-10 || (val_luma - mean_luma).abs() <= threshold {
-                        clip_count[px] += 1;
-                        for ch in 0..3 {
-                            sum_buf[px * 3 + ch] += aligned_rgb[px * 3 + ch] as f64;
+        let mut pass2_done = 0usize;
+
+        for chunk in pass2_inputs.chunks(n_threads) {
+            // Parallel: calibrate, background estimate, resample each frame in chunk.
+            let aligned_buffers: Vec<Vec<f32>> = chunk.par_iter()
+                .map(|inp| {
+                    let mut frame_pixels = inp.pixels_f32.clone();
+
+                    if has_cal {
+                        apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });
+                    }
+
+                    let cal_luma = if is_color {
+                        analysis::extract_luminance(&frame_pixels, width, height, 3)
+                    } else {
+                        frame_pixels.clone()
+                    };
+
+                    let bg_est   = estimate_background(&cal_luma, &bg_sigma_config);
+                    let bg_level = bg_est.median;
+                    let divisor  = if bg_level > 1e-6 { bg_level } else { 1.0 };
+
+                    let accum_pixels: Vec<f32> = if has_cal {
+                        frame_pixels
+                    } else {
+                        frame_pixels.iter().map(|&v| v / divisor).collect()
+                    };
+
+                    let theta = inp.xform.theta();
+                    if is_color {
+                        if theta.abs() >= MIN_ROTATION_TO_APPLY || inp.xform.a < 0.5 {
+                            resample_frame_rgb_affine(&accum_pixels, width, height, &inp.xform)
+                        } else {
+                            resample_frame_rgb(&accum_pixels, width, height, inp.xform.tx, inp.xform.ty)
+                        }
+                    } else {
+                        let normalized: Vec<f32> = cal_luma.iter().map(|&v| v / divisor).collect();
+                        if theta.abs() >= MIN_ROTATION_TO_APPLY || inp.xform.a < 0.5 {
+                            resample_frame_affine(&normalized, width, height, &inp.xform)
+                        } else {
+                            resample_frame(&normalized, width, height, inp.xform.tx, inp.xform.ty)
                         }
                     }
-                }
-            } else {
-                let normalized: Vec<f32> = cal_luma.par_iter().map(|&v| v / divisor).collect();
-                let aligned = if theta.abs() >= MIN_ROTATION_TO_APPLY || xform.a < 0.5 {
-                    resample_frame_affine(&normalized, width, height, xform)
-                } else {
-                    resample_frame(&normalized, width, height, xform.tx, xform.ty)
-                };
+                })
+                .collect();
 
-                sum_buf.par_iter_mut()
-                    .zip(clip_count.par_iter_mut())
-                    .zip(aligned.par_iter())
-                    .zip(mean_buf.par_iter())
-                    .zip(stddev_buf.par_iter())
-                    .for_each(|((((sum, count), &val), &mean), &sd)| {
-                        let threshold = sigma * sd;
-                        if sd < 1e-10 || (val - mean).abs() <= threshold {
-                            *sum   += val as f64;
-                            *count += 1;
+            // Sequential: accumulate aligned buffers into sum_buf / clip_count.
+            for (inp, aligned) in chunk.iter().zip(aligned_buffers.iter()) {
+                if is_color {
+                    let aligned_rgb = aligned;
+                    for px in 0..n_pixels {
+                        let mean_luma = mean_buf[px * 3 + 1];
+                        let sd_luma   = stddev_buf[px * 3 + 1];
+                        let val_luma  = aligned_rgb[px * 3 + 1];
+                        let threshold = sigma * sd_luma;
+                        if sd_luma < 1e-10 || (val_luma - mean_luma).abs() <= threshold {
+                            clip_count[px] += 1;
+                            for ch in 0..3 {
+                                sum_buf[px * 3 + ch] += aligned_rgb[px * 3 + ch] as f64;
+                            }
                         }
-                    });
-            }
+                    }
+                } else {
+                    sum_buf.iter_mut()
+                        .zip(clip_count.iter_mut())
+                        .zip(aligned.iter())
+                        .zip(mean_buf.iter())
+                        .zip(stddev_buf.iter())
+                        .for_each(|((((sum, count), &val), &mean), &sd)| {
+                            let threshold = sigma * sd;
+                            if sd < 1e-10 || (val - mean).abs() <= threshold {
+                                *sum   += val as f64;
+                                *count += 1;
+                            }
+                        });
+                }
 
-            let pct = ((i + 1) as f32 / total as f32 * 100.0).round() as u32;
-            messages.push(format!("Pass 2 — frame {} / {} ({}%)…", i + 1, total, pct));
+                pass2_done += 1;
+                let pct = (pass2_done as f32 / total as f32 * 100.0).round() as u32;
+                messages.push(format!("Pass 2   frame {} / {} ({}%) ", inp.snap_idx + 1, total, pct));
+            }
+            // aligned_buffers dropped here, releasing chunk memory
         }
 
         //  ── Build output pixels ───────────────────────────────────────────────
