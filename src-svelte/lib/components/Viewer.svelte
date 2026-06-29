@@ -448,11 +448,12 @@
     }
   });
 
-  // ── AutoStretch frame drawing ─────────────────────────────────────────────
+
+  //    AutoStretch frame drawing
   let lastAutostretchUrl: string | null = null;
   $effect(() => {
     const url = $ui.autostretchImageUrl;
-    if (url && url !== lastAutostretchUrl) {
+    if (url) {
       lastAutostretchUrl = url;
       drawImageFromUrl(url);
     } else if (!url) {
@@ -460,7 +461,7 @@
     }
   });
 
-  // ── Display image (e.g. heatmap loaded via load_file) ─────────────────────
+  //    Display image (e.g. heatmap loaded via load_file)
   let lastDisplayImageUrl: string | null = null;
   $effect(() => {
     const url = $ui.displayImageUrl;
@@ -471,6 +472,21 @@
       lastDisplayImageUrl = null;
     }
   });
+
+  //    Stretch mode changes from toolbar
+  let lastStretchMode: 'linear' | 'stretched' = 'linear';
+  $effect(() => {
+    const mode = $ui.stretchMode;
+    if (mode === lastStretchMode) return;
+    lastStretchMode = mode;
+    if ($ui.activeView === 'stackingWorkspace') return;
+    if (mode === 'linear') {
+      ui.setAutostretchFrame(null);
+      ui.requestFrameRefresh();
+    }
+    // stretched case is handled by toggleStretchMode() in Toolbar.svelte
+  });
+
   // ── Frame refresh effects ─────────────────────────────────────────────────
   let lastToken = 0;
   let lastNeedsFullRes = false;

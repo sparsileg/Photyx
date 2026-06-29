@@ -44,7 +44,10 @@ export interface UIState {
   preferencesOpen:     boolean;
   quickLaunchVisible:  boolean;
   showQualityFlags:    boolean;
+  shadowClip:          number;
   stackImageUrl:       string | null;
+  stretchMode:         'linear' | 'stretched';
+  targetBg:            number;
   theme:               Theme;
   viewerClearToken:    number;
   zoomLevel:           ZoomLevel;
@@ -75,7 +78,10 @@ const initial: UIState = {
   preferencesOpen:     false,
   quickLaunchVisible:  true,
   showQualityFlags:    true,
+  shadowClip:          -2.8,
   stackImageUrl:       null,
+  stretchMode:         'linear',
+  targetBg:            0.15,
   theme:               'matrix',   // overwritten by hydrateFromDb()
   viewerClearToken:    0,
   zoomLevel:           'fit',
@@ -168,6 +174,8 @@ function createUIStore() {
     clearAnnotations:  () => update(s => ({ ...s, annotationToken: -(Math.abs(s.annotationToken) + 1) })),
 
     // ── View management ───────────────────────────────────────────────────
+    setStretchMode: (stretchMode: 'linear' | 'stretched') => update(s => ({ ...s, stretchMode })),
+    setStretchParams: (shadowClip: number, targetBg: number) => update(s => ({ ...s, shadowClip, targetBg })),
     showView: (view: ViewName | null) => update(s => ({ ...s, activeView: view })),
   };
 }
