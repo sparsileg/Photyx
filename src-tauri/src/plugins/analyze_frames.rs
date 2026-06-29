@@ -212,9 +212,12 @@ fn execute_all(
     }).collect();
 
     let total = snapshots.len();
-    info!("AnalyzeFrames: Pass 1 — computing metrics for {} frames", total);
+    info!("AnalyzeFrames: Pass 1   computing metrics for {} frames", total);
+
+    crate::set_progress("Analyzing", 0, total as u32);
 
     let det_config_ref = det_config;
+    let completed = std::sync::atomic::AtomicU32::new(0);
 
     let par_results: Vec<Result<AnalysisResult, (String, String)>> = snapshots
         .par_iter()
@@ -246,10 +249,14 @@ fn execute_all(
                 rejection_category: None,
             };
 
-            info!("AnalyzeFrames: {} — done", short_name(&snap.path));
+            info!("AnalyzeFrames: {}   done", short_name(&snap.path));
+            let n = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            crate::set_progress("Analyzing", n, total as u32);
             Ok(result)
         })
         .collect();
+
+    crate::set_progress("", 0, 0);
 
     let mut results: Vec<AnalysisResult> = Vec::with_capacity(total);
     let mut errors:  Vec<String>         = Vec::new();
@@ -268,8 +275,8 @@ fn execute_all(
         ));
     }
 
-    // ── Pass 2: iterative sigma clipping → session stats → classify → write PXFLAG ──
-    info!("AnalyzeFrames: Pass 2 — classifying {} frames (iterative sigma clipping)", results.len());
+    //    Pass 2: iterative sigma clipping   session stats   classify   write PXFLAG
+    info!("AnalyzeFrames: Pass 2   classifying {} frames (iterative sigma clipping)", results.len());
 
     let result_refs: Vec<&AnalysisResult> = results.iter().collect();
     let (session_stats, outlier_paths) = compute_session_stats_iterative(&result_refs);

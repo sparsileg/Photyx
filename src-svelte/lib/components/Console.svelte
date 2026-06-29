@@ -7,7 +7,7 @@
   import { ui } from '../stores/ui';
   import { consoleHistory, consolePipe } from '../stores/consoleHistory';
   import { settings } from '../stores/settings';
-  import { jobResult, jobOwner } from '../stores/progress';
+  import { jobResult, jobOwner, progress } from '../stores/progress';
 
   interface ConsoleLine {
     id: number;
@@ -210,6 +210,7 @@
 
     notifications.running(firstLine);
     jobOwner.set('console');
+    progress.set({ label: '', current: 0, total: 0 });
 
     try {
       await invoke('run_script', { script: trimmed });

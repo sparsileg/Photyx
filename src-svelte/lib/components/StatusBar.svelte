@@ -24,7 +24,9 @@
 
   let message = $derived(
     $progress.total > 0
-      ? `${$latestNotification?.message ?? ''} — ${$progress.current} / ${$progress.total} frames`
+      ? `${$latestNotification?.message ?? ''}${$progress.label ? ': ' + $progress.label : ''} — ${$progress.current}/${$progress.total} frames`
+      : $progress.label
+      ? `${$latestNotification?.message ?? ''}: ${$progress.label}…`
       : ($latestNotification?.message ?? 'Ready')
   );
 

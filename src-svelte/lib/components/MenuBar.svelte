@@ -55,7 +55,7 @@
   }
 
   async function runAnalyzeFrames() {
-    notifications.running('AnalyzeFrames running…');
+    notifications.running('AnalyzeFrames');
     try {
       const response = await invoke<{
         success: boolean;

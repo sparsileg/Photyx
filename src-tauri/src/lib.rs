@@ -34,8 +34,19 @@ pub static GLOBAL_DB: once_cell::sync::OnceCell<std::sync::Mutex<rusqlite::Conne
 /// Global progress atomics — written by long-running plugins, polled by the frontend
 pub static PROGRESS_CURRENT: std::sync::atomic::AtomicU32 =
     std::sync::atomic::AtomicU32::new(0);
+pub static PROGRESS_LABEL: once_cell::sync::OnceCell<Mutex<String>> =
+    once_cell::sync::OnceCell::new();
 pub static PROGRESS_TOTAL: std::sync::atomic::AtomicU32 =
     std::sync::atomic::AtomicU32::new(0);
+
+/// Convenience function for plugins to update progress label and counters atomically.
+pub fn set_progress(label: &str, current: u32, total: u32) {
+    if let Some(l) = PROGRESS_LABEL.get() {
+        if let Ok(mut g) = l.lock() { *g = label.to_string(); }
+    }
+    PROGRESS_CURRENT.store(current, std::sync::atomic::Ordering::Relaxed);
+    PROGRESS_TOTAL.store(total, std::sync::atomic::Ordering::Relaxed);
+}
 
 // ── Script result types ───────────────────────────────────────────────────────
 
@@ -145,9 +156,12 @@ const DISPLAY_COMMANDS: &[&str] = &[
 
 #[tauri::command]
 fn run_script(script: String, state: State<Arc<PhotoxState>>) -> ScriptResponse {
-    // Clear progress atomics and job result slot before starting
+    // Clear progress atomics, label, and job result slot before starting
     PROGRESS_CURRENT.store(0, std::sync::atomic::Ordering::Relaxed);
     PROGRESS_TOTAL.store(0, std::sync::atomic::Ordering::Relaxed);
+    if let Some(label) = PROGRESS_LABEL.get() {
+        if let Ok(mut g) = label.lock() { g.clear(); }
+    }
     if let Some(slot) = JOB_RESULT.get() {
         *slot.lock().expect("job result lock poisoned") = None;
     }
@@ -209,8 +223,13 @@ fn get_job_result() -> Option<JobResult> {
 // ── Tauri command: get progress ───────────────────────────────────────────────
 
 #[tauri::command]
-fn get_progress() -> (u32, u32) {
+fn get_progress() -> (String, u32, u32) {
+    let label = PROGRESS_LABEL.get()
+        .and_then(|m| m.lock().ok())
+        .map(|g| g.clone())
+        .unwrap_or_default();
     (
+        label,
         PROGRESS_CURRENT.load(std::sync::atomic::Ordering::Relaxed),
         PROGRESS_TOTAL.load(std::sync::atomic::Ordering::Relaxed),
     )
@@ -306,8 +325,9 @@ pub fn run() {
         }
     }
 
-    // Initialize JOB_RESULT slot
+    // Initialize JOB_RESULT and PROGRESS_LABEL slots
     let _ = JOB_RESULT.set(Mutex::new(None));
+    let _ = PROGRESS_LABEL.set(Mutex::new(String::new()));
 
     let state = Arc::new(PhotoxState {
         registry,

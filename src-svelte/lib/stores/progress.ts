@@ -2,9 +2,10 @@
 import { writable } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 
-export const progress = writable<{ current: number; total: number }>({
+export const progress = writable<{ label: string; current: number; total: number }>({
+    label:   '',
     current: 0,
-    total: 0,
+    total:   0,
 });
 
 export interface ScriptResult {
@@ -24,13 +25,13 @@ export interface JobResult {
     client_actions:  string[];
 }
 
-export const jobResult  = writable<JobResult | null>(null);
-export const jobOwner   = writable<string | null>(null);
+export const jobResult = writable<JobResult | null>(null);
+export const jobOwner  = writable<string | null>(null);
 
 setInterval(async () => {
-  try {
-        const [current, total] = await invoke<[number, number]>('get_progress');
-        progress.set({ current, total });
+    try {
+        const [label, current, total] = await invoke<[string, number, number]>('get_progress');
+        progress.set({ label, current, total });
     } catch {
         // backend not ready — ignore
     }

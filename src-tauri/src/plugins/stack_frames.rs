@@ -105,9 +105,9 @@ impl PhotonPlugin for StackFrames {
             return Err(PluginError::new("NO_FILES", "No files loaded."));
         }
         ctx.clear_stack();
+        crate::set_progress("Analyzing frames", 0, 0);
 
-        //  ── Light frame stacking ──────────────────────────────────────────────
-
+        //     Light frame stacking
         let det_config = StarDetectionConfig::default();
         let snapshots  = collect_snapshots(ctx, &det_config)?;
 
@@ -382,8 +382,7 @@ impl PhotonPlugin for StackFrames {
             cached_transforms[i] = Some(t_final);
             contrib.included = true;
             if let Some(et) = snap.exptime { total_integration += et; }
-            let pct = ((i + 1) as f32 / total as f32 * 100.0).round() as u32;
-            messages.push(format!("Pass 1   frame {} / {} ({}%) ", i + 1, total, pct));
+            crate::set_progress("Registering", (i + 1) as u32, total as u32);
             contributions.push(contrib);
         }
 
@@ -497,7 +496,7 @@ impl PhotonPlugin for StackFrames {
                 .collect();
 
             // Sequential: accumulate aligned buffers into sum_buf / clip_count.
-            for (inp, aligned) in chunk.iter().zip(aligned_buffers.iter()) {
+            for (_inp, aligned) in chunk.iter().zip(aligned_buffers.iter()) {
                 if is_color {
                     let aligned_rgb = aligned;
                     for px in 0..n_pixels {
@@ -528,8 +527,7 @@ impl PhotonPlugin for StackFrames {
                 }
 
                 pass2_done += 1;
-                let pct = (pass2_done as f32 / total as f32 * 100.0).round() as u32;
-                messages.push(format!("Pass 2   frame {} / {} ({}%) ", inp.snap_idx + 1, total, pct));
+                crate::set_progress("Integrating", pass2_done as u32, total as u32);
             }
             // aligned_buffers dropped here, releasing chunk memory
         }
@@ -603,6 +601,8 @@ impl PhotonPlugin for StackFrames {
 
         let full_message = messages.join("\n");
         info!("StackFrames: {}", full_message);
+
+        crate::set_progress("", 0, 0);
 
         Ok(PluginOutput::Data(serde_json::json!({
             "plugin":          "StackFrames",

@@ -2,8 +2,6 @@
 // Simulates a long-running plugin for testing the progress feedback pipeline.
 use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
 use crate::context::AppContext;
-use crate::{PROGRESS_CURRENT, PROGRESS_TOTAL};
-use std::sync::atomic::Ordering;
 
 pub struct FakeProgress;
 
@@ -29,16 +27,14 @@ impl PhotonPlugin for FakeProgress {
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(128);
 
-        PROGRESS_CURRENT.store(0, Ordering::Relaxed);
-        PROGRESS_TOTAL.store(total, Ordering::Relaxed);
+        crate::set_progress("Simulating", 0, total);
 
         for i in 1..=total {
             std::thread::sleep(std::time::Duration::from_millis(50));
-            PROGRESS_CURRENT.store(i, Ordering::Relaxed);
+            crate::set_progress("Simulating", i, total);
         }
 
-        PROGRESS_CURRENT.store(0, Ordering::Relaxed);
-        PROGRESS_TOTAL.store(0, Ordering::Relaxed);
+        crate::set_progress("", 0, 0);
 
         Ok(PluginOutput::Data(serde_json::json!({
             "message": format!("FakeProgress complete ({} frames)", total),

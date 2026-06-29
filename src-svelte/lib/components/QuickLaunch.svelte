@@ -8,7 +8,7 @@
   import { quickLaunch } from '../stores/quickLaunch';
   import { session } from '../stores/session';
   import { applyAutoStretch } from '../commands';
-  import { jobResult, jobOwner } from '../stores/progress';
+  import { jobResult, jobOwner, progress } from '../stores/progress';
 
   // ── Context menu state ────────────────────────────────────────────────────
   let contextMenu = $state<{ x: number; y: number; id: string } | null>(null);
@@ -89,6 +89,7 @@
     const firstLine = script.trim().split('\n')[0].trim();
     notifications.running(firstLine);
     jobOwner.set('quicklaunch');
+    progress.set({ label: '', current: 0, total: 0 });
 
     try {
       await invoke('run_script', { script });

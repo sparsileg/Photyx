@@ -6,6 +6,7 @@
   import { ui } from '../stores/ui';
   import { notifications } from '../stores/notifications';
   import { consolePipe } from '../stores/consoleHistory';
+  import { jobResult, jobOwner, progress } from '../stores/progress';
 
   // ── State ─────────────────────────────────────────────────────────────────
 
@@ -33,32 +34,16 @@
     imageUrl   = null;
     stackLabel = '';
     stackStats = '';
-
-    notifications.running('StackFrames running…');
-
+    notifications.running('StackFrames');
+    progress.set({ label: '', current: 0, total: 0 });
+    jobOwner.set('stackingworkspace');
     try {
-      const response = await invoke<{
-        results: Array<{ success: boolean; message: string | null; command: string }>;
-      }>('run_script', { script: 'StackFrames' });
-
-      const last = response.results[response.results.length - 1];
-      if (!last?.success) {
-        throw new Error(last?.message ?? 'StackFrames failed');
-      }
-
-      for (const r of response.results) {
-        if (r.message) {
-          consolePipe.update(q => [...q, { text: r.message!, type: 'output' as const }]);
-        }
-      }
-
-      notifications.success('Stacking complete');
-      phase = 'stacked';
-      await loadLinear();
+      await invoke('run_script', { script: 'StackFrames' });
     } catch (e) {
       error = `${e}`;
       phase = 'idle';
       notifications.error(`StackFrames failed: ${e}`);
+      jobOwner.set(null);
     }
   }
 
@@ -139,6 +124,33 @@
 
   // ── React to stretch mode changes from toolbar ────────────────────────────
 
+  //    Handle async job result for StackFrames
+  $effect(() => {
+    const result = $jobResult;
+    const owner  = $jobOwner;
+    if (!result || owner !== 'stackingworkspace') return;
+
+    const last = result.results.at(-1);
+    if (!last?.success) {
+      error = last?.message ?? 'StackFrames failed';
+      phase = 'idle';
+      notifications.error(`StackFrames failed: ${error}`);
+    } else {
+      for (const r of result.results) {
+        if (r.message) {
+          consolePipe.update(q => [...q, { text: r.message!, type: 'output' as const }]);
+        }
+      }
+      notifications.success('Stacking complete');
+      phase = 'stacked';
+      loadLinear();
+    }
+
+    jobResult.set(null);
+    jobOwner.set(null);
+  });
+
+  //    React to stretch mode changes from toolbar
   $effect(() => {
     const mode = $ui.stretchMode;
     if (!hasStack) return;

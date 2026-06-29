@@ -40,7 +40,7 @@ export async function addFiles() {
   const paths = Array.isArray(selected) ? selected : [selected];
   const pathsArg = paths.map(p => p.replace(/\\/g, '/')).join(',');
 
-  notifications.running(`Loading ${paths.length} file(s)…`);
+  notifications.running(`AddFiles`);
 
   const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(
     'dispatch_command',
