@@ -2,6 +2,7 @@
 <script lang="ts">
   import { latestNotification, notifications } from '../stores/notifications';
   import { session, directoryCount } from '../stores/session';
+  import { progress } from '../stores/progress';
 
   let historyOpen = $state(false);
 
@@ -21,7 +22,11 @@
       : TYPE_META.idle
   );
 
-  let message = $derived($latestNotification?.message ?? 'Ready');
+  let message = $derived(
+    $progress.total > 0
+      ? `${$latestNotification?.message ?? ''} — ${$progress.current} / ${$progress.total} frames`
+      : ($latestNotification?.message ?? 'Ready')
+  );
 
   function toggleHistory() {
     historyOpen = !historyOpen;

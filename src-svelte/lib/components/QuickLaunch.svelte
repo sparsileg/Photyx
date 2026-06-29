@@ -1,3 +1,5 @@
+<!-- QuickLaunch.svelte   Quick Launch bar. -->
+
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
   import { notifications } from '../stores/notifications';
@@ -6,8 +8,9 @@
   import { quickLaunch } from '../stores/quickLaunch';
   import { session } from '../stores/session';
   import { applyAutoStretch } from '../commands';
+  import { jobResult, jobOwner } from '../stores/progress';
 
-  // ── Context menu state ───────────────────────────────────────────────────
+  // ── Context menu state ────────────────────────────────────────────────────
   let contextMenu = $state<{ x: number; y: number; id: string } | null>(null);
 
   function onContextMenu(e: MouseEvent, entry: { id: string; protected?: boolean }) {
@@ -27,58 +30,72 @@
     contextMenu = null;
   }
 
-  // ── Run entry ────────────────────────────────────────────────────────────
-  async function runEntry(script: string) {
-    try {
-      const response = await invoke<{
-        results: Array<{ line_number: number; command: string; success: boolean; message: string | null; data: Record<string, unknown> | null }>;
-        session_changed: boolean;
-        display_changed: boolean;
-        client_actions:  string[];
-      }>('run_script', { script });
-      let anyError = false;
-      if (!Array.isArray(response.results)) {
-        console.warn('QuickLaunch: results was not an array:', response.results, 'script:', script);
-        throw new Error(`Unexpected response format: results is ${typeof response.results}`);
-      }
-      let lastActionData: Record<string, unknown> | null = null;
+  // ── Handle async job results addressed to quick launch ────────────────────
+  $effect(() => {
+    const result = $jobResult;
+    const owner  = $jobOwner;
+    if (!result || owner !== 'quicklaunch') return;
 
-      for (const r of response.results) {
-        if (!r.success) {
-          notifications.error(`${r.command}: ${r.message ?? 'error'}`);
-          anyError = true;
-        } else if (r.message) {
-          r.message.split('\n').forEach(line => {
-            if (line) pipeToConsole(line, 'success');
-          });
-        }
-        if (r.data) lastActionData = r.data;
+    let anyError = false;
+    let lastActionData: Record<string, unknown> | null = null;
+    let autoStretched = false;
+
+    for (const r of result.results) {
+      if (!r.success) {
+        notifications.error(`${r.command}: ${r.message ?? 'error'}`);
+        anyError = true;
+      } else if (r.message) {
+        r.message.split('\n').forEach(line => {
+          if (line) pipeToConsole(line, 'success');
+        });
       }
-      if (response.session_changed) {
-        const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
+      if (r.data) lastActionData = r.data;
+    }
+
+    if (result.session_changed) {
+      invoke<{ fileList: string[]; currentFrame: number }>('get_session').then(s => {
         session.setFileList(s.fileList);
-      }
-      // Dispatch client actions returned by Rust — no command-name matching needed
-      let autoStretched = false;
-      if (!Array.isArray(response.client_actions)) {
-        console.warn('QuickLaunch: client_actions was not an array:', response.client_actions, 'script:', script);
-      }
-      for (const action of response.client_actions ?? []) {
-        if (action === 'refresh_autostretch') {
-          const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
-          const targetBackground = lastActionData?.target_background as number | undefined;
-          await applyAutoStretch(shadowClip, targetBackground);
+      }).catch(e => {
+        notifications.error(`Session sync failed: ${e}`);
+      });
+    }
+
+    for (const action of result.client_actions ?? []) {
+      if (action === 'refresh_autostretch') {
+        const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
+        const targetBackground = lastActionData?.target_background as number | undefined;
+        applyAutoStretch(shadowClip, targetBackground).then(() => {
           autoStretched = true;
-        }
-        if (action === 'refresh_annotations') ui.refreshAnnotations();
-        if (action === 'open_keyword_modal')  ui.openKeywordModal();
+          if (result.display_changed && !autoStretched) ui.requestFrameRefresh();
+        });
       }
-      if (response.display_changed && !autoStretched) {
-        ui.requestFrameRefresh();
-      }
-      if (!anyError) notifications.success('Done.');
+      if (action === 'refresh_annotations') ui.refreshAnnotations();
+      if (action === 'open_keyword_modal')  ui.openKeywordModal();
+    }
+
+    if (result.display_changed && !autoStretched) {
+      ui.requestFrameRefresh();
+    }
+
+    if (!anyError) notifications.success('Done.');
+
+    // Clear job state
+    jobResult.set(null);
+    jobOwner.set(null);
+  });
+
+  // ── Run entry ─────────────────────────────────────────────────────────────
+  async function runEntry(script: string) {
+    const firstLine = script.trim().split('\n')[0].trim();
+    notifications.running(firstLine);
+    jobOwner.set('quicklaunch');
+
+    try {
+      await invoke('run_script', { script });
+      // Result arrives asynchronously via the $effect watching jobResult
     } catch (err) {
       notifications.error(`Quick Launch error: ${err}`);
+      jobOwner.set(null);
     }
   }
 </script>
@@ -92,8 +109,8 @@
         class="ql-btn"
         onclick={() => runEntry(entry.script)}
         oncontextmenu={(e) => onContextMenu(e, entry)}
-        >
-      {#if entry.icon}<span class="ql-icon">{entry.icon}</span>{/if}
+      >
+        {#if entry.icon}<span class="ql-icon">{entry.icon}</span>{/if}
         {entry.name}
       </button>
     {/each}
@@ -105,7 +122,7 @@
     class="ql-context-menu"
     style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
     onclick={(e) => e.stopPropagation()}
-    >
+  >
     <div class="ql-context-item ql-context-remove" onclick={removeEntry}>Remove from Quick Launch</div>
   </div>
 {/if}

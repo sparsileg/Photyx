@@ -31,6 +31,38 @@ pub static GLOBAL_REGISTRY: once_cell::sync::OnceCell<Arc<PluginRegistry>> =
 pub static GLOBAL_DB: once_cell::sync::OnceCell<std::sync::Mutex<rusqlite::Connection>> =
     once_cell::sync::OnceCell::new();
 
+/// Global progress atomics — written by long-running plugins, polled by the frontend
+pub static PROGRESS_CURRENT: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
+pub static PROGRESS_TOTAL: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
+
+// ── Script result types ───────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ScriptResult {
+    pub line_number:    usize,
+    pub command:        String,
+    pub success:        bool,
+    pub message:        Option<String>,
+    pub data:           Option<serde_json::Value>,
+    pub trace_line:     Option<String>,
+    pub client_actions: Vec<String>,
+}
+
+// ── Async job result ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Clone)]
+pub struct JobResult {
+    pub results:         Vec<ScriptResult>,
+    pub session_changed: bool,
+    pub display_changed: bool,
+    pub client_actions:  Vec<String>,
+}
+
+pub static JOB_RESULT: once_cell::sync::OnceCell<Mutex<Option<JobResult>>> =
+    once_cell::sync::OnceCell::new();
+
 // ── Application state ─────────────────────────────────────────────────────────
 
 pub struct PhotoxState {
@@ -98,21 +130,7 @@ async fn dispatch_command(
 
 #[derive(Debug, Serialize)]
 pub struct ScriptResponse {
-    pub results:         Vec<ScriptResult>,
-    pub session_changed: bool,
-    pub display_changed: bool,
-    pub client_actions:  Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ScriptResult {
-    pub line_number:    usize,
-    pub command:        String,
-    pub success:        bool,
-    pub message:        Option<String>,
-    pub data:           Option<serde_json::Value>,
-    pub trace_line:     Option<String>,
-    pub client_actions: Vec<String>,
+    pub accepted: bool,
 }
 
 // Commands that modify the session file list or active directory.
@@ -127,39 +145,75 @@ const DISPLAY_COMMANDS: &[&str] = &[
 
 #[tauri::command]
 fn run_script(script: String, state: State<Arc<PhotoxState>>) -> ScriptResponse {
-    let mut ctx = state.context.lock().expect("context lock poisoned");
-    let results = pcode::execute_script(&script, &mut ctx, &state.registry, true);
+    // Clear progress atomics and job result slot before starting
+    PROGRESS_CURRENT.store(0, std::sync::atomic::Ordering::Relaxed);
+    PROGRESS_TOTAL.store(0, std::sync::atomic::Ordering::Relaxed);
+    if let Some(slot) = JOB_RESULT.get() {
+        *slot.lock().expect("job result lock poisoned") = None;
+    }
 
-    let mut session_changed = false;
-    let mut display_changed = false;
+    let state = Arc::clone(&state);
 
-    for r in &results {
-        if r.success {
-            let cmd = r.command.to_lowercase();
-            if SESSION_COMMANDS.contains(&cmd.as_str()) { session_changed = true; }
-            if DISPLAY_COMMANDS.contains(&cmd.as_str()) { display_changed = true; }
+    std::thread::spawn(move || {
+        let mut ctx = state.context.lock().expect("context lock poisoned");
+        let results = pcode::execute_script(&script, &mut ctx, &state.registry, true);
+
+        let mut session_changed = false;
+        let mut display_changed = false;
+
+        for r in &results {
+            if r.success {
+                let cmd = r.command.to_lowercase();
+                if SESSION_COMMANDS.contains(&cmd.as_str()) { session_changed = true; }
+                if DISPLAY_COMMANDS.contains(&cmd.as_str()) { display_changed = true; }
+            }
         }
-    }
 
-    let client_actions: Vec<String> = results.iter()
-        .filter(|r| r.success)
-        .flat_map(|r| r.client_actions.iter().cloned())
-        .collect();
+        let client_actions: Vec<String> = results.iter()
+            .filter(|r| r.success)
+            .flat_map(|r| r.client_actions.iter().cloned())
+            .collect();
 
-    ScriptResponse {
-        results: results.iter().map(|r| ScriptResult {
-            line_number:    r.line_number,
-            command:        r.command.clone(),
-            success:        r.success,
-            message:        r.message.clone(),
-            data:           r.data.clone(),
-            trace_line:     r.trace_line.clone(),
-            client_actions: r.client_actions.clone(),
-        }).collect(),
-        session_changed,
-        display_changed,
-        client_actions,
-    }
+        let job_result = JobResult {
+            results: results.iter().map(|r| ScriptResult {
+                line_number:    r.line_number,
+                command:        r.command.clone(),
+                success:        r.success,
+                message:        r.message.clone(),
+                data:           r.data.clone(),
+                trace_line:     r.trace_line.clone(),
+                client_actions: r.client_actions.clone(),
+            }).collect(),
+            session_changed,
+            display_changed,
+            client_actions,
+        };
+
+        if let Some(slot) = JOB_RESULT.get() {
+            *slot.lock().expect("job result lock poisoned") = Some(job_result);
+        }
+    });
+
+    ScriptResponse { accepted: true }
+}
+
+// ── Tauri command: get async job result ───────────────────────────────────────
+
+#[tauri::command]
+fn get_job_result() -> Option<JobResult> {
+    JOB_RESULT.get().and_then(|slot| {
+        slot.lock().expect("job result lock poisoned").take()
+    })
+}
+
+// ── Tauri command: get progress ───────────────────────────────────────────────
+
+#[tauri::command]
+fn get_progress() -> (u32, u32) {
+    (
+        PROGRESS_CURRENT.load(std::sync::atomic::Ordering::Relaxed),
+        PROGRESS_TOTAL.load(std::sync::atomic::Ordering::Relaxed),
+    )
 }
 
 // ── Tauri command: list registered plugins ────────────────────────────────────
@@ -201,6 +255,7 @@ pub fn run() {
     registry.register(Arc::new(plugins::contour_heatmap::ContourHeatmap));
     registry.register(Arc::new(plugins::debayer_image::DebayerImage));
     registry.register(Arc::new(plugins::export_analysis_report::ExportAnalysisReport));
+    registry.register(Arc::new(plugins::fake_progress::FakeProgress));
     registry.register(Arc::new(plugins::get_histogram::GetHistogram));
     registry.register(Arc::new(plugins::keywords::AddKeyword));
     registry.register(Arc::new(plugins::keywords::CopyKeyword));
@@ -250,6 +305,9 @@ pub fn run() {
             };
         }
     }
+
+    // Initialize JOB_RESULT slot
+    let _ = JOB_RESULT.set(Mutex::new(None));
 
     let state = Arc::new(PhotoxState {
         registry,
@@ -315,6 +373,8 @@ pub fn run() {
             commands::threshold_profiles::save_threshold_profile,
             commands::threshold_profiles::set_active_threshold_profile,
             dispatch_command,
+            get_job_result,
+            get_progress,
             list_plugins,
             run_script,
         ])

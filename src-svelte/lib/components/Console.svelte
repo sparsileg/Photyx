@@ -1,4 +1,4 @@
-<!-- Console.svelte — pcode interactive console. Spec §8.9, §7.9 -->
+<!-- Console.svelte   pcode interactive console. Spec §8.9, §7.9 -->
 
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
@@ -7,6 +7,7 @@
   import { ui } from '../stores/ui';
   import { consoleHistory, consolePipe } from '../stores/consoleHistory';
   import { settings } from '../stores/settings';
+  import { jobResult, jobOwner } from '../stores/progress';
 
   interface ConsoleLine {
     id: number;
@@ -38,13 +39,75 @@
 
   let { onhelp }: { onhelp: (entry: HelpEntry) => void } = $props();
 
-  // Watch for external console output — drain the queue
+  // Watch for external console output   drain the queue
   $effect(() => {
     const queue = $consolePipe;
     if (queue.length > 0) {
       queue.forEach(line => append(line.text, line.type));
       consolePipe.set([]);
     }
+  });
+
+  // Handle async job results addressed to the console
+  $effect(() => {
+    const result = $jobResult;
+    const owner  = $jobOwner;
+    if (!result || owner !== 'console') return;
+
+    let lastActionData: Record<string, unknown> | null = null;
+
+    for (const r of result.results) {
+      if (r.success) {
+        const isAssignment = r.command.toLowerCase().startsWith('set ');
+
+        if (trace && r.trace_line) {
+          append(r.trace_line, 'trace-echo');
+        }
+
+        if (r.message && !isAssignment) {
+          r.message.split('\n').forEach(line => {
+            if (line) append(line, 'success');
+          });
+        }
+
+        if (r.data) lastActionData = r.data;
+
+        syncSessionState(
+          r.command.toLowerCase(),
+          {},
+          r.message,
+          r.data,
+        );
+      } else {
+        const msg = r.message ?? 'Unknown error';
+        append(msg, 'error');
+        if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
+          notifications.alert('Too many files to load', msg, 10000);
+        } else {
+          notifications.error(msg);
+        }
+      }
+    }
+
+    // Dispatch client actions
+    for (const action of result.client_actions ?? []) {
+      if (action === 'refresh_autostretch') {
+        const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
+        const targetBackground = lastActionData?.target_background as number | undefined;
+        applyAutoStretch(shadowClip, targetBackground).then(() => ui.clearAnnotations());
+      }
+      if (action === 'refresh_annotations') ui.refreshAnnotations();
+      if (action === 'open_keyword_modal')  ui.openKeywordModal();
+    }
+
+    const anyError = result.results.some(r => !r.success);
+    if (!anyError) {
+      notifications.success(result.results.at(-1)?.message ?? 'Done.');
+    }
+
+    // Clear job state
+    jobResult.set(null);
+    jobOwner.set(null);
   });
 
   const ALL_COMMANDS = [...PCODE_COMMANDS].sort();
@@ -80,12 +143,10 @@
     if (!textareaEl) return;
     textareaEl.style.height = 'auto';
     if ($ui.consoleExpanded && terminalEl) {
-      // In expanded terminal mode, grow to fill available space
       const maxHeight = terminalEl.clientHeight - textareaEl.offsetTop - 24;
       textareaEl.style.height = Math.min(textareaEl.scrollHeight, Math.max(maxHeight, 20)) + 'px';
       textareaEl.style.overflowY = textareaEl.scrollHeight > maxHeight ? 'auto' : 'hidden';
     } else {
-      // Collapsed: cap at 6 lines
       const maxHeight = 20 * 6;
       textareaEl.style.height = Math.min(textareaEl.scrollHeight, maxHeight) + 'px';
       textareaEl.style.overflowY = textareaEl.scrollHeight > maxHeight ? 'auto' : 'hidden';
@@ -118,7 +179,7 @@
         }
         return;
       }
-      append('Photyx pcode v1.0 — commands:', 'output');
+      append('Photyx pcode v1.0   commands:', 'output');
       const cols = 4;
       const cmds = ALL_COMMANDS;
       for (let i = 0; i < cmds.length; i += cols) {
@@ -147,70 +208,12 @@
       return;
     }
 
+    notifications.running(firstLine);
+    jobOwner.set('console');
+
     try {
-      const response = await invoke<{
-        results: Array<{
-          line_number: number;
-          command: string;
-          success: boolean;
-          message: string | null;
-          data: Record<string, unknown> | null;
-        }>;
-        session_changed: boolean;
-        display_changed: boolean;
-        client_actions:  string[];
-      }>('run_script', { script: trimmed });
-
-      let lastActionData: Record<string, unknown> | null = null;
-
-      for (const result of response.results) {
-        if (result.success) {
-          const isAssignment = result.command.toLowerCase().startsWith('set ');
-
-          // Trace line   show before output if trace is on
-          if (trace && result.trace_line) {
-            append(result.trace_line, 'trace-echo');
-          }
-
-          // Output   never show assignment results, only trace line
-          if (result.message && !isAssignment) {
-            result.message.split('\n').forEach(line => {
-              if (line) append(line, 'success');
-            });
-          }
-
-          if (result.data) lastActionData = result.data;
-
-          await syncSessionState(
-            result.command.toLowerCase(),
-            {},
-            result.message,
-            result.data,
-          );
-          } else {
-          const msg = result.message ?? 'Unknown error';
-          append(msg, 'error');
-          if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
-            notifications.alert('Too many files to load', msg, 10000);
-          } else {
-            notifications.error(msg);
-          }
-        }
-      }
-      // Dispatch client actions returned by Rust — no command-name matching needed
-      if (!Array.isArray(response.client_actions)) {
-        console.warn('Console: client_actions was not an array:', response.client_actions);
-      }
-      for (const action of response.client_actions ?? []) {
-        if (action === 'refresh_autostretch') {
-          const shadowClip      = lastActionData?.shadow_clip      as number | undefined;
-          const targetBackground = lastActionData?.target_background as number | undefined;
-          await applyAutoStretch(shadowClip, targetBackground);
-          ui.clearAnnotations();
-        }
-        if (action === 'refresh_annotations') ui.refreshAnnotations();
-        if (action === 'open_keyword_modal')  ui.openKeywordModal();
-      }
+      await invoke('run_script', { script: trimmed });
+      // Result arrives asynchronously via the $effect watching jobResult
     } catch (err) {
       const msg = String(err);
       append(msg, 'error');
@@ -219,10 +222,11 @@
       } else {
         notifications.error(msg);
       }
+      jobOwner.set(null);
     }
   }
 
-  async function syncSessionState(
+  function syncSessionState(
     cmd: string,
     args: Record<string, string>,
     output: string | null,
@@ -236,23 +240,21 @@
     }
     if (['addfiles', 'runmacro'].includes(cmd)) {
       if (output) notifications.success(output);
-      try {
-        const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
+      invoke<{ fileList: string[]; currentFrame: number }>('get_session').then(s => {
         session.setFileList(s.fileList);
-      } catch (e) {
+      }).catch(e => {
         notifications.error(`Session sync failed: ${e}`);
-      }
+      });
     }
 
-    // Client-only commands — intercepted in pcode interpreter, executed here
     if (data?.client_command) {
       const cc = data.client_command as string;
-      if (cc === 'showanalysisgraph')  ui.showView('analysisGraph');
+      if (cc === 'showanalysisgraph')   ui.showView('analysisGraph');
       if (cc === 'showanalysisresults') ui.showView('analysisResults');
-      if (cc === 'clearannotations')   ui.clearAnnotations();
-      if (cc === 'clear')              lines = [];
-      if (cc === 'version')            append('Photyx 1.0.0-dev  |  pcode v1.0  |  Tauri + Svelte + Rust', 'output');
-      if (cc === 'pwd')                CLIENT_COMMANDS['pwd']('');
+      if (cc === 'clearannotations')    ui.clearAnnotations();
+      if (cc === 'clear')               lines = [];
+      if (cc === 'version')             append('Photyx 1.0.0-dev  |  pcode v1.0  |  Tauri + Svelte + Rust', 'output');
+      if (cc === 'pwd')                 CLIENT_COMMANDS['pwd']('');
     }
 
     if (data?.client_command) {
@@ -267,15 +269,15 @@
     if (cmd === 'linearstretch' || cmd === 'histogramequalization' || cmd === 'backgroundextract') ui.requestFrameRefresh();
     if (cmd === 'contourheatmap') {
       const filePath = data?.output as string | null;
-      if (filePath) await loadFile(filePath);
+      if (filePath) loadFile(filePath);
     }
     if (cmd === 'loadfile') {
       const filePath = data?.path as string | null;
-      if (filePath) await loadFile(filePath);
+      if (filePath) loadFile(filePath);
     }
     if (cmd === 'setframe') ui.clearAnnotations();
     if (cmd === 'stackframes' && data?.stack_available) {
-      notifications.success('Stack complete — opening result…');
+      notifications.success('Stack complete — opening result 🔭');
       ui.showView('stackResult');
     }
     if (cmd === 'clearstack') {
@@ -287,7 +289,6 @@
     const raw = inputValue.trim();
     if (!raw) return;
 
-    // Always echo input lines
     raw.split('\n').forEach(line => {
       if (line.trim()) append(line, 'input-echo');
     });
@@ -388,10 +389,10 @@
   }
 </script>
 
-<!-- ── Collapsed layout (separate output + input) ─────────────────────── -->
+<!--    Collapsed layout (separate output + input)                         -->
 <div id="console-panel" class:expanded={$ui.consoleExpanded}>
   <div class="console-header" onclick={() => ui.toggleConsole()}>
-    <span class="console-title">pcode console {$ui.consoleExpanded ? '▾' : '▴'}</span>
+    <span class="console-title">pcode console {$ui.consoleExpanded ? '▼' : '▲'}</span>
     <div class="console-actions">
       <button class="console-action-btn" onclick={(e) => { e.stopPropagation(); trace = !trace; }}>{trace ? 'Trace' : 'No Trace'}</button>
       <button class="console-action-btn" onclick={(e) => { e.stopPropagation(); lines = []; }}>Clear</button>

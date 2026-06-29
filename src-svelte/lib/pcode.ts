@@ -44,6 +44,7 @@ export const PCODE_COMMANDS = new Set([
   'AnalyzeFrames',
   'CommitAnalysis',
   'ExportAnalysisReport',
+  'FakeProgress',
   'ComputeEccentricity',
   'ComputeFWHM',
   'ContourHeatmap',
@@ -131,6 +132,7 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   endfor:              '',
   endif:               '',
   exportanalysisreport: '[path=]',
+  fakeprogress:         '[frames=]',
   filterbykeyword:     'name=  value=',
   floor:               '(#)',
   for:                 '<var> = N To M  |  <var> in "<glob>"',
@@ -869,6 +871,17 @@ export const HELP_DB: Record<string, HelpEntry> = {
     arguments:   [],
     output:  'Returns a string containing the directory path.',
     example: 'Set dir = dirof($f)\n# If $f = "/data/lights/rejected/frame001.fit"\n# $dir = "/data/lights/rejected"\n\n# Walk up two levels:\nSet parent = dirof(dirof($f))',
+  },
+
+  fakeprogress: {
+    name:        'FakeProgress',
+    description: 'Simulates a long-running plugin for testing the progress feedback pipeline. Writes to the global progress atomics at 50ms per frame so the frontend polling loop can be verified end-to-end.',
+    syntax:      'FakeProgress [frames=<n>]',
+    arguments: [
+      { name: 'frames', description: 'Number of simulated frames (default 128)', required: false },
+    ],
+    output:  'Reports completion with frame count.',
+    example: 'FakeProgress frames=64',
   },
 
   stripext: {
