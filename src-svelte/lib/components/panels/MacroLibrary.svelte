@@ -148,6 +148,8 @@
         client_actions:  string[];
       }>('run_script', { script: `RunMacro name="${macro.name}"` });
       let anyError = false;
+      let lastActionData: Record<string, unknown> | null = null;
+
       for (const r of response.results) {
         if (!r.success) {
           notifications.error(`${r.command}: ${r.message ?? 'error'}`);
@@ -157,6 +159,7 @@
             if (line) pipeToConsole(line, 'success');
           });
         }
+        if (r.data) lastActionData = r.data;
       }
       if (!anyError) {
         notifications.success(`${macro.display_name} complete.`);
@@ -179,7 +182,9 @@
       }
       for (const action of response.client_actions ?? []) {
         if (action === 'refresh_autostretch') {
-          await applyAutoStretch();
+          const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
+          const targetBackground = lastActionData?.target_background as number | undefined;
+          await applyAutoStretch(shadowClip, targetBackground);
           autoStretched = true;
         }
         if (action === 'refresh_annotations') ui.refreshAnnotations();

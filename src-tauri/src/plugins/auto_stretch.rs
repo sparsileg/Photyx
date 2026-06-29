@@ -61,8 +61,10 @@ impl PhotonPlugin for AutoStretch {
         info!("AutoStretch: {} JPEG bytes", byte_count);
 
         Ok(PluginOutput::Data(serde_json::json!({
-            "message":       format!("AutoStretch applied ({} bytes)", byte_count),
-            "client_action": "refresh_autostretch",
+            "message":           format!("AutoStretch applied ({} bytes)", byte_count),
+            "client_action":     "refresh_autostretch",
+            "shadow_clip":       shadow_clip,
+            "target_background": target_bg,
         })))
     }
 }

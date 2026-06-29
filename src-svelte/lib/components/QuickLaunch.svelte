@@ -31,7 +31,7 @@
   async function runEntry(script: string) {
     try {
       const response = await invoke<{
-        results: Array<{ line_number: number; command: string; success: boolean; message: string | null }>;
+        results: Array<{ line_number: number; command: string; success: boolean; message: string | null; data: Record<string, unknown> | null }>;
         session_changed: boolean;
         display_changed: boolean;
         client_actions:  string[];
@@ -41,6 +41,8 @@
         console.warn('QuickLaunch: results was not an array:', response.results, 'script:', script);
         throw new Error(`Unexpected response format: results is ${typeof response.results}`);
       }
+      let lastActionData: Record<string, unknown> | null = null;
+
       for (const r of response.results) {
         if (!r.success) {
           notifications.error(`${r.command}: ${r.message ?? 'error'}`);
@@ -50,6 +52,7 @@
             if (line) pipeToConsole(line, 'success');
           });
         }
+        if (r.data) lastActionData = r.data;
       }
       if (response.session_changed) {
         const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
@@ -62,7 +65,9 @@
       }
       for (const action of response.client_actions ?? []) {
         if (action === 'refresh_autostretch') {
-          await applyAutoStretch();
+          const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
+          const targetBackground = lastActionData?.target_background as number | undefined;
+          await applyAutoStretch(shadowClip, targetBackground);
           autoStretched = true;
         }
         if (action === 'refresh_annotations') ui.refreshAnnotations();

@@ -161,21 +161,25 @@
         client_actions:  string[];
       }>('run_script', { script: trimmed });
 
+      let lastActionData: Record<string, unknown> | null = null;
+
       for (const result of response.results) {
         if (result.success) {
           const isAssignment = result.command.toLowerCase().startsWith('set ');
 
-          // Trace line — show before output if trace is on
+          // Trace line   show before output if trace is on
           if (trace && result.trace_line) {
             append(result.trace_line, 'trace-echo');
           }
 
-          // Output — never show assignment results, only trace line
+          // Output   never show assignment results, only trace line
           if (result.message && !isAssignment) {
             result.message.split('\n').forEach(line => {
               if (line) append(line, 'success');
             });
           }
+
+          if (result.data) lastActionData = result.data;
 
           await syncSessionState(
             result.command.toLowerCase(),
@@ -199,7 +203,9 @@
       }
       for (const action of response.client_actions ?? []) {
         if (action === 'refresh_autostretch') {
-          await applyAutoStretch();
+          const shadowClip      = lastActionData?.shadow_clip      as number | undefined;
+          const targetBackground = lastActionData?.target_background as number | undefined;
+          await applyAutoStretch(shadowClip, targetBackground);
           ui.clearAnnotations();
         }
         if (action === 'refresh_annotations') ui.refreshAnnotations();
