@@ -995,35 +995,46 @@ impl PhotonPlugin for StackFrames {
         struct Pass2Input {
             snap_idx:     usize,
             xform:        AffineRigid,
-            pixels_f32:   Vec<f32>,
         }
 
+        // Pixel data is loaded lazily inside the chunk loop to avoid
+        // pre-allocating all frames simultaneously (~13.8GB for 128 OSC
+        // frames). Peak Pass 2 memory is bounded to one batch at a time.
         let pass2_inputs: Vec<Pass2Input> = snapshots.iter().enumerate()
-            .filter_map(|(i, snap)| {
+            .filter_map(|(i, _snap)| {
                 let xform = cached_transforms[i].clone()?;
-                let buf    = ctx.image_buffers.get(&snap.path)?;
-                let pixels = buf.pixels.as_ref()?;
-                let pixels_f32 = if is_color {
-                    if snap.color_space == ColorSpace::Bayer {
-                        let mono = analysis::to_f32_normalized(pixels);
-                        debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern)
-                    } else {
-                        analysis::to_f32_normalized(pixels)
-                    }
-                } else {
-                    analysis::to_luminance(pixels, snap.channels)
-                };
-                Some(Pass2Input { snap_idx: i, xform, pixels_f32 })
+                Some(Pass2Input { snap_idx: i, xform })
             })
             .collect();
 
         let mut pass2_done = 0usize;
 
         for chunk in pass2_inputs.chunks(n_threads) {
+            // Sequential: load and debayer one batch worth of pixel data.
+            // Bounded to n_threads frames at a time rather than all frames.
+            let chunk_pixels: Vec<Vec<f32>> = chunk.iter()
+                .map(|inp| {
+                    let snap   = &snapshots[inp.snap_idx];
+                    let buf    = ctx.image_buffers.get(&snap.path).unwrap();
+                    let pixels = buf.pixels.as_ref().unwrap();
+                    if is_color {
+                        if snap.color_space == ColorSpace::Bayer {
+                            let mono = analysis::to_f32_normalized(pixels);
+                            debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern)
+                        } else {
+                            analysis::to_f32_normalized(pixels)
+                        }
+                    } else {
+                        analysis::to_luminance(pixels, snap.channels)
+                    }
+                })
+                .collect();
+
             // Parallel: calibrate, background estimate, resample each frame in chunk.
             let aligned_buffers: Vec<Vec<f32>> = chunk.par_iter()
-                .map(|inp| {
-                    let mut frame_pixels = inp.pixels_f32.clone();
+                .zip(chunk_pixels.into_par_iter())
+                .map(|(inp, pixels_f32)| {
+                    let mut frame_pixels = pixels_f32;
 
                     if has_cal {
                         apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });

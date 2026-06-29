@@ -42,7 +42,7 @@ const MAX_TRANSLATION_DEVIATION: f32 = 20.0;
 // ── Tuning constants (triangle matching) ─────────────────────────────────────
 
 /// Number of brightest stars to use for triangle building.
-const TRI_MAX_STARS: usize = 40;
+const TRI_MAX_STARS: usize = 30;
 
 /// Maximum descriptor distance for two triangles to be considered a match.
 /// Each descriptor is (ratio1, ratio2) normalized to [0,1], so max distance
