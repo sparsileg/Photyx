@@ -52,7 +52,6 @@ export const PCODE_COMMANDS = new Set([
   'MedianValue',
   //    Image processing
   'AutoStretch',
-  'BackgroundExtract',
   'BinImage',
   'DebayerImage',
   //    Display & navigation
@@ -107,7 +106,6 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   analyzeframes:       '[profile=]',
   assert:              'expression=',
   autostretch:         'shadowClip=  targetBackground=',
-  backgroundextract:   '[grid=]  [degree=]  [stack=]',
   basename:            '($path)',
   binimage:            'factor=',
   blinksequence:       'fps=',
@@ -160,7 +158,7 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   showanalysisgraph:   '',
   showanalysisresults: '',
   sqrt:                '(#)',
-  stackframes:         '[caldir=]',
+  stackframes:         '',
   stripext:            '($path)',
   version:             '',
   writecurrent:        '',
@@ -336,13 +334,11 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   stackframes: {
     name:        'StackFrames',
-    description: 'Stacks loaded frames. Frame type is detected automatically from filename or IMAGETYP keyword. Light frames: FFT alignment, RANSAC rigid refinement, meridian-flip-aware group reference selection, two-pass sigma-clipped mean combination, optional calibration. Flat frames: bias subtract, single-scalar normalization per sub, median combine, per-channel master normalization.',
-    syntax:      'StackFrames [caldir=<path>]',
-    arguments: [
-      { name: 'caldir', type: 'path', required: false, description: 'Directory containing master calibration files. Files identified by filename containing "bias", "dark", or "flat". Supports .fit, .fits, .fts, .xisf.' },
-    ],
-    output:  'Produces a transient stacked ImageBuffer in the Stacking Workspace. For flat frames, produces a normalized master flat. Reports progress and a quality summary to the console.',
-    example: 'StackFrames\nStackFrames caldir="/data/masters"\nReadImages path="/data/lights"\nStackFrames caldir="/data/masters"\nCommitStretch shadow_clip=-3.5 target_bg=0.10\nWriteXISF destination="/data/output" stack=true',
+    description: 'Stacks loaded frames using FFT alignment, triangle rigid refinement, meridian-flip-aware group reference selection, and two-pass sigma-clipped mean combination.',
+    syntax:      'StackFrames',
+    arguments:   [],
+    output:  'Produces a transient stacked ImageBuffer in the Stacking Workspace. Reports progress and a quality summary to the console.',
+    example: 'StackFrames\nReadImages path="/data/lights"\nStackFrames\nCommitStretch shadow_clip=-3.5 target_bg=0.10\nWriteXISF destination="/data/output" stack=true',
   },
 
   clearstack: {
@@ -534,19 +530,6 @@ export const HELP_DB: Record<string, HelpEntry> = {
     ],
     output:  'Converts the current frame from mono Bayer to interleaved RGB in place.',
     example: 'DebayerImage pattern=RGGB\nDebayerImage pattern=BGGR method=bilinear',
-  },
-
-  backgroundextract: {
-    name:        'BackgroundExtract',
-    description: 'Fits a 2D polynomial surface to the image background and subtracts it, correcting light pollution gradients and vignetting residuals. Operates on the current session frame by default, or the transient stack result when stack=true.',
-    syntax:      'BackgroundExtract [grid=<integer>] [degree=<integer>] [stack=<bool>]',
-    arguments: [
-      { name: 'grid',   type: 'integer', required: false, default: '32',    description: 'Sampling grid size N (NxN cells, 8-64). Finer grids capture more local variation but are more sensitive to nebulosity contamination.' },
-      { name: 'degree', type: 'integer', required: false, default: '2',     description: 'Polynomial degree (1-3). Degree 2 handles the vast majority of real-world gradients. Degree 3 risks overfitting.' },
-      { name: 'stack',  type: 'boolean', required: false, default: 'false', description: 'Operate on the transient stack result instead of the current session frame.' },
-    ],
-    output:  'Modifies the pixel buffer in place. Invalidates display caches so the viewer reloads automatically.',
-    example: 'BackgroundExtract\nBackgroundExtract grid=16 degree=3\nBackgroundExtract stack=true\nBackgroundExtract stack=true grid=16 degree=2',
   },
 
   binimage: {

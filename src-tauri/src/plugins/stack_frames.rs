@@ -34,27 +34,7 @@
 //   7. Color awareness: if the master reference frame is Bayer or RGB, the
 //      stack accumulates all three RGB channels and outputs ColorSpace::RGB.
 //      Mono input produces a grayscale output as before.
-//
-//   8. Calibration: if caldir= is provided, StackFrames loads master bias,
-//      dark, and flat from that directory (identified by filename). Calibration
-//      is applied to raw [0,1] pixel values BEFORE background normalization:
-//      bias subtract → dark subtract → flat divide.
-//      Background normalization (divisor) is then applied to the calibrated
-//      pixels for accumulation. This ensures flat division operates on the
-//      correct scale. For flat stacking, the flat master is never loaded from
-//      caldir since applying a flat to flat subs makes no sense.
-//
-//   9. Flat stacking: raw Bayer (or mono) data is used directly without
-//      debayering. Each sub is bias/dark-calibrated (respecting
-//      APPLY_BIAS_IN_CALIBRATION), normalized by its scalar mean, then
-//      Winsorized sigma-clipped and mean-combined. Output is always a
-//      1-channel grayscale F32 master normalized to center around 1.0.
 
-use crate::settings::defaults::{
-    APPLY_BIAS_IN_CALIBRATION,
-    FLAT_STACK_WINSORIZE_ITERATIONS,
-    FLAT_STACK_WINSORIZE_SIGMA,
-};
 use crate::analysis::{
     self,
     background::estimate_background,
@@ -68,8 +48,7 @@ use crate::analysis::{
     SigmaClipConfig, StarDetectionConfig,
 };
 use crate::context::{AppContext, BitDepth, ColorSpace, ImageBuffer, PixelData};
-use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
-use crate::plugins::image_reader::read_image_file;
+use crate::plugin::{ArgMap, ParamSpec, PhotonPlugin, PluginError, PluginOutput};
 use chrono::Utc;
 use rayon::prelude::*;
 use tracing::info;
@@ -87,423 +66,6 @@ const SESSION_GAP_MINUTES: f32 = 120.0;
 const MERIDIAN_FLIP_THRESHOLD: f32 = 90.0;
 
 pub struct StackFrames;
-
-//  ── Frame type detection ──────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq)]
-enum FrameType {
-    Light,
-    Flat,
-}
-
-/// Detect whether a frame is a light or flat sub.
-/// Checks filename first (case-insensitive contains "flat"), then IMAGETYP keyword.
-fn detect_frame_type(
-    path:     &str,
-    keywords: &std::collections::HashMap<String, crate::context::KeywordEntry>,
-) -> FrameType {
-    let filename = std::path::Path::new(path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-
-    if filename.contains("flat") {
-        return FrameType::Flat;
-    }
-
-    if let Some(kw) = keywords.get("IMAGETYP") {
-        if kw.value.to_lowercase().contains("flat") {
-            return FrameType::Flat;
-        }
-    }
-
-    FrameType::Light
-}
-
-//  ── Calibration masters ───────────────────────────────────────────────────────
-
-struct CalibrationMasters {
-    bias:          Option<Vec<f32>>,  // normalized f32 [0,1], interleaved channels
-    bias_channels: usize,
-    dark:          Option<Vec<f32>>,  // normalized f32 [0,1], interleaved channels
-    dark_channels: usize,
-    flat:          Option<Vec<f32>>,  // normalized f32 centered ~1.0, interleaved channels
-    flat_channels: usize,
-}
-
-/// Scan caldir for master bias, dark, and flat files.
-/// Identified by filename containing "bias", "dark", or "flat" (case-insensitive).
-/// Supports .fit, .fits, .fts, .xisf extensions.
-/// When load_flat=false, any flat master in caldir is ignored (used when stacking flats).
-fn load_calibration_masters(caldir: &str, load_flat: bool, messages: &mut Vec<String>) -> CalibrationMasters {
-    let mut bias_buf: Option<Vec<f32>> = None;
-    let mut dark_buf: Option<Vec<f32>> = None;
-    let mut flat_buf: Option<Vec<f32>> = None;
-    let mut bias_channels = 1usize;
-    let mut dark_channels = 1usize;
-    let mut flat_channels = 1usize;
-
-    let entries = match std::fs::read_dir(caldir) {
-        Ok(e) => e,
-        Err(e) => {
-            messages.push(format!(
-                "Warning: cannot read calibration directory '{}': {}", caldir, e
-            ));
-            return CalibrationMasters {
-                bias: None, bias_channels: 1,
-                dark: None, dark_channels: 1,
-                flat: None, flat_channels: 1,
-            };
-        }
-    };
-
-    let mut files: Vec<std::path::PathBuf> = entries
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.is_file())
-        .filter(|p| {
-            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-            matches!(ext.as_str(), "fit" | "fits" | "fts" | "xisf")
-        })
-        .collect();
-    files.sort();
-
-    for path in &files {
-        let filename = path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
-        let cal_type = if filename.contains("bias") {
-            "bias"
-        } else if filename.contains("dark") {
-            "dark"
-        } else if filename.contains("flat") {
-            if !load_flat { continue; }
-            "flat"
-        } else {
-            continue;
-        };
-
-        let path_str = match path.to_str() {
-            Some(s) => s,
-            None    => continue,
-        };
-
-        let buf = match read_image_file(path_str) {
-            Ok(b)  => b,
-            Err(e) => {
-                messages.push(format!(
-                    "Warning: cannot load {} master '{}': {}", cal_type, path_str, e
-                ));
-                continue;
-            }
-        };
-
-        let pixels = match buf.pixels {
-            Some(p) => p,
-            None    => {
-                messages.push(format!(
-                    "Warning: {} master '{}' has no pixel data", cal_type, path_str
-                ));
-                continue;
-            }
-        };
-
-        let c = buf.channels as usize;
-        let normalized = to_f32_normalized_cal(&pixels);
-
-        messages.push(format!(
-            "Calibration: loaded {} master '{}' ({}×{} {} ch)",
-            cal_type, filename, buf.width, buf.height, c
-        ));
-
-        match cal_type {
-            "bias" => { bias_buf = Some(normalized); bias_channels = c; }
-            "dark" => { dark_buf = Some(normalized); dark_channels = c; }
-            "flat" => { flat_buf = Some(normalized); flat_channels = c; }
-            _      => {}
-        }
-    }
-
-    // Normalize flat master by a single global mean so channel ratios are
-    // preserved. Values center around 1.0 for correct calibration use.
-    if let Some(ref mut flat) = flat_buf {
-        let global_mean: f32 = flat.iter().sum::<f32>() / flat.len() as f32;
-        if global_mean > 1e-6 {
-            for v in flat.iter_mut() {
-                *v /= global_mean;
-            }
-        }
-    }
-
-    CalibrationMasters {
-        bias: bias_buf, bias_channels,
-        dark: dark_buf, dark_channels,
-        flat: flat_buf, flat_channels,
-    }
-}
-
-/// Convert PixelData to normalized f32 for calibration masters.
-fn to_f32_normalized_cal(pixels: &PixelData) -> Vec<f32> {
-    match pixels {
-        PixelData::U8(v)  => v.iter().map(|&x| x as f32 / 255.0).collect(),
-        PixelData::U16(v) => v.iter().map(|&x| x as f32 / 65535.0).collect(),
-        PixelData::F32(v) => v.clone(),
-    }
-}
-
-/// Normalize a flat master in place so each channel's mean is 1.0.
-/// Retained for potential future use.
-#[allow(dead_code)]
-fn normalize_flat_inplace(flat: &mut Vec<f32>, channels: usize) {
-    let n_pixels = flat.len() / channels.max(1);
-    if n_pixels == 0 { return; }
-    for ch in 0..channels {
-        let mean: f32 = (0..n_pixels)
-            .map(|px| flat[px * channels + ch])
-            .sum::<f32>() / n_pixels as f32;
-        if mean > 1e-6 {
-            for px in 0..n_pixels {
-                flat[px * channels + ch] /= mean;
-            }
-        }
-    }
-}
-
-/// Apply calibration to a raw [0,1] normalized f32 frame buffer in place.
-/// Order: bias subtract → dark subtract → flat divide.
-/// Must be called on raw pixel values BEFORE background normalization.
-/// Each calibration master uses its own channel count to avoid indexing
-/// errors when masters have different channel counts (e.g. mono bias/dark
-/// applied to a color frame). Values are floored at 0.0 after bias/dark;
-/// no upper clamp is applied since flat division may produce values > 1.0
-/// in bright regions.
-/// Bias subtraction is skipped when APPLY_BIAS_IN_CALIBRATION is false
-/// (e.g. when dark masters are already bias-subtracted in PixInsight).
-fn apply_calibration(frame: &mut Vec<f32>, cal: &CalibrationMasters, channels: usize) {
-    let n_pixels = frame.len() / channels.max(1);
-    for px in 0..n_pixels {
-        for ch in 0..channels {
-            let idx = px * channels + ch;
-            let mut val = frame[idx];
-
-            if APPLY_BIAS_IN_CALIBRATION {
-                if let Some(ref bias) = cal.bias {
-                    let bias_ch  = ch.min(cal.bias_channels.saturating_sub(1));
-                    let bias_idx = px * cal.bias_channels + bias_ch;
-                    if bias_idx < bias.len() { val -= bias[bias_idx]; }
-                }
-            }
-            if let Some(ref dark) = cal.dark {
-                let dark_ch  = ch.min(cal.dark_channels.saturating_sub(1));
-                let dark_idx = px * cal.dark_channels + dark_ch;
-                if dark_idx < dark.len() { val -= dark[dark_idx]; }
-            }
-
-            val = val.max(0.0);
-
-            if let Some(ref flat) = cal.flat {
-                let flat_ch  = ch.min(cal.flat_channels.saturating_sub(1));
-                let flat_idx = px * cal.flat_channels + flat_ch;
-                if flat_idx < flat.len() {
-                    let f = flat[flat_idx];
-                    if f > 1e-6 { val /= f; }
-                }
-            }
-
-            frame[idx] = val.max(0.0);
-        }
-    }
-}
-
-//  ── Flat stacking ─────────────────────────────────────────────────────────────
-
-/// Stack flat frames to produce a 1-channel grayscale master flat.
-///
-/// Pipeline per sub:
-///   1. Decode to normalized f32. No debayering — raw Bayer (or mono) data is
-///      used directly as single-channel. This avoids interpolation artifacts
-///      and produces a physically accurate illumination map.
-///   2. Subtract bias master if APPLY_BIAS_IN_CALIBRATION is true and bias
-///      master is present. Respects the same flag as light calibration to
-///      prevent double-subtraction when darks are already bias-subtracted.
-///   3. Subtract dark master if present.
-///   4. Normalize each sub by its scalar mean so all subs contribute equally
-///      regardless of exposure variation (multiplicative normalization,
-///      equalize fluxes — equivalent to PI's approach).
-///
-/// Combining:
-///   - Winsorized sigma clipping (FLAT_STACK_WINSORIZE_SIGMA,
-///     FLAT_STACK_WINSORIZE_ITERATIONS) replaces outlier samples at each pixel
-///     with the clipping boundary value rather than excluding them. This
-///     handles hot pixels, dust motes, and any cosmic rays without discarding
-///     samples, preserving the full frame count for the mean.
-///   - Mean-combine surviving (Winsorized) samples per pixel.
-///
-/// Output: 1-channel F32 ImageBuffer normalized by global mean (~1.0 center)
-/// for use as a calibration master in apply_calibration().
-fn stack_flat_frames(
-    ctx:      &AppContext,
-    messages: &mut Vec<String>,
-    cal:      &CalibrationMasters,
-) -> Result<ImageBuffer, PluginError> {
-    let first_path = ctx.file_list.iter()
-        .find(|p| ctx.image_buffers.get(*p).and_then(|b| b.pixels.as_ref()).is_some())
-        .ok_or_else(|| PluginError::new("NO_PIXELS", "No flat frames with pixel data."))?
-        .clone();
-
-    let first_buf = ctx.image_buffers.get(&first_path).unwrap();
-    let width     = first_buf.width  as usize;
-    let height    = first_buf.height as usize;
-    let n_pixels  = width * height;
-    let total     = ctx.file_list.len();
-
-    messages.push(format!("FlatStack: {} frames, {}×{} → 1-channel grayscale master",
-        total, width, height));
-
-    // Collect normalized single-channel subs
-    let mut flat_planes: Vec<Vec<f32>> = Vec::with_capacity(total);
-
-    for (i, path) in ctx.file_list.iter().enumerate() {
-        let buf = match ctx.image_buffers.get(path) {
-            Some(b) => b,
-            None    => { messages.push(format!("FlatStack: frame {} skipped — no buffer", i + 1)); continue; }
-        };
-        let pixels = match &buf.pixels {
-            Some(p) => p,
-            None    => { messages.push(format!("FlatStack: frame {} skipped — no pixels", i + 1)); continue; }
-        };
-
-        // Decode to normalized f32 as single channel — no debayering.
-        // Raw Bayer data is treated as a grayscale illumination map.
-        let mut mono = analysis::to_f32_normalized(pixels);
-
-        // If the buffer is already multi-channel RGB (pre-debayered), collapse
-        // to single channel by taking the mean across channels.
-        let channels = buf.channels as usize;
-        let mut raw: Vec<f32> = if channels > 1 {
-            (0..n_pixels)
-                .map(|px| {
-                    (0..channels).map(|ch| mono[px * channels + ch]).sum::<f32>()
-                        / channels as f32
-                })
-                .collect()
-        } else {
-            mono.drain(..).collect()
-        };
-
-        // Bias subtract (only if APPLY_BIAS_IN_CALIBRATION and bias master present)
-        if APPLY_BIAS_IN_CALIBRATION {
-            if let Some(ref bias) = cal.bias {
-                let bc = cal.bias_channels.max(1);
-                for px in 0..n_pixels {
-                    // For a mono output we always use channel 0 of the master
-                    let bias_idx = px * bc;
-                    if bias_idx < bias.len() {
-                        raw[px] = (raw[px] - bias[bias_idx]).max(0.0);
-                    }
-                }
-            }
-        }
-
-        // Dark subtract
-        if let Some(ref dark) = cal.dark {
-            let dc = cal.dark_channels.max(1);
-            for px in 0..n_pixels {
-                let dark_idx = px * dc;
-                if dark_idx < dark.len() {
-                    raw[px] = (raw[px] - dark[dark_idx]).max(0.0);
-                }
-            }
-        }
-
-        // Normalize each sub by its scalar mean (multiplicative normalization,
-        // equalize fluxes). Preserves the illumination pattern while removing
-        // sub-to-sub brightness variation.
-        let mean: f32 = raw.iter().sum::<f32>() / raw.len() as f32;
-        if mean > 1e-6 {
-            for v in raw.iter_mut() {
-                *v /= mean;
-            }
-        }
-
-        flat_planes.push(raw);
-
-        let pct = ((i + 1) as f32 / total as f32 * 100.0).round() as u32;
-        messages.push(format!("FlatStack: calibrating/normalizing frame {} / {} ({}%)…",
-            i + 1, total, pct));
-    }
-
-    if flat_planes.is_empty() {
-        return Err(PluginError::new("NO_FRAMES_STACKED", "No flat frames could be loaded."));
-    }
-
-    let n_frames = flat_planes.len();
-    messages.push(format!(
-        "FlatStack: Winsorized sigma-clipping ({:.1}σ, {} iterations) and mean-combining {} frames…",
-        FLAT_STACK_WINSORIZE_SIGMA, FLAT_STACK_WINSORIZE_ITERATIONS, n_frames
-    ));
-
-    // Winsorized sigma-clip and mean-combine per pixel in parallel.
-    // For each pixel, iteratively compute mean+stddev, clamp outliers to the
-    // sigma boundary (Winsorize rather than exclude), then repeat. Final master
-    // value is the mean of the Winsorized samples.
-    let master_pixels: Vec<f32> = (0..n_pixels)
-        .into_par_iter()
-        .map(|px| {
-            let mut samples: Vec<f32> = flat_planes.iter()
-                .map(|plane| plane[px])
-                .collect();
-
-            for _ in 0..FLAT_STACK_WINSORIZE_ITERATIONS {
-                let n      = samples.len() as f32;
-                let mean   = samples.iter().sum::<f32>() / n;
-                let var    = samples.iter().map(|&v| (v - mean).powi(2)).sum::<f32>() / n;
-                let stddev = var.sqrt();
-                if stddev < 1e-10 { break; }
-                let lo = mean - FLAT_STACK_WINSORIZE_SIGMA * stddev;
-                let hi = mean + FLAT_STACK_WINSORIZE_SIGMA * stddev;
-                for v in samples.iter_mut() {
-                    *v = v.clamp(lo, hi);
-                }
-            }
-
-            samples.iter().sum::<f32>() / samples.len() as f32
-        })
-        .collect();
-
-    // Normalize master flat to [0,1] by dividing by the global maximum so the
-    // file is interchangeable with PI and other tools. Re-normalization to ~1.0
-    // for calibration use happens at load time in load_calibration_masters().
-    let mut master_pixels = master_pixels;
-    let global_max: f32 = master_pixels.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    if global_max > 1e-6 {
-        for v in master_pixels.iter_mut() {
-            *v /= global_max;
-        }
-    }
-
-    let timestamp_display = Utc::now().format("%Y-%m-%d %H:%M").to_string();
-    let stack_label = format!(
-        "MASTER FLAT \u{2014} {} frames \u{2014} {}", n_frames, timestamp_display
-    );
-
-    messages.push(format!("FlatStack: master flat created from {} frames (1-channel grayscale)", n_frames));
-
-    Ok(ImageBuffer {
-        filename:      stack_label,
-        width:         width  as u32,
-        height:        height as u32,
-        display_width: width  as u32,
-        bit_depth:     BitDepth::F32,
-        color_space:   ColorSpace::Mono,
-        channels:      1,
-        keywords:      build_flat_keywords(width, height, n_frames),
-        pixels:        Some(PixelData::F32(master_pixels)),
-    })
-}
 
 //  ── Snapshot type ─────────────────────────────────────────────────────────────
 
@@ -529,79 +91,20 @@ impl PhotonPlugin for StackFrames {
     fn name(&self) -> &str { "StackFrames" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str {
-        "Stacks loaded frames. Light frames: FFT alignment, triangle rigid refinement, \
-         meridian-flip-aware group reference selection, optional calibration via caldir=. \
-         Flat frames: raw single-channel (no debayer), bias/dark calibration respecting \
-         APPLY_BIAS_IN_CALIBRATION, per-sub mean normalization, Winsorized sigma-clipping, \
-         mean-combine, 1-channel grayscale F32 output normalized to ~1.0. \
-         Frame type is detected automatically from filename or IMAGETYP keyword."
+        "Stacks loaded frames using FFT alignment, triangle rigid refinement, \
+         meridian-flip-aware group reference selection, and two-pass \
+         sigma-clipped mean combination."
     }
 
     fn parameters(&self) -> Vec<ParamSpec> {
-        vec![
-            ParamSpec {
-                name:        "caldir".to_string(),
-                param_type:  ParamType::Path,
-                required:    false,
-                description: "Directory containing master calibration files. Files are \
-                              identified by filename containing 'bias', 'dark', or 'flat'. \
-                              Calibration is applied to raw pixels before background \
-                              normalization. When stacking flats, flat masters are ignored.".to_string(),
-                default:     None,
-            },
-        ]
+        vec![]
     }
 
-    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError> {
         if ctx.file_list.is_empty() {
             return Err(PluginError::new("NO_FILES", "No files loaded."));
         }
         ctx.clear_stack();
-
-        let caldir = args.get("caldir").map(|s| s.trim_matches('"').to_string());
-
-        //  ── Detect frame type from first file ─────────────────────────────────
-        let first_path = ctx.file_list.first().unwrap().clone();
-        let first_keywords = ctx.image_buffers.get(&first_path)
-            .map(|b| b.keywords.clone())
-            .unwrap_or_default();
-        let frame_type = detect_frame_type(&first_path, &first_keywords);
-
-        info!("StackFrames: detected frame type = {:?}", frame_type);
-
-        //  ── Load calibration masters ──────────────────────────────────────────
-        let mut messages: Vec<String> = Vec::new();
-        let cal = if let Some(ref dir) = caldir {
-            // When stacking flats, never load a flat master as calibration.
-            load_calibration_masters(dir, frame_type == FrameType::Light, &mut messages)
-        } else {
-            CalibrationMasters {
-                bias: None, bias_channels: 1,
-                dark: None, dark_channels: 1,
-                flat: None, flat_channels: 1,
-            }
-        };
-
-        let has_cal = cal.bias.is_some() || cal.dark.is_some() || cal.flat.is_some();
-
-        //  ── Branch: flat vs light ─────────────────────────────────────────────
-        if frame_type == FrameType::Flat {
-            let flat_buf = stack_flat_frames(ctx, &mut messages, &cal)?;
-            let n_frames = ctx.file_list.len();
-            ctx.stack_result = Some(flat_buf);
-
-            let full_message = messages.join("\n");
-            info!("StackFrames (flat): {}", full_message);
-
-            return Ok(PluginOutput::Data(serde_json::json!({
-                "plugin":          "StackFrames",
-                "frame_type":      "flat",
-                "stacked_frames":  n_frames,
-                "total_frames":    n_frames,
-                "message":         full_message,
-                "stack_available": true,
-            })));
-        }
 
         //  ── Light frame stacking ──────────────────────────────────────────────
 
@@ -616,6 +119,8 @@ impl PhotonPlugin for StackFrames {
         let height   = snapshots[0].height;
         let n_pixels = width * height;
         let total    = snapshots.len();
+
+        let mut messages: Vec<String> = Vec::new();
 
         let n_groups = snapshots.iter().map(|s| s.group).max().unwrap_or(0) + 1;
         info!("StackFrames: identified {} rotational group(s)", n_groups);
@@ -776,15 +281,9 @@ impl PhotonPlugin for StackFrames {
             }
 
             // Load raw [0,1] pixels
-            let mut frame_pixels = load_frame_pixels(ctx, snap, is_color);
+            let frame_pixels = load_frame_pixels(ctx, snap, is_color);
 
-            // Apply calibration to raw pixels BEFORE background normalization.
-            // bias subtract   dark subtract   flat divide on [0,1] values.
-            if has_cal {
-                apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });
-            }
-
-            // Extract calibrated luma for background estimation and FFT alignment.
+            // Extract luma for background estimation and FFT alignment.
             let cal_luma = if is_color {
                 analysis::extract_luminance(&frame_pixels, width, height, 3)
             } else {
@@ -800,19 +299,13 @@ impl PhotonPlugin for StackFrames {
             let g_ref_luma  = group_ref_luma[snap.group].as_ref().unwrap();
             let g_ref_stars = group_ref_stars[snap.group].as_ref().unwrap();
 
-            // Compute background from calibrated luma
+            // Background estimation for normalization
             let bg_est   = estimate_background(&cal_luma, &bg_sigma_config);
             let bg_level = bg_est.median;
             contrib.background_level = Some(bg_level);
             let divisor = if bg_level > 1e-6 { bg_level } else { 1.0 };
-            if i == 0 {
-                info!("Pass 1 frame 0: bg_level={:.6} divisor={:.6} cal_luma_min={:.6} cal_luma_max={:.6}",
-                    bg_level, divisor,
-                    cal_luma.iter().cloned().fold(f32::INFINITY, f32::min),
-                    cal_luma.iter().cloned().fold(f32::NEG_INFINITY, f32::max));
-            }
 
-            // Normalize calibrated luma by background for FFT alignment
+            // Normalize luma by background for FFT alignment
             let normalized_luma: Vec<f32> = cal_luma.par_iter().map(|&v| v / divisor).collect();
 
             let g_transform: Option<AffineRigid> = if i == group_refs[snap.group] {
@@ -844,14 +337,7 @@ impl PhotonPlugin for StackFrames {
             let g_xform = g_transform.unwrap();
             let t_final = compose(&m_cross[snap.group], &g_xform);
 
-            // Divide calibrated frame pixels by background for accumulation.
-            // When calibration is applied the pedestal is already removed, so
-            // background normalization would amplify near-zero values destructively.
-            let accum_pixels: Vec<f32> = if has_cal {
-                frame_pixels.clone()
-            } else {
-                frame_pixels.iter().map(|&v| v / divisor).collect()
-            };
+            let accum_pixels: Vec<f32> = frame_pixels.iter().map(|&v| v / divisor).collect();
 
             let theta = t_final.theta();
             if is_color {
@@ -927,7 +413,8 @@ impl PhotonPlugin for StackFrames {
                 .collect()
         };
 
-        //     Pass 2   sigma-clipped accumulation (batched parallel)
+        //  ── Pass 2 — sigma-clipped accumulation (batched parallel) ────────────
+
         let sigma      = 2.5f32;
         let n_threads  = if ctx.rayon_thread_count == -1 {
             rayon::current_num_threads()
@@ -938,16 +425,14 @@ impl PhotonPlugin for StackFrames {
         let mut sum_buf:    Vec<f64> = vec![0.0; n_pixels * n_channels];
         let mut clip_count: Vec<u32> = vec![0;  n_pixels];
 
-        // Build list of (snapshot_index, xform) for frames that have a cached transform.
-        // This avoids borrowing ctx inside the parallel closure.
         struct Pass2Input {
-            snap_idx:     usize,
-            xform:        AffineRigid,
+            snap_idx: usize,
+            xform:    AffineRigid,
         }
 
         // Pixel data is loaded lazily inside the chunk loop to avoid
-        // pre-allocating all frames simultaneously (~13.8GB for 128 OSC
-        // frames). Peak Pass 2 memory is bounded to one batch at a time.
+        // pre-allocating all frames simultaneously. Peak Pass 2 memory is
+        // bounded to one batch at a time.
         let pass2_inputs: Vec<Pass2Input> = snapshots.iter().enumerate()
             .filter_map(|(i, _snap)| {
                 let xform = cached_transforms[i].clone()?;
@@ -959,7 +444,6 @@ impl PhotonPlugin for StackFrames {
 
         for chunk in pass2_inputs.chunks(n_threads) {
             // Sequential: load and debayer one batch worth of pixel data.
-            // Bounded to n_threads frames at a time rather than all frames.
             let chunk_pixels: Vec<Vec<f32>> = chunk.iter()
                 .map(|inp| {
                     let snap   = &snapshots[inp.snap_idx];
@@ -978,16 +462,10 @@ impl PhotonPlugin for StackFrames {
                 })
                 .collect();
 
-            // Parallel: calibrate, background estimate, resample each frame in chunk.
+            // Parallel: background estimate and resample each frame in chunk.
             let aligned_buffers: Vec<Vec<f32>> = chunk.par_iter()
                 .zip(chunk_pixels.into_par_iter())
-                .map(|(inp, pixels_f32)| {
-                    let mut frame_pixels = pixels_f32;
-
-                    if has_cal {
-                        apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });
-                    }
-
+                .map(|(inp, frame_pixels)| {
                     let cal_luma = if is_color {
                         analysis::extract_luminance(&frame_pixels, width, height, 3)
                     } else {
@@ -998,11 +476,7 @@ impl PhotonPlugin for StackFrames {
                     let bg_level = bg_est.median;
                     let divisor  = if bg_level > 1e-6 { bg_level } else { 1.0 };
 
-                    let accum_pixels: Vec<f32> = if has_cal {
-                        frame_pixels
-                    } else {
-                        frame_pixels.iter().map(|&v| v / divisor).collect()
-                    };
+                    let accum_pixels: Vec<f32> = frame_pixels.iter().map(|&v| v / divisor).collect();
 
                     let theta = inp.xform.theta();
                     if is_color {
@@ -1114,23 +588,12 @@ impl PhotonPlugin for StackFrames {
         ctx.stack_contributions = contributions;
         ctx.stack_summary       = Some(summary.clone());
 
-        let cal_note = if caldir.is_some() {
-            format!("  Calibration:           applied ({}{}{})",
-                if cal.bias.is_some() { "bias " } else { "" },
-                if cal.dark.is_some() { "dark " } else { "" },
-                if cal.flat.is_some() { "flat" }  else { "" },
-            )
-        } else {
-            "  Calibration:           none".to_string()
-        };
-
         let quality_summary = format!(
-            "Stack Quality Summary:\n  Frames stacked:        {} / {}\n  SNR improvement:       ~{:.1}x (vs single frame)\n  Alignment success:     {:.1}%\n  Background uniformity: {}\n  Output mode:           {}\n{}",
+            "Stack Quality Summary:\n  Frames stacked:        {} / {}\n  SNR improvement:       ~{:.1}x (vs single frame)\n  Alignment success:     {:.1}%\n  Background uniformity: {}\n  Output mode:           {}",
             summary.stacked_frames, summary.total_frames,
             summary.snr_improvement, summary.alignment_success_rate * 100.0,
             summary.background_uniformity,
             if is_color { "RGB color" } else { "Grayscale" },
-            cal_note,
         );
 
         messages.push(format!(
@@ -1251,9 +714,6 @@ fn assign_groups(snapshots: &mut Vec<FrameSnapshot>) {
             (Some(a), Some(b)) => (b - a).abs(),
             _ => 0.0,
         };
-        // A rotation > MERIDIAN_FLIP_THRESHOLD always triggers a new group
-        // regardless of time gap (catches same-night meridian flips).
-        // A long time gap combined with any significant rotation also splits.
         if rot_diff > MERIDIAN_FLIP_THRESHOLD
             || (time_gap > SESSION_GAP_MINUTES as f64 && rot_diff > ROTATOR_GROUP_TOLERANCE)
         {
@@ -1368,7 +828,6 @@ fn alignment_failed(
 //  ── DATE-OBS parsing ─────────────────────────────────────────────────────────
 
 fn parse_date_obs(s: &str) -> Option<f64> {
-    // ISO 8601: "2026-06-15T22:59:16" or "2026-06-15T22:59:16.000"
     let dt = chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%dT%H:%M:%S")
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y-%m-%dT%H:%M:%S%.f"))
         .ok()?;
@@ -1551,30 +1010,6 @@ fn build_stack_keywords(
         if s.integration_seconds > 0.0      { insert("EXPTIME",  &format!("{:.1}", s.integration_seconds), "total integration time in seconds"); }
         insert("STACKCNT", &s.stacked_frames.to_string(), "number of frames stacked");
     }
-    kw
-}
-
-fn build_flat_keywords(
-    width:    usize,
-    height:   usize,
-    n_frames: usize,
-) -> std::collections::HashMap<String, crate::context::KeywordEntry> {
-    use crate::context::KeywordEntry;
-    let mut kw = std::collections::HashMap::new();
-    let mut insert = |name: &str, value: &str, comment: &str| {
-        kw.insert(name.to_string(), KeywordEntry::new(name, value, Some(comment)));
-    };
-    insert("SIMPLE",   "T",                    "file conforms to FITS standard");
-    insert("BITPIX",   "-32",                  "32-bit floating point");
-    insert("NAXIS",    "2",                    "number of axes");
-    insert("NAXIS1",   &width.to_string(),     "image width in pixels");
-    insert("NAXIS2",   &height.to_string(),    "image height in pixels");
-    insert("BZERO",    "0",                    "offset for unsigned integers");
-    insert("BSCALE",   "1",                    "default scaling factor");
-    insert("ROWORDER", "TOP-DOWN",             "row order");
-    insert("CREATOR",  "Photyx",               "software that created this file");
-    insert("IMAGETYP", "Flat Field",           "frame type");
-    insert("STACKCNT", &n_frames.to_string(),  "number of frames combined");
     kw
 }
 

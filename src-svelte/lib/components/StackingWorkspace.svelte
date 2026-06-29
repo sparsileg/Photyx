@@ -9,8 +9,6 @@
 
   // ── State ─────────────────────────────────────────────────────────────────
 
-  let calibrationDir  = $state<string | null>(null);
-
   type StackPhase = 'idle' | 'stacking' | 'stacked';
   let phase           = $state<StackPhase>('idle');
   let imageUrl        = $state<string | null>(null);
@@ -45,23 +43,6 @@
   const hasStack   = $derived(phase === 'stacked');
   const isStacking = $derived(phase === 'stacking');
 
-  // ── Calibration directory picker ──────────────────────────────────────────
-
-  async function pickCalibrationDir() {
-    try {
-      const selected = await open({ directory: true, multiple: false });
-      if (selected && typeof selected === 'string') {
-        calibrationDir = selected.replace(/\\/g, '/');
-      }
-    } catch (e) {
-      notifications.error(`Failed to open directory picker: ${e}`);
-    }
-  }
-
-  function clearCalibrationDir() {
-    calibrationDir = null;
-  }
-
   // ── Stacking ──────────────────────────────────────────────────────────────
 
   async function runStack() {
@@ -74,14 +55,9 @@
     notifications.running('StackFrames running…');
 
     try {
-      let script = 'StackFrames';
-      if (calibrationDir) {
-        script += ` caldir="${calibrationDir}"`;
-      }
-
       const response = await invoke<{
         results: Array<{ success: boolean; message: string | null; command: string }>;
-      }>('run_script', { script });
+      }>('run_script', { script: 'StackFrames' });
 
       const last = response.results[response.results.length - 1];
       if (!last?.success) {
@@ -157,27 +133,6 @@
       consolePipe.update(q => [...q, { text: 'Stretch committed.', type: 'output' as const }]);
     } catch (e) {
       notifications.error(`CommitStretch failed: ${e}`);
-    }
-  }
-
-  async function runBackgroundExtract() {
-    if (!hasStack) return;
-    notifications.running('BackgroundExtract running…');
-    try {
-      const response = await invoke<{
-        results: Array<{ success: boolean; message: string | null; command: string }>;
-      }>('run_script', { script: 'BackgroundExtract stack=true' });
-
-      const last = response.results[response.results.length - 1];
-      if (!last?.success) {
-        throw new Error(last?.message ?? 'BackgroundExtract failed');
-      }
-
-      notifications.success('Background extraction complete');
-      consolePipe.update(q => [...q, { text: last.message ?? 'BackgroundExtract complete.', type: 'output' as const }]);
-      await loadLinear();
-    } catch (e) {
-      notifications.error(`BackgroundExtract failed: ${e}`);
     }
   }
 
@@ -274,19 +229,6 @@
 
     <div class="sw-separator"></div>
 
-    <!-- Calibration -->
-    <span class="sw-label">Cal:</span>
-    {#if calibrationDir}
-      <span class="sw-label-highlight" title={calibrationDir}>
-        {calibrationDir.split('/').pop()}
-      </span>
-      <button class="sw-btn" onclick={clearCalibrationDir}>✕</button>
-    {:else}
-      <button class="sw-btn" onclick={pickCalibrationDir}>Browse…</button>
-    {/if}
-
-    <div class="sw-separator"></div>
-
     <!-- Stack -->
     <button
       class="sw-btn sw-btn-primary"
@@ -326,15 +268,6 @@
       disabled={!hasStack || stretchPending}
       onclick={commitStretch}
     >Commit Stretch</button>
-
-    <div class="sw-separator"></div>
-
-    <!-- Background Extract -->
-    <button
-      class="sw-btn"
-      disabled={!hasStack}
-      onclick={runBackgroundExtract}
-    >BG Extract</button>
 
     <div class="sw-separator"></div>
 
@@ -382,7 +315,7 @@
     {:else}
       <div class="sw-status">
         <span>No stack result yet</span>
-        <span class="sw-status-hint">Optionally specify a calibration directory, then click ▶ Stack</span>
+        <span class="sw-status-hint">Click ▶ Stack to begin</span>
       </div>
     {/if}
   </div>

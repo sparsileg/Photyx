@@ -48,15 +48,6 @@ pub const DEFAULT_AUTOSTRETCH_TARGET_BG:    f64 = 0.15;
 pub const AUTOSTRETCH_TARGET_BG_MIN:        f64 = 0.01;
 pub const AUTOSTRETCH_TARGET_BG_MAX:        f64 = 0.50;
 
-// ── BackgroundExtract ─────────────────────────────────────────────────────────
-
-pub const DEFAULT_BE_GRID:   usize = 32;
-pub const MIN_BE_GRID:       usize = 8;
-pub const MAX_BE_GRID:       usize = 64;
-pub const DEFAULT_BE_DEGREE: usize = 2;
-pub const MIN_BE_DEGREE:     usize = 1;
-pub const MAX_BE_DEGREE:     usize = 3;
-
 // ── Crash Recovery ────────────────────────────────────────────────────────────
 
 pub const DEFAULT_CRASH_RECOVERY_INTERVAL_SECS: i64 = 60;
@@ -84,18 +75,6 @@ pub const DEFAULT_ECCENTRICITY_ABS:          f64  = 0.85;
 pub const ECCENTRICITY_ABS_MIN:              f64  = 0.10;
 pub const ECCENTRICITY_ABS_MAX:              f64  = 1.00;
 pub const OUTLIER_SIGMA_THRESHOLD:           f64  = 4.0;
-
-//    Calibration
-// When false, bias master is never applied during calibration.
-// Set to false when dark masters are already bias-subtracted (e.g. created
-// in PixInsight), to prevent double-subtraction which zeros signal.
-
-pub const APPLY_BIAS_IN_CALIBRATION:        bool = false;
-
-// Flat master stacking — Winsorized sigma clipping parameters.
-// PI defaults: 3σ, 5 iterations.
-pub const FLAT_STACK_WINSORIZE_SIGMA:       f32  = 3.0;
-pub const FLAT_STACK_WINSORIZE_ITERATIONS:  u32  = 5;
 
 // Non-persisted runtime constants
 // These are never written to the DB. They live here so they are
