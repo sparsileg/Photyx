@@ -284,30 +284,6 @@ fn normalize_flat_inplace(flat: &mut Vec<f32>, channels: usize) {
 /// (e.g. when dark masters are already bias-subtracted in PixInsight).
 fn apply_calibration(frame: &mut Vec<f32>, cal: &CalibrationMasters, channels: usize) {
     let n_pixels = frame.len() / channels.max(1);
-
-    // Diagnostic: log corner and center pixels before calibration
-    if n_pixels > 0 {
-        let center_px = n_pixels / 2;
-        let before0: Vec<f32> = (0..channels).map(|ch| frame[ch]).collect();
-        let before_c: Vec<f32> = (0..channels).map(|ch| frame[center_px * channels + ch]).collect();
-        let flat_px0: Vec<f32> = if let Some(ref flat) = cal.flat {
-            (0..channels).map(|ch| {
-                let flat_ch  = ch.min(cal.flat_channels.saturating_sub(1));
-                let flat_idx = flat_ch;
-                if flat_idx < flat.len() { flat[flat_idx] } else { 1.0 }
-            }).collect()
-        } else { vec![1.0; channels] };
-        let flat_pxc: Vec<f32> = if let Some(ref flat) = cal.flat {
-            (0..channels).map(|ch| {
-                let flat_ch  = ch.min(cal.flat_channels.saturating_sub(1));
-                let flat_idx = center_px * cal.flat_channels + flat_ch;
-                if flat_idx < flat.len() { flat[flat_idx] } else { 1.0 }
-            }).collect()
-        } else { vec![1.0; channels] };
-        info!("apply_calibration: px0 before={:?} flat={:?} | center before={:?} flat={:?}",
-            before0, flat_px0, before_c, flat_pxc);
-    }
-
     for px in 0..n_pixels {
         for ch in 0..channels {
             let idx = px * channels + ch;
@@ -339,14 +315,6 @@ fn apply_calibration(frame: &mut Vec<f32>, cal: &CalibrationMasters, channels: u
 
             frame[idx] = val.max(0.0);
         }
-    }
-
-    // Diagnostic: log corner and center pixels after calibration
-    if n_pixels > 0 {
-        let center_px = n_pixels / 2;
-        let after0: Vec<f32> = (0..channels).map(|ch| frame[ch]).collect();
-        let after_c: Vec<f32> = (0..channels).map(|ch| frame[center_px * channels + ch]).collect();
-        info!("apply_calibration: px0 after={:?} | center after={:?}", after0, after_c);
     }
 }
 
@@ -808,26 +776,20 @@ impl PhotonPlugin for StackFrames {
             }
 
             // Load raw [0,1] pixels
-            let t_load = std::time::Instant::now();
             let mut frame_pixels = load_frame_pixels(ctx, snap, is_color);
-            let ms_load = t_load.elapsed().as_secs_f64() * 1000.0;
 
             // Apply calibration to raw pixels BEFORE background normalization.
             // bias subtract   dark subtract   flat divide on [0,1] values.
-            let t_cal = std::time::Instant::now();
             if has_cal {
                 apply_calibration(&mut frame_pixels, &cal, if is_color { 3 } else { 1 });
             }
-            let ms_cal = t_cal.elapsed().as_secs_f64() * 1000.0;
 
             // Extract calibrated luma for background estimation and FFT alignment.
-            let t_luma = std::time::Instant::now();
             let cal_luma = if is_color {
                 analysis::extract_luminance(&frame_pixels, width, height, 3)
             } else {
                 frame_pixels.clone()
             };
-            let ms_luma = t_luma.elapsed().as_secs_f64() * 1000.0;
 
             if group_ref_luma[snap.group].is_none() {
                 let g_ref  = &snapshots[group_refs[snap.group]];
@@ -839,10 +801,8 @@ impl PhotonPlugin for StackFrames {
             let g_ref_stars = group_ref_stars[snap.group].as_ref().unwrap();
 
             // Compute background from calibrated luma
-            let t_bg = std::time::Instant::now();
             let bg_est   = estimate_background(&cal_luma, &bg_sigma_config);
             let bg_level = bg_est.median;
-            let ms_bg = t_bg.elapsed().as_secs_f64() * 1000.0;
             contrib.background_level = Some(bg_level);
             let divisor = if bg_level > 1e-6 { bg_level } else { 1.0 };
             if i == 0 {
@@ -855,7 +815,6 @@ impl PhotonPlugin for StackFrames {
             // Normalize calibrated luma by background for FFT alignment
             let normalized_luma: Vec<f32> = cal_luma.par_iter().map(|&v| v / divisor).collect();
 
-            let t_fft = std::time::Instant::now();
             let g_transform: Option<AffineRigid> = if i == group_refs[snap.group] {
                 contrib.fft_translation     = Some((0.0, 0.0));
                 contrib.alignment_validated = Some(true);
@@ -881,7 +840,6 @@ impl PhotonPlugin for StackFrames {
                     }
                 }
             };
-            let ms_fft = t_fft.elapsed().as_secs_f64() * 1000.0;
 
             let g_xform = g_transform.unwrap();
             let t_final = compose(&m_cross[snap.group], &g_xform);
@@ -895,7 +853,6 @@ impl PhotonPlugin for StackFrames {
                 frame_pixels.iter().map(|&v| v / divisor).collect()
             };
 
-            let t_resample = std::time::Instant::now();
             let theta = t_final.theta();
             if is_color {
                 let aligned_rgb = if theta.abs() >= MIN_ROTATION_TO_APPLY || t_final.a < 0.5 {
@@ -936,18 +893,9 @@ impl PhotonPlugin for StackFrames {
                     });
             }
 
-            let ms_resample = t_resample.elapsed().as_secs_f64() * 1000.0;
-
             cached_transforms[i] = Some(t_final);
-
             contrib.included = true;
             if let Some(et) = snap.exptime { total_integration += et; }
-
-            info!(
-                "Pass1 frame {:3}: load={:6.1}ms cal={:6.1}ms luma={:6.1}ms bg={:6.1}ms fft={:6.1}ms resample={:6.1}ms",
-                snap.index, ms_load, ms_cal, ms_luma, ms_bg, ms_fft, ms_resample
-            );
-
             let pct = ((i + 1) as f32 / total as f32 * 100.0).round() as u32;
             messages.push(format!("Pass 1   frame {} / {} ({}%) ", i + 1, total, pct));
             contributions.push(contrib);
