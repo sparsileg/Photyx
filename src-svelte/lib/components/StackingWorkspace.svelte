@@ -1,6 +1,6 @@
 <!-- StackingWorkspace.svelte — Stacking workflow viewer-region component -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { open } from '@tauri-apps/plugin-dialog';
   import { ui } from '../stores/ui';
@@ -9,34 +9,16 @@
 
   // ── State ─────────────────────────────────────────────────────────────────
 
+  const shadowClip = $derived($ui.shadowClip);
+  const targetBg   = $derived($ui.targetBg);
+
   type StackPhase = 'idle' | 'stacking' | 'stacked';
   let phase           = $state<StackPhase>('idle');
   let imageUrl        = $state<string | null>(null);
-  let imageMode       = $state<'linear' | 'stretched'>('linear');
   let stackLabel      = $state('');
   let stackStats      = $state('');
   let error           = $state('');
 
-  const SHADOW_CLIP_PRESETS = [
-    { label: '-1.0', value: -1.0 },
-    { label: '-1.5', value: -1.5 },
-    { label: '-2.0', value: -2.0 },
-    { label: '-2.5', value: -2.5 },
-    { label: '-2.8', value: -2.8 },
-    { label: '-3.5', value: -3.5 },
-    { label: '-4.0', value: -4.0 },
-  ];
-  const TARGET_BG_PRESETS = [
-    { label: '0.40', value: 0.40 },
-    { label: '0.30', value: 0.30 },
-    { label: '0.25', value: 0.25 },
-    { label: '0.20', value: 0.20 },
-    { label: '0.15', value: 0.15 },
-    { label: '0.10', value: 0.10 },
-    { label: '0.05', value: 0.05 },
-  ];
-  let shadowClip      = $state(-2.8);
-  let targetBg        = $state(0.15);
   let stretchPending  = $state(false);
   let exporting       = $state(false);
 
@@ -86,8 +68,10 @@
     try {
       const dataUrl = await invoke<string>('get_stack_frame');
       imageUrl  = dataUrl;
-      imageMode = 'linear';
       await loadSummary();
+      if ($ui.stretchMode === 'stretched') {
+        await applyStretch();
+      }
     } catch (e) {
       error = `Failed to load stack image: ${e}`;
     }
@@ -105,16 +89,15 @@
     }
   }
 
-  async function applyStretch() {
+  async function applyStretch(sc = $ui.shadowClip, tb = $ui.targetBg) {
     if (!hasStack) return;
     stretchPending = true;
     try {
       const result = await invoke<{ image_url: string; summary: any }>(
         'get_autostretch_stack_frame',
-        { shadowClip, targetBg }
+        { shadowClip: sc, targetBg: tb }
       );
       imageUrl  = result.image_url;
-      imageMode = 'stretched';
       buildLabel(result.summary);
     } catch (e) {
       notifications.error(`Stretch failed: ${e}`);
@@ -154,17 +137,17 @@
     ].filter(Boolean).join('  ·  ');
   }
 
-  // ── Stretch dropdown handlers ─────────────────────────────────────────────
+  // ── React to stretch mode changes from toolbar ────────────────────────────
 
-  function onShadowClipChange(e: Event) {
-    shadowClip = parseFloat((e.target as HTMLSelectElement).value);
-    if (hasStack) applyStretch();
-  }
-
-  function onTargetBgChange(e: Event) {
-    targetBg = parseFloat((e.target as HTMLSelectElement).value);
-    if (hasStack) applyStretch();
-  }
+  $effect(() => {
+    const mode = $ui.stretchMode;
+    if (!hasStack) return;
+    if (mode === 'stretched') {
+      untrack(() => applyStretch($ui.shadowClip, $ui.targetBg));
+    } else {
+      untrack(() => loadLinear());
+    }
+  });
 
   // ── Export ────────────────────────────────────────────────────────────────
 
@@ -240,29 +223,6 @@
 
     <div class="sw-separator"></div>
 
-    <!-- Stretch -->
-    <span class="sw-label">Black:</span>
-    <select
-      class="sw-select"
-      disabled={!hasStack || stretchPending}
-      onchange={onShadowClipChange}
-    >
-      {#each SHADOW_CLIP_PRESETS as p}
-        <option value={p.value} selected={p.value === shadowClip}>{p.label}</option>
-      {/each}
-    </select>
-
-    <span class="sw-label">Background:</span>
-    <select
-      class="sw-select"
-      disabled={!hasStack || stretchPending}
-      onchange={onTargetBgChange}
-    >
-      {#each TARGET_BG_PRESETS as p}
-        <option value={p.value} selected={p.value === targetBg}>{p.label}</option>
-      {/each}
-    </select>
-
     <button
       class="sw-btn sw-btn-commit"
       disabled={!hasStack || stretchPending}
@@ -277,16 +237,6 @@
       disabled={!hasStack || exporting}
       onclick={exportXisf}
     >{exporting ? 'Exporting…' : '↓ Export XISF'}</button>
-
-    <!-- Linear/Stretched toggle -->
-    {#if hasStack}
-      <button
-        class="sw-btn"
-        onclick={() => imageMode === 'linear' ? applyStretch() : loadLinear()}
-      >
-        {imageMode === 'linear' ? 'View Stretched' : 'View Linear'}
-      </button>
-    {/if}
 
     <button class="sw-btn sw-close" onclick={close}>✕ Close</button>
   </div>
