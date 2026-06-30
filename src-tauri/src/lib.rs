@@ -39,13 +39,6 @@ pub static PROGRESS_LABEL: once_cell::sync::OnceCell<Mutex<String>> =
 pub static PROGRESS_TOTAL: std::sync::atomic::AtomicU32 =
     std::sync::atomic::AtomicU32::new(0);
 
-/// Incremented by StartLiveStack after each frame is integrated into the
-/// running stack. Polled by the frontend alongside get_progress; when the
-/// value changes, the frontend fetches an updated display frame via
-/// get_live_stack_frame.
-pub static LIVE_STACK_GENERATION: std::sync::atomic::AtomicU32 =
-    std::sync::atomic::AtomicU32::new(0);
-
 /// Convenience function for plugins to update progress label and counters atomically.
 pub fn set_progress(label: &str, current: u32, total: u32) {
     if let Some(l) = PROGRESS_LABEL.get() {
@@ -166,7 +159,6 @@ fn run_script(script: String, state: State<Arc<PhotoxState>>) -> ScriptResponse 
     // Clear progress atomics, label, and job result slot before starting
     PROGRESS_CURRENT.store(0, std::sync::atomic::Ordering::Relaxed);
     PROGRESS_TOTAL.store(0, std::sync::atomic::Ordering::Relaxed);
-    LIVE_STACK_GENERATION.store(0, std::sync::atomic::Ordering::Relaxed);
     if let Some(label) = PROGRESS_LABEL.get() {
         if let Ok(mut g) = label.lock() { g.clear(); }
     }
@@ -228,27 +220,10 @@ fn get_job_result() -> Option<JobResult> {
     })
 }
 
-// ── Tauri command: stop an active live stacking session ──────────────────────
-// Bypasses run_script entirely — run_script is blocked for the duration of
-// StartLiveStack, so this is the only way to signal a stop while it's running.
-
-#[tauri::command]
-fn stop_live_stack_cmd(state: State<Arc<PhotoxState>>) -> Result<String, String> {
-    let mut ctx = state.context.lock().expect("context lock poisoned");
-    match &ctx.live_stack {
-        Some(live_stack) => {
-            live_stack.stop_flag.store(true, std::sync::atomic::Ordering::Relaxed);
-            ctx.live_stack = None;
-            Ok("live stack stopped".to_string())
-        }
-        None => Ok("no live stack active".to_string()),
-    }
-}
-
 // ── Tauri command: get progress ───────────────────────────────────────────────
 
 #[tauri::command]
-fn get_progress() -> (String, u32, u32, u32) {
+fn get_progress() -> (String, u32, u32) {
     let label = PROGRESS_LABEL.get()
         .and_then(|m| m.lock().ok())
         .map(|g| g.clone())
@@ -257,7 +232,6 @@ fn get_progress() -> (String, u32, u32, u32) {
         label,
         PROGRESS_CURRENT.load(std::sync::atomic::Ordering::Relaxed),
         PROGRESS_TOTAL.load(std::sync::atomic::Ordering::Relaxed),
-        LIVE_STACK_GENERATION.load(std::sync::atomic::Ordering::Relaxed),
     )
 }
 
@@ -386,7 +360,6 @@ pub fn run() {
             commands::display::get_current_frame,
             commands::display::get_full_frame,
             commands::display::get_histogram,
-            commands::display::get_live_stack_frame,
             commands::display::get_pixel,
             commands::display::get_stack_frame,
             commands::display::load_file,
@@ -424,7 +397,6 @@ pub fn run() {
             get_progress,
             list_plugins,
             run_script,
-            stop_live_stack_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
