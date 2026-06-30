@@ -3,6 +3,8 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use serde::{Deserialize, Serialize};
 
 // ── Image buffer ──────────────────────────────────────────────────────────────
@@ -92,6 +94,96 @@ pub enum BlinkCacheStatus {
     Ready,
 }
 
+// ── Live stacking state ───────────────────────────────────────────────────────
+
+/// Persistent state for an active live stacking session. Lives in AppContext
+/// for the duration of a StartLiveStack run. The watcher handle itself is
+/// NOT stored here — it lives on the StartLiveStack execution stack. This
+/// struct holds only the accumulation buffers, reference data, and the stop
+/// flag, which is the minimum needed for stop_live_stack_cmd to signal the
+/// watcher loop without contending for the AppContext lock while a frame is
+/// mid-processing.
+#[derive(Debug)]
+pub struct LiveStackState {
+    /// Running mean buffer (Welford), flat width × height × channels
+    pub mean_buf: Vec<f64>,
+
+    /// Running M2 buffer (Welford), same shape as mean_buf — accumulated for
+    /// potential future sigma-clip use; not used for display in v1.
+    pub m2_buf: Vec<f64>,
+
+    /// Per-pixel frame count, flat width × height × channels
+    pub count_buf: Vec<u32>,
+
+    pub width:    usize,
+    pub height:   usize,
+    pub channels: usize,
+
+    /// Total frames successfully integrated so far
+    pub frame_count: u32,
+
+    /// Star list from the reference frame, used for aligning subsequent frames
+    pub ref_stars: Vec<crate::analysis::stars::StarCandidate>,
+
+    /// Filter keyword value from the reference frame, if present.
+    /// Subsequent frames are validated against this and skipped on mismatch.
+    pub ref_filter: Option<String>,
+
+    /// Set by stop_live_stack_cmd; checked by the watcher loop between frames.
+    pub stop_flag: Arc<AtomicBool>,
+
+    /// Directory being watched for new frames
+    pub watch_path: PathBuf,
+}
+
+impl LiveStackState {
+    pub fn new(
+        width:      usize,
+        height:     usize,
+        channels:   usize,
+        ref_stars:  Vec<crate::analysis::stars::StarCandidate>,
+        ref_filter: Option<String>,
+        watch_path: PathBuf,
+    ) -> Self {
+        let size = width * height * channels;
+        Self {
+            mean_buf:    vec![0.0; size],
+            m2_buf:      vec![0.0; size],
+            count_buf:   vec![0; size],
+            width,
+            height,
+            channels,
+            frame_count: 0,
+            ref_stars,
+            ref_filter,
+            stop_flag:   Arc::new(AtomicBool::new(false)),
+            watch_path,
+        }
+    }
+
+    /// Welford online update of mean and M2 for a single newly-integrated frame.
+    /// `pixels` must be the same flat shape (width × height × channels) as the
+    /// accumulation buffers, already aligned to the reference frame.
+    pub fn accumulate(&mut self, pixels: &[f32]) {
+        debug_assert_eq!(pixels.len(), self.mean_buf.len());
+        self.frame_count += 1;
+        for i in 0..self.mean_buf.len() {
+            let x = pixels[i] as f64;
+            self.count_buf[i] += 1;
+            let n = self.count_buf[i] as f64;
+            let delta = x - self.mean_buf[i];
+            self.mean_buf[i] += delta / n;
+            let delta2 = x - self.mean_buf[i];
+            self.m2_buf[i] += delta * delta2;
+        }
+    }
+
+    /// Returns the current running mean buffer cast to f32, for display encoding.
+    pub fn mean_as_f32(&self) -> Vec<f32> {
+        self.mean_buf.iter().map(|&v| v as f32).collect()
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct AppContext {
     /// Flat list of file paths in the current session
@@ -173,6 +265,10 @@ pub struct AppContext {
 
     /// Summary metrics from the last StackFrames run.
     pub stack_summary: Option<crate::analysis::stack_metrics::StackSummary>,
+
+    /// Active live stacking session state. Set by StartLiveStack at session
+    /// init, cleared by stop_live_stack_cmd or when the watcher loop exits.
+    pub live_stack: Option<LiveStackState>,
 }
 
 impl AppContext {
@@ -252,6 +348,11 @@ impl AppContext {
         self.stack_result = None;
         self.stack_contributions.clear();
         self.stack_summary = None;
+
+        if let Some(live_stack) = &self.live_stack {
+            live_stack.stop_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        self.live_stack = None;
     }
 
     /// Remove rejected files from the session after a commit.
