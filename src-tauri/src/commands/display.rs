@@ -198,7 +198,7 @@ pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, Strin
 #[tauri::command]
 pub fn get_autostretch_frame(
     shadow_clip: Option<f32>,
-    target_background: Option<f32>,
+    target_bg: Option<f32>,
     state: State<Arc<PhotoxState>>,
 ) -> Result<String, String> {
     use crate::plugins::auto_stretch::compute_autostretch_jpeg;
@@ -206,7 +206,7 @@ pub fn get_autostretch_frame(
     let jpeg_bytes = compute_autostretch_jpeg(
         &ctx,
         shadow_clip.unwrap_or(ctx.autostretch_shadow_clip),
-        target_background.unwrap_or(ctx.autostretch_target_bg),
+        target_bg.unwrap_or(ctx.autostretch_target_bg),
     )?;
     use base64::Engine as _;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes);
