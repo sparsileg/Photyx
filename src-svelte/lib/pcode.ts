@@ -904,3 +904,17 @@ export const HELP_DB: Record<string, HelpEntry> = {
 export function getHelp(command: string): HelpEntry | null {
   return HELP_DB[command.toLowerCase()] ?? null;
 }
+
+/// Extracts a clean, human-readable label for the running-status bar.
+/// For a `RunMacro name="..."` line (quoted or bare), returns just the
+/// macro name with hyphens converted back to spaces (macro `name` is
+/// auto-derived from `display_name` by replacing spaces with hyphens,
+/// so this reverses that transformation without a DB lookup).
+/// Any other command is returned unchanged.
+export function extractRunningLabel(command: string): string {
+  const match = command.match(/^RunMacro\s+name=(?:"([^"]+)"|(\S+))/i);
+  if (!match) return command;
+  return (match[1] ?? match[2]).replace(/-/g, ' ');
+}
+
+// --------------------------------------------------------------------------

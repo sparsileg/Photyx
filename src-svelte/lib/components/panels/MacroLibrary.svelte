@@ -142,7 +142,7 @@
     if (running === macro.id) return;
     running = macro.id;
     runningMacroRef = macro;
-    notifications.running(`Running: ${macro.display_name}…`);
+    notifications.running(macro.display_name);
     jobOwner.set('macro-library');
     progress.set({ label: '', current: 0, total: 0 });
     try {

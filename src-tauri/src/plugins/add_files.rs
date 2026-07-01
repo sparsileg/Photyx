@@ -125,7 +125,7 @@ impl PhotonPlugin for AddFiles {
         let mut errors: Vec<String> = Vec::new();
         let total_to_load = paths.len() as u32;
 
-        crate::set_progress("Loading", 0, total_to_load);
+        crate::set_progress("Loading files", 0, total_to_load);
 
         for (i, path) in paths.iter().enumerate() {
             match read_image_file(path) {
@@ -138,7 +138,7 @@ impl PhotonPlugin for AddFiles {
                     errors.push(format!("{}: {}", path, e));
                 }
             }
-            crate::set_progress("Loading", (i + 1) as u32, total_to_load);
+            crate::set_progress("Loading files", (i + 1) as u32, total_to_load);
         }
 
         crate::set_progress("", 0, 0);

@@ -9,6 +9,7 @@
   import { session } from '../stores/session';
   import { applyAutoStretch } from '../commands';
   import { jobResult, jobOwner, progress } from '../stores/progress';
+  import { extractRunningLabel } from '../pcode';
 
   // ── Context menu state ────────────────────────────────────────────────────
   let contextMenu = $state<{ x: number; y: number; id: string } | null>(null);
@@ -87,7 +88,7 @@
   // ── Run entry ─────────────────────────────────────────────────────────────
   async function runEntry(script: string) {
     const firstLine = script.trim().split('\n')[0].trim();
-    notifications.running(firstLine);
+    notifications.running(extractRunningLabel(firstLine));
     jobOwner.set('quicklaunch');
     progress.set({ label: '', current: 0, total: 0 });
 

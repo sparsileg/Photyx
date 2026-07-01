@@ -105,7 +105,7 @@ impl PhotonPlugin for StackFrames {
             return Err(PluginError::new("NO_FILES", "No files loaded."));
         }
         ctx.clear_stack();
-        crate::set_progress("Analyzing frames", 0, 0);
+        crate::set_progress("Stacking analysis", 0, 0);
 
         //     Light frame stacking
         let det_config = StarDetectionConfig::default();
@@ -382,7 +382,7 @@ impl PhotonPlugin for StackFrames {
             cached_transforms[i] = Some(t_final);
             contrib.included = true;
             if let Some(et) = snap.exptime { total_integration += et; }
-            crate::set_progress("Registering", (i + 1) as u32, total as u32);
+            crate::set_progress("Registering for stack", (i + 1) as u32, total as u32);
             contributions.push(contrib);
         }
 
@@ -527,7 +527,7 @@ impl PhotonPlugin for StackFrames {
                 }
 
                 pass2_done += 1;
-                crate::set_progress("Integrating", pass2_done as u32, total as u32);
+                crate::set_progress("Integrating stack", pass2_done as u32, total as u32);
             }
             // aligned_buffers dropped here, releasing chunk memory
         }

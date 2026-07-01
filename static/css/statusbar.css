@@ -42,7 +42,7 @@
     left: 0;
     right: 0;
     height: 66px;
-    font-size: 2.06rem;
+    font-size: 1.5rem;
     padding: 12px 16px;
     z-index: 400;
     transition: height 0.3s ease, font-size 0.3s ease, padding 0.3s ease;
@@ -58,10 +58,6 @@
 #status-bar.status-running #status-text,
 #status-bar.status-running #status-icon {
     animation: status-pulse 1.2s ease-in-out infinite;
-}
-
-#status-bar.status-running #status-icon {
-    font-size: 2.25rem;
 }
 
 @keyframes status-pulse {
@@ -79,7 +75,7 @@
     left: 0;
     right: 0;
     height: 66px;
-    font-size: 2.06rem;
+    font-size: 2.0rem;
     padding: 12px 16px;
     z-index: 400;
     transition: height 0.3s ease, font-size 0.3s ease, padding 0.3s ease;
@@ -91,7 +87,7 @@
 }
 
 #status-bar.status-alert #status-icon {
-    font-size: 2.25rem;
+    font-size: 2.2rem;
 }
 
 #notif-history.alert {

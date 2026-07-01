@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 use tauri::State;
 use tracing::info;
 
-mod constants;
+pub mod constants;
 mod pcode;
 
 /// Global registry reference for use by RunMacro and the pcode interpreter

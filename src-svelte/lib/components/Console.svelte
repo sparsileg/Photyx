@@ -33,7 +33,7 @@
 
   import { PCODE_COMMANDS } from '../pcode';
   import { applyAutoStretch, loadFile } from '../commands';
-  import { getHelp, ARG_HINT_STRINGS, HELP_DB } from '../pcode';
+  import { getHelp, ARG_HINT_STRINGS, HELP_DB, extractRunningLabel } from '../pcode';
   import type { HelpEntry } from '../pcode';
   import { handleClientCommand, CLIENT_COMMAND_NAMES } from '../clientCommands';
 
@@ -208,7 +208,7 @@
       return;
     }
 
-    notifications.running(firstLine);
+    notifications.running(extractRunningLabel(firstLine));
     jobOwner.set('console');
     progress.set({ label: '', current: 0, total: 0 });
 
