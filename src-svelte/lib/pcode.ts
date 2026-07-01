@@ -1,4 +1,4 @@
-// pcode.ts   Single source of truth for all pcode command metadata.
+// pcode.ts — Single source of truth for all pcode command metadata.
 //
 // Consolidates:
 //   - PCODE_COMMANDS  (tab completion + syntax highlighting)
@@ -42,6 +42,9 @@ export const PCODE_COMMANDS = new Set([
   'StackFrames',
   //    Image analysis
   'AnalyzeFrames',
+  'BackgroundGradient',
+  'BackgroundMedian',
+  'BackgroundStdDev',
   'CommitAnalysis',
   'ExportAnalysisReport',
   'FakeProgress',
@@ -53,7 +56,6 @@ export const PCODE_COMMANDS = new Set([
   'MedianValue',
   //    Image processing
   'AutoStretch',
-  'BinImage',
   'DebayerImage',
   //    Display & navigation
   'BlinkSequence',
@@ -104,13 +106,15 @@ export type ArgHintValue = string | ((_raw: string) => void);
 export const ARG_HINT_STRINGS: Record<string, string> = {
   addfiles:            'paths=<path|glob>[,<path|glob>...]',
   addkeyword:          'name=  value=  comment=',
-  analyzeframes:       '[profile=]',
+  analyzeframes:       '[profile=]  [scope=all|current]  [threshold=]  [saturation=]',
   assert:              'expression=',
   autostretch:         'shadowClip=  targetBackground=',
+  backgroundgradient:  '[sigma=]  [iterations=]  [grid=]',
+  backgroundmedian:    '[sigma=]  [iterations=]  [grid=]',
+  backgroundstddev:    '[sigma=]  [iterations=]  [grid=]',
   basename:            '($path)',
-  binimage:            'factor=',
   blinksequence:       'fps=',
-  cacheframes:         '',
+  cacheframes:         '[resolution=12|25]',
   ceil:                '(#)',
   clear:               '',
   clearannotations:    '',
@@ -118,14 +122,15 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   clearstack:          '',
   commitanalysis:      '[append=]',
   commitstretch:       'shadow_clip=  target_bg=',
-  computeeccentricity: '',
-  computefwhm:         '',
+  computeeccentricity: '[threshold=]  [peak_radius=]  [saturation=]',
+  computefwhm:         '[threshold=]  [peak_radius=]  [saturation=]',
   contourheatmap:      'palette=[viridis|plasma|coolwarm]  contour_levels=#  threshold=  saturation=',
   copyfile:            'destination=  [source=]',
-  copykeyword:         'from=  to=',
+  copykeyword:         'from=  to=  [scope=all|current]',
   countfiles:          '',
   countmatches:        'pattern=<glob>',
-  debayerimage:        'pattern=[RGGB|BGGR|GRBG|GBRG]  method=[bilinear]',
+  countstars:          '[threshold=]  [peak_radius=]  [flood_threshold=]  [saturation=]  [sigma=]  [iterations=]',
+  debayerimage:        '',
   deletekeyword:       'name=  scope=',
   dirof:               '($path)',
   else:                '',
@@ -280,16 +285,16 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   writecurrent: {
     name:        'WriteCurrent',
-    description: 'Writes all buffered images back to their source paths in their original format using an atomic temp-rename.',
+    description: 'Writes all buffered images back to their source paths in their original format. For FITS files this updates keywords only, leaving pixel data untouched; XISF and TIFF get a full rewrite via an atomic temp-rename.',
     syntax:      'WriteCurrent',
     arguments:   [],
-    output:  'Overwrites each source file with the current in-memory buffer.',
+    output:  'Overwrites each source file with the current in-memory keyword/pixel state (see description for the FITS keyword-only caveat).',
     example: 'WriteCurrent',
   },
 
   writeframe: {
     name:        'WriteFrame',
-    description: 'Writes the currently active frame only back to its source format using an atomic temp-rename.',
+    description: 'Writes the currently active frame only back to its source format using an atomic temp-rename. Unlike WriteCurrent, this always performs a full pixel + keyword rewrite, including for FITS files.',
     syntax:      'WriteFrame',
     arguments:   [],
     output:  'Overwrites the current frame source file with the in-memory buffer.',
@@ -310,13 +315,13 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   movefile: {
     name:        'MoveFile',
-    description: 'Moves a file to a destination. Uses the current frame if no source is specified. If the destination is an existing directory, the file is moved into it preserving its filename. If the destination is a full file path (mv semantics), the file is moved and renamed in one step. The destination parent directory is created automatically if needed.',
+    description: 'Moves a file to a destination. Uses the current frame if no source is specified. If the destination is an existing directory, the file is moved into it preserving its filename. If the destination is a full file path (mv semantics), the file is moved and renamed in one step. The destination parent directory is created automatically if needed. Stores the destination path in $NEW_FILE.',
     syntax:      'MoveFile destination=<path> [source=<path>]',
     arguments: [
       { name: 'destination', type: 'path', required: true,  description: 'Destination directory path, or full destination file path for rename-during-move.' },
       { name: 'source',      type: 'path', required: false, description: 'Source file path (default: current frame). May be a file outside the session.' },
     ],
-    output:  'Moves (and optionally renames) the file. Removes it from the session file list if it was a session file.',
+    output:  'Moves (and optionally renames) the file. Stores the destination path in $NEW_FILE. Removes it from the session file list if it was a session file.',
     example: 'MoveFile destination="/data/Rejects"\nMoveFile source="$f" destination="/data/Rejects"\n# Rename during move (mv semantics):\nSet cleaned = stripext($f)\nMoveFile source="$f" destination="$cleaned"',
   },
 
@@ -408,14 +413,15 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   copykeyword: {
     name:        'CopyKeyword',
-    description: 'Copies a keyword value from one keyword name to another in the current frame.',
-    syntax:      'CopyKeyword from=<string> to=<string>',
+    description: 'Copies a keyword value from one keyword name to another.',
+    syntax:      'CopyKeyword from=<string> to=<string> [scope=all|current]',
     arguments: [
-      { name: 'from', type: 'string', required: true, description: 'Source keyword name' },
-      { name: 'to',   type: 'string', required: true, description: 'Destination keyword name' },
+      { name: 'from',  type: 'string', required: true,  description: 'Source keyword name' },
+      { name: 'to',    type: 'string', required: true,  description: 'Destination keyword name' },
+      { name: 'scope', type: 'string', required: false, default: 'all', description: 'Apply to all frames or current frame only' },
     ],
-    output:  'Creates or updates the destination keyword with the value from the source keyword.',
-    example: 'CopyKeyword from=EXPTIME to=EXPOSURE',
+    output:  'Creates or updates the destination keyword with the value from the source keyword, on the frame(s) in scope.',
+    example: 'CopyKeyword from=EXPTIME to=EXPOSURE\nCopyKeyword from=EXPTIME to=EXPOSURE scope=current',
   },
 
   listkeywords: {
@@ -443,13 +449,16 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   analyzeframes: {
     name:        'AnalyzeFrames',
-    description: 'Computes five quality metrics for all loaded frames (FWHM, eccentricity, star count, signal weight, background median) and classifies each frame as PASS or REJECT using iterative sigma clipping.',
-    syntax:      'AnalyzeFrames [profile=<name>]',
+    description: 'Computes five quality metrics for loaded frames (FWHM, eccentricity, star count, signal weight, background median). With scope=all (default), classifies each frame as PASS or REJECT via iterative sigma clipping across the session. With scope=current, runs the same metrics on only the current frame and reports raw values — no session stats or classification.',
+    syntax:      'AnalyzeFrames [profile=<name>] [scope=all|current] [threshold=<float>] [saturation=<float>]',
     arguments: [
-      { name: 'profile', type: 'string', required: false, description: 'Threshold profile name to use for this run (e.g. profile=Session). If omitted, uses the active profile set in Edit > Analysis Parameters.' },
+      { name: 'profile',    type: 'string', required: false, description: 'Threshold profile name to use for this run (e.g. profile=Session). If omitted, uses the active profile set in Edit > Analysis Parameters.' },
+      { name: 'scope',      type: 'string', required: false, default: 'all', description: 'all runs the full session analysis and classification; current inspects only the current frame.' },
+      { name: 'threshold',  type: 'float',  required: false, default: '5.0', description: 'Star detection threshold in units of background std dev' },
+      { name: 'saturation', type: 'float',  required: false, default: '0.98', description: 'Saturation threshold — stars at or above this value are rejected from detection' },
     ],
-    output:  'Populates analysis results for all frames. Results visible in Analysis Results and Analysis Graph views.',
-    example: 'AnalyzeFrames\nAnalyzeFrames profile=Session\nAnalyzeFrames profile=Project',
+    output:  'Populates analysis results for all frames (or the current frame, with scope=current). Results visible in Analysis Results and Analysis Graph views.',
+    example: 'AnalyzeFrames\nAnalyzeFrames profile=Session\nAnalyzeFrames profile=Project\nAnalyzeFrames scope=current',
   },
 
   autostretch: {
@@ -466,9 +475,13 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   computefwhm: {
     name:        'ComputeFWHM',
-    description: 'Computes the Full Width at Half Maximum (FWHM) for detected stars in the current frame. Displays per-star circle annotations on the viewer overlay.',
-    syntax:      'ComputeFWHM',
-    arguments:   [],
+    description: 'Computes the median Full Width at Half Maximum (FWHM) for detected stars in the current frame, in pixels (and arcseconds when FOCALLEN, INSTRUME, and XBINNING keywords are present). Displays per-star circle annotations on the viewer overlay.',
+    syntax:      'ComputeFWHM [threshold=<float>] [peak_radius=<int>] [saturation=<float>]',
+    arguments: [
+      { name: 'threshold',   type: 'float',   required: false, default: '5.0', description: 'Star detection threshold in units of background std dev' },
+      { name: 'peak_radius', type: 'integer', required: false, default: '3',   description: 'Radius in pixels for the local-maximum test' },
+      { name: 'saturation',  type: 'float',   required: false, default: '0.98', description: 'Stars at or above this peak value are rejected as saturated' },
+    ],
     output:  'Displays star overlay annotations. Stores result in $fwhm.',
     example: 'ComputeFWHM\nPrint $fwhm',
   },
@@ -476,17 +489,28 @@ export const HELP_DB: Record<string, HelpEntry> = {
   computeeccentricity: {
     name:        'ComputeEccentricity',
     description: 'Computes the mean star eccentricity for the current frame. Values close to 0 indicate round stars; values close to 1 indicate elongated stars.',
-    syntax:      'ComputeEccentricity',
-    arguments:   [],
+    syntax:      'ComputeEccentricity [threshold=<float>] [peak_radius=<int>] [saturation=<float>]',
+    arguments: [
+      { name: 'threshold',   type: 'float',   required: false, default: '5.0', description: 'Star detection threshold in units of background std dev' },
+      { name: 'peak_radius', type: 'integer', required: false, default: '3',   description: 'Radius in pixels for the local-maximum test' },
+      { name: 'saturation',  type: 'float',   required: false, default: '0.98', description: 'Stars at or above this peak value are rejected as saturated' },
+    ],
     output:  'Stores result in $eccentricity.',
     example: 'ComputeEccentricity\nPrint $eccentricity',
   },
 
   countstars: {
     name:        'CountStars',
-    description: 'Counts the number of detected stars in the current frame.',
-    syntax:      'CountStars',
-    arguments:   [],
+    description: 'Counts the number of detected stars in the current frame using peak-finding on a sigma-clipped, background-subtracted image.',
+    syntax:      'CountStars [threshold=<float>] [peak_radius=<int>] [flood_threshold=<float>] [saturation=<float>] [sigma=<float>] [iterations=<int>]',
+    arguments: [
+      { name: 'threshold',       type: 'float',   required: false, default: '5.0', description: 'Detection threshold in units of background std dev' },
+      { name: 'peak_radius',     type: 'integer', required: false, default: '3',   description: 'Radius in pixels for the local-maximum test' },
+      { name: 'flood_threshold', type: 'float',   required: false, default: '2.0', description: 'Flood-fill lower bound in units of background std dev' },
+      { name: 'saturation',      type: 'float',   required: false, default: '0.98', description: 'Peak value at or above which a star is considered saturated and rejected' },
+      { name: 'sigma',           type: 'float',   required: false, default: '3.0', description: 'Sigma-clipping threshold for background estimation' },
+      { name: 'iterations',      type: 'integer', required: false, default: '5',   description: 'Maximum sigma-clipping iterations for background estimation' },
+    ],
     output:  'Stores result in $starcount.',
     example: 'CountStars\nPrint $starcount',
   },
@@ -511,39 +535,64 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   contourheatmap: {
     name:        'ContourHeatmap',
-    description: 'Generates a false-color spatial FWHM heatmap for the current frame. Writes the result as an XISF file to the source file\'s directory and stores the output path in $NEW_FILE.',
+    description: 'Generates a false-color spatial FWHM heatmap for the current frame. Writes the result as an XISF file named <source_stem>_heatmap.xisf to the source file\'s directory and stores the output path in $NEW_FILE.',
     syntax:      'ContourHeatmap [palette=viridis|plasma|coolwarm] [contour_levels=<int>] [threshold=<float>] [saturation=<float>]',
     arguments: [
       { name: 'palette',        type: 'string',  required: false, default: 'viridis', description: 'Color palette: viridis, plasma, or coolwarm' },
-      { name: 'contour_levels', type: 'integer', required: false, default: '10',      description: 'Number of contour levels' },
-      { name: 'threshold',      type: 'float',   required: false,                     description: 'Rejection threshold for outlier pixels' },
-      { name: 'saturation',     type: 'float',   required: false, default: '1.0',     description: 'Color saturation multiplier' },
+      { name: 'contour_levels', type: 'integer', required: false, default: '10',      description: 'Number of contour levels (minimum 2)' },
+      { name: 'threshold',      type: 'float',   required: false, default: '5.0',     description: 'Star detection threshold in units of background std dev' },
+      { name: 'saturation',     type: 'float',   required: false, default: '0.98',    description: 'Stars at or above this peak value are rejected as saturated' },
     ],
     output:  'Generates a heatmap XISF and loads it in the viewer. Stores path in $NEW_FILE.',
     example: 'ContourHeatmap palette=plasma contour_levels=12',
   },
 
-  debayerimage: {
-    name:        'DebayerImage',
-    description: 'Debayers a Bayer CFA image on demand using bilinear interpolation. The Bayer pattern is read from the BAYERPAT keyword if present; the pattern= argument overrides it.',
-    syntax:      'DebayerImage [pattern=RGGB|BGGR|GRBG|GBRG] [method=bilinear]',
+  backgroundmedian: {
+    name:        'BackgroundMedian',
+    description: 'Computes the sigma-clipped background median for the current frame. This is one of the five metrics AnalyzeFrames computes internally for every frame; running it standalone is useful for inspecting or tuning background estimation on a single frame.',
+    syntax:      'BackgroundMedian [sigma=<float>] [iterations=<int>] [grid=<int>]',
     arguments: [
-      { name: 'pattern', type: 'string', required: false, default: 'RGGB',     description: 'Bayer CFA pattern (overrides BAYERPAT keyword if present)' },
-      { name: 'method',  type: 'string', required: false, default: 'bilinear', description: 'Interpolation method (currently only bilinear is supported)' },
+      { name: 'sigma',      type: 'float',   required: false, default: '3.0', description: 'Sigma-clipping threshold in std dev units' },
+      { name: 'iterations', type: 'integer', required: false, default: '5',   description: 'Maximum sigma-clipping iterations' },
+      { name: 'grid',       type: 'integer', required: false, default: '4',   description: 'Grid divisions per axis used internally for gradient estimation' },
     ],
-    output:  'Converts the current frame from mono Bayer to interleaved RGB in place.',
-    example: 'DebayerImage pattern=RGGB\nDebayerImage pattern=BGGR method=bilinear',
+    output:  'Reports the background median for the current frame.',
+    example: 'BackgroundMedian\nBackgroundMedian sigma=2.5 iterations=8',
   },
 
-  binimage: {
-    name:        'BinImage',
-    description: 'Bins the current image by an integer factor, reducing resolution by averaging pixel blocks.',
-    syntax:      'BinImage factor=<integer>',
+  backgroundstddev: {
+    name:        'BackgroundStdDev',
+    description: 'Deprecated but fully operational. Computes the sigma-clipped background standard deviation for the current frame. No longer used by AnalyzeFrames — it correlated 0.92–0.999 with BackgroundMedian and added no discriminating signal — but still runs the full computation and returns real results when called directly.',
+    syntax:      'BackgroundStdDev [sigma=<float>] [iterations=<int>] [grid=<int>]',
     arguments: [
-      { name: 'factor', type: 'integer', required: true, description: 'Binning factor (e.g. 2 = 2x2 bin, halves each dimension)' },
+      { name: 'sigma',      type: 'float',   required: false, default: '3.0', description: 'Sigma-clipping threshold in std dev units' },
+      { name: 'iterations', type: 'integer', required: false, default: '5',   description: 'Maximum sigma-clipping iterations' },
+      { name: 'grid',       type: 'integer', required: false, default: '4',   description: 'Grid divisions per axis used internally for gradient estimation' },
     ],
-    output:  'Replaces the current frame with the binned result.',
-    example: 'BinImage factor=2',
+    output:  'Reports the background standard deviation for the current frame.',
+    example: 'BackgroundStdDev',
+  },
+
+  backgroundgradient: {
+    name:        'BackgroundGradient',
+    description: 'Deprecated but fully operational. Computes a background gradient estimate for the current frame. No longer used by AnalyzeFrames due to session-dependent sign reversal that made it unreliable as a rejection criterion, but still runs when called directly.',
+    syntax:      'BackgroundGradient [sigma=<float>] [iterations=<int>] [grid=<int>]',
+    arguments: [
+      { name: 'sigma',      type: 'float',   required: false, default: '3.0', description: 'Sigma-clipping threshold in std dev units' },
+      { name: 'iterations', type: 'integer', required: false, default: '5',   description: 'Maximum sigma-clipping iterations' },
+      { name: 'grid',       type: 'integer', required: false, default: '4',   description: 'Grid divisions per axis used internally for gradient estimation' },
+    ],
+    output:  'Reports the background gradient estimate for the current frame.',
+    example: 'BackgroundGradient',
+  },
+
+  debayerimage: {
+    name:        'DebayerImage',
+    description: 'Debayers a Bayer CFA image to interleaved RGB using bilinear interpolation. Operates on the transient stack result if one exists, otherwise the current session frame. The Bayer pattern is always read from the BAYERPAT (or BAYER_PATTERN) keyword, defaulting to RGGB if neither is present. Takes no arguments — there is currently no way to override the pattern or interpolation method from pcode.',
+    syntax:      'DebayerImage',
+    arguments:   [],
+    output:  'Converts the target buffer (stack result or current frame) from mono/Bayer to interleaved RGB in place. Frames already RGB are left unchanged.',
+    example: 'DebayerImage',
   },
 
   commitanalysis: {
@@ -594,11 +643,13 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   cacheframes: {
     name:        'CacheFrames',
-    description: 'Pre-builds the blink cache for all session frames at both resolutions in the background.',
-    syntax:      'CacheFrames',
-    arguments:   [],
+    description: 'Pre-builds the blink cache for all session frames in the background. Required before using BlinkSequence.',
+    syntax:      'CacheFrames [resolution=<12|25>]',
+    arguments: [
+      { name: 'resolution', type: 'string', required: false, description: '12 (12.5%) or 25 (25%). If omitted, both resolutions are cached.' },
+    ],
     output:  'Triggers background cache build. Required before using BlinkSequence.',
-    example: 'CacheFrames',
+    example: 'CacheFrames\nCacheFrames resolution=25',
   },
 
   blinksequence: {
@@ -744,7 +795,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   for: {
     name:        'For',
-    description: 'Two loop forms, both closed with EndFor:\n\n(1) Numeric range — iterates from N to M inclusive. Both bounds may be variables or expressions.\n\n(2) Glob iterator — expands a glob pattern at runtime and iterates over each matched path as a string, binding it to the loop variable. Unmatched patterns produce a warning and the body does not execute.\n\nLoops may be nested. Numeric and glob loops can be mixed.',
+    description: 'Two loop forms, both closed with EndFor:\n\n(1) Numeric range — iterates from N to M inclusive. Both bounds may be variables or expressions.\n\n(2) Glob iterator — expands a glob pattern at runtime and iterates over each matched path as a string, binding it to the loop variable. Unmatched patterns produce a warning and the body does not execute — the script continues rather than halting.\n\nLoops may be nested. Numeric and glob loops can be mixed.',
     syntax:      'For <var> = N To M\n  ...\nEndFor\n\nfor <var> in "<glob_pattern>"\n  ...\nEndFor',
     arguments:   [],
     output:  'Numeric: executes the block M-N+1 times. Glob: executes once per matched path, binding the full path string to $<var>.',

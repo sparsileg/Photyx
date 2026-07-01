@@ -283,7 +283,7 @@ pub struct CopyKeyword;
 impl PhotonPlugin for CopyKeyword {
     fn name(&self)        -> &str { "CopyKeyword" }
     fn version(&self)     -> &str { "1.0" }
-    fn description(&self) -> &str { "Copies a keyword value to a new keyword name on all buffered images" }
+    fn description(&self) -> &str { "Copies a keyword value to a new keyword name (scope=all|current, default: all)" }
 
     fn parameters(&self) -> Vec<ParamSpec> {
         vec![
@@ -301,6 +301,13 @@ impl PhotonPlugin for CopyKeyword {
                 description: "Destination keyword name".to_string(),
                 default:     None,
             },
+            ParamSpec {
+                name:        "scope".to_string(),
+                param_type:  ParamType::String,
+                required:    false,
+                description: "Apply to 'all' images or 'current' frame only (default: all)".to_string(),
+                default:     Some("all".to_string()),
+            },
         ]
     }
 
@@ -313,6 +320,7 @@ impl PhotonPlugin for CopyKeyword {
             .ok_or_else(|| PluginError::missing_arg("to"))?
             .trim()
             .to_uppercase();
+        let current_only = parse_scope(args)?;
 
         if from.is_empty() {
             return Err(PluginError::invalid_arg("from", "keyword name cannot be empty"));
@@ -324,17 +332,32 @@ impl PhotonPlugin for CopyKeyword {
             return Err(PluginError::new("NO_IMAGES", "No images loaded."));
         }
 
-        let mut copied = 0usize;
-        let count = ctx.image_buffers.len();
-        for buffer in ctx.image_buffers.values_mut() {
-            if let Some(src) = buffer.keywords.get(&from).cloned() {
-                buffer.keywords.insert(
-                    to.clone(),
-                    KeywordEntry::new(&to, &src.value, src.comment.as_deref()),
-                );
-                copied += 1;
+        let copied = if current_only {
+            let path = ctx.file_list.get(ctx.current_frame)
+                .cloned()
+                .ok_or_else(|| PluginError::new("NO_FRAME", "No current frame"))?;
+            if let Some(buffer) = ctx.image_buffers.get_mut(&path) {
+                if let Some(src) = buffer.keywords.get(&from).cloned() {
+                    buffer.keywords.insert(
+                        to.clone(),
+                        KeywordEntry::new(&to, &src.value, src.comment.as_deref()),
+                    );
+                    1
+                } else { 0 }
+            } else { 0 }
+        } else {
+            let mut n = 0usize;
+            for buffer in ctx.image_buffers.values_mut() {
+                if let Some(src) = buffer.keywords.get(&from).cloned() {
+                    buffer.keywords.insert(
+                        to.clone(),
+                        KeywordEntry::new(&to, &src.value, src.comment.as_deref()),
+                    );
+                    n += 1;
+                }
             }
-        }
+            n
+        };
 
         if copied == 0 {
             return Err(PluginError::new(
@@ -343,9 +366,10 @@ impl PhotonPlugin for CopyKeyword {
             ));
         }
 
-        info!("CopyKeyword: {} → {} on {}/{} image(s)", from, to, copied, count);
+        let scope_label = if current_only { "current frame".to_string() } else { format!("{} image(s)", copied) };
+        info!("CopyKeyword: {} → {} on {}", from, to, scope_label);
         Ok(PluginOutput::Message(format!(
-            "Keyword {} copied to {} on {} image(s)", from, to, copied
+            "Keyword {} copied to {} on {}", from, to, scope_label
         )))
     }
 }
