@@ -19,6 +19,7 @@
     rejection_category?: string;
     triggered?: string[];
     toggled?: boolean;
+    is_reference?: boolean;
   }
 
   interface AnalysisResponse {
@@ -162,7 +163,7 @@
 
     notifications.running('Committing results…');
     try {
-      const msg = await invoke<string>('commit_analysis_results', { append: '' });
+      const msg = await invoke<string>('commit_analysis_results', { append: '.reject' });
       notifications.success(msg);
       const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
       session.setFileList(s.fileList);
@@ -260,9 +261,11 @@
               <td>{fmt(row.star_count, 0)}</td>
               <td>{fmt(row.signal_weight)}</td>
               <td>{fmt(row.background_median)}</td>
-              <td>{row.flag ?? '—'}</td>
+              <td>{row.is_reference ? 'REF' : (row.flag ?? '—')}</td>
               <td>
-                {#if row.rejection_category}
+                {#if row.is_reference}
+                  <span class="ar-cat-badge ar-cat-ref" title="Reference frame">★</span>
+                {:else if row.rejection_category}
                   <span class={catClass(row.rejection_category)}>{row.rejection_category}</span>
                 {/if}
               </td>

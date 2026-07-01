@@ -78,14 +78,14 @@ fn build_report_json(ctx: &AppContext) -> serde_json::Value {
             "star_count":         r.star_count,
             "signal_weight":      r.signal_weight,
             "background_median":  r.background_median,
-            "flag":               r.flag.as_ref().map(|f| f.as_str()).unwrap_or("PASS"),
+            "flag":               if r.is_reference { "REF" } else { r.flag.as_ref().map(|f| f.as_str()).unwrap_or("PASS") },
             "triggered_by":       r.triggered_by,
             "rejection_category": r.rejection_category,
         }))
     }).collect();
 
-    let outlier_paths: Vec<String> = ctx.outlier_frame_paths.iter()
-        .map(|p| p.replace('\\', "/"))
+    let outliers: Vec<String> = ctx.outlier_frame_paths.iter()
+        .map(|p| p.rsplit(['/', '\\']).next().unwrap_or(p.as_str()).to_string())
         .collect();
 
     let session_stats = match &ctx.last_session_stats {
@@ -111,12 +111,16 @@ fn build_report_json(ctx: &AppContext) -> serde_json::Value {
     };
 
     serde_json::json!({
-        "photyx_version":  "1.0.0",
-        "exported_at":     chrono::Utc::now().to_rfc3339(),
-        "thresholds":      thresholds,
-        "session_stats":   session_stats,
-        "outlier_paths":   outlier_paths,
-        "frames":          frames,
+        "photyx": {
+            "photyx_version": "1.0.0",
+            "exported_at":    chrono::Utc::now().to_rfc3339(),
+        },
+        "statistics": {
+            "session_stats": session_stats,
+            "thresholds":    thresholds,
+        },
+        "frames":   frames,
+        "outliers": outliers,
     })
 }
 

@@ -247,6 +247,7 @@ fn execute_all(
                 flag: None,
                 triggered_by: vec![],
                 rejection_category: None,
+                is_reference: false,
             };
 
             info!("AnalyzeFrames: {}   done", short_name(&snap.path));
@@ -310,9 +311,38 @@ fn execute_all(
             "ecc":            result.eccentricity,
             "signal_weight":  result.signal_weight,
             "stars":          result.star_count,
+            "is_reference":   result.is_reference,
         }));
 
         ctx.analysis_results.insert(result.filename.clone(), result.clone());
+    }
+
+    // ── Reference frame selection ─────────────────────────────────────────
+    // Best reference = lowest fwhm × eccentricity product among frames that
+    // have both values. star_count (higher = better) used as tiebreaker.
+    let ref_path: Option<String> = {
+        results.iter()
+            .filter_map(|r| {
+                let product = r.fwhm? * r.eccentricity?;
+                Some((r.filename.clone(), product, r.star_count.unwrap_or(0)))
+            })
+            .min_by(|(_, pa, ca), (_, pb, cb)| {
+                pa.partial_cmp(pb)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| cb.cmp(ca)) // higher star_count wins tiebreak
+            })
+            .map(|(path, _, _)| path)
+    };
+
+    for result in &mut results {
+        result.is_reference = ref_path.as_deref() == Some(&result.filename);
+    }
+
+    // Write is_reference back into ctx.analysis_results now that it's been set
+    for result in &results {
+        if let Some(r) = ctx.analysis_results.get_mut(&result.filename) {
+            r.is_reference = result.is_reference;
+        }
     }
 
     ctx.last_analysis_thresholds = Some(thresholds);
@@ -375,6 +405,7 @@ fn compute_metrics_for_image(
         flag: None,
         triggered_by: vec![],
         rejection_category: None,
+        is_reference: false,
     })
 }
 

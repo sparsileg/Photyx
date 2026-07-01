@@ -24,6 +24,7 @@
     flag:               string;
     triggered?:         string[];
     rejection_category?: string;
+    is_reference?:      boolean;
   }
 
   interface MetricStats { mean: number; stddev: number; }
@@ -130,7 +131,7 @@
   async function commitResults() {
     notifications.running('Committing analysis results…');
     try {
-      const msg = await invoke<string>('commit_analysis_results', { append: '' });
+      const msg = await invoke<string>('commit_analysis_results', { append: '.reject' });
       notifications.success(msg);
     } catch (e) {
       notifications.error(`Commit failed: ${e}`);
@@ -286,6 +287,34 @@
     ctx.fillText(labelText, labelX, labelY);
   }
 
+  // ── Star shape (reference frame) ──────────────────────────────────────────
+
+  function drawStar(
+    ctx:    CanvasRenderingContext2D,
+    x:      number,
+    y:      number,
+    r:      number,
+    fill:   string,
+    stroke: string,
+  ) {
+    const points = 5;
+    const inner  = r * 0.45;
+    ctx.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const angle  = (i * Math.PI) / points - Math.PI / 2;
+      const radius = i % 2 === 0 ? r : inner;
+      const px     = x + Math.cos(angle) * radius;
+      const py     = y + Math.sin(angle) * radius;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
   // ── Dot drawing ───────────────────────────────────────────────────────────
 
   function drawDot(
@@ -295,8 +324,14 @@
     flag:      string,
     category:  string | undefined,
     isOutlier: boolean,
+    isRef:     boolean,
     C:         ReturnType<typeof getThemeColors>,
   ) {
+    if (isRef) {
+      drawStar(ctx, x, y, 12, '#ffd700', '#000000');
+      return;
+    }
+
     if (flag === 'REJECT') {
       const colors = categoryColors(category);
       const isMulti = colors.length > 1;
@@ -381,10 +416,11 @@
     C:   ReturnType<typeof getThemeColors>,
   ) {
     const items = [
-      { label: 'Pass',                  colors: ['#ffffff'] },
-      { label: 'Reject — Optical',      colors: [CAT_COLORS.O] },
-      { label: 'Reject — Transparency', colors: [CAT_COLORS.T] },
-      { label: 'Reject — Sky Brightness',  colors: [CAT_COLORS.B] },
+      { label: 'Pass',                   colors: ['#ffffff'] },
+      { label: 'Reject — Optical',       colors: [CAT_COLORS.O] },
+      { label: 'Reject — Transparency',  colors: [CAT_COLORS.T] },
+      { label: 'Reject — Sky Brightness', colors: [CAT_COLORS.B] },
+      { label: 'Reference frame',        colors: ['#ffd700'] },
     ];
 
     const fontSize    = 13;
@@ -683,7 +719,7 @@
       const x = toX(i);
       const v1 = m1vals[i];
       if (v1 !== undefined) {
-        drawDot(ctx, x, toY1(v1), f.flag, f.rejection_category, outlierSet.has(f.filename), C);
+        drawDot(ctx, x, toY1(v1), f.flag, f.rejection_category, outlierSet.has(f.filename), f.is_reference ?? false, C);
       }
     }
 

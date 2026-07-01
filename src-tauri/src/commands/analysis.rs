@@ -67,7 +67,11 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
         let label = extract_frame_label(short);
 
         if let Some(r) = ctx.analysis_results.get(path) {
-            let flag = r.flag.as_ref().map(|f| f.as_str().to_string()).unwrap_or_default();
+            let flag = if r.is_reference {
+                "REF".to_string()
+            } else {
+                r.flag.as_ref().map(|f| f.as_str().to_string()).unwrap_or_default()
+            };
             serde_json::json!({
                 "index":              i,
                 "filename":           path,
@@ -81,6 +85,7 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
                 "flag":               flag,
                 "triggered":          r.triggered_by,
                 "rejection_category": r.rejection_category,
+                "is_reference":       r.is_reference,
             })
         } else {
             serde_json::json!({
@@ -166,6 +171,8 @@ pub struct FramePayload {
     pub flag:               String,
     pub triggered_by:       Vec<String>,
     pub rejection_category: Option<String>,
+    #[serde(default)]
+    pub is_reference:       bool,
 }
 
 // ── load_analysis_json command ────────────────────────────────────────────────
@@ -202,6 +209,7 @@ pub fn load_analysis_json(
             flag,
             triggered_by:       frame.triggered_by.clone(),
             rejection_category: frame.rejection_category.clone(),
+            is_reference:       frame.is_reference,
         };
 
         ctx.analysis_results.insert(full_path, result);

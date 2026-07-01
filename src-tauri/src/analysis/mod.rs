@@ -63,6 +63,11 @@ pub struct AnalysisResult {
     pub flag:                 Option<PxFlag>,
     pub triggered_by:         Vec<String>,
 
+    /// True for the single frame selected as the session reference frame.
+    /// Selected by lowest fwhm × eccentricity product after Pass 2;
+    /// star_count used as tiebreaker. Authoritative on import.
+    pub is_reference:         bool,
+
     // Rejection category — only populated for REJECT frames.
     // One of: "O", "T", "B", "OT", "OB", "BT", "OBT"
     // O = Optical quality (FWHM/Eccentricity)
