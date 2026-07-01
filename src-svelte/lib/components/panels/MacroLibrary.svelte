@@ -288,7 +288,7 @@
         <div class="ml-item-middle">
           <div class="ml-item-actions">
             <button class="ml-action-btn" onclick={() => editMacro(macro)} title="Edit macro">Edit</button>
-            <button class="ml-action-btn" onclick={() => startRename(macro)} title="Rename macro">Rename</button>
+            <button class="ml-action-btn" onclick={(e) => { e.stopPropagation(); startRename(macro); }} title="Rename macro">Rename</button>
             <button class="ml-action-btn ml-delete-btn" onclick={() => requestDelete(macro)} title="Delete macro">Delete</button>
           </div>
         </div>
