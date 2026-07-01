@@ -365,8 +365,8 @@
       { label: 'Import Analysis Results', action: 'import-analysis-results' },
       { sep: true },
       { label: 'Stacking Workspace',      action: 'stacking-workspace' },
-      { sep: true },
-      { label: 'Contour Plot',            action: 'contour-plot' },
+      // { sep: true },
+      // { label: 'Contour Plot',            action: 'contour-plot' },
     ]},
     { name: 'Tools', items: [
       { label: 'Backup Database',  action: 'backup-database' },
