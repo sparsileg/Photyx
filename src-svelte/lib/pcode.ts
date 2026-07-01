@@ -121,7 +121,7 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   computeeccentricity: '',
   computefwhm:         '',
   contourheatmap:      'palette=[viridis|plasma|coolwarm]  contour_levels=#  threshold=  saturation=',
-  copyfile:            'destination=  source=',
+  copyfile:            'destination=  [source=]',
   copykeyword:         'from=  to=',
   countfiles:          '',
   countmatches:        'pattern=<glob>',
@@ -137,7 +137,7 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   floor:               '(#)',
   for:                 '<var> = N To M  |  <var> in "<glob>"',
   gethistogram:        '',
-  getkeyword:          'name=',
+  getkeyword:          'name=  [default=]',
   getsystempath:       'name=[downloads|documents|desktop|temp]',
   help:                '',
   if:                  '',
@@ -429,13 +429,14 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   getkeyword: {
     name:        'GetKeyword',
-    description: 'Retrieves a FITS keyword value from the current frame and stores it as a script variable. The variable name is the keyword name uppercased.',
-    syntax:      'GetKeyword name=<string>',
+    description: 'Retrieves a FITS keyword value from the current frame and stores it as a script variable. The variable name is the keyword name uppercased. If the keyword is not found and default= is given, the default value is stored instead of halting the script.',
+    syntax:      'GetKeyword name=<string> [default=<string>]',
     arguments: [
-      { name: 'name', type: 'string', required: true, description: 'Keyword name to retrieve' },
+      { name: 'name',    type: 'string', required: true,  description: 'Keyword name to retrieve' },
+      { name: 'default', type: 'string', required: false, description: 'Fallback value to use if the keyword is not found on the current frame, instead of halting the script (e.g. default="" or default="NULL"). Does not apply to no-frame-loaded or no-buffer errors.' },
     ],
     output:  'Stores the keyword value in $<NAME> (uppercase). Example: GetKeyword name=FILTER stores result in $FILTER.',
-    example: 'GetKeyword name=FILTER\nPrint $FILTER',
+    example: 'GetKeyword name=FILTER\nPrint $FILTER\n\nGetKeyword name=OBJECT default=""\nIf $OBJECT == ""\n  Print "OBJECT keyword not set"\nEndIf',
   },
 
   //    Analysis

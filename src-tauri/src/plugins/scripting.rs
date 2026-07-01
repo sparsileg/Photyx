@@ -17,7 +17,7 @@ pub struct GetKeyword;
 
 impl PhotonPlugin for GetKeyword {
     fn name(&self)        -> &str { "GetKeyword" }
-    fn version(&self)     -> &str { "1.0.0" }
+    fn version(&self)     -> &str { "1.1.0" }
     fn description(&self) -> &str { "Retrieves a FITS keyword value from the current frame into a script variable" }
 
     fn parameters(&self) -> Vec<ParamSpec> {
@@ -27,6 +27,15 @@ impl PhotonPlugin for GetKeyword {
                 param_type:  ParamType::String,
                 required:    true,
                 description: "Keyword name to retrieve".to_string(),
+                default:     None,
+            },
+            ParamSpec {
+                name:        "default".to_string(),
+                param_type:  ParamType::String,
+                required:    false,
+                description: "Fallback value to use if the keyword is not found on the current frame, \
+                              instead of halting the script (e.g. default=\"\" or default=\"NULL\"). \
+                              Does not apply to no-frame-loaded or no-buffer errors.".to_string(),
                 default:     None,
             },
         ]
@@ -48,13 +57,18 @@ impl PhotonPlugin for GetKeyword {
 
         let entry = buffer.keywords.iter()
             .find(|(k, _)| k.to_uppercase() == name)
-            .map(|(_, v)| v)
-            .ok_or_else(|| PluginError::new(
-                "NOT_FOUND",
-                &format!("GetKeyword: keyword '{}' not found in current frame", name),
-            ))?;
+            .map(|(_, v)| v);
 
-        let value = entry.value.trim().to_string();
+        let value = match entry {
+            Some(kw) => kw.value.trim().to_string(),
+            None => match args.get("default") {
+                Some(default) => default.clone(),
+                None => return Err(PluginError::new(
+                    "NOT_FOUND",
+                    &format!("GetKeyword: keyword '{}' not found in current frame", name),
+                )),
+            },
+        };
 
         ctx.variables.insert(name.clone(), value.clone());
 
@@ -157,6 +171,8 @@ impl PhotonPlugin for MoveFile {
         if ctx.current_frame >= ctx.file_list.len() && !ctx.file_list.is_empty() {
             ctx.current_frame = ctx.file_list.len() - 1;
         }
+
+        ctx.variables.insert("NEW_FILE".to_string(), dest_str.clone());
 
         tracing::info!("MoveFile: '{}' -> '{}'", src_path, dest_str);
         Ok(PluginOutput::Message(format!("Moved '{}' to '{}'", src_path, dest_str)))

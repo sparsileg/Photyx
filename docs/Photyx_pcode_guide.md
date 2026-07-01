@@ -16,9 +16,10 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
   - [Math functions](#math-functions)
   - [System-set variables](#system-set-variables)
 - [Flow Control](#flow-control)
-  - [Conditionals](#conditionals)
-  - [Loops — iterating over a numeric range](#loops--iterating-over-a-numeric-range)
-  - [Loops — iterating over all session files](#loops--iterating-over-all-session-files)
+    - [Conditionals](#conditionals)
+    - [Loops — iterating over a numeric range](#loops--iterating-over-a-numeric-range)
+    - [Loops — iterating over a glob pattern](#loops--iterating-over-a-glob-pattern)
+    - [Loops — iterating over all session files](#loops--iterating-over-all-session-files)
 - [Error Handling](#error-handling)
 - [Console Output](#console-output)
   - [Print](#print)
@@ -77,6 +78,8 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
     - [Set](#set)
     - [Print](#print-1)
     - [Assert](#assert)
+    - [CountMatches](#countmatches)
+    - [GetSystemPath](#getsystempath)
     - [RunMacro](#runmacro)
     - [Log](#log-1)
     - [If / Else / EndIf](#if--else--endif)
@@ -163,7 +166,7 @@ Set path = "/data/" + $target + "/lights"
 | Function    | Description              |
 | ----------- | ------------------------ |
 | `sqrt(x)`   | Square root              |
-| `abs(x)`    | Absolute value           |
+| `abs(x)`    | Absolute value            |
 | `round(x)`  | Round to nearest integer |
 | `floor(x)`  | Round down               |
 | `ceil(x)`   | Round up                 |
@@ -185,8 +188,10 @@ Several commands automatically store their results in variables.
 | `$eccentricity`  | `ComputeEccentricity`                        |
 | `$starcount`     | `CountStars`                                 |
 | `$filecount`     | `CountFiles`                                 |
+| `$matchcount`    | `CountMatches`                               |
 | `$NEW_FILE`      | `ContourHeatmap`, `CopyFile`, `MoveFile`     |
-| `$<KEYWORDNAME>` | `GetKeyword name=<KEYWORDNAME>` (uppercased) |
+| `$<KEYWORDNAME>` | `GetKeyword name=<KEYWORDNAME>` (uppercased; falls back to `default=` if given and the keyword is not found) |
+| `$<name>`        | `GetSystemPath name=<name>` (e.g. `name=downloads` stores `$downloads`) |
 
 Example — reading a keyword into a variable:
 
@@ -392,7 +397,7 @@ ReadImages path=<path>
 ```
 
 | Argument | Required | Description                 |
-| -------- | -------- | --------------------------- |
+| -------- | -------- | ---------------------------- |
 | `path`   | Yes      | Path to a file or directory |
 
 ```
@@ -417,7 +422,7 @@ ClearSession
 Loads a single file for temporary display without adding it to the session file list. Stores the path in `$LOAD_FILE_PATH`. This command is used from `File > Load Single Image`.
 
 | Argument | Required | Description       |
-| -------- | -------- | ----------------- |
+| -------- | -------- | ------------------ |
 | `path`   | Yes      | Full path to file |
 
 ```
@@ -446,7 +451,7 @@ FilterByKeyword name=<string> value=<string>
 ```
 
 | Argument | Required | Description                       |
-| -------- | -------- | --------------------------------- |
+| -------- | -------- | ---------------------------------- |
 | `name`   | Yes      | Keyword name to filter on         |
 | `value`  | Yes      | Value to match (case-insensitive) |
 
@@ -488,7 +493,7 @@ WriteFIT destination=<path> [overwrite=<bool>] [stack=<bool>]
 ```
 
 | Argument      | Required | Default | Description                                                                          |
-| ------------- | -------- | ------- | ------------------------------------------------------------------------------------ |
+| ------------- | -------- | ------- | -------------------------------------------------------------------------------------- |
 | `destination` | Yes      |         | Output directory (session frames) or file path (stack=true)                          |
 | `overwrite`   | No       | `false` | Overwrite existing files                                                             |
 | `stack`       | No       | `false` | Write the transient stack result as a single FITS file instead of all session frames |
@@ -520,7 +525,7 @@ WriteXISF destination=<path> [overwrite=<bool>] [compress=<bool>] [stack=<bool>]
 ```
 
 | Argument      | Required | Default | Description                                        |
-| ------------- | -------- | ------- | -------------------------------------------------- |
+| ------------- | -------- | ------- | ---------------------------------------------------- |
 | `destination` | Yes      |         | Directory to write files to                        |
 | `overwrite`   | No       | `false` | Overwrite existing files                           |
 | `compress`    | No       | `false` | Apply LZ4HC compression                            |
@@ -575,7 +580,7 @@ AddKeyword name=<string> value=<string> [comment=<string>] [scope=all|current]
 ```
 
 | Argument  | Required | Default | Description                     |
-| --------- | -------- | ------- | ------------------------------- |
+| --------- | -------- | ------- | -------------------------------- |
 | `name`    | Yes      |         | Keyword name (max 8 characters) |
 | `value`   | Yes      |         | Keyword value                   |
 | `comment` | No       |         | FITS comment                    |
@@ -632,17 +637,27 @@ CopyKeyword from=EXPTIME to=EXPOSURE
 
 #### `GetKeyword`
 
-Retrieves a FITS keyword value from the current frame and stores it in `$<NAME>` (uppercased).
+Retrieves a FITS keyword value from the current frame and stores it in `$<NAME>` (uppercased). If the keyword is not found and `default=` is given, the default value is stored instead of halting the script — useful for optional keywords that may be missing on older or third-party captures.
 
 ```
-GetKeyword name=<string>
+GetKeyword name=<string> [default=<string>]
 ```
+
+| Argument  | Required | Description                                                                                                                                                |
+| --------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`    | Yes      | Keyword name to retrieve                                                                                                                                  |
+| `default` | No       | Fallback value if the keyword is not found on the current frame, instead of halting the script (e.g. `default=""` or `default="NULL"`). Does not apply to no-frame-loaded errors. |
 
 **Side effect:** Stores result in `$<NAME>`. For example, `GetKeyword name=FILTER` stores the value in `$FILTER`.
 
 ```
 GetKeyword name=FILTER
 Print $FILTER
+
+GetKeyword name=OBJECT default=""
+If $OBJECT == ""
+  Print "OBJECT keyword not set"
+EndIf
 ```
 
 ---
@@ -670,7 +685,7 @@ AnalyzeFrames [profile=<string>]
 ```
 
 | Argument  | Required | Default | Description                                                                                                      |
-| --------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
+| --------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
 | `profile` | No       |         | Threshold profile name to use for this run. If omitted, uses the active profile set in Edit > Analysis Parameters. The active profile is not permanently changed. |
 
 ```
@@ -788,7 +803,7 @@ ContourHeatmap [palette=viridis|plasma|coolwarm] [contour_levels=<int>] [thresho
 ```
 
 | Argument         | Required | Default   | Description                       |
-| ---------------- | -------- | --------- | --------------------------------- |
+| ---------------- | -------- | --------- | ----------------------------------- |
 | `palette`        | No       | `viridis` | Color palette                     |
 | `contour_levels` | No       | `10`      | Number of contour levels          |
 | `threshold`      | No       |           | Outlier pixel rejection threshold |
@@ -813,7 +828,7 @@ AutoStretch [shadowClip=<float>] [targetBackground=<float>]
 ```
 
 | Argument           | Required | Default | Description                          |
-| ------------------ | -------- | ------- | ------------------------------------ |
+| ------------------ | -------- | ------- | -------------------------------------- |
 | `shadowClip`       | No       | `-2.8`  | Shadow clipping point in sigma units |
 | `targetBackground` | No       | `0.15`  | Target background level (0.0–1.0)    |
 
@@ -862,7 +877,7 @@ StackFrames [calibration_dir=<path>]
 ```
 
 | Argument          | Required | Description                             |
-| ----------------- | -------- | --------------------------------------- |
+| ----------------- | -------- | ----------------------------------------- |
 | `calibration_dir` | No       | Directory containing calibration frames |
 
 ```
@@ -946,7 +961,7 @@ BlinkSequence [fps=<float>]
 ```
 
 | Argument | Required | Default | Description       |
-| -------- | -------- | ------- | ----------------- |
+| -------- | -------- | ------- | ------------------- |
 | `fps`    | No       | `2.0`   | Frames per second |
 
 ```
@@ -1037,6 +1052,47 @@ Assert expression="$fwhm < 5.0"
 
 ---
 
+#### `CountMatches`
+
+Counts filesystem entries (files or directories) matching a glob pattern and stores the result in `$matchcount`. Useful for conditionally executing a block only when matching entries exist, without loading them into the session.
+
+```
+CountMatches pattern=<glob>
+```
+
+| Argument  | Required | Description                                                                            |
+| --------- | -------- | ------------------------------------------------------------------------------------- |
+| `pattern` | Yes      | Glob pattern to match. Supports `*`, `?`, and `[...]` wildcards anywhere in the path. |
+
+```
+CountMatches pattern="$project/*-duo-*"
+If $matchcount > 0
+  Print "Found " + $matchcount + " duo sessions"
+EndIf
+```
+
+---
+
+#### `GetSystemPath`
+
+Retrieves a well-known system directory path and stores it in a variable named after the requested path.
+
+```
+GetSystemPath name=<downloads|documents|desktop|temp>
+```
+
+| Argument | Required | Description                                                                                        |
+| -------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `name`   | Yes      | System path to retrieve: `downloads`, `documents`, `desktop`, or `temp`. Result stored in `$<name>`. |
+
+```
+GetSystemPath name=downloads
+Print $downloads
+ExportAnalysisReport path="$downloads/M82-Project-Analysis.json"
+```
+
+---
+
 #### `RunMacro`
 
 Executes a saved macro by name from the database.
@@ -1060,7 +1116,7 @@ Log path=<path> [append=<bool>]
 ```
 
 | Argument | Required | Default | Description                                |
-| -------- | -------- | ------- | ------------------------------------------ |
+| -------- | -------- | ------- | -------------------------------------------- |
 | `path`   | Yes      |         | Output file path                           |
 | `append` | No       | `false` | Append to existing file instead of erasing |
 
@@ -1103,12 +1159,12 @@ See [Flow Control](#flow-control) for full details and examples.
 These commands are available in the interactive console but have no effect inside a saved macro.
 
 | Command          | Description                                              |
-| ---------------- | -------------------------------------------------------- |
+| ---------------- | ---------------------------------------------------------- |
 | `Help`           | Opens help for a specific command, or lists all commands |
 | `Help <command>` | Shows syntax and examples for that command               |
 | `Clear`          | Clears the console output buffer                         |
-| `Version`        | Prints Photyx and pcode version information              |
-| `pwd`            | Lists unique source directories of all loaded files      |
+| `Version`        | Prints Photyx and pcode version information               |
+| `pwd`            | Lists unique source directories of all loaded files       |
 
 ---
 
@@ -1116,10 +1172,10 @@ These commands are available in the interactive console but have no effect insid
 
 The following commands remain valid for script compatibility but are no longer used in analysis. They are no-ops or stubs.
 
-| Command              | Notes                                                            |
-| -------------------- | ---------------------------------------------------------------- |
+| Command              | Notes                                                              |
+| -------------------- | ------------------------------------------------------------------- |
 | `BackgroundStdDev`   | Removed from analysis (r = 0.92–0.999 correlation with BgMedian) |
-| `BackgroundGradient` | Removed from analysis (session-dependent sign reversal)          |
+| `BackgroundGradient` | Removed from analysis (session-dependent sign reversal)           |
 
 ---
 
