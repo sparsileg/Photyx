@@ -109,6 +109,7 @@ impl PhotonPlugin for ComputeFWHM {
             ar.fwhm       = Some(result.fwhm_pixels);
             ar.star_count = Some(result.star_count as u32);
         }
+        ctx.variables.insert("fwhm".to_string(), result.fwhm_pixels.to_string());
 
         // ── Build response ────────────────────────────────────────────────────
         let message = match result.fwhm_arcsec {

@@ -56,6 +56,7 @@
     if (result.session_changed) {
       invoke<{ fileList: string[]; currentFrame: number }>('get_session').then(s => {
         session.setFileList(s.fileList);
+        session.setCurrentFrame(s.currentFrame);
       }).catch(e => {
         notifications.error(`Session sync failed: ${e}`);
       });

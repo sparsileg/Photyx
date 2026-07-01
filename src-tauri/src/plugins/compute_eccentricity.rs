@@ -105,6 +105,7 @@ impl PhotonPlugin for ComputeEccentricity {
             ar.eccentricity = Some(result.eccentricity);
             ar.star_count   = Some(result.star_count as u32);
         }
+        ctx.variables.insert("eccentricity".to_string(), result.eccentricity.to_string());
 
         // ── Build response ────────────────────────────────────────────────────
         let message = format!(

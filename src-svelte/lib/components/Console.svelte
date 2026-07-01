@@ -89,6 +89,15 @@
       }
     }
 
+    if (result.session_changed) {
+      invoke<{ fileList: string[]; currentFrame: number }>('get_session').then(s => {
+        session.setFileList(s.fileList);
+        session.setCurrentFrame(s.currentFrame);
+      }).catch(e => {
+        notifications.error(`Session sync failed: ${e}`);
+      });
+    }
+
     // Dispatch client actions
     for (const action of result.client_actions ?? []) {
       if (action === 'refresh_autostretch') {
@@ -238,14 +247,6 @@
       session.setCurrentFrame(0);
       session.update(s => ({ ...s, loadedImages: {} }));
       ui.clearViewer();
-    }
-    if (['addfiles', 'runmacro'].includes(cmd)) {
-      if (output) notifications.success(output);
-      invoke<{ fileList: string[]; currentFrame: number }>('get_session').then(s => {
-        session.setFileList(s.fileList);
-      }).catch(e => {
-        notifications.error(`Session sync failed: ${e}`);
-      });
     }
 
     if (data?.client_command) {

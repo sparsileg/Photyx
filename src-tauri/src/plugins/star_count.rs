@@ -130,6 +130,7 @@ impl PhotonPlugin for CountStarsPlugin {
             let result = ctx.analysis_result_for(&path);
             result.star_count = Some(count);
         }
+        ctx.variables.insert("starcount".to_string(), count.to_string());
 
         Ok(PluginOutput::Data(json!({
             "plugin":     "CountStars",

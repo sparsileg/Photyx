@@ -152,11 +152,26 @@ impl PhotonPlugin for MoveFile {
             Path::new(&dest_dir).to_path_buf()
         };
 
-        std::fs::rename(&src_path, &dest_path)
-            .map_err(|e| PluginError::new(
-                "IO_ERROR",
-                &format!("MoveFile: cannot move '{}' to '{}': {}", src_path, dest_path.display(), e),
-            ))?;
+        if let Err(rename_err) = std::fs::rename(&src_path, &dest_path) {
+            // rename() only works within a single filesystem. Fall back to
+            // copy + delete for cross-device moves (e.g. external drive -> local disk).
+            std::fs::copy(&src_path, &dest_path)
+                .map_err(|copy_err| PluginError::new(
+                    "IO_ERROR",
+                    &format!(
+                        "MoveFile: cannot move '{}' to '{}': rename failed ({}), copy fallback also failed ({})",
+                        src_path, dest_path.display(), rename_err, copy_err,
+                    ),
+                ))?;
+            std::fs::remove_file(&src_path)
+                .map_err(|e| PluginError::new(
+                    "IO_ERROR",
+                    &format!(
+                        "MoveFile: copied '{}' to '{}' but could not remove the original: {}",
+                        src_path, dest_path.display(), e,
+                    ),
+                ))?;
+        }
 
         let dest_str = dest_path.display().to_string();
 

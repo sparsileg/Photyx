@@ -146,7 +146,7 @@ pub struct ScriptResponse {
 
 // Commands that modify the session file list or active directory.
 const SESSION_COMMANDS: &[&str] = &[
-    "addfiles", "clearsession", "movefile", "runmacro",
+    "addfiles", "clearsession", "commitanalysis", "filterbykeyword", "movefile", "readimages", "runmacro", "setframe",
 ];
 
 // Commands that alter the pixel data currently displayed in the viewer.
@@ -275,6 +275,7 @@ pub fn run() {
     registry.register(Arc::new(plugins::debayer_image::DebayerImage));
     registry.register(Arc::new(plugins::export_analysis_report::ExportAnalysisReport));
     registry.register(Arc::new(plugins::fake_progress::FakeProgress));
+    registry.register(Arc::new(plugins::filter_by_keyword::FilterByKeyword));
     registry.register(Arc::new(plugins::get_histogram::GetHistogram));
     registry.register(Arc::new(plugins::keywords::AddKeyword));
     registry.register(Arc::new(plugins::keywords::CopyKeyword));
