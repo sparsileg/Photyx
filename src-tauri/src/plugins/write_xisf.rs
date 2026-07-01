@@ -134,7 +134,7 @@ fn write_stack_result(
 
     // Build suggested filename from stack_summary (§3.10)
     let filename = if let Some(summary) = &ctx.stack_summary {
-        let target    = summary.target.as_deref().unwrap_or("unknown").replace(' ', "_");
+        let target    = summary.target.as_deref().unwrap_or("unknown_object").replace(' ', "_");
         let filter    = summary.filter.as_deref().unwrap_or("nofilter").replace(' ', "_");
         let int_secs  = summary.integration_seconds.round() as u64;
         let timestamp = summary.completed_at

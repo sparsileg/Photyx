@@ -7,6 +7,7 @@
   import { session } from '../../stores/session';
   import { notifications } from '../../stores/notifications';
   import { pipeToConsole } from '../../stores/consoleHistory';
+  import { jobResult, jobOwner, progress } from '../../stores/progress';
   import { invoke } from '@tauri-apps/api/core';
   import { handleClientCommand } from '../../clientCommands';
   import { applyAutoStretch } from '../../commands';
@@ -135,70 +136,91 @@
   }
 
   // ── Run ───────────────────────────────────────────────────────────────────
+  let runningMacroRef = $state<MacroRow | null>(null);
+
   async function runMacro(macro: MacroRow) {
     if (running === macro.id) return;
     running = macro.id;
+    runningMacroRef = macro;
     notifications.running(`Running: ${macro.display_name}…`);
-    ui.closePanel();
+    jobOwner.set('macro-library');
+    progress.set({ label: '', current: 0, total: 0 });
     try {
-      const response = await invoke<{
-        results: Array<{ line_number: number; command: string; success: boolean; message: string | null; data: Record<string, unknown> | null }>;
-        session_changed: boolean;
-        display_changed: boolean;
-        client_actions:  string[];
-      }>('run_script', { script: `RunMacro name="${macro.name}"` });
-      let anyError = false;
-      let lastActionData: Record<string, unknown> | null = null;
-
-      for (const r of response.results) {
-        if (!r.success) {
-          notifications.error(`${r.command}: ${r.message ?? 'error'}`);
-          anyError = true;
-        } else if (r.message) {
-          r.message.split('\n').forEach(line => {
-            if (line) pipeToConsole(line, 'success');
-          });
-        }
-        if (r.data) lastActionData = r.data;
-      }
-      if (!anyError) {
-        notifications.success(`${macro.display_name} complete.`);
-        await db.incrementMacroRunCount(macro.id);
-      }
-      // Execute any client-only commands returned from the script
-      for (const r of response.results) {
-        if (r.success && r.data?.client_command) {
-          handleClientCommand(r.data.client_command as string);
-        }
-      }
-      if (response.session_changed) {
-        const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
-        session.setFileList(s.fileList);
-      }
-      // Dispatch client actions returned by Rust — no command-name matching needed
-      let autoStretched = false;
-      if (!Array.isArray(response.client_actions)) {
-        console.warn('MacroLibrary: client_actions was not an array:', response.client_actions, 'macro:', macro.name);
-      }
-      for (const action of response.client_actions ?? []) {
-        if (action === 'refresh_autostretch') {
-          const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
-          const targetBackground = lastActionData?.target_background as number | undefined;
-          await applyAutoStretch(shadowClip, targetBackground);
-          autoStretched = true;
-        }
-        if (action === 'refresh_annotations') ui.refreshAnnotations();
-        if (action === 'open_keyword_modal')  ui.openKeywordModal();
-      }
-      if (response.display_changed && !autoStretched && !annotationsRefreshed) {
-        ui.requestFrameRefresh();
-      }
+      await invoke('run_script', { script: `RunMacro name="${macro.name}"` });
+      // Result arrives asynchronously via the $effect watching jobResult
     } catch (e) {
       notifications.error(`Run failed: ${e}`);
-    } finally {
+      jobOwner.set(null);
       running = null;
+      runningMacroRef = null;
     }
   }
+
+  // Handle async job results addressed to the Macro Library
+  $effect(() => {
+    const result = $jobResult;
+    const owner  = $jobOwner;
+    if (!result || owner !== 'macro-library') return;
+
+    const macro = runningMacroRef;
+    let anyError = false;
+    let lastActionData: Record<string, unknown> | null = null;
+
+    for (const r of result.results) {
+      if (!r.success) {
+        notifications.error(`${r.command}: ${r.message ?? 'error'}`);
+        anyError = true;
+      } else if (r.message) {
+        r.message.split('\n').forEach(line => {
+          if (line) pipeToConsole(line, 'success');
+        });
+      }
+      if (r.data) lastActionData = r.data;
+      if (r.success && r.data?.client_command) {
+        handleClientCommand(r.data.client_command as string);
+      }
+    }
+
+    if (!anyError && macro) {
+      notifications.success(`${macro.display_name} complete.`);
+      db.incrementMacroRunCount(macro.id);
+    }
+
+    if (result.session_changed) {
+      invoke<{ fileList: string[]; currentFrame: number }>('get_session').then(s => {
+        session.setFileList(s.fileList);
+      });
+    }
+
+    // Dispatch client actions returned by Rust — no command-name matching needed
+    let autoStretched      = false;
+    let annotationsRefreshed = false;
+    if (!Array.isArray(result.client_actions)) {
+      console.warn('MacroLibrary: client_actions was not an array:', result.client_actions, 'macro:', macro?.name);
+    }
+    for (const action of result.client_actions ?? []) {
+      if (action === 'refresh_autostretch') {
+        const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
+        const targetBackground = lastActionData?.target_background as number | undefined;
+        applyAutoStretch(shadowClip, targetBackground);
+        autoStretched = true;
+      }
+      if (action === 'refresh_annotations') {
+        ui.refreshAnnotations();
+        annotationsRefreshed = true;
+      }
+      if (action === 'open_keyword_modal') ui.openKeywordModal();
+    }
+    if (result.display_changed && !autoStretched && !annotationsRefreshed) {
+      ui.requestFrameRefresh();
+    }
+
+    // Clear job state
+    running = null;
+    runningMacroRef = null;
+    jobResult.set(null);
+    jobOwner.set(null);
+  });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   function deriveName(displayName: string): string {
