@@ -44,45 +44,34 @@ impl PhotonPlugin for CacheFrames {
             return Err(PluginError::new("NO_FILES", "No files loaded. Use AddFiles first."));
         }
 
-        // ── Collect immutable snapshot of pixel data ──────────────────────────
-        // We extract what we need before parallel processing so we don't need
-        // to share &mut AppContext across threads.
-        struct FrameData {
-            path:   String,
-            src_w:  usize,
-            src_h:  usize,
-            pixels: PixelSnapshot,
+        // Clear target caches up front — chunks are processed and inserted
+        // incrementally below, so caches can't be bulk-replaced at the end
+        // the way the old single-pass version did.
+        for &(res_name, _) in resolutions {
+            match res_name {
+                "12" => ctx.blink_cache_12.clear(),
+                _    => ctx.blink_cache_25.clear(),
+            }
         }
 
-        enum PixelSnapshot {
-            U8(Vec<u8>),
-            U16(Vec<u16>),
-            F32(Vec<f32>),
-        }
+        let total     = ctx.file_list.len();
+        let chunk_len = crate::plugins::pixel_chunking::chunk_size(ctx);
+        let file_list = ctx.file_list.clone();
+        let mut cached_counts: std::collections::HashMap<&str, usize> =
+            resolutions.iter().map(|&(name, _)| (name, 0)).collect();
 
-        let frames: Vec<FrameData> = ctx.file_list.iter().filter_map(|path| {
-            let buf = ctx.image_buffers.get(path)?;
-            let pixels = buf.pixels.as_ref()?;
-            let snapshot = match pixels {
-                PixelData::U8(v)  => PixelSnapshot::U8(v.clone()),
-                PixelData::U16(v) => PixelSnapshot::U16(v.clone()),
-                PixelData::F32(v) => PixelSnapshot::F32(v.clone()),
-            };
-            Some(FrameData {
-                path:  path.clone(),
-                src_w: buf.width as usize,
-                src_h: buf.height as usize,
-                pixels: snapshot,
-            })
-        }).collect();
+        for path_chunk in file_list.chunks(chunk_len) {
+            // Sequential: clone this chunk's pixel data once, reused across
+            // every requested resolution below — avoids reloading pixels
+            // twice per chunk when resolution=both (the default), while
+            // still bounding peak memory to one chunk instead of the
+            // whole session.
+            let frames = crate::plugins::pixel_chunking::snapshot_pixel_chunk(ctx, path_chunk);
 
-        let total = frames.len();
-
-        // ── Process frames in parallel for each resolution ────────────────────
-        for &(res_name, max_w) in resolutions {
+            for &(res_name, max_w) in resolutions {
             let results: Vec<(String, Vec<u8>)> = frames.par_iter().filter_map(|frame| {
-                let src_w = frame.src_w;
-                let src_h = frame.src_h;
+                let src_w = frame.width;
+                let src_h = frame.height;
 
                 // Box filter downsampling — averages step×step block per output pixel
                 // Preserves fine detail (thin clouds, gradients) better than point sampling
@@ -99,7 +88,7 @@ impl PhotonPlugin for CacheFrames {
                 let mut display: Vec<f32> = Vec::with_capacity(pixel_count);
 
                 match &frame.pixels {
-                    PixelSnapshot::U16(v) => {
+                    PixelData::U16(v) => {
                         for oy in 0..disp_h {
                             for ox in 0..disp_w {
                                 let mut sum = 0u32;
@@ -118,7 +107,7 @@ impl PhotonPlugin for CacheFrames {
                             }
                         }
                     }
-                    PixelSnapshot::F32(v) => {
+                    PixelData::F32(v) => {
                         for oy in 0..disp_h {
                             for ox in 0..disp_w {
                                 let mut sum = 0.0f32;
@@ -137,7 +126,7 @@ impl PhotonPlugin for CacheFrames {
                             }
                         }
                     }
-                    PixelSnapshot::U8(v) => {
+                    PixelData::U8(v) => {
                         for oy in 0..disp_h {
                             for ox in 0..disp_w {
                                 let mut sum = 0u32;
@@ -185,24 +174,21 @@ impl PhotonPlugin for CacheFrames {
                 Some((frame.path.clone(), buf.into_inner()))
             }).collect();
 
-            // ── Store results ─────────────────────────────────────────────────────
-            let cached = results.len();
-            match res_name {
-                "12" => {
-                    ctx.blink_cache_12.clear();
-                    for (path, jpeg) in results {
-                        ctx.blink_cache_12.insert(path, jpeg);
-                    }
+                // ── Store this chunk's results ─────────────────────────────────
+                let n = results.len();
+                match res_name {
+                    "12" => { for (path, jpeg) in results { ctx.blink_cache_12.insert(path, jpeg); } }
+                    _    => { for (path, jpeg) in results { ctx.blink_cache_25.insert(path, jpeg); } }
                 }
-                _ => {
-                    ctx.blink_cache_25.clear();
-                    for (path, jpeg) in results {
-                        ctx.blink_cache_25.insert(path, jpeg);
-                    }
-                }
-            }
-            info!("CacheFrames: {}% resolution — {}/{} frames cached", res_name, cached, total);
-        } // end resolution loop
+                *cached_counts.get_mut(res_name).unwrap() += n;
+            } // end resolution loop
+            // This chunk's cloned pixel buffers (`frames`) drop here,
+            // before the next chunk is loaded.
+        } // end chunk loop
+
+        for &(res_name, _) in resolutions {
+            info!("CacheFrames: {}% resolution — {}/{} frames cached", res_name, cached_counts[&res_name], total);
+        }
 
         ctx.blink_cache_status = crate::context::BlinkCacheStatus::Ready;
         Ok(PluginOutput::Message(format!("Cached {}/{} frames at both resolutions", total, total)))

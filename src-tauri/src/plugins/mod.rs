@@ -21,6 +21,7 @@ pub mod get_histogram;
 pub mod image_reader;
 pub mod keywords;
 pub mod list_keywords;
+pub mod pixel_chunking;
 pub mod read_images;
 pub mod run_macro;
 pub mod scripting;

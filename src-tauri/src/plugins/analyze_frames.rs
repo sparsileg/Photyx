@@ -189,73 +189,76 @@ fn execute_all(
     let thresholds = ctx.analysis_thresholds.clone();
     ctx.analysis_results.clear();
 
-    struct FrameSnapshot {
-        path:     String,
-        width:    u32,
-        height:   u32,
-        channels: u8,
-        pixels:   crate::context::PixelData,
-        keywords: std::collections::HashMap<String, KeywordEntry>,
-    }
-
-    let snapshots: Vec<FrameSnapshot> = ctx.file_list.iter().filter_map(|path| {
-        let buf = ctx.image_buffers.get(path)?;
-        let pixels = buf.pixels.as_ref()?.clone();
-        Some(FrameSnapshot {
-            path:     path.clone(),
-            width:    buf.width,
-            height:   buf.height,
-            channels: buf.channels,
-            pixels,
-            keywords: buf.keywords.clone(),
-        })
-    }).collect();
-
-    let total = snapshots.len();
-    info!("AnalyzeFrames: Pass 1   computing metrics for {} frames", total);
+    let total = ctx.file_list.len();
+    info!("AnalyzeFrames: Pass 1 — computing metrics for {} frames", total);
 
     crate::set_progress("Analyzing", 0, total as u32);
 
     let det_config_ref = det_config;
-    let completed = std::sync::atomic::AtomicU32::new(0);
+    let completed  = std::sync::atomic::AtomicU32::new(0);
+    let chunk_len  = crate::plugins::pixel_chunking::chunk_size(ctx);
+    let file_list  = ctx.file_list.clone();
 
-    let par_results: Vec<Result<AnalysisResult, (String, String)>> = snapshots
-        .par_iter()
-        .map(|snap| {
-            let channels = snap.channels as usize;
-            let width    = snap.width as usize;
-            let height   = snap.height as usize;
+    let mut par_results: Vec<Result<AnalysisResult, (String, String)>> = Vec::with_capacity(total);
 
-            let luma      = analysis::to_luminance(&snap.pixels, channels);
-            let bg_config = BackgroundConfig::default();
-            let bg        = compute_background_metrics(&luma, width, height, &bg_config);
-            let stars     = detect_stars(&luma, width, height, det_config_ref);
-            let plate_scale   = derive_plate_scale(&snap.keywords);
-            let fwhm_result   = compute_fwhm(&stars, plate_scale);
-            let ecc_result    = compute_eccentricity(&stars);
-            let sw_result     = compute_signal_weight(&stars);
+    for path_chunk in file_list.chunks(chunk_len) {
+        // Sequential: clone pixel data for just this chunk before the
+        // parallel pass, bounding peak memory to one chunk instead of
+        // the whole session.
+        let snapshots = crate::plugins::pixel_chunking::snapshot_pixel_chunk(ctx, path_chunk);
 
-            let result = AnalysisResult {
-                filename:          snap.path.clone(),
-                background_median: Some(bg.median),
-                signal_weight:     sw_result.map(|r| r.signal_weight),
-                fwhm:              fwhm_result.as_ref().map(|r| r.fwhm_pixels),
-                eccentricity:      ecc_result.as_ref().map(|r| r.eccentricity),
-                star_count:        fwhm_result.as_ref().map(|r| r.star_count as u32)
-                    .or_else(|| ecc_result.as_ref().map(|r| r.star_count as u32))
-                    .or_else(|| Some(stars.len() as u32)),
-                flag: None,
-                triggered_by: vec![],
-                rejection_category: None,
-                is_reference: false,
-            };
+        // Keywords are small (needed for plate scale) — cloned per-frame
+        // here rather than folded into the shared pixel snapshot, since
+        // they aren't the memory concern the chunking is solving for.
+        let keywords_by_path: std::collections::HashMap<String, std::collections::HashMap<String, KeywordEntry>> =
+            path_chunk.iter().filter_map(|path| {
+                ctx.image_buffers.get(path).map(|buf| (path.clone(), buf.keywords.clone()))
+            }).collect();
 
-            info!("AnalyzeFrames: {}   done", short_name(&snap.path));
-            let n = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-            crate::set_progress("Analyzing", n, total as u32);
-            Ok(result)
-        })
-        .collect();
+        let chunk_results: Vec<Result<AnalysisResult, (String, String)>> = snapshots
+            .par_iter()
+            .map(|snap| {
+                let channels = snap.channels;
+                let width    = snap.width;
+                let height   = snap.height;
+
+                let luma      = analysis::to_luminance(&snap.pixels, channels);
+                let bg_config = BackgroundConfig::default();
+                let bg        = compute_background_metrics(&luma, width, height, &bg_config);
+                let stars     = detect_stars(&luma, width, height, det_config_ref);
+                let empty_keywords = std::collections::HashMap::new();
+                let keywords      = keywords_by_path.get(&snap.path).unwrap_or(&empty_keywords);
+                let plate_scale   = derive_plate_scale(keywords);
+                let fwhm_result   = compute_fwhm(&stars, plate_scale);
+                let ecc_result    = compute_eccentricity(&stars);
+                let sw_result     = compute_signal_weight(&stars);
+
+                let result = AnalysisResult {
+                    filename:          snap.path.clone(),
+                    background_median: Some(bg.median),
+                    signal_weight:     sw_result.map(|r| r.signal_weight),
+                    fwhm:              fwhm_result.as_ref().map(|r| r.fwhm_pixels),
+                    eccentricity:      ecc_result.as_ref().map(|r| r.eccentricity),
+                    star_count:        fwhm_result.as_ref().map(|r| r.star_count as u32)
+                        .or_else(|| ecc_result.as_ref().map(|r| r.star_count as u32))
+                        .or_else(|| Some(stars.len() as u32)),
+                    flag: None,
+                    triggered_by: vec![],
+                    rejection_category: None,
+                    is_reference: false,
+                };
+
+                info!("AnalyzeFrames: {} — done", short_name(&snap.path));
+                let n = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                crate::set_progress("Analyzing", n, total as u32);
+                Ok(result)
+            })
+            .collect();
+
+        par_results.extend(chunk_results);
+        // This chunk's cloned pixel buffers (`snapshots`) drop here,
+        // before the next chunk is loaded.
+    }
 
     crate::set_progress("", 0, 0);
 
