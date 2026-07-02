@@ -81,6 +81,6 @@ pub const OUTLIER_SIGMA_THRESHOLD:           f64  = 4.0;
 // findable and not scattered as magic numbers through the codebase.
 
 pub const DISPLAY_MAX_WIDTH_PX:        u32  = 1200;  // box-filter downsample ceiling
-pub const BLINK_JPEG_QUALITY:          u8   = 85;
-pub const DISPLAY_JPEG_QUALITY:        u8   = 92;
+pub const DETAIL_JPEG_QUALITY:         u8   = 90;    // full-res cache and display-resolution cache
+pub const THUMBNAIL_JPEG_QUALITY:      u8   = 75;    // blink caches (12.5% / 25%)
 pub const ALGORITHM_SET_VERSION:       i64  = 1;     // bump when any analysis algorithm changes

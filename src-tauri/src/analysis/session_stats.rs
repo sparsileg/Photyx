@@ -27,12 +27,16 @@ pub struct AnalysisThresholds {
 
 impl Default for AnalysisThresholds {
     fn default() -> Self {
+        use crate::settings::defaults::{
+            DEFAULT_BG_MEDIAN_SIGMA, DEFAULT_SIGNAL_WEIGHT_SIGMA, DEFAULT_FWHM_SIGMA,
+            DEFAULT_STAR_COUNT_SIGMA, DEFAULT_ECCENTRICITY_ABS,
+        };
         Self {
-            background_median:   MetricThresholds { reject: 2.5 },
-            signal_weight:       MetricThresholds { reject: 2.5 },
-            fwhm:                MetricThresholds { reject: 2.5 },
-            star_count:          MetricThresholds { reject: 3.0 },
-            eccentricity:        MetricThresholds { reject: 0.85 },
+            background_median:   MetricThresholds { reject: DEFAULT_BG_MEDIAN_SIGMA as f32 },
+            signal_weight:       MetricThresholds { reject: DEFAULT_SIGNAL_WEIGHT_SIGMA as f32 },
+            fwhm:                MetricThresholds { reject: DEFAULT_FWHM_SIGMA as f32 },
+            star_count:          MetricThresholds { reject: DEFAULT_STAR_COUNT_SIGMA as f32 },
+            eccentricity:        MetricThresholds { reject: DEFAULT_ECCENTRICITY_ABS as f32 },
         }
     }
 }

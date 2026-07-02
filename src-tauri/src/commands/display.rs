@@ -1,8 +1,10 @@
-// commands/display.rs — Image display and pixel data Tauri command handlers
+// commands/display.rs   Image display and pixel data Tauri command handlers
 
 use std::sync::Arc;
 use tauri::{Manager, State};
 use crate::PhotoxState;
+use image::codecs::jpeg::JpegEncoder;
+use crate::settings::defaults::{DETAIL_JPEG_QUALITY, THUMBNAIL_JPEG_QUALITY};
 
 #[tauri::command]
 pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {
@@ -55,7 +57,7 @@ pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, Strin
             let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
                 .ok_or_else(|| "Failed to create display image".to_string())?;
             let mut buf = std::io::Cursor::new(Vec::new());
-            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 90)
+            JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY)
                 .encode_image(&img)
                 .map_err(|e| e.to_string())?;
             use base64::Engine as _;
@@ -187,7 +189,7 @@ pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, Strin
     let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
         .ok_or_else(|| "Failed to create display image".to_string())?;
     let mut buf = std::io::Cursor::new(Vec::new());
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 85)
+    JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY)
         .encode_image(&img)
         .map_err(|e| e.to_string())?;
     use base64::Engine as _;
@@ -320,8 +322,7 @@ pub fn start_background_cache(
                         }
                         let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
                         let mut buf = std::io::Cursor::new(Vec::new());
-                        use image::codecs::jpeg::JpegEncoder;
-                        JpegEncoder::new_with_quality(&mut buf, 90).encode_image(&img).ok()?;
+                        JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY).encode_image(&img).ok()?;
                         return Some((path.clone(), buf.into_inner()));
                     }
                 }
@@ -425,8 +426,7 @@ pub fn start_background_cache(
 
                 let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
                 let mut buf = std::io::Cursor::new(Vec::new());
-                use image::codecs::jpeg::JpegEncoder;
-                JpegEncoder::new_with_quality(&mut buf, 85).encode_image(&img).ok()?;
+                JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY).encode_image(&img).ok()?;
                 Some((path.clone(), buf.into_inner()))
             }).collect()
         });
@@ -443,8 +443,7 @@ pub fn start_background_cache(
                     let target_h = (src_h as f32 * target_w as f32 / src_w as f32).round() as u32;
                     let resized = img.resize(target_w, target_h, image::imageops::FilterType::Triangle);
                     let mut buf = std::io::Cursor::new(Vec::new());
-                    use image::codecs::jpeg::JpegEncoder;
-                    JpegEncoder::new_with_quality(&mut buf, 75).encode_image(&resized).ok()?;
+                    JpegEncoder::new_with_quality(&mut buf, THUMBNAIL_JPEG_QUALITY).encode_image(&resized).ok()?;
                     Some((path.clone(), buf.into_inner()))
                 }).collect()
             });

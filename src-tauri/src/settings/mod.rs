@@ -30,8 +30,6 @@ impl ThresholdProfile {
             bg_median_reject_sigma:  DEFAULT_BG_MEDIAN_SIGMA,
             signal_weight_reject_sigma: DEFAULT_SIGNAL_WEIGHT_SIGMA,
             fwhm_reject_sigma:       DEFAULT_FWHM_SIGMA,
-            // Star count raised from -1.5 to -3.0: mild transparency events
-            // are better handled by SFS weighting than hard rejection.
             star_count_reject_sigma: DEFAULT_STAR_COUNT_SIGMA,
             eccentricity_reject_abs: DEFAULT_ECCENTRICITY_ABS,
         }
@@ -79,8 +77,6 @@ pub struct AppSettings {
 
     // ── Non-persisted runtime constants ──────────────────────────────
     pub display_max_width_px:        u32,
-    pub blink_jpeg_quality:          u8,
-    pub display_jpeg_quality:        u8,
     pub algorithm_set_version:       i64,
 }
 
@@ -108,8 +104,6 @@ impl AppSettings {
             active_threshold_profile_id:  None,
             threshold_profiles:           Vec::new(),
             display_max_width_px:         DISPLAY_MAX_WIDTH_PX,
-            blink_jpeg_quality:           BLINK_JPEG_QUALITY,
-            display_jpeg_quality:         DISPLAY_JPEG_QUALITY,
             algorithm_set_version:        ALGORITHM_SET_VERSION,
         }
     }
