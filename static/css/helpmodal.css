@@ -4,7 +4,7 @@
     position: fixed;
     top: 130px;
     left: 80px;
-    width: 520px;
+    width: min(90vw, 720px);
     max-height: 70vh;
     display: flex;
     flex-direction: column;
@@ -54,6 +54,7 @@
 .hm-body {
     flex: 1 1 auto;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 12px 14px;
     display: flex;
     flex-direction: column;
@@ -65,7 +66,7 @@
     color: var(--text-color);
     line-height: 1.6;
 }
-
+,
 .hm-section-label {
     font-size: 0.63rem;
     font-weight: 700;
@@ -82,12 +83,15 @@
     border: 1px solid var(--border-color);
     padding: 6px 10px;
     font-family: inherit;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 /* ── Arguments table ─────────────────────────────────────────────────────── */
 
 .hm-args-table {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     font-size: 0.69rem;
 }
@@ -114,26 +118,32 @@
     color: var(--primary-color);
     font-weight: 600;
     white-space: nowrap;
+    width: 24%;
 }
 
 .hm-arg-type {
     color: var(--text-secondary);
     white-space: nowrap;
+    width: 10%;
 }
 
 .hm-arg-req {
     color: var(--text-secondary);
     white-space: nowrap;
+    width: 9%;
 }
 
 .hm-arg-default {
     color: var(--text-secondary);
     white-space: nowrap;
+    width: 10%;
 }
 
 .hm-arg-desc {
     color: var(--text-color);
     line-height: 1.5;
+    overflow-wrap: anywhere;
+    width: 47%;
 }
 
 /* ── Output ──────────────────────────────────────────────────────────────── */
@@ -154,6 +164,7 @@
     padding: 8px 10px;
     margin: 0;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
     font-family: inherit;
     line-height: 1.6;
 }

@@ -1,7 +1,6 @@
-
 <!-- InfoPanel.svelte — Pixel tracking, metadata, histogram, blink. Spec §8.8 -->
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { currentImage, session } from '../stores/session';
   import { ui } from '../stores/ui';
@@ -184,6 +183,15 @@
     }
   }
 
+  let cachePollInterval: ReturnType<typeof setInterval> | null = null;
+
+  function stopCachePoll() {
+    if (cachePollInterval !== null) {
+      clearInterval(cachePollInterval);
+      cachePollInterval = null;
+    }
+  }
+
   async function ensureCached(): Promise<boolean> {
     if ($ui.blinkCached) return true;
     if ($ui.blinkCaching) return false;
@@ -196,10 +204,11 @@
     if (status === 'building') {
       notifications.info('Cache is being built in the background, please wait…');
       // Poll until complete then notify
-      const poll = setInterval(async () => {
+      stopCachePoll();
+      cachePollInterval = setInterval(async () => {
         const s = await invoke<string>('get_blink_cache_status');
         if (s === 'ready') {
-          clearInterval(poll);
+          stopCachePoll();
           ui.setBlinkCached(true);
           notifications.success('Caching complete. Ready for operation.');
         }
@@ -231,6 +240,11 @@
     if (blinkTimer) { clearTimeout(blinkTimer); blinkTimer = null; }
     // Do NOT clear blinkImageUrl — keep last blink frame visible
   }
+
+  onDestroy(() => {
+    pause();
+    stopCachePoll();
+  });
 
   async function stepBack() {
     if (blinkPlaying || frameCount === 0 || $ui.blinkCaching) return;

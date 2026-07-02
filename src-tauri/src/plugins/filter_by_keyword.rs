@@ -74,11 +74,7 @@ impl PhotonPlugin for FilterByKeyword {
         }
 
         for path in &removed {
-            ctx.image_buffers.remove(path);
-            ctx.display_cache.remove(path);
-            ctx.full_res_cache.remove(path);
-            ctx.blink_cache_12.remove(path);
-            ctx.blink_cache_25.remove(path);
+            ctx.remove_frame_data(path);
         }
 
         ctx.file_list = kept;

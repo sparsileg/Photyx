@@ -177,11 +177,7 @@ impl PhotonPlugin for MoveFile {
 
         // Only remove from session caches if it was a session file
         ctx.file_list.retain(|f| f != &src_path);
-        ctx.image_buffers.remove(&src_path);
-        ctx.display_cache.remove(&src_path);
-        ctx.full_res_cache.remove(&src_path);
-        ctx.blink_cache_12.remove(&src_path);
-        ctx.blink_cache_25.remove(&src_path);
+        ctx.remove_frame_data(&src_path);
 
         if ctx.current_frame >= ctx.file_list.len() && !ctx.file_list.is_empty() {
             ctx.current_frame = ctx.file_list.len() - 1;

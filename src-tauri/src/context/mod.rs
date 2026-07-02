@@ -254,6 +254,20 @@ impl AppContext {
         self.stack_summary = None;
     }
 
+    /// Remove all per-path cached/derived data for a single file: the raw
+    /// pixel buffer, all four display/blink caches, and any analysis result
+    /// or outlier flag for that path. Does not touch file_list — callers
+    /// are responsible for removing the path from file_list themselves.
+    pub fn remove_frame_data(&mut self, path: &str) {
+        self.image_buffers.remove(path);
+        self.display_cache.remove(path);
+        self.full_res_cache.remove(path);
+        self.blink_cache_12.remove(path);
+        self.blink_cache_25.remove(path);
+        self.analysis_results.remove(path);
+        self.outlier_frame_paths.remove(path);
+    }
+
     /// Remove rejected files from the session after a commit.
     /// Clears analysis results but leaves pass frames loaded.
     pub fn remove_rejected_files(&mut self, rejected_paths: &[String]) {
@@ -261,11 +275,7 @@ impl AppContext {
             rejected_paths.iter().map(|s| s.as_str()).collect();
         self.file_list.retain(|p| !reject_set.contains(p.as_str()));
         for path in rejected_paths {
-            self.image_buffers.remove(path);
-            self.display_cache.remove(path);
-            self.full_res_cache.remove(path);
-            self.blink_cache_12.remove(path);
-            self.blink_cache_25.remove(path);
+            self.remove_frame_data(path);
         }
         self.analysis_results.clear();
         self.outlier_frame_paths.clear();
@@ -274,6 +284,7 @@ impl AppContext {
         self.current_frame = 0;
         self.is_imported_session = false;
     }
+
 
 pub fn analysis_result_for(&mut self, path: &str) -> &mut crate::analysis::AnalysisResult {
         self.analysis_results
