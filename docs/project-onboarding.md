@@ -8,19 +8,21 @@ My name is Stan. I am the sole developer of Photyx. I will refer to myself in th
 
 Photyx is a high-performance desktop astrophotography application built with **Tauri v2 + Svelte + Rust**. It is emphatically **not** an Electron app and will never become one. The target stack is Tauri, period.
 
-The authoritative requirements document is `photyx_spec.md` . The implementation reference is `photyx_development.md` . The UI patterns reference is `photyx_ui_patterns.md`. Do not deviate from the spec or suggest technologies inconsistent with it. There may be other documents that I'll provide that may help you as well.
+The authoritative requirements document is `photyx_spec.md`. The implementation reference is `photyx_development.md`. The UI patterns reference is `photyx_ui_patterns.md`. Do not deviate from the spec or suggest technologies inconsistent with it. There may be other documents that I'll provide that may help you as well.
+
+### Project Status
+
+Photyx is in **release mode**. Active feature development has concluded. Expect minor UI adjustments and bug fixes only — do not propose or scope new features unless I explicitly raise one.
 
 ### Stack Summary
 
-Tauri v2 + Svelte 5 + TypeScript frontend; Rust backend with plugin registry; SQLite via rusqlite for all persistence. Linux dev (Ubuntu), Windows 11 target. Build: `npm run tauri dev`. CSS in `static/css/. Backend in src-tauri. Frontend in src-svelte.
+Tauri v2 + Svelte 5 + TypeScript frontend; Rust backend with plugin registry; SQLite via rusqlite for all persistence. Linux dev (Ubuntu), Windows 11 target. Build: `npm run tauri dev`. CSS in `static/css/`. Backend in `src-tauri`. Frontend in `src-svelte`.
 
 ### Architecture Overview
 
-- 7:18 PM
+Photyx is a desktop astrophotography frame analysis tool built on Tauri v2 (Rust backend, Svelte 5 frontend). The frontend communicates with the backend exclusively via Tauri `invoke()` calls. All backend operations are implemented as `PhotonPlugin` trait objects registered in a plugin registry and dispatched either interactively via the pcode console or programmatically via the script runner. Session state — file lists, raw pixel buffers, derived caches, and analysis results — lives in a single `AppContext` struct protected by a Mutex. Raw pixel buffers are loaded once and never modified; all display representations (display cache, full-res cache, blink caches) are derived JPEG copies. Frame quality analysis runs in parallel via Rayon, computing five metrics per frame, then classifies each frame as PASS or REJECT using iterative sigma clipping against session statistics. Results are written back to source files as PXFLAG keywords. The frontend is organized around a viewer region managed by a view registry (`ui.showView()`), a pcode console, sliding side panels, and a Quick Launch bar. All persistence is via SQLite through `rusqlite`. Supported formats are FITS (via cfitsio), XISF (via the custom `photyx-xisf` crate), and TIFF.
 
-  ## Claude responded: Photyx is a desktop astrophotography frame analysis tool built on Tauri v2 (Rust backend, Svelte 5 frontend).
-
-  Photyx is a desktop astrophotography frame analysis tool built on Tauri v2 (Rust backend, Svelte 5 frontend). The frontend communicates with the backend exclusively via Tauri `invoke()` calls. All backend operations are implemented as `PhotonPlugin` trait objects registered in a plugin registry and dispatched either interactively via the pcode console or programmatically via the script runner. Session state — file lists, raw pixel buffers, derived caches, and analysis results — lives in a single `AppContext` struct protected by a Mutex. Raw pixel buffers are loaded once and never modified; all display representations (display cache, full-res cache, blink caches) are derived JPEG copies. Frame quality analysis runs in parallel via Rayon, computing five metrics per frame, then classifies each frame as PASS or REJECT using iterative sigma clipping against session statistics. Results are written back to source files as PXFLAG keywords. The frontend is organized around a viewer region managed by a view registry (`ui.showView()`), a pcode console, sliding side panels, and a Quick Launch bar. All persistence is via SQLite through `rusqlite`. Supported formats are FITS (via cfitsio), XISF (via the custom `photyx-xisf` crate), and TIFF.
+Because `AppContext` is behind a single Mutex, any long-running plugin holding `&mut AppContext` blocks all other Tauri commands — including frame display — for its duration. This constraint has shaped several design decisions and is worth keeping in mind before proposing anything long-running that touches shared state.
 
 #### Development Environment
 
@@ -28,8 +30,7 @@ Tauri v2 + Svelte 5 + TypeScript frontend; Rust backend with plugin registry; SQ
 - **Frontend:** Svelte + TypeScript in `src-svelte/`
 - **Backend:** Rust in `src-tauri/`
 - **Build tool:** Vite (hot-reloads `.svelte` and `.ts` files instantly; CSS in `static/` requires manual browser refresh; Rust changes require a full recompile)
-- **Version control:** GitHub Desktop, committing at milestones
-- **vcpkg** installed on `J:\` for cfitsio
+- **Version control:** GitKraken, committing at milestones
 
 #### How I Want Code Changes Delivered
 
@@ -42,10 +43,8 @@ Once I say proceed, deliver **one change at a time** using BEFORE/AFTER blocks:
 - **Always state the full file path** before each BEFORE/AFTER pair.
 - For large multi-file changes, recommend (or I will ask for) a **complete file replacement** that I can download.
 - Never combine multiple file changes into a single BEFORE/AFTER block.
-- Always deliver one BEFORE/AFTER block at a time. Don't proceed until I
-  explictly tell you to do so.
-- After a significant change or module has been done, pause and give me a
-  test that I can do to verify that everything is working as expected.
+- Always deliver one BEFORE/AFTER block at a time. Don't proceed until I explicitly tell you to do so.
+- After a significant change or module has been done, pause and give me a test that I can do to verify that everything is working as expected.
 
 #### When a Complete File Replacement Is Appropriate
 
@@ -61,6 +60,10 @@ Once I say proceed, deliver **one change at a time** using BEFORE/AFTER blocks:
 - Never write code speculatively. If the design isn't settled, keep discussing.
 - Ask clarifying questions one at a time — don't pile up multiple questions unless they're tightly related.
 - When I give short answers, accept them and move on. Don't re-ask or over-explain.
+
+**No-guessing rule:**
+
+- Never write code referencing types, function signatures, or field names without having directly viewed the relevant source file first. I will call out violations immediately.
 
 **Spec adherence:**
 
@@ -112,19 +115,19 @@ Once I say proceed, deliver **one change at a time** using BEFORE/AFTER blocks:
 #### What We Do Not Do
 
 - Generally, do not do temporary hacks to get around a problem with the hope that a better solution will occur later.
-- No `window.confirm()` or `window.prompt()` for anything destructive — inline UI patterns only
-- No hardcoded fake data in panels (Macro Library, Plugin Manager, etc. — everything must come from real data sources)
-- No individual boolean flags for viewer-region visibility — use `ui.showView()`
+- No `window.confirm()` or `window.prompt()` for anything destructive — inline UI patterns only.
+- No hardcoded fake data in panels (Macro Library, Plugin Manager, etc. — everything must come from real data sources).
+- No individual boolean flags for viewer-region visibility — use `ui.showView()`.
 
 ### Reference Table
 
-| Topic                        | Document                          |
-| ---------------------------- | --------------------------------- |
-| Full requirements            | `photyx_spec.md`                  |
-| Implementation details       | `photyx_development.md`           |
-| UI patterns & rules          | `photyx_ui_patterns.md`           |
-| Commands, keywords, settings | `photyx_reference.md`             |
-| Stacking implementation      | `stacking_development.md`         |
-| DB schema & persistence      | `photyx_persistence_inventory.md` |
-| Plugin status table          | `photyx_reference.md`             |
-| CSS variables                | `photyx_ui_patterns.md`           |
+| Topic                         | Document                          |
+| ------------------------------ | ---------------------------------- |
+| Full requirements              | `photyx_spec.md`                   |
+| Implementation details         | `photyx_development.md`            |
+| UI patterns & rules            | `photyx_ui_patterns.md`            |
+| CSS variables                  | `photyx_ui_patterns.md`            |
+| Commands, keywords, settings   | `photyx_reference.md`              |
+| Plugin status table            | `photyx_reference.md`              |
+| Stacking implementation        | `stacking_development.md`          |
+| DB schema & persistence        | `photyx_persistence_inventory.md`  |
