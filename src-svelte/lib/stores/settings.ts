@@ -4,7 +4,7 @@
 // and calls savePreferences() on OK/Apply to write back.
 
 import { writable } from 'svelte/store';
-import { invoke } from '@tauri-apps/api/core';
+import { db } from '../db';
 import {
   DEFAULT_FONT_SIZE,
   JPEG_QUALITY_DEFAULT,
@@ -78,9 +78,7 @@ function createSettingsStore() {
     async savePreferences(changed: Partial<AppPreferences>): Promise<void> {
       const calls: Promise<void>[] = [];
       for (const [key, value] of Object.entries(changed)) {
-        calls.push(
-          invoke<void>('set_preference', { key, value: String(value) })
-        );
+        calls.push(db.setPreference(key, String(value)));
       }
       await Promise.all(calls);
       update(s => ({ ...s, ...changed }));

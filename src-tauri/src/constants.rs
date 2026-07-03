@@ -5,7 +5,6 @@
 pub const PROTECTED_THRESHOLD_PROFILES: &[&str] = &[
     "Default",
     "Project",
-    "Session",
 ];
 
 /// Forces GDK_BACKEND=x11 on Linux at startup, working around a

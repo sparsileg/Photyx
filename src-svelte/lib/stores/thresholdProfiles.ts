@@ -1,21 +1,10 @@
 // stores/thresholdProfiles.ts — Threshold profile store.
-// Hydrated at startup from get_threshold_profiles and
-// get_active_threshold_profile_id. Writes go through
-// save_threshold_profile, delete_threshold_profile, and
-// set_active_threshold_profile via Tauri commands.
+// Hydrated at startup from db.getThresholdProfiles() and
+// db.getActiveThresholdProfileId(). Writes go through
+// db.saveThresholdProfile(), db.deleteThresholdProfile(), and
+// db.setActiveThresholdProfile().
 import { writable } from 'svelte/store';
-import { invoke } from '@tauri-apps/api/core';
-
-export interface ThresholdProfile {
-  id:                         number;
-  name:                       string;
-  description:                string | null;
-  bg_median_reject_sigma:     number;
-  signal_weight_reject_sigma: number;
-  fwhm_reject_sigma:          number;
-  star_count_reject_sigma:    number;
-  eccentricity_reject_abs:    number;
-}
+import { db, type ThresholdProfile } from '../db';
 
 export interface ThresholdProfilesState {
   profiles:        ThresholdProfile[];
@@ -34,8 +23,8 @@ function createThresholdProfilesStore() {
     // Called from +page.svelte onMount after Tauri is ready.
     async hydrate(): Promise<void> {
       const [profiles, activeProfileId] = await Promise.all([
-        invoke<ThresholdProfile[]>('get_threshold_profiles'),
-        invoke<number | null>('get_active_threshold_profile_id'),
+        db.getThresholdProfiles(),
+        db.getActiveThresholdProfileId(),
       ]);
       set({ profiles, activeProfileId });
     },
@@ -43,7 +32,7 @@ function createThresholdProfilesStore() {
     // Save a new or existing profile. Returns the saved profile with its
     // DB-assigned id. Caller is responsible for updating the draft.
     async saveProfile(profile: ThresholdProfile): Promise<ThresholdProfile> {
-      const saved = await invoke<ThresholdProfile>('save_threshold_profile', { profile });
+      const saved = await db.saveThresholdProfile(profile);
       update(s => {
         const exists = s.profiles.some(p => p.id === saved.id);
         const profiles = exists
@@ -58,7 +47,7 @@ function createThresholdProfilesStore() {
     // profile is deleted and returns the updated list implicitly via
     // a subsequent hydrate — we re-hydrate after delete to stay in sync.
     async deleteProfile(id: number): Promise<void> {
-      await invoke<void>('delete_threshold_profile', { id });
+      await db.deleteThresholdProfile(id);
       // Re-hydrate to pick up any re-seeded Default profile and
       // updated active_threshold_profile_id from the backend.
       await this.hydrate();
@@ -66,7 +55,7 @@ function createThresholdProfilesStore() {
 
     // Persist the active profile selection (called on OK/Apply).
     async setActiveProfile(id: number): Promise<void> {
-      await invoke<void>('set_active_threshold_profile', { id });
+      await db.setActiveThresholdProfile(id);
       update(s => ({ ...s, activeProfileId: id }));
     },
   };

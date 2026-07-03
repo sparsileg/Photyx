@@ -202,7 +202,7 @@
       return true;
     }
     if (status === 'building') {
-      notifications.info('Cache is being built in the background, please wait…');
+      notifications.running('Cache is being built in the background, please wait…');
       // Poll until complete then notify
       stopCachePoll();
       cachePollInterval = setInterval(async () => {

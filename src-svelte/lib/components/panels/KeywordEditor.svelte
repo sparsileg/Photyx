@@ -6,10 +6,16 @@
   import { notifications } from '../../stores/notifications';
 
   // ── State ────────────────────────────────────────────────────────────────
-  let selectedKw    = $state<string | null>(null);
-  let editingCell   = $state<{ kw: string; field: 'name' | 'value' | 'comment' } | null>(null);
-  let editingValue  = $state('');
-  let saving        = $state(false);
+  let selectedKw       = $state<string | null>(null);
+  let editingCell      = $state<{ kw: string; field: 'name' | 'value' | 'comment' } | null>(null);
+  let editingValue     = $state('');
+  let saving           = $state(false);
+  let confirmingDelete = $state<string | null>(null);
+  let addingRow        = $state(false);
+  let newName          = $state('');
+  let newValue         = $state('');
+  let newComment       = $state('');
+  let newNameError     = $state('');
 
   // ── Sorted keyword list ──────────────────────────────────────────────────
   let keywords = $derived(
@@ -110,43 +116,77 @@
   }
 
   // ── Add keyword ──────────────────────────────────────────────────────────
-  async function addKeyword() {
-    let name = window.prompt('Keyword name:')?.trim().toUpperCase();
-    if (!name) return;
+  function startAddRow() {
+    addingRow    = true;
+    newName      = '';
+    newValue     = '';
+    newComment   = '';
+    newNameError = '';
+  }
+
+  function cancelAddRow() {
+    addingRow    = false;
+    newName      = '';
+    newValue     = '';
+    newComment   = '';
+    newNameError = '';
+  }
+
+  async function commitAddRow() {
+    const name = newName.trim().toUpperCase();
+    if (!name) {
+      newNameError = 'Name is required.';
+      return;
+    }
     if (name.length > 8) {
-      notifications.warning(`Keyword name must be 8 characters or less. "${name}" has ${name.length}.`);
+      newNameError = `Must be 8 characters or less (has ${name.length}).`;
       return;
     }
     if (!/^[A-Z0-9_-]+$/.test(name)) {
-      notifications.warning('Keyword name may only contain letters, digits, hyphens, and underscores.');
+      newNameError = 'Letters, digits, hyphens, and underscores only.';
       return;
     }
-    const rawValue = window.prompt('Keyword value:')?.trim() ?? '';
-    const rawComment = window.prompt('Comment (optional):')?.trim() ?? '';
-    const { value, comment } = validateAndTruncate(rawValue, rawComment);
+    const { value, comment } = validateAndTruncate(newValue.trim(), newComment.trim());
     try {
       await invoke('dispatch_command', {
         request: { command: 'AddKeyword', args: { name, value, comment, scope: 'current' } }
       });
       await reload();
       notifications.success(`Added: ${name}`);
+      cancelAddRow();
     } catch (e) {
       notifications.error(`Add failed: ${e}`);
     }
   }
 
+  function onAddKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Enter')  { e.preventDefault(); commitAddRow(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancelAddRow(); }
+  }
+
   // ── Delete keyword ───────────────────────────────────────────────────────
-  async function deleteKeyword() {
+  function startDelete() {
     if (!selectedKw) { notifications.warning('Select a keyword to delete.'); return; }
-    const name = selectedKw;
+    confirmingDelete = selectedKw;
+  }
+
+  function cancelDelete() {
+    confirmingDelete = null;
+  }
+
+  async function confirmDeleteKeyword() {
+    if (!confirmingDelete) return;
+    const name = confirmingDelete;
     try {
       await invoke('dispatch_command', {
         request: { command: 'DeleteKeyword', args: { name, scope: 'current' } }
       });
       selectedKw = null;
+      confirmingDelete = null;
       await reload();
       notifications.success(`Deleted: ${name}`);
     } catch (e) {
+      confirmingDelete = null;
       notifications.error(`Delete failed: ${e}`);
     }
   }
@@ -180,13 +220,21 @@
   </div>
 
   <div class="kw-actions">
-    <button class="kw-btn" onclick={addKeyword}>+ Add</button>
-    <button class="kw-btn" onclick={deleteKeyword} disabled={!selectedKw}>− Delete</button>
+    <button class="kw-btn" onclick={startAddRow} disabled={addingRow}>+ Add</button>
+    <button class="kw-btn" onclick={startDelete} disabled={!selectedKw}>− Delete</button>
     <button class="kw-btn" onclick={reload}>⟳ Reload</button>
     <button class="kw-btn kw-btn-write" onclick={writeChanges} disabled={saving}>
       {saving ? '◌ Writing…' : '💾 Write Changes'}
     </button>
   </div>
+
+  {#if confirmingDelete}
+    <div class="kw-confirm-bar" onclick={(e) => e.stopPropagation()}>
+      <span>Delete {confirmingDelete}? This cannot be undone.</span>
+      <button class="kw-confirm-yes" onclick={(e) => { e.stopPropagation(); confirmDeleteKeyword(); }}>Delete</button>
+      <button class="kw-confirm-no"  onclick={(e) => { e.stopPropagation(); cancelDelete(); }}>Cancel</button>
+    </div>
+  {/if}
 
   <div class="panel-body" style="padding: 0;">
     <table class="keyword-table">
@@ -198,9 +246,46 @@
         </tr>
       </thead>
       <tbody>
+        {#if addingRow}
+          <tr class="kw-add-row">
+            <td class="kw-name">
+              <input
+                class="kw-input"
+                placeholder="NAME"
+                maxlength="8"
+                bind:value={newName}
+                onkeydown={onAddKeyDown}
+                autofocus
+              />
+              {#if newNameError}
+                <div class="kw-add-error">{newNameError}</div>
+              {/if}
+            </td>
+            <td class="kw-value">
+              <input
+                class="kw-input"
+                placeholder="value"
+                bind:value={newValue}
+                onkeydown={onAddKeyDown}
+              />
+            </td>
+            <td class="kw-comment">
+              <div class="kw-add-comment-wrap">
+                <input
+                  class="kw-input"
+                  placeholder="comment (optional)"
+                  bind:value={newComment}
+                  onkeydown={onAddKeyDown}
+                />
+                <button class="kw-add-confirm" title="Add keyword" onclick={commitAddRow}>✓</button>
+                <button class="kw-add-cancel"  title="Cancel" onclick={cancelAddRow}>✕</button>
+              </div>
+            </td>
+          </tr>
+        {/if}
         {#if !$currentImage}
           <tr><td colspan="3" class="kw-empty">No image loaded</td></tr>
-        {:else if keywords.length === 0}
+        {:else if keywords.length === 0 && !addingRow}
           <tr><td colspan="3" class="kw-empty">No keywords</td></tr>
         {:else}
           {#each keywords as kw}

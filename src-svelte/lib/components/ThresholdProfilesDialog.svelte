@@ -2,7 +2,8 @@
 <!-- Manages threshold profiles for AnalyzeFrames. -->
 
 <script lang="ts">
-  import { thresholdProfiles, type ThresholdProfile } from '../stores/thresholdProfiles';
+  import { thresholdProfiles } from '../stores/thresholdProfiles';
+  import type { ThresholdProfile } from '../db';
   import { notifications } from '../stores/notifications';
   import Dropdown from './Dropdown.svelte';
   import {
