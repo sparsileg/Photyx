@@ -173,13 +173,3 @@
     white-space: nowrap;
     letter-spacing: 0.05em;
 }
-
-/* ── Autocrop preview overlay ────────────────────────────────────────────── */
-
-#sw-crop-overlay {
-    position: absolute;
-    pointer-events: none;
-    border: 2px solid var(--primary-color);
-    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
-    z-index: 10;
-}

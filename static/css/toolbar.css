@@ -157,22 +157,22 @@
 .ql-context-menu {
     position: fixed;
     z-index: 1000;
-    background: #1a1a1a;
-    border: 1px solid #555;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     padding: 4px 0;
     min-width: 180px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.8);
 }
 
-
 .ql-context-item {
     padding: 6px 14px;
     font-size: 0.81rem;
     cursor: pointer;
-    color: var(--panel-fg);
+    color: var(--text-color);
 }
-.ql-context-item:hover { background: var(--btn-hover-bg); }
+
+.ql-context-item:hover { background: var(--card-hover); }
 .ql-context-remove { color: var(--error-fg, #ff6666); }
 .ql-context-remove:hover { background: var(--error-bg, #2a1010); }
 
@@ -193,26 +193,6 @@
     background: var(--card-hover);
     color: var(--primary-color);
     border-color: var(--primary-color);
-}
-
-#ql-toggle {
-    flex: 0 0 40px;
-    width: 40px;
-    height: 34px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.69rem;
-    color: var(--text-secondary);
-    cursor: pointer;
-    user-select: none;
-    position: absolute;
-    left: 0;
-    border-right: 1px solid var(--border-color);
-}
-
-#ql-toggle:hover {
-    color: var(--primary-color);
 }
 
 /* ── Stretch sliders ────────────────────────────────────────────────────── */

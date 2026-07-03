@@ -188,16 +188,6 @@
     color: var(--text-secondary);
 }
 
-#fps-slider {
-    width: 80px;
-    accent-color: var(--primary-color);
-}
-
-#fps-display {
-    color: var(--primary-color);
-    min-width: 30px;
-}
-
 /* ── Blink settings ─────────────────────────────────────────────────────── */
 
 .blink-settings {

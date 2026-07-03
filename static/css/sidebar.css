@@ -265,65 +265,99 @@
     border-color: var(--primary-color);
 }
 
-/* ── Macro editor panel ─────────────────────────────────────────────────── */
-
-.macro-editor-wrap {
+.kw-confirm-bar {
     display: flex;
-    flex-direction: column;
-    height: 100%;
-    gap: 6px;
-    padding: 6px;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    margin-top: 4px;
+    background: rgba(255, 0, 0, 0.08);
+    border: 1px solid var(--error-color);
+    font-size: 0.69rem;
+    color: var(--error-color);
 }
 
-.macro-editor-toolbar {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
+.kw-confirm-bar span {
+    flex: 1;
 }
 
-.macro-btn {
-    padding: 3px 8px;
+.kw-confirm-yes {
+    background: none;
+    border: 1px solid var(--error-color);
+    color: var(--error-color);
     font-size: 0.63rem;
-    font-family: inherit;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+
+.kw-confirm-yes:hover {
+    background: var(--error-color);
+    color: #000;
+}
+
+.kw-confirm-no {
+    background: none;
+    border: 1px solid var(--text-secondary);
+    color: var(--text-secondary);
+    font-size: 0.63rem;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+
+.kw-confirm-no:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.kw-add-row td {
+    padding: 3px 4px;
+}
+
+.kw-add-error {
+    color: var(--error-color);
+    font-size: 0.63rem;
+    margin-top: 2px;
+}
+
+.kw-add-comment-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.kw-add-comment-wrap .kw-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.kw-add-confirm,
+.kw-add-cancel {
+    flex-shrink: 0;
+    background: none;
+    font-size: 0.75rem;
+    padding: 1px 6px;
     cursor: pointer;
     border: 1px solid var(--border-color);
-    background: var(--card-bg);
-    color: var(--text-secondary);
-    white-space: nowrap;
 }
 
-.macro-btn:hover {
-    color: var(--primary-color);
-    border-color: var(--primary-color);
-}
-
-.macro-btn.run-btn {
-    color: var(--success-color);
+.kw-add-confirm {
     border-color: var(--success-color);
+    color: var(--success-color);
 }
 
-.macro-btn.run-btn:hover {
+.kw-add-confirm:hover {
     background: var(--success-color);
-    color: var(--primary-text);
+    color: #000;
 }
 
-#macro-textarea {
-    flex: 1;
-    font-family: inherit;
-    font-size: 1.2rem;
-    line-height: 1.6;
-    resize: none;
-    outline: none;
-    border: 1px solid var(--border-color);
-    background: var(--input-bg);
-    color: var(--text-color);
-    padding: 8px;
-    tab-size: 4;
+.kw-add-cancel {
+    border-color: var(--text-secondary);
+    color: var(--text-secondary);
 }
 
-#macro-textarea:focus {
+.kw-add-cancel:hover {
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px var(--focus-ring);
+    color: var(--primary-color);
 }
 
 /* ── Macro library panel (dynamic) ─────────────────────────────────────── */
