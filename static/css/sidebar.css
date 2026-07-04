@@ -142,22 +142,9 @@
     border-left: 2px solid var(--primary-color);
 }
 
-.file-icon {
-    font-size: 0.63rem;
-    color: var(--text-secondary);
-    flex: 0 0 auto;
-}
-
 .file-name {
     flex: 1;
     white-space: nowrap;
-}
-
-.file-ext {
-    font-size: 0.56rem;
-    color: var(--text-secondary);
-    padding: 1px 4px;
-    border: 1px solid var(--border-color);
 }
 
 /* ── Keyword editor panel ───────────────────────────────────────────────── */
@@ -434,14 +421,6 @@
     flex-shrink: 0;
 }
 
-.ml-filename {
-    font-size: 0.63rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 .ml-item-actions {
     display: flex;
     gap: 4px;
@@ -555,30 +534,6 @@
 
 /* ── Plugin manager panel ───────────────────────────────────────────────── */
 
-.macro-lib-item {
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border-color-light);
-    cursor: pointer;
-}
-
-.macro-lib-item:hover {
-    background: var(--card-hover);
-}
-
-.macro-lib-name {
-    font-size: 0.69rem;
-    color: var(--primary-color);
-    font-weight: 600;
-}
-
-.macro-lib-desc {
-    font-size: 0.63rem;
-    color: var(--text-secondary);
-    margin-top: 2px;
-}
-
-/* ── Plugin manager panel ───────────────────────────────────────────────── */
-
 .plugin-item {
     padding: 6px 8px;
     border-bottom: 1px solid var(--border-color-light);
@@ -616,59 +571,4 @@
     font-size: 0.63rem;
     color: var(--text-secondary);
     margin-top: 2px;
-}
-
-/* ── File browser controls (format filter + load button) ── */
-
-.file-browser-controls {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.format-filter-select {
-    font-family: inherit;
-    font-size: 0.63rem;
-    padding: 2px 4px;
-    border: 1px solid var(--border-color);
-    background: var(--card-bg);
-    color: var(--text-secondary);
-    cursor: pointer;
-    outline: none;
-    width: 136px;
-}
-
-.format-filter-select .dropdown-trigger {
-    min-width: unset;
-    width: 130px;
-    padding: 2px 4px;
-    box-sizing: border-box;
-    overflow: hidden;
-}
-
-.format-filter-select:focus {
-    border-color: var(--primary-color);
-}
-
-.load-btn {
-    flex: 0 0 auto;
-    font-size: 0.63rem;
-    font-family: inherit;
-    padding: 2px 10px;
-    cursor: pointer;
-    border: 1px solid var(--success-color);
-    background: var(--card-bg);
-    color: var(--success-color);
-}
-
-.load-btn:hover:not(:disabled) {
-    background: var(--success-color);
-    color: var(--primary-text);
-}
-
-.load-btn:disabled {
-    opacity: 0.4;
-    cursor: default;
 }

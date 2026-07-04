@@ -40,45 +40,7 @@ body {
   color: var(--text-color);
 }
 
-/* Light theme specific adjustments */
-.modal {
-  background-color: rgba(0, 0, 0, 0.4);
-}
-
-.result-card,
-.card,
-.info-card {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.result-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-#target-info-display .form-group,
-.info-box-wrapper {
-  background: rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--border-color);
-}
-
-.logo-ring {
-  filter: drop-shadow(0 0 15px rgba(13, 110, 253, 0.5));
-}
-
-.app-logo {
-  filter:
-    blur(0.3px)
-    saturate(1.2)
-    brightness(1.2);
-}
-
-
 :root {
   --tutorial-accent: #e67c00;
   --tutorial-accent-text: #ffffff;
-}
-
-.tutorial-modal,
-.tutorial-callout {
-  box-shadow: 0 0 24px rgba(230, 124, 0, 0.4), 0 0 0 1px var(--tutorial-accent);
 }

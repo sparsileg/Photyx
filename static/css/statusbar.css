@@ -121,13 +121,6 @@
     gap: 4px;
 }
 
-.status-item-label {
-    font-size: 0.56rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary);
-}
-
 .status-item-val {
     color: var(--text-color);
 }

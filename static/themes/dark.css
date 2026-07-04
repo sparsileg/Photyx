@@ -40,22 +40,7 @@ body {
   color: var(--text-color);
 }
 
-#target-info-display .form-group,
-.info-box-wrapper {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-color);
-}
-
-.logo-ring {
-  filter: drop-shadow(0 0 15px rgba(79, 195, 247, 0.5));
-}
-
 :root {
   --tutorial-accent: #f7a74f;
   --tutorial-accent-text: #000000;
-}
-
-.tutorial-modal,
-.tutorial-callout {
-  box-shadow: 0 0 24px rgba(247, 167, 79, 0.4), 0 0 0 1px var(--tutorial-accent);
 }

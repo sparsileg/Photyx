@@ -85,28 +85,7 @@
     font-weight: 600;
 }
 
-.pt-value.clip-high {
-    color: var(--error-color);
-}
-
-.pt-value.clip-low {
-    color: #4488ff;
-}
-
 /* ── Image metadata ─────────────────────────────────────────────────────── */
-
-.meta-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 4px 12px;
-}
-
-.meta-field {
-    display: flex;
-    gap: 4px;
-    align-items: baseline;
-    font-size: 0.69rem;
-}
 
 .meta-key {
     color: var(--text-secondary);
@@ -180,14 +159,6 @@
     min-width: 60px;
 }
 
-.fps-control {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.69rem;
-    color: var(--text-secondary);
-}
-
 /* ── Blink settings ─────────────────────────────────────────────────────── */
 
 .blink-settings {
@@ -245,13 +216,6 @@
     border-color: var(--primary-color);
 }
 
-.blink-status {
-    font-size: 0.63rem;
-    color: var(--text-secondary);
-    margin-top: 8px;
-    font-style: italic;
-}
-
 .blink-status-inline {
     font-size: 0.63rem;
     color: var(--text-secondary);
@@ -265,13 +229,6 @@
     text-transform: uppercase;
     letter-spacing: 0.06em;
     white-space: nowrap;
-}
-
-.blink-filename-row {
-    font-size: 0.63rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    padding: 2px 0;
 }
 
 /* ── Metadata rows layout ───────────────────────────────────────────────── */
@@ -305,29 +262,7 @@
     font-size: 0.69rem;
 }
 
-.meta-kw-grid {
-    margin-top: 2px;
-    padding-top: 4px;
-    border-top: 1px solid var(--border-color);
-}
-
 /* ── Histogram stats ────────────────────────────────────────────────────── */
-
-.hist-stats {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px solid var(--border-color);
-}
-
-.hist-stat {
-    display: flex;
-    gap: 4px;
-    align-items: baseline;
-    font-size: 0.69rem;
-}
 
 #mini-histogram {
     width: 100%;

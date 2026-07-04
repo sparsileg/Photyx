@@ -55,11 +55,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.me-expand-hint {
-    margin-left: auto;
-    font-size: 0.69rem;
-    color: var(--text-secondary);
-}
 .me-close-btn {
     background: none;
     border: none;
@@ -97,37 +92,12 @@
 .me-btn:hover:not(:disabled) { background: var(--card-hover); }
 .me-btn:disabled { opacity: 0.4; cursor: default; }
 
-.me-btn-run {
-    background: var(--accent-bg, #1a4a1a);
-    color: var(--accent-fg, #33ff33);
-    border-color: var(--accent-border, #33ff33);
-    font-weight: 600;
-    padding: 3px 14px;
-}
-.me-btn-run:hover:not(:disabled) { background: var(--accent-hover-bg, #225522); }
-
-.me-btn-pin {
-    background: var(--pin-bg, #2a2a1a);
-    border-color: var(--pin-border, #aaaa33);
-    color: var(--pin-fg, #dddd66);
-}
-.me-btn-pin:hover { background: var(--pin-hover-bg, #333322); }
-
 .me-btn-font {
     padding: 2px 6px;
     font-size: 0.81rem;
     font-weight: 600;
     min-width: 24px;
 }
-
-.me-sep {
-    width: 1px;
-    height: 18px;
-    background: var(--border-color);
-    margin: 0 4px;
-    flex-shrink: 0;
-}
-.me-spacer { flex: 1; }
 
 .me-font-label {
     font-size: 0.69rem;
@@ -257,7 +227,6 @@
     user-select: none;
 }
 .me-status-sep { opacity: 0.4; }
-.me-running-indicator { color: var(--accent-fg, #33ff33); animation: blink 1s step-start infinite; }
 .me-dirty-indicator   { color: var(--warning-fg, #ffaa33); }
 
 @keyframes blink { 50% { opacity: 0; } }

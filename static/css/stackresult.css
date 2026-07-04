@@ -27,12 +27,6 @@
     margin-right: 6px;
 }
 
-.sr-label {
-    font-size: 0.69rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-}
-
 .sr-label-highlight {
     font-size: 0.69rem;
     color: var(--primary-color);

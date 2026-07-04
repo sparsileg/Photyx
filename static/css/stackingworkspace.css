@@ -41,22 +41,6 @@
     flex-shrink: 0;
 }
 
-.sw-label {
-    font-size: 0.69rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-}
-
-.sw-label-highlight {
-    font-size: 0.69rem;
-    color: var(--primary-color);
-    font-family: monospace;
-    white-space: nowrap;
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 .sw-btn {
     background: var(--input-bg);
     border: 1px solid var(--border-color);

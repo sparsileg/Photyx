@@ -130,23 +130,6 @@
     border-color: var(--primary-color);
 }
 
-.toolbar-select {
-    height: 24px;
-    padding: 0 6px;
-    font-size: 0.69rem;
-    font-family: inherit;
-    cursor: pointer;
-    border: 1px solid var(--border-color);
-    background: var(--card-bg);
-    color: var(--text-color);
-    outline: none;
-}
-
-.toolbar-select:focus {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px var(--focus-ring);
-}
-
 /* ── Quick Launch Panel ─────────────────────────────────────────────────── */
 
 #quick-launch {

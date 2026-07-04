@@ -57,8 +57,3 @@
     color: var(--primary-color);
     font-weight: bold;
 }
-
-.open-up .dropdown-menu {
-    top: auto;
-    bottom: 100%;
-}
