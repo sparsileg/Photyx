@@ -69,7 +69,6 @@
     if (!profile) return;
     draft = {
       bg_median_reject_sigma:     profile.bg_median_reject_sigma,
-      signal_weight_reject_sigma: profile.signal_weight_reject_sigma,
       fwhm_reject_sigma:          profile.fwhm_reject_sigma,
       star_count_reject_sigma:    profile.star_count_reject_sigma,
       eccentricity_reject_abs:    profile.eccentricity_reject_abs,
@@ -124,7 +123,6 @@
         name,
         description:                null,
         bg_median_reject_sigma:     2.5,
-        signal_weight_reject_sigma: 2.5,
         fwhm_reject_sigma:          2.5,
         star_count_reject_sigma:    1.5,
         eccentricity_reject_abs:    0.85,
@@ -203,7 +201,6 @@
       const saved: ThresholdProfile = {
         ...profile,
         bg_median_reject_sigma:     Number(draft.bg_median_reject_sigma),
-        signal_weight_reject_sigma: Number(draft.signal_weight_reject_sigma),
         fwhm_reject_sigma:          Number(draft.fwhm_reject_sigma),
         star_count_reject_sigma:    Number(draft.star_count_reject_sigma),
         eccentricity_reject_abs:    Number(draft.eccentricity_reject_abs),

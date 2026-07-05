@@ -13,7 +13,6 @@ use crate::analysis::{
     background::compute_background_metrics,
     eccentricity::compute_eccentricity,
     fwhm::compute_fwhm,
-    metrics::compute_signal_weight,
     profiles,
     session_stats::{
         classify_frame, compute_session_stats_iterative,
@@ -39,7 +38,7 @@ fn load_thresholds_by_name(
         .expect("global db lock poisoned");
 
     let result = db.query_row(
-        "SELECT bg_median_reject_sigma, signal_weight_reject_sigma,
+        "SELECT bg_median_reject_sigma,
                 fwhm_reject_sigma, star_count_reject_sigma, eccentricity_reject_abs
          FROM threshold_profiles WHERE name = ?1 COLLATE NOCASE",
         rusqlite::params![name],
@@ -48,17 +47,14 @@ fn load_thresholds_by_name(
                 background_median: crate::analysis::session_stats::MetricThresholds {
                     reject: row.get::<_, f64>(0)? as f32,
                 },
-                signal_weight: crate::analysis::session_stats::MetricThresholds {
+                fwhm: crate::analysis::session_stats::MetricThresholds {
                     reject: row.get::<_, f64>(1)? as f32,
                 },
-                fwhm: crate::analysis::session_stats::MetricThresholds {
+                star_count: crate::analysis::session_stats::MetricThresholds {
                     reject: row.get::<_, f64>(2)? as f32,
                 },
-                star_count: crate::analysis::session_stats::MetricThresholds {
-                    reject: row.get::<_, f64>(3)? as f32,
-                },
                 eccentricity: crate::analysis::session_stats::MetricThresholds {
-                    reject: row.get::<_, f64>(4)? as f32,
+                    reject: row.get::<_, f64>(3)? as f32,
                 },
             })
         },
@@ -152,12 +148,10 @@ fn execute_current(
 
     let message = format!(
         "Background median: {}\n\
-         Signal Weight:     {}\n\
          FWHM:              {}\n\
          Eccentricity:      {}\n\
          Star count:        {}",
         fmt_opt_adu(result.background_median),
-        result.signal_weight.map(|v| format!("{:.4}", v)).unwrap_or_else(|| "n/a".to_string()),
         fwhm_str,
         result.eccentricity.map(|v| format!("{:.3}", v)).unwrap_or_else(|| "n/a".to_string()),
         result.star_count.map(|v| v.to_string()).unwrap_or_else(|| "n/a".to_string()),
@@ -168,7 +162,6 @@ fn execute_current(
         "scope":            "current",
         "filename":         path,
         "background_median": result.background_median,
-        "signal_weight":    result.signal_weight,
         "fwhm_pixels":      result.fwhm,
         "eccentricity":     result.eccentricity,
         "star_count":       result.star_count,
@@ -231,12 +224,10 @@ fn execute_all(
                 let plate_scale   = derive_plate_scale(keywords);
                 let fwhm_result   = compute_fwhm(&stars, plate_scale);
                 let ecc_result    = compute_eccentricity(&stars);
-                let sw_result     = compute_signal_weight(&stars);
 
                 let result = AnalysisResult {
                     filename:          snap.path.clone(),
                     background_median: Some(bg.median),
-                    signal_weight:     sw_result.map(|r| r.signal_weight),
                     fwhm:              fwhm_result.as_ref().map(|r| r.fwhm_pixels),
                     eccentricity:      ecc_result.as_ref().map(|r| r.eccentricity),
                     star_count:        fwhm_result.as_ref().map(|r| r.star_count as u32)
@@ -312,7 +303,6 @@ fn execute_all(
             "triggered":      triggered,
             "fwhm":           result.fwhm,
             "ecc":            result.eccentricity,
-            "signal_weight":  result.signal_weight,
             "stars":          result.star_count,
             "is_reference":   result.is_reference,
         }));
@@ -394,12 +384,10 @@ fn compute_metrics_for_image(
     let plate_scale = derive_plate_scale(&img.keywords);
     let fwhm_result = compute_fwhm(&stars, plate_scale);
     let ecc_result  = compute_eccentricity(&stars);
-    let sw_result   = compute_signal_weight(&stars);
 
     Ok(AnalysisResult {
         filename:          img.filename.clone(),
         background_median: Some(bg.median),
-        signal_weight:     sw_result.map(|r| r.signal_weight),
         fwhm:              fwhm_result.as_ref().map(|r| r.fwhm_pixels),
         eccentricity:      ecc_result.as_ref().map(|r| r.eccentricity),
         star_count:        fwhm_result.as_ref().map(|r| r.star_count as u32)

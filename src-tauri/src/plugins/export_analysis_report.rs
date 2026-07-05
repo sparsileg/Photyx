@@ -76,7 +76,6 @@ fn build_report_json(ctx: &AppContext) -> serde_json::Value {
             "fwhm":               r.fwhm,
             "eccentricity":       r.eccentricity,
             "star_count":         r.star_count,
-            "signal_weight":      r.signal_weight,
             "background_median":  r.background_median,
             "flag":               if r.is_reference { "REF" } else { r.flag.as_ref().map(|f| f.as_str()).unwrap_or("PASS") },
             "triggered_by":       r.triggered_by,
@@ -91,7 +90,6 @@ fn build_report_json(ctx: &AppContext) -> serde_json::Value {
     let session_stats = match &ctx.last_session_stats {
         Some(s) => serde_json::json!({
             "background_median": { "mean": s.background_median.mean, "stddev": s.background_median.stddev },
-            "signal_weight":     { "mean": s.signal_weight.mean,     "stddev": s.signal_weight.stddev },
             "fwhm":              { "mean": s.fwhm.mean,              "stddev": s.fwhm.stddev },
             "eccentricity":      { "mean": s.eccentricity.mean,      "stddev": s.eccentricity.stddev },
             "star_count":        { "mean": s.star_count.mean,        "stddev": s.star_count.stddev },
@@ -103,7 +101,6 @@ fn build_report_json(ctx: &AppContext) -> serde_json::Value {
         let t = &ctx.analysis_thresholds;
         serde_json::json!({
             "bg_median_reject_sigma":     t.background_median.reject,
-            "signal_weight_reject_sigma": t.signal_weight.reject,
             "fwhm_reject_sigma":          t.fwhm.reject,
             "star_count_reject_sigma":    t.star_count.reject,
             "eccentricity_reject_abs":    t.eccentricity.reject,

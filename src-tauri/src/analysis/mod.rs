@@ -50,10 +50,6 @@ pub struct AnalysisResult {
     // Background metrics (background.rs)
     pub background_median:    Option<f32>,
 
-    // Signal Weight — PSF-based signal quality metric (rejection metric).
-    // Derived from Moffat fit: A² / (A + B·π·a·b). See session_stats::classify_frame.
-    pub signal_weight:        Option<f32>,
-
     // Star quality metrics (stars.rs)
     pub fwhm:                 Option<f32>,   // mean FWHM in pixels
     pub eccentricity:         Option<f32>,   // mean eccentricity (0 = circular, 1 = line)

@@ -15,9 +15,8 @@ pub struct MetricThresholds {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisThresholds {
-    // Sigma-based (higher deviation = worse, except signal_weight and star_count)
+    // Sigma-based (higher deviation = worse, except star_count)
     pub background_median:   MetricThresholds,  // +σ
-    pub signal_weight:       MetricThresholds,  // -σ (lower = worse)
     pub fwhm:                MetricThresholds,  // +σ
     pub star_count:          MetricThresholds,  // -σ (fewer stars = worse)
 
@@ -28,12 +27,11 @@ pub struct AnalysisThresholds {
 impl Default for AnalysisThresholds {
     fn default() -> Self {
         use crate::settings::defaults::{
-            DEFAULT_BG_MEDIAN_SIGMA, DEFAULT_SIGNAL_WEIGHT_SIGMA, DEFAULT_FWHM_SIGMA,
+            DEFAULT_BG_MEDIAN_SIGMA, DEFAULT_FWHM_SIGMA,
             DEFAULT_STAR_COUNT_SIGMA, DEFAULT_ECCENTRICITY_ABS,
         };
         Self {
             background_median:   MetricThresholds { reject: DEFAULT_BG_MEDIAN_SIGMA as f32 },
-            signal_weight:       MetricThresholds { reject: DEFAULT_SIGNAL_WEIGHT_SIGMA as f32 },
             fwhm:                MetricThresholds { reject: DEFAULT_FWHM_SIGMA as f32 },
             star_count:          MetricThresholds { reject: DEFAULT_STAR_COUNT_SIGMA as f32 },
             eccentricity:        MetricThresholds { reject: DEFAULT_ECCENTRICITY_ABS as f32 },
@@ -112,7 +110,6 @@ impl MetricStats {
 #[derive(Debug, Clone, Default)]
 pub struct SessionStats {
     pub background_median:   MetricStats,
-    pub signal_weight:       MetricStats,
     pub fwhm:                MetricStats,
     pub eccentricity:        MetricStats,
     pub star_count:          MetricStats,
@@ -266,7 +263,6 @@ fn compute_session_stats_plain(results: &[&AnalysisResult]) -> SessionStats {
 
     SessionStats {
         background_median: MetricStats::from_values(&collect!(background_median)),
-        signal_weight:     MetricStats::from_values(&collect!(signal_weight)),
         fwhm:              MetricStats::from_values(&collect!(fwhm)),
         eccentricity:      MetricStats::from_values(&collect!(eccentricity)),
         star_count:        MetricStats::from_values(&star_vals),
@@ -288,7 +284,6 @@ pub fn compute_session_stats(results: &[&AnalysisResult]) -> SessionStats {
 
     SessionStats {
         background_median: MetricStats::from_values(&collect!(background_median)),
-        signal_weight:     MetricStats::from_values(&collect!(signal_weight)),
         fwhm:              MetricStats::from_values(&collect!(fwhm)),
         eccentricity:      MetricStats::from_values(&collect!(eccentricity)),
         // Star count uses bimodal-aware anchoring: a large block of cloudy frames
@@ -301,8 +296,8 @@ pub fn compute_session_stats(results: &[&AnalysisResult]) -> SessionStats {
 /// Two-pass iterative sigma clipping.
 ///
 /// Bimodal star count stats are computed ONCE from the full population and
-/// carried through unchanged. Only the non-bimodal metrics (FWHM, background,
-/// signal weight) are recomputed on the cleaned subset after outlier removal.
+/// carried through unchanged. Only the non-bimodal metrics (FWHM, background)
+/// are recomputed on the cleaned subset after outlier removal.
 /// This prevents the bimodal anchor from shifting between passes, which would
 /// cause non-deterministic classification results.
 pub fn compute_session_stats_iterative(
@@ -334,7 +329,6 @@ pub fn compute_session_stats_iterative(
         }
 
         check_outlier!(background_median, initial_stats.background_median);
-        check_outlier!(signal_weight,     initial_stats.signal_weight);
         check_outlier!(fwhm,              initial_stats.fwhm);
 
         if let Some(sc) = r.star_count {
@@ -365,7 +359,6 @@ pub fn compute_session_stats_iterative(
         let plain = compute_session_stats_plain(&clean);
         SessionStats {
             background_median: plain.background_median,
-            signal_weight:     plain.signal_weight,
             fwhm:              plain.fwhm,
             eccentricity:      plain.eccentricity,
             star_count:        initial_stats.star_count, // bimodal anchor preserved
@@ -418,7 +411,6 @@ pub fn classify_frame(
 
     check_high!(result.background_median,             &stats.background_median, &thresholds.background_median, "BackgroundMedian");
     check_high!(result.fwhm,                          &stats.fwhm,              &thresholds.fwhm,              "FWHM");
-    check_low!( result.signal_weight,                 &stats.signal_weight,     &thresholds.signal_weight,     "SignalWeight");
     check_low!( result.star_count.map(|v| v as f32),  &stats.star_count,        &thresholds.star_count,        "StarCount");
 
     if let Some(ecc) = result.eccentricity {
@@ -442,7 +434,7 @@ pub fn classify_frame(
 ///
 /// O = Optical        — FWHM and/or Eccentricity
 /// B = Sky Brightness — BackgroundMedian
-/// T = Transparency   — StarCount and/or SignalWeight (without BackgroundMedian)
+/// T = Transparency   — StarCount (without BackgroundMedian)
 ///
 /// Ordering: O always leads. When B and T are both present, B leads T.
 pub fn categorize_rejection(triggered: &[String]) -> Option<String> {
@@ -452,7 +444,7 @@ pub fn categorize_rejection(triggered: &[String]) -> Option<String> {
 
     let has_optical = triggered.iter().any(|t| t == "FWHM" || t == "Eccentricity");
     let has_bg      = triggered.iter().any(|t| t == "BackgroundMedian");
-    let has_transp  = triggered.iter().any(|t| t == "StarCount" || t == "SignalWeight");
+    let has_transp  = triggered.iter().any(|t| t == "StarCount");
 
     let mut cat = String::new();
 
@@ -481,25 +473,25 @@ mod tests {
     use super::*;
     use crate::analysis::AnalysisResult;
 
-    fn make_result(filename: &str, fwhm: f32, ecc: f32, sw: f32, stars: u32, bg: f32) -> AnalysisResult {
+    fn make_result(filename: &str, fwhm: f32, ecc: f32, stars: u32, bg: f32) -> AnalysisResult {
         AnalysisResult {
             filename:           filename.to_string(),
             background_median:  Some(bg),
-            signal_weight:      Some(sw),
             fwhm:               Some(fwhm),
             eccentricity:       Some(ecc),
             star_count:         Some(stars),
             flag:               None,
             triggered_by:       vec![],
+            is_reference:       false,
             rejection_category: None,
         }
     }
 
     #[test]
     fn test_session_stats_basic() {
-        let r1 = make_result("f1", 2.5, 0.4, 6.0, 600, 0.05);
-        let r2 = make_result("f2", 2.7, 0.5, 5.8, 580, 0.05);
-        let r3 = make_result("f3", 2.6, 0.45, 6.1, 610, 0.05);
+        let r1 = make_result("f1", 2.5, 0.4, 600, 0.05);
+        let r2 = make_result("f2", 2.7, 0.5, 580, 0.05);
+        let r3 = make_result("f3", 2.6, 0.45, 610, 0.05);
         let results = vec![&r1, &r2, &r3];
         let stats = compute_session_stats(&results);
         assert!((stats.fwhm.mean - 2.6).abs() < 0.01);
@@ -508,9 +500,9 @@ mod tests {
 
     #[test]
     fn test_classify_average_frame_passes() {
-        let r1 = make_result("f1", 2.5, 0.4, 6.0, 600, 0.05);
-        let r2 = make_result("f2", 2.5, 0.4, 6.0, 600, 0.05);
-        let r3 = make_result("f3", 2.5, 0.4, 6.0, 600, 0.05);
+        let r1 = make_result("f1", 2.5, 0.4, 600, 0.05);
+        let r2 = make_result("f2", 2.5, 0.4, 600, 0.05);
+        let r3 = make_result("f3", 2.5, 0.4, 600, 0.05);
         let results = vec![&r1, &r2, &r3];
         let stats = compute_session_stats(&results);
         let thresholds = AnalysisThresholds::default();
@@ -521,9 +513,9 @@ mod tests {
 
     #[test]
     fn test_classify_bad_eccentricity_rejects() {
-        let r1 = make_result("f1", 2.5, 0.4,  6.0, 600, 0.05);
-        let r2 = make_result("f2", 2.5, 0.4,  6.0, 600, 0.05);
-        let r3 = make_result("f3", 2.5, 0.86, 6.0, 600, 0.05);
+        let r1 = make_result("f1", 2.5, 0.4,  600, 0.05);
+        let r2 = make_result("f2", 2.5, 0.4,  600, 0.05);
+        let r3 = make_result("f3", 2.5, 0.86, 600, 0.05);
         let results = vec![&r1, &r2, &r3];
         let stats = compute_session_stats(&results);
         let thresholds = AnalysisThresholds::default();
@@ -533,29 +525,13 @@ mod tests {
     }
 
     #[test]
-    fn test_signal_weight_triggers_rejection() {
-        let g1 = make_result("g1", 2.4, 0.4, 6.0, 600, 0.05);
-        let g2 = make_result("g2", 2.5, 0.4, 6.0, 600, 0.05);
-        let g3 = make_result("g3", 2.6, 0.4, 6.0, 600, 0.05);
-        let g4 = make_result("g4", 2.5, 0.4, 6.0, 600, 0.05);
-        let g5 = make_result("g5", 2.4, 0.4, 6.0, 600, 0.05);
-        let low_sw = make_result("low", 2.5, 0.4, 0.001, 600, 0.05);
-        let results = vec![&g1, &g2, &g3, &g4, &g5];
-        let stats = compute_session_stats(&results);
-        let thresholds = AnalysisThresholds::default();
-        let (flag, triggered) = classify_frame(&low_sw, &stats, &thresholds);
-        assert_eq!(flag, PxFlag::Reject);
-        assert!(triggered.contains(&"SignalWeight".to_string()));
-    }
-
-    #[test]
     fn test_triggered_by_populated() {
-        let g1 = make_result("g1", 2.4, 0.4, 6.0, 600, 0.05);
-        let g2 = make_result("g2", 2.5, 0.4, 6.0, 600, 0.05);
-        let g3 = make_result("g3", 2.6, 0.4, 6.0, 600, 0.05);
-        let g4 = make_result("g4", 2.5, 0.4, 6.0, 600, 0.05);
-        let g5 = make_result("g5", 2.4, 0.4, 6.0, 600, 0.05);
-        let bad = make_result("bad", 10.0, 0.4, 6.0, 600, 0.05);
+        let g1 = make_result("g1", 2.4, 0.4, 600, 0.05);
+        let g2 = make_result("g2", 2.5, 0.4, 600, 0.05);
+        let g3 = make_result("g3", 2.6, 0.4, 600, 0.05);
+        let g4 = make_result("g4", 2.5, 0.4, 600, 0.05);
+        let g5 = make_result("g5", 2.4, 0.4, 600, 0.05);
+        let bad = make_result("bad", 10.0, 0.4, 600, 0.05);
         let good_results = vec![&g1, &g2, &g3, &g4, &g5];
         let stats = compute_session_stats(&good_results);
         let thresholds = AnalysisThresholds::default();
@@ -593,8 +569,6 @@ mod tests {
     #[test]
     fn test_category_transparency_only() {
         assert_eq!(categorize_rejection(&["StarCount".to_string()]), Some("T".to_string()));
-        assert_eq!(categorize_rejection(&["SignalWeight".to_string()]), Some("T".to_string()));
-        assert_eq!(categorize_rejection(&["StarCount".to_string(), "SignalWeight".to_string()]), Some("T".to_string()));
     }
 
     #[test]
@@ -608,20 +582,12 @@ mod tests {
             categorize_rejection(&["BackgroundMedian".to_string(), "StarCount".to_string()]),
             Some("BT".to_string())
         );
-        assert_eq!(
-            categorize_rejection(&["BackgroundMedian".to_string(), "SignalWeight".to_string()]),
-            Some("BT".to_string())
-        );
     }
 
     #[test]
     fn test_category_optical_with_transparency() {
         assert_eq!(
             categorize_rejection(&["FWHM".to_string(), "StarCount".to_string()]),
-            Some("OT".to_string())
-        );
-        assert_eq!(
-            categorize_rejection(&["FWHM".to_string(), "SignalWeight".to_string()]),
             Some("OT".to_string())
         );
     }
@@ -697,9 +663,9 @@ mod tests {
     fn test_bimodal_star_count_rejects_cloudy_frames() {
         // Simulate 20 clear frames (~250 stars) and 15 cloudy frames (~50 stars)
         let mut results: Vec<AnalysisResult> = (0..20)
-            .map(|i| make_result(&format!("clear_{i}"), 3.0, 0.5, 0.02, 250, 0.049))
+            .map(|i| make_result(&format!("clear_{i}"), 3.0, 0.5, 250, 0.049))
             .collect();
-        results.extend((0..15).map(|i| make_result(&format!("cloudy_{i}"), 3.2, 0.6, 0.015, 50, 0.055)));
+        results.extend((0..15).map(|i| make_result(&format!("cloudy_{i}"), 3.2, 0.6, 50, 0.055)));
 
         let refs: Vec<&AnalysisResult> = results.iter().collect();
         let stats = compute_session_stats(&refs);
@@ -721,3 +687,4 @@ mod tests {
         assert_eq!(flag, PxFlag::Pass);
     }
 }
+// ----------------------------------------------------------------------

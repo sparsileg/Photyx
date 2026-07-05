@@ -19,6 +19,13 @@
 //
 // Signal Weight formula (per spec §11.2):
 //   W = A² / (A + B · π · a · b)
+//
+// Currently unreferenced: Signal Weight was deprecated (issue #68) and this
+// was its only caller. Retained intentionally rather than deleted — the LM
+// fit already solves per-star semi-axes (a, b) and centroid (cx, cy), which
+// could feed FWHM/Eccentricity/PSF-residual-diagnostic/centroid-refinement
+// work instead of just Signal Weight. See issue #70.
+#![allow(dead_code)]
 
 use crate::analysis::stars::StarCandidate;
 
@@ -421,37 +428,29 @@ mod tests {
         assert!(fit_star(&star).is_none(), "should reject patch smaller than 3×3");
     }
 
-    #[test]
-    fn test_signal_weight_positive() {
-        let sw = signal_weight(0.5, 0.02, 2.5, 2.5);
-        assert!(sw > 0.0, "signal weight should be positive");
-    }
 
-    #[test]
-    fn test_signal_weight_penalizes_broad_psf() {
-        // Same peak amplitude, same background — broader PSF should score lower
-        let sw_narrow = signal_weight(0.5, 0.02, 2.0, 2.0);
-        let sw_broad  = signal_weight(0.5, 0.02, 4.0, 4.0);
-        assert!(sw_narrow > sw_broad,
-            "narrow PSF ({:.4}) should outweigh broad PSF ({:.4})", sw_narrow, sw_broad);
-    }
-
-    #[test]
-    fn test_fwhm_formula() {
-        // For a=b=2.5, FWHM should be well-defined and positive
-        let fwhm = fwhm_from_axes(2.5, 2.5);
-        assert!(fwhm > 0.0 && fwhm < 20.0, "FWHM {} out of range", fwhm);
-    }
-
-    #[test]
-    fn test_eccentricity_circular() {
-        let ecc = eccentricity_from_axes(2.5, 2.5);
-        assert!(ecc < 0.01, "circular star eccentricity should be ~0, got {}", ecc);
-    }
-
-    #[test]
-    fn test_eccentricity_elongated() {
-        let ecc = eccentricity_from_axes(4.0, 2.0);
-        assert!(ecc > 0.8, "elongated star eccentricity should be high, got {}", ecc);
-    }
+    // The following three tests are commented out, not deleted — they belonged
+    // to an incomplete attempt to migrate FWHM/Eccentricity onto this Moffat
+    // fit, calling fwhm_from_axes()/eccentricity_from_axes(), which were never
+    // implemented. Tracked in issue #70. Uncomment and adapt once those
+    // conversion functions exist.
+    //
+    // #[test]
+    // fn test_fwhm_formula() {
+    //     // For a=b=2.5, FWHM should be well-defined and positive
+    //     let fwhm = fwhm_from_axes(2.5, 2.5);
+    //     assert!(fwhm > 0.0 && fwhm < 20.0, "FWHM {} out of range", fwhm);
+    // }
+    //
+    // #[test]
+    // fn test_eccentricity_circular() {
+    //     let ecc = eccentricity_from_axes(2.5, 2.5);
+    //     assert!(ecc < 0.01, "circular star eccentricity should be ~0, got {}", ecc);
+    // }
+    //
+    // #[test]
+    // fn test_eccentricity_elongated() {
+    //     let ecc = eccentricity_from_axes(4.0, 2.0);
+    //     assert!(ecc > 0.8, "elongated star eccentricity should be high, got {}", ecc);
+    // }
 }
