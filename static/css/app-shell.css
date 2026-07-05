@@ -1,0 +1,24 @@
+/* app-shell.css — App-root-level elements defined directly in +page.svelte.
+   Not component-specific; see viewer.css, etc. for individual components. */
+
+/* Drag-and-drop overlay — shown while a file is being dragged over the
+   window, regardless of which view is currently active. */
+#drag-drop-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.55);
+    border: 3px dashed var(--primary-color);
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--primary-color);
+    text-shadow: 0 0 20px var(--primary-color);
+}

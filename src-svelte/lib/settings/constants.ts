@@ -154,7 +154,7 @@ export interface PrefSection {
 
 // ── Threshold Profiles ────────────────────────────────────────────────────────
 
-export const BG_MEDIAN_SIGMA_DEFAULT       = 2.5;
+export const BG_MEDIAN_SIGMA_DEFAULT  = 2.5;
 export const STAR_COUNT_SIGMA_DEFAULT = 1.5;
 export const FWHM_SIGMA_DEFAULT       = 2.5;
 export const ECCENTRICITY_ABS_DEFAULT = 0.85;
@@ -162,7 +162,7 @@ export const ECCENTRICITY_ABS_MIN     = 0.10;
 export const ECCENTRICITY_ABS_MAX     = 1.00;
 export const SIGMA_MIN                = 0.5;
 export const SIGMA_MAX                = 4.0;
-export const SIGMA_STEP               = 0.5;
+export const SIGMA_STEP               = 0.25;
 
 export interface ThresholdFieldMeta {
   key:       string;

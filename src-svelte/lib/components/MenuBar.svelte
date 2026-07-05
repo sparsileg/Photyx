@@ -121,6 +121,11 @@
     const path = typeof selected === 'string' ? selected : selected[0];
     if (!path) return;
     await loadFile(path);
+    // load_file always returns raw/linear pixel data, so the Linear/Stretched
+    // toggle must be reset here rather than carrying over stale state from
+    // whatever was previously displayed.
+    ui.setStretchMode('linear');
+    ui.setAutostretchFrame(null);
   }
 
   async function saveAsFits() {

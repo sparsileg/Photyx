@@ -17,27 +17,10 @@ export async function syncSession() {
   session.setCurrentFrame(state.currentFrame);
 }
 
-/** Open a multi-file picker and append selected files to the session */
-export async function addFiles() {
-  console.log('addFiles: called');
-  let selected;
-  try {
-    selected = await open({
-      directory: false,
-      multiple: true,
-      filters: [{
-        name: 'Supported Images',
-        extensions: ['fit', 'fits', 'fts', 'xisf', 'tif', 'tiff'],
-      }],
-    });
-  } catch (e) {
-    notifications.error(`Failed to open file picker: ${e}`);
-    return;
-  }
+const SUPPORTED_ADD_FILES_EXTENSIONS = ['fit', 'fits', 'fts', 'xisf', 'tif', 'tiff'];
 
-  if (!selected || (Array.isArray(selected) && selected.length === 0)) return;
-
-  const paths = Array.isArray(selected) ? selected : [selected];
+/** Core AddFiles pipeline, shared by the file-picker flow and drag-and-drop. */
+async function addFilesFromPaths(paths: string[]) {
   const pathsArg = paths.map(p => p.replace(/\\/g, '/')).join(',');
 
   notifications.running(`AddFiles`);
@@ -68,6 +51,47 @@ export async function addFiles() {
   await displayFrame(0);
 
   if (result.output) notifications.success(result.output);
+}
+
+/** Open a multi-file picker and append selected files to the session */
+export async function addFiles() {
+  console.log('addFiles: called');
+  let selected;
+  try {
+    selected = await open({
+      directory: false,
+      multiple: true,
+      filters: [{
+        name: 'Supported Images',
+        extensions: SUPPORTED_ADD_FILES_EXTENSIONS,
+      }],
+    });
+  } catch (e) {
+    notifications.error(`Failed to open file picker: ${e}`);
+    return;
+  }
+
+  if (!selected || (Array.isArray(selected) && selected.length === 0)) return;
+
+  const paths = Array.isArray(selected) ? selected : [selected];
+  await addFilesFromPaths(paths);
+}
+
+/** Handle paths dropped onto the app window — filters to supported
+ *  extensions and routes through the same AddFiles pipeline as
+ *  Session > Add Files. */
+export async function handleDroppedPaths(paths: string[]) {
+  const filtered = paths.filter(p => {
+    const ext = p.split('.').pop()?.toLowerCase() ?? '';
+    return SUPPORTED_ADD_FILES_EXTENSIONS.includes(ext);
+  });
+
+  if (filtered.length === 0) {
+    notifications.error('No supported image files in dropped item(s).');
+    return;
+  }
+
+  await addFilesFromPaths(filtered);
 }
 
 /** Clear all loaded images and reset session. */

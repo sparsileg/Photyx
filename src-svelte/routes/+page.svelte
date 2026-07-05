@@ -25,6 +25,8 @@
   import { invoke } from '@tauri-apps/api/core';
   import { DEFAULT_FONT_SIZE } from '../lib/settings/constants';
   import { onMount } from 'svelte';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { handleDroppedPaths } from '../lib/commands';
   import { quickLaunch } from '../lib/stores/quickLaunch';
   import { session } from '../lib/stores/session';
   import { settings } from '../lib/stores/settings';
@@ -86,7 +88,25 @@
       console.error('Crash recovery check failed:', e);
     }
 
-    // (close_session is called via File > Exit — see MenuBar.svelte)
+    // (close_session is called via File > Exit   see MenuBar.svelte)
+  });
+
+  // Native OS file drag-and-drop — routes through AddFiles regardless of
+  // count or which view is currently active, same as Session > Add Files.
+  onMount(() => {
+    let unlisten: (() => void) | undefined;
+    getCurrentWindow().onDragDropEvent((event) => {
+      if (event.payload.type === 'over') {
+        ui.setDragActive(true);
+      } else if (event.payload.type === 'drop') {
+        ui.setDragActive(false);
+        handleDroppedPaths(event.payload.paths);
+      } else {
+        ui.setDragActive(false);
+      }
+    }).then(fn => { unlisten = fn; });
+
+    return () => { unlisten?.(); };
   });
 
   // Crash recovery state
@@ -175,6 +195,9 @@
 {/if}
 
 <div id="app">
+  {#if $ui.dragActive}
+    <div id="drag-drop-overlay">Drop files to add to session</div>
+  {/if}
   <MenuBar />
   <Toolbar />
   <div id="content-area">

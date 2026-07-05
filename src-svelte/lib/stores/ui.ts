@@ -37,6 +37,7 @@ export interface UIState {
   consoleExpanded:     boolean;
   currentBlinkFlag:    string;
   displayImageUrl:     string | null;
+  dragActive:          boolean;
   frameRefreshToken:   number;
   keywordModalOpen:    boolean;
   logViewerOpen:       boolean;
@@ -71,6 +72,7 @@ const initial: UIState = {
   consoleExpanded:     false,
   currentBlinkFlag:    '',
   displayImageUrl:     null,
+  dragActive:          false,
   frameRefreshToken:   0,
   keywordModalOpen:    false,
   logViewerOpen:       false,
@@ -149,6 +151,7 @@ function createUIStore() {
     setBlinkCached:   (v: boolean) => update(s => ({ ...s, blinkCached: v })),
     setBlinkCaching:  (v: boolean) => update(s => ({ ...s, blinkCaching: v })),
     setBlinkTabActive:(v: boolean) => update(s => ({ ...s, blinkTabActive: v })),
+    setDragActive:    (v: boolean) => update(s => ({ ...s, dragActive: v })),
     setBlinkResolution:(v: '12' | '25') => update(s => ({ ...s, blinkResolution: v })),
     setBlinkModeActive:(v: boolean) => update(s => ({ ...s, blinkModeActive: v })),
     openKeywordModal:  () => update(s => ({ ...s, keywordModalOpen: true })),

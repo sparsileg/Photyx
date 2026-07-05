@@ -67,7 +67,7 @@ pub const FWHM_SIGMA_MAX:                    f64  = 4.0;
 // anchor is computed from the clean upper cluster, not the full population.
 pub const DEFAULT_STAR_COUNT_SIGMA:          f64  = 1.5;
 pub const STAR_COUNT_SIGMA_MIN:              f64  = 0.5;
-pub const STAR_COUNT_SIGMA_MAX:              f64  = 5.0;
+pub const STAR_COUNT_SIGMA_MAX:              f64  = 4.0;
 pub const DEFAULT_ECCENTRICITY_ABS:          f64  = 0.85;
 pub const ECCENTRICITY_ABS_MIN:              f64  = 0.10;
 pub const ECCENTRICITY_ABS_MAX:              f64  = 1.00;
