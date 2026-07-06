@@ -137,7 +137,7 @@
   let blinkDelay      = $state(0.1);
   let blinkTimer: ReturnType<typeof setTimeout> | null = null;
   let playInProgress  = false;
-  let rejecting       = false;
+  let rejecting       = $state(false);
 
   const DELAY_OPTIONS = [0, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0];
 
