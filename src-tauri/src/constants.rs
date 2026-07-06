@@ -6,6 +6,12 @@ pub const PROTECTED_THRESHOLD_PROFILES: &[&str] = &[
     "Default",
 ];
 
+/// Default suffix appended to a filename when RejectCurrentFrame moves it
+/// to rejected/ (e.g. "frame001.fit.reject"). Used when the plugin's
+/// optional `append` argument is omitted — same pattern as
+/// CommitAnalysis's `append`, which defaults to no suffix at all.
+pub const REJECT_FILE_SUFFIX: &str = "reject";
+
 /// Forces GDK_BACKEND=x11 on Linux at startup, working around a
 /// WebKitGTK/Wayland compositor interaction that causes sustained high
 /// idle CPU usage (observed: one thread pegged ~50-55%, dropped to ~18%

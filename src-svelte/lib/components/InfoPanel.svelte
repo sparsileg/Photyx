@@ -5,7 +5,7 @@
   import { currentImage, session } from '../stores/session';
   import { ui } from '../stores/ui';
   import { notifications } from '../stores/notifications';
-  import { displayFrame } from '../commands';
+  import { displayFrame, syncSession } from '../commands';
   import Dropdown from './Dropdown.svelte';
 
   let activeTab = $state<'pixels' | 'metadata' | 'histogram' | 'blink'>('pixels');
@@ -100,6 +100,12 @@
   });
 
   let wasOnBlinkTab = false;
+  // Set right before displayFrame() below re-displays the same frame we
+  // were already blinking on. Without this, the frameRefreshToken effect
+  // further down can't tell that apart from a genuine frame navigation,
+  // and snaps activeTab back to 'pixels' even though the user deliberately
+  // clicked Metadata/Histogram to get here.
+  let suppressTabResetOnce = false;
 
   $effect(() => {
     const tab = activeTab;
@@ -109,7 +115,6 @@
       ui.setBlinkModeActive(true);
       ui.clearAnnotations();
       blinkFrame = $session.currentFrame;
-      fetchFrameFlags();
     } else if (wasOnBlinkTab) {
       wasOnBlinkTab = false;
       ui.setBlinkTabActive(false);
@@ -119,6 +124,7 @@
       ui.setBlinkFrame(null);
       if (!$ui.displayImageUrl) {
         if ($ui.blinkCached) {
+          suppressTabResetOnce = true;
           displayFrame(blinkFrame);
         }
       }
@@ -128,20 +134,10 @@
   // ── Blink state ───────────────────────────────────────────────────────────
   let blinkPlaying    = $state(false);
   let blinkFrame      = $state(0);
-  let blinkResolution = $state<'12' | '25'>('12');
   let blinkDelay      = $state(0.1);
   let blinkTimer: ReturnType<typeof setTimeout> | null = null;
   let playInProgress  = false;
-  let frameFlags      = $state<string[]>([]);
-
-  async function fetchFrameFlags() {
-    try {
-      frameFlags = await invoke<string[]>('get_frame_flags');
-    } catch (e) {
-      console.error('get_frame_flags error:', e);
-      frameFlags = [];
-    }
-  }
+  let rejecting       = false;
 
   const DELAY_OPTIONS = [0, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0];
 
@@ -151,9 +147,12 @@
     ui.setBlinkCaching(true);
     ui.setBlinkCached(false);
     try {
+      // No resolution arg — CacheFrames defaults to building both 12.5% and
+      // 25% caches, so whichever resolution gets auto-selected (see
+      // Viewer.svelte) is always already cached, even after a resize.
       const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(
         'dispatch_command',
-        { request: { command: 'CacheFrames', args: { resolution: blinkResolution } } }
+        { request: { command: 'CacheFrames', args: {} } }
       );
       if (!result.success) {
         notifications.error(result.error ?? 'CacheFrames failed');
@@ -171,11 +170,11 @@
   }
 
   async function showBlinkFrame(index: number) {
-    console.log('showBlinkFrame resolution:', blinkResolution);
+    console.log('showBlinkFrame resolution:', $ui.blinkResolution);
     try {
-      const dataUrl = await invoke<string>('get_blink_frame', { index, resolution: blinkResolution });
+      const dataUrl = await invoke<string>('get_blink_frame', { index, resolution: $ui.blinkResolution });
       ui.setBlinkFrame(dataUrl);
-      ui.setCurrentBlinkFlag(frameFlags[index] ?? '');
+      ui.setBlinkFrameIndex(index);
       const filename = $session.fileList[index]?.split(/[\\/]/).pop() ?? '';
       onBlinkFrame(filename);
     } catch (e) {
@@ -265,8 +264,53 @@
   async function blinkLoop() {
     if (!blinkPlaying) return;
     await showBlinkFrame(blinkFrame);
-    blinkFrame = (blinkFrame + 1) % frameCount;
-    blinkTimer = setTimeout(() => blinkLoop(), blinkDelay * 1000);
+    blinkTimer = setTimeout(() => {
+      if (!blinkPlaying) return;
+      blinkFrame = (blinkFrame + 1) % frameCount;
+      blinkLoop();
+    }, blinkDelay * 1000);
+  }
+
+  async function rejectCurrentBlinkFrame() {
+    if (blinkPlaying || frameCount === 0 || $ui.blinkCaching || rejecting) return;
+    rejecting = true;
+    try {
+      const result = await invoke<{
+        success: boolean;
+        output: string | null;
+        error: string | null;
+        data: { rejected_path?: string; new_index?: number; frame_count?: number } | null;
+      }>('dispatch_command', {
+        request: { command: 'RejectCurrentFrame', args: { index: String(blinkFrame) } }
+      });
+
+      if (!result.success) {
+        notifications.error(result.error ?? 'RejectCurrentFrame failed');
+        return;
+      }
+
+      notifications.success(result.output ?? 'Frame rejected');
+      await syncSession();
+
+      // Compute Blink's own next index locally rather than trusting the
+      // backend's new_index — that value now only reflects ctx.current_frame
+      // (the Pixels/pcode notion of "current"), which is intentionally left
+      // untouched when the rejected index isn't the one it was pointing at.
+      // Blink has its own separate "what's next" question.
+      const newCount = result.data?.frame_count ?? 0;
+      blinkFrame = newCount === 0 ? 0 : blinkFrame % newCount;
+
+      if (newCount === 0) {
+        ui.setBlinkFrame(null);
+        onBlinkFrame('');
+      } else {
+        await showBlinkFrame(blinkFrame);
+      }
+    } catch (e) {
+      notifications.error(`RejectCurrentFrame error: ${e}`);
+    } finally {
+      rejecting = false;
+    }
   }
 
   // Invalidate cache only when file list length actually changes
@@ -274,19 +318,18 @@
   $effect(() => {
     const count = $session.fileList.length;
     if (count !== lastFileCount) {
+      const wasBlinking = lastFileCount > 0;
       lastFileCount = count;
       ui.setBlinkCached(false);
       blinkFrame = 0;
+      // If we were already actively displaying a blink frame (e.g. a
+      // console/pcode RejectCurrentFrame just changed the list out from
+      // under us), refresh what's on screen now rather than leaving the
+      // pre-reject bitmap visible until the next natural lap.
+      if (wasBlinking && $ui.blinkModeActive && count > 0) {
+        showBlinkFrame(0);
+      }
     }
-  });
-
-  // Invalidate cache when resolution changes — skip initial run
-  let resolutionInitialized = false;
-  $effect(() => {
-    const _ = blinkResolution;
-    console.log('blinkResolution effect fired:', blinkResolution);
-    if (!resolutionInitialized) { resolutionInitialized = true; return; }
-    ui.setBlinkCached(false);
   });
 
   // ── Histogram ─────────────────────────────────────────────────────────────
@@ -456,7 +499,11 @@
     const frame = $ui.frameRefreshToken;
     if (frame !== lastFrameToken && frame > 0) {
       lastFrameToken = frame;
-      if (activeTab !== 'pixels') activeTab = 'pixels';
+      if (suppressTabResetOnce) {
+        suppressTabResetOnce = false;
+      } else if (activeTab !== 'pixels') {
+        activeTab = 'pixels';
+      }
     }
     if (tab === 'histogram') {
       updateHistogram();
@@ -616,21 +663,18 @@
           {:else if !$ui.blinkCached && frameCount > 0}
             <span class="blink-status-inline">Press Play to start</span>
           {/if}
+
+          <button
+            class="blink-btn blink-reject-btn"
+            disabled={blinkPlaying || frameCount === 0 || $ui.blinkCaching || rejecting}
+            onclick={(e) => { e.stopPropagation(); rejectCurrentBlinkFrame(); }}
+            title="Move this frame to rejected/ and remove it from the session"
+            >Reject</button>
         </div>
 
-        <!-- Row 2: Res + Min Delay + Quality Flags toggle -->
+        <!-- Row 2: Min Delay -->
         <div class="blink-row">
-          <span class="blink-inline-label">Res</span>
-          <Dropdown
-            className="blink-select"
-            value={blinkResolution}
-            openUp={true}
-            width={70}
-            options={[{ value: '25', label: '25%' }, { value: '12', label: '12.5%' }]}
-            on:change={(e) => { blinkResolution = e.detail as '12' | '25'; ui.setBlinkResolution(blinkResolution); }}
-            />
-
-          <span class="blink-inline-label" style="margin-left:12px;">Min Delay</span>
+          <span class="blink-inline-label">Min Delay</span>
           <Dropdown
             className="blink-select"
             value={String(blinkDelay)}
@@ -639,16 +683,6 @@
             options={DELAY_OPTIONS.map(d => ({ value: String(d), label: d === 0 ? 'Max' : `${d}s` }))}
             on:change={(e) => { blinkDelay = parseFloat(e.detail); }}
             />
-
-            <label class="blink-flag-toggle" style="margin-left:12px;"
-                   title="Show borders around rejected frames">
-              <input
-                type="checkbox"
-                checked={$ui.showQualityFlags}
-                onchange={(e) => ui.setShowQualityFlags((e.target as HTMLInputElement).checked)}
-              />
-              <span class="blink-inline-label">Highlight Rejected</span>
-            </label>
         </div>
       </div>
     </div>

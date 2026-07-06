@@ -23,6 +23,7 @@ pub mod keywords;
 pub mod list_keywords;
 pub mod pixel_chunking;
 pub mod read_images;
+pub mod reject_current_frame;
 pub mod run_macro;
 pub mod scripting;
 pub mod set_frame;

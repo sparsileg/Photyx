@@ -146,7 +146,7 @@ pub struct ScriptResponse {
 
 // Commands that modify the session file list or active directory.
 const SESSION_COMMANDS: &[&str] = &[
-    "addfiles", "clearsession", "commitanalysis", "filterbykeyword", "movefile", "readimages", "runmacro", "setframe",
+    "addfiles", "clearsession", "commitanalysis", "filterbykeyword", "movefile", "readimages", "rejectcurrentframe", "runmacro", "setframe",
 ];
 
 // Commands that alter the pixel data currently displayed in the viewer.
@@ -283,6 +283,7 @@ pub fn run() {
     registry.register(Arc::new(plugins::keywords::ModifyKeyword));
     registry.register(Arc::new(plugins::list_keywords::ListKeywords));
     registry.register(Arc::new(plugins::read_images::ReadImages));
+    registry.register(Arc::new(plugins::reject_current_frame::RejectCurrentFrame));
     registry.register(Arc::new(plugins::run_macro::RunMacro));
     registry.register(Arc::new(plugins::set_frame::SetFrame));
     registry.register(Arc::new(plugins::stack_frames::StackFrames));
@@ -346,7 +347,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::analysis::commit_analysis_results,
             commands::analysis::get_analysis_results,
-            commands::analysis::get_frame_flags,
             commands::analysis::get_star_positions,
             commands::analysis::load_analysis_json,
             commands::analysis::set_frame_flag,

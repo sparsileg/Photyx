@@ -141,6 +141,27 @@ impl PhotonPlugin for AddFiles {
             crate::set_progress("Loading files", (i + 1) as u32, total_to_load);
         }
 
+        // Re-sort the whole session by filename (not full path) so a
+        // rejected-then-re-added frame slots back into its original
+        // chronological position instead of landing at the end. Filenames
+        // are DTG-first, so this also keeps multi-session stacks (several
+        // ROTATOR transitions) in capture order for StackFrames' grouping
+        // logic — see Technical Reference §7.1.
+        ctx.file_list.sort_by(|a, b| {
+            let a_name = a.rsplit(['/', '\\']).next().unwrap_or(a.as_str());
+            let b_name = b.rsplit(['/', '\\']).next().unwrap_or(b.as_str());
+            a_name.cmp(b_name)
+        });
+
+        // Reset to the first frame rather than preserving whatever was
+        // current before the sort. Matches existing behavior of the
+        // interactive Add Files flow (commands.ts's addFiles() already
+        // calls displayFrame(0) after every add), and additionally makes
+        // pcode/macro-driven and crash-recovery AddFiles calls behave the
+        // same way, rather than leaving current_frame at an arbitrary
+        // leftover value.
+        ctx.current_frame = 0;
+
         crate::set_progress("", 0, 0);
 
         info!("AddFiles: loaded {} of {} files", loaded, paths.len());

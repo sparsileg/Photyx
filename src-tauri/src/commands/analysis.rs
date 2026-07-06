@@ -258,6 +258,44 @@ pub fn commit_analysis_results(
     do_commit(&mut ctx, &append).map_err(|e| e.to_string())
 }
 
+/// Moves a single file into a `rejected/` subfolder within its own parent
+/// directory, optionally appending a suffix after the original filename
+/// (e.g. suffix="reject" → "frame001.fit.reject"). A leading dot on the
+/// suffix is optional and stripped if present. Returns the new path
+/// (forward-slash normalized) on success. Shared by do_commit() (bulk,
+/// user-supplied suffix) and RejectCurrentFrame (single frame, fixed
+/// REJECT_FILE_SUFFIX constant).
+pub fn move_to_rejected(old_path: &str, suffix: &str) -> Result<String, String> {
+    let suffix = suffix.trim_start_matches('.');
+    let p = std::path::Path::new(old_path);
+
+    let parent = p.parent()
+        .ok_or_else(|| format!("No parent dir: {}", old_path))?;
+    let rejected_dir = parent.join("rejected");
+
+    if !rejected_dir.exists() {
+        std::fs::create_dir_all(&rejected_dir)
+            .map_err(|e| format!("Cannot create rejected/: {}", e))?;
+    }
+
+    let filename = p.file_name()
+        .ok_or_else(|| format!("No filename: {}", old_path))?;
+
+    let new_filename = if suffix.is_empty() {
+        filename.to_string_lossy().into_owned()
+    } else {
+        format!("{}.{}", filename.to_string_lossy(), suffix)
+    };
+    let new_path     = rejected_dir.join(&new_filename);
+    let new_path_str = new_path.to_string_lossy().replace('\\', "/");
+
+    std::fs::rename(old_path, &new_path)
+        .map_err(|e| format!("{}: {}", filename.to_string_lossy(), e))?;
+
+    tracing::info!("move_to_rejected: moved {} → {}", old_path, new_path_str);
+    Ok(new_path_str)
+}
+
 /// Shared commit implementation called by both the Tauri command and the
 /// CommitAnalysis pcode plugin.
 pub fn do_commit(ctx: &mut crate::context::AppContext, append: &str) -> Result<String, String> {
@@ -289,47 +327,13 @@ pub fn do_commit(ctx: &mut crate::context::AppContext, append: &str) -> Result<S
     tracing::info!("CommitResults: {} PASS, {} REJECT", pass_count, reject_count);
 
     // ── Step 2: move REJECT files to rejected/ subfolder ─────────────────────
-    let suffix = append.trim_start_matches('.');
     let mut move_errors: Vec<String> = Vec::new();
     let mut moved_count = 0u32;
 
     for old_path in &reject_paths {
-        let p = std::path::Path::new(old_path);
-
-        let parent = match p.parent() {
-            Some(d) => d,
-            None    => { move_errors.push(format!("No parent dir: {}", old_path)); continue; }
-        };
-        let rejected_dir = parent.join("rejected");
-
-        if !rejected_dir.exists() {
-            if let Err(e) = std::fs::create_dir_all(&rejected_dir) {
-                move_errors.push(format!("Cannot create rejected/: {}", e));
-                continue;
-            }
-        }
-
-        let filename = match p.file_name() {
-            Some(f) => f,
-            None    => { move_errors.push(format!("No filename: {}", old_path)); continue; }
-        };
-
-        let new_filename = if suffix.is_empty() {
-            filename.to_string_lossy().into_owned()
-        } else {
-            format!("{}.{}", filename.to_string_lossy(), suffix)
-        };
-        let new_path     = rejected_dir.join(&new_filename);
-        let new_path_str = new_path.to_string_lossy().replace('\\', "/");
-
-        match std::fs::rename(old_path, &new_path) {
-            Ok(()) => {
-                tracing::info!("CommitResults: moved {} → {}", old_path, new_path_str);
-                moved_count += 1;
-            }
-            Err(e) => {
-                move_errors.push(format!("{}: {}", filename.to_string_lossy(), e));
-            }
+        match move_to_rejected(old_path, append) {
+            Ok(_new_path) => moved_count += 1,
+            Err(e)        => move_errors.push(e),
         }
     }
 
@@ -364,24 +368,6 @@ pub fn extract_frame_label(filename: &str) -> String {
     }
     let chars: Vec<char> = stem.chars().collect();
     chars[chars.len().saturating_sub(8)..].iter().collect()
-}
-
-#[tauri::command]
-pub fn get_frame_flags(state: State<Arc<PhotoxState>>) -> Vec<String> {
-    let ctx = state.context.lock().expect("context lock poisoned");
-    ctx.file_list.iter().map(|path| {
-        if let Some(result) = ctx.analysis_results.get(path) {
-            if let Some(flag) = &result.flag {
-                return flag.as_str().to_string();
-            }
-        }
-        if let Some(buf) = ctx.image_buffers.get(path) {
-            if let Some(kw) = buf.keywords.get("PXFLAG") {
-                return kw.value.clone();
-            }
-        }
-        String::new()
-    }).collect()
 }
 
 #[tauri::command]

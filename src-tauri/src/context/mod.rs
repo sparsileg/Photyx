@@ -268,6 +268,45 @@ impl AppContext {
         self.outlier_frame_paths.remove(path);
     }
 
+    /// Removes a single frame (by index) from the session — e.g. after
+    /// RejectCurrentFrame has already moved its file to rejected/ on disk.
+    /// Splices it out of file_list and clears its per-path caches/analysis
+    /// data via remove_frame_data. Unlike remove_rejected_files, this does
+    /// NOT clear session-wide analysis_results/last_session_stats for other
+    /// frames — a one-off ad hoc reject shouldn't invalidate an existing
+    /// AnalyzeFrames run, and this must also work when AnalyzeFrames was
+    /// never run at all.
+    ///
+    /// Sets current_frame to whichever frame slides into the vacated index
+    /// (old_index % new_len), wrapping to 0 if the removed frame was last,
+    /// or staying at 0 if the session is now empty. Returns the new
+    /// current_frame, or None if index was out of range.
+    pub fn remove_single_frame(&mut self, index: usize) -> Option<usize> {
+        if index >= self.file_list.len() { return None; }
+        let path = self.file_list.remove(index);
+        self.remove_frame_data(&path);
+        let new_len = self.file_list.len();
+
+        // Only touch current_frame if the rejected index either *was* the
+        // current frame, or sat before it in the list (in which case every
+        // later index — including current_frame — just shifted down by
+        // one). If the rejected index was somewhere *after* current_frame
+        // (e.g. a Blink-mode reject on a frame the Pixels/pcode context
+        // was never looking at), current_frame must be left completely
+        // alone — overwriting it here is exactly what caused a later,
+        // unrelated pcode RejectCurrentFrame call to act on the wrong file.
+        if new_len == 0 {
+            self.current_frame = 0;
+        } else if index < self.current_frame {
+            self.current_frame -= 1;
+        } else if index == self.current_frame {
+            self.current_frame = index % new_len;
+        }
+        // else: index > current_frame — current_frame is untouched.
+
+        Some(self.current_frame)
+    }
+
     /// Remove rejected files from the session after a commit.
     /// Clears analysis results but leaves pass frames loaded.
     pub fn remove_rejected_files(&mut self, rejected_paths: &[String]) {

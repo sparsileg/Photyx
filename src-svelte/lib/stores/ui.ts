@@ -30,12 +30,12 @@ export interface UIState {
   blinkCached:         boolean;
   blinkCaching:        boolean;
   blinkImageUrl:       string | null;
+  blinkFrameIndex:     number;
   blinkModeActive:     boolean;
   blinkPlaying:        boolean;
   blinkResolution:     '12' | '25';
   blinkTabActive:      boolean;
   consoleExpanded:     boolean;
-  currentBlinkFlag:    string;
   displayImageUrl:     string | null;
   dragActive:          boolean;
   frameRefreshToken:   number;
@@ -44,7 +44,6 @@ export interface UIState {
   macroEditorFile:     { id: number | null; name: string; displayName: string; script: string } | null;
   preferencesOpen:     boolean;
   quickLaunchVisible:  boolean;
-  showQualityFlags:    boolean;
   shadowClip:          number;
   stackImageUrl:       string | null;
   stretchMode:         'linear' | 'stretched';
@@ -65,12 +64,12 @@ const initial: UIState = {
   blinkCached:         false,
   blinkCaching:        false,
   blinkImageUrl:       null,
+  blinkFrameIndex:     0,
   blinkModeActive:     false,
   blinkPlaying:        false,
   blinkResolution:     '12',
   blinkTabActive:      false,
   consoleExpanded:     false,
-  currentBlinkFlag:    '',
   displayImageUrl:     null,
   dragActive:          false,
   frameRefreshToken:   0,
@@ -79,7 +78,6 @@ const initial: UIState = {
   macroEditorFile:     null,
   preferencesOpen:     false,
   quickLaunchVisible:  true,
-  showQualityFlags:    true,
   shadowClip:          -2.8,
   stackImageUrl:       null,
   stretchMode:         'linear',
@@ -145,6 +143,7 @@ function createUIStore() {
     })),
     toggleConsole:    () => update(s => ({ ...s, consoleExpanded: !s.consoleExpanded })),
     setBlinkFrame:    (url: string | null) => update(s => ({ ...s, blinkImageUrl: url })),
+    setBlinkFrameIndex: (index: number) => update(s => ({ ...s, blinkFrameIndex: index })),
     setAutostretchFrame: (url: string | null) => update(s => ({ ...s, autostretchImageUrl: url })),
     setDisplayImage:  (url: string | null) => update(s => ({ ...s, displayImageUrl: url })),
     setStackImage:    (url: string | null) => update(s => ({ ...s, stackImageUrl: url })),
@@ -171,8 +170,6 @@ function createUIStore() {
     })),
     showMacroLibrary:  () => update(s => ({ ...s, activePanel: 'macro-lib' })),
     setBlinkPlaying:   (v: boolean) => update(s => ({ ...s, blinkPlaying: v })),
-    setShowQualityFlags:(v: boolean) => update(s => ({ ...s, showQualityFlags: v })),
-    setCurrentBlinkFlag:(v: string) => update(s => ({ ...s, currentBlinkFlag: v })),
     refreshAnnotations:() => update(s => ({ ...s, annotationToken:  Math.abs(s.annotationToken) + 1 })),
     clearAnnotations:  () => update(s => ({ ...s, annotationToken: -(Math.abs(s.annotationToken) + 1) })),
 

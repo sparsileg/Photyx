@@ -206,7 +206,7 @@
   };
 
   async function dispatch(raw: string) {
-    const trimmed = raw.trim();
+    let trimmed = raw.trim();
     if (!trimmed) return;
 
     const firstLine = trimmed.split('\n')[0].trim();
@@ -215,6 +215,15 @@
     if (CLIENT_COMMANDS[cmdLower]) {
       CLIENT_COMMANDS[cmdLower](firstLine);
       return;
+    }
+
+    // RejectCurrentFrame with no explicit index= defaults to ctx.current_frame
+    // on the backend — but that value only tracks Pixels/pcode navigation,
+    // never Blink playback (blinkFrame is separate frontend-only state).
+    // While in Blink mode, make "current" mean whatever's actually on
+    // screen there, rather than a possibly stale/unrelated backend value.
+    if (cmdLower === 'rejectcurrentframe' && $ui.blinkModeActive && !/\bindex\s*=/i.test(firstLine)) {
+      trimmed = `${trimmed} index=${$ui.blinkFrameIndex}`;
     }
 
     notifications.running(extractRunningLabel(firstLine));
@@ -278,6 +287,10 @@
       if (filePath) loadFile(filePath);
     }
     if (cmd === 'setframe') ui.clearAnnotations();
+    if (cmd === 'rejectcurrentframe') {
+      ui.clearAnnotations();
+      ui.requestFrameRefresh();
+    }
     if (cmd === 'stackframes' && data?.stack_available) {
       notifications.success('Stack complete — opening result 🔭');
       ui.showView('stackResult');

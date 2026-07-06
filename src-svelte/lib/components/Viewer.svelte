@@ -83,6 +83,20 @@
     };
   }
 
+  // Returns any populated session.loadedImages entry, preferring the
+  // current frame's if present. All frames in a session share the same
+  // sensor dimensions, so any loaded frame's metadata is equally valid
+  // as a stand-in for "this session's source width/height" — needed
+  // because blink mode can land on a frame that was never individually
+  // displayed via displayFrame()/loadFile() (e.g. right after
+  // RejectCurrentFrame), for which no per-path entry exists.
+  function anySessionImageMeta() {
+    const current = $session.loadedImages[$session.fileList[$session.currentFrame]];
+    if (current) return current;
+    const values = Object.values($session.loadedImages);
+    return values.length > 0 ? values[0] : undefined;
+  }
+
   // Returns the drawn dimensions without position — used by clampPan
   function getDrawDimensions(bitmap: ImageBitmap): { dw: number; dh: number } {
     if (!imageCanvas) return { dw: 0, dh: 0 };
@@ -92,9 +106,11 @@
     const bh = bitmap.height;
 
     if ($ui.blinkModeActive) {
-      // Blink resolution: 12 = 12.5%, 25 = 25% of source size
+      // Blink resolution: 12 = 12.5%, 25 = 25% of source size.
+      // Uses anySessionImageMeta() rather than a current-frame-specific
+      // lookup — see its doc comment above for why.
       const blinkFactor = $ui.blinkResolution === '25' ? 0.25 : 0.125;
-      const img      = $session.loadedImages[$session.fileList[$session.currentFrame]];
+      const img      = anySessionImageMeta();
       const srcWidth = img?.width ?? bw;
       const scale    = blinkFactor * (srcWidth / bw);
       const dw = Math.round(bw * scale);
@@ -230,7 +246,7 @@
       if (cachedStars.length > 0) {
         paintStarAnnotations();
       } else {
-        drawFlagOverlay($ui.currentBlinkFlag);
+        clearOverlayCanvas();
       }
     }
   }
@@ -357,7 +373,7 @@
       currentBitmap = bitmap;
 
       renderBitmap(bitmap);
-      drawFlagOverlay($ui.currentBlinkFlag);
+      clearOverlayCanvas();
       hasImage = true;
 
       // Repaint annotations after new frame is loaded
@@ -381,36 +397,12 @@
     resetPan();
   }
 
-  function drawFlagOverlay(flag: string) {
+  function clearOverlayCanvas() {
     if (!overlayCanvas) return;
     overlayCtx = overlayCanvas.getContext('2d');
     if (!overlayCtx) return;
-
-    const cw = overlayCanvas.width;
-    const ch = overlayCanvas.height;
-    overlayCtx.clearRect(0, 0, cw, ch);
-
-    if (!$ui.showQualityFlags || !$ui.blinkModeActive) return;
-    if (!currentBitmap) return;
-
-    const { dx, dy, dw, dh } = getDrawRect(currentBitmap);
-
-    if (flag === 'REJECT') {
-      // Red border ~5px inside the image rect
-      overlayCtx.save();
-      overlayCtx.strokeStyle = 'rgba(255, 40, 40, 0.85)';
-      overlayCtx.lineWidth = 5;
-      overlayCtx.strokeRect(dx + 3, dy + 3, dw - 6, dh - 6);
-      overlayCtx.restore();
-    }
+    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
   }
-
-  // Redraw overlay when flag or toggle changes
-  $effect(() => {
-    const flag = $ui.currentBlinkFlag;
-    const show = $ui.showQualityFlags;
-    drawFlagOverlay(flag);
-  });
 
   // ── Frame loading ─────────────────────────────────────────────────────────
   async function loadCurrentFrame() {
@@ -589,9 +581,7 @@
 
   function clearAnnotationOverlay() {
     cachedStars = [];
-    if (!overlayCanvas || !overlayCtx) return;
-    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-    drawFlagOverlay($ui.currentBlinkFlag);
+    clearOverlayCanvas();
   }
 
   onMount(() => {
@@ -637,6 +627,30 @@
     const factor = ZOOM_FACTORS[$ui.zoomLevel] ?? 1;
     return factor * img.width > DISPLAY_CACHE_WIDTH;
   })());
+
+  // ── Blink resolution auto-selection (issue #73) ───────────────────────────
+  // Picks the largest of the two cached blink resolutions (25% or 12.5%)
+  // that still fits within the current viewer viewport. Computed once
+  // whenever the viewport size or source frame changes — not on every
+  // blink step, since dimensions don't change mid-playback.
+  let lastBlinkResSrcWidth = 0;
+  let lastBlinkResViewerW  = 0;
+  let lastBlinkResViewerH  = 0;
+  $effect(() => {
+    const img = anySessionImageMeta();
+    if (!img || viewerWidth === 0 || viewerHeight === 0) return;
+    if (
+      img.width === lastBlinkResSrcWidth &&
+      viewerWidth === lastBlinkResViewerW &&
+      viewerHeight === lastBlinkResViewerH
+    ) return;
+    lastBlinkResSrcWidth = img.width;
+    lastBlinkResViewerW  = viewerWidth;
+    lastBlinkResViewerH  = viewerHeight;
+
+    const fits25 = img.width * 0.25 <= viewerWidth && img.height * 0.25 <= viewerHeight;
+    ui.setBlinkResolution(fits25 ? '25' : '12');
+  });
 
   // ── Mouse handling ────────────────────────────────────────────────────────
   let lastSrcX = -1;
