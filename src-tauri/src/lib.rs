@@ -250,8 +250,39 @@ fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
 
 // ── Application entry point ───────────────────────────────────────────────────
 
+/// Pin glibc's mmap threshold to a static 1 MB (Linux only).
+///
+/// By default, glibc dynamically raises its mmap threshold to the size of
+/// the largest recently freed mmap'd block (capped at 32 MB). Photyx's
+/// ~17 MB pixel buffers fall under that raised cap, so after the first few
+/// frees, all subsequent pixel-buffer allocations are served from the brk
+/// heap instead of mmap. Heap memory can only be returned to the OS from
+/// the top down, and interleaved small allocations across threads pin the
+/// heap top — leaving gigabytes of freed-but-resident memory after
+/// ClearSession (multi-GB residuals confirmed empirically, July 2026).
+///
+/// Setting the threshold explicitly disables the dynamic adjustment:
+/// every allocation ≥ 1 MB gets its own mmap and is returned to the OS
+/// immediately on free. Small allocations (star vectors, JPEG buffers,
+/// keyword maps) stay on the fast heap path. Windows uses a different
+/// allocator and has not exhibited this behavior.
+///
+/// Must run before any large allocations — first statement in run().
+#[cfg(target_os = "linux")]
+fn pin_mmap_threshold() {
+    const MMAP_THRESHOLD_BYTES: libc::c_int = 1_048_576; // 1 MB
+    let ok = unsafe { libc::mallopt(libc::M_MMAP_THRESHOLD, MMAP_THRESHOLD_BYTES) };
+    if ok != 1 {
+        eprintln!("Warning: mallopt(M_MMAP_THRESHOLD) failed — memory may not be returned to the OS promptly");
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn pin_mmap_threshold() {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    pin_mmap_threshold();
     let _log_guard = init_logging();
     info!("Photyx starting up");
 
