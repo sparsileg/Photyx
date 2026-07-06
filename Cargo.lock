@@ -3414,7 +3414,7 @@ dependencies = [
 
 [[package]]
 name = "photyx"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -3423,6 +3423,7 @@ dependencies = [
  "fitsio-sys",
  "glob",
  "image",
+ "libc",
  "num_cpus",
  "once_cell",
  "photyx-xisf",

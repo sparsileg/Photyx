@@ -258,56 +258,63 @@ pub fn start_background_cache(
     }
 
     let app = app.clone();
-    let num_threads = {
-        let ctx = state.context.lock().expect("context lock poisoned");
-        let pref = ctx.rayon_thread_count;
-        if pref <= 0 {
-            (num_cpus::get()).saturating_sub(1).max(1)
-        } else {
-            (pref as usize).min(num_cpus::get()).max(1)
-        }
-    };
     tauri::async_runtime::spawn(async move {
+        use rayon::prelude::*;
         let state_arc = app.state::<Arc<PhotoxState>>();
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(num_threads)
-            .build()
-            .expect("Failed to build thread pool");
 
-        let snapshots = {
+        // Snapshot the file list and chunk size once up front. Per-chunk
+        // pixel snapshots are taken under short-lived locks inside the
+        // loop below — bounding peak memory to one chunk of raw buffers
+        // (the same pixel_chunking pattern CacheFrames and AnalyzeFrames
+        // use) instead of cloning the entire session at once, and
+        // releasing the context lock between chunks so display commands
+        // aren't starved for the duration of the build.
+        let (file_list, chunk_len) = {
             let ctx = state_arc.context.lock().expect("context lock poisoned");
-            let snaps: Vec<_> = ctx.file_list.iter().filter_map(|path| {
-                let buf = ctx.image_buffers.get(path)?;
-                let pixels = buf.pixels.as_ref()?;
-                let is_prerendered = buf.keywords.get("PXTYPE")
-                    .map(|kw| kw.value == "HEATMAP")
-                    .unwrap_or(false);
-                let channels = buf.channels as usize;
-                use crate::context::PixelData;
-                let snap = match pixels {
-                    PixelData::U8(v)  => PixelData::U8(v.clone()),
-                    PixelData::U16(v) => PixelData::U16(v.clone()),
-                    PixelData::F32(v) => PixelData::F32(v.clone()),
-                };
-                Some((path.clone(), buf.width as usize, buf.height as usize, channels, is_prerendered, snap))
-            }).collect();
-            snaps
+            (ctx.file_list.clone(), crate::plugins::pixel_chunking::chunk_size(&ctx))
         };
 
         const MAX_DISPLAY_W: usize = 1200;
 
-        let display_results: Vec<(String, Vec<u8>)> = pool.install(|| {
-            use rayon::prelude::*;
-            snapshots.par_iter().filter_map(|(path, src_w, src_h, channels, is_prerendered, pixels)| {
-                let step = if *src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
+        let mut display_results: Vec<(String, Vec<u8>)> = Vec::with_capacity(file_list.len());
+
+        for path_chunk in file_list.chunks(chunk_len) {
+            // Sequential: clone this chunk's pixel data under a brief lock.
+            // FramePixelSnapshot doesn't carry the prerendered-heatmap flag,
+            // so it's side-loaded into a small per-chunk map — same pattern
+            // analyze_frames uses for keywords.
+            let (frames, prerendered_by_path) = {
+                let ctx = state_arc.context.lock().expect("context lock poisoned");
+                let frames = crate::plugins::pixel_chunking::snapshot_pixel_chunk(&ctx, path_chunk);
+                let prerendered: std::collections::HashMap<String, bool> = path_chunk.iter()
+                    .filter_map(|path| {
+                        ctx.image_buffers.get(path).map(|buf| {
+                            let is_pre = buf.keywords.get("PXTYPE")
+                                .map(|kw| kw.value == "HEATMAP")
+                                .unwrap_or(false);
+                            (path.clone(), is_pre)
+                        })
+                    })
+                    .collect();
+                (frames, prerendered)
+            };
+
+            let chunk_results: Vec<(String, Vec<u8>)> = frames.par_iter().filter_map(|snap| {
+                let src_w = snap.width;
+                let src_h = snap.height;
+                let channels = snap.channels;
+                let pixels = &snap.pixels;
+                let is_prerendered = prerendered_by_path.get(&snap.path).copied().unwrap_or(false);
+
+                let step = if src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
                 let disp_w = src_w / step;
                 let disp_h = src_h / step;
                 let pixel_count = disp_w * disp_h;
-                let is_rgb = *channels == 3;
+                let is_rgb = channels == 3;
 
                 use crate::context::PixelData;
 
-                if *is_prerendered && is_rgb {
+                if is_prerendered && is_rgb {
                     if let PixelData::U8(v) = pixels {
                         let mut rgb = Vec::with_capacity(pixel_count * 3);
                         for oy in 0..disp_h {
@@ -323,7 +330,7 @@ pub fn start_background_cache(
                         let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
                         let mut buf = std::io::Cursor::new(Vec::new());
                         JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY).encode_image(&img).ok()?;
-                        return Some((path.clone(), buf.into_inner()));
+                        return Some((snap.path.clone(), buf.into_inner()));
                     }
                 }
 
@@ -340,10 +347,10 @@ pub fn start_background_cache(
                                     let mut sum = 0u32; let mut count = 0u32;
                                     for dy in 0..step {
                                         let sy = oy * step + dy;
-                                        if sy >= *src_h { continue; }
+                                        if sy >= src_h { continue; }
                                         for dx in 0..step {
                                             let sx = ox * step + dx;
-                                            if sx >= *src_w { continue; }
+                                            if sx >= src_w { continue; }
                                             let idx = (sy * src_w + sx) * num_ch + ch;
                                             sum += v[idx] as u32;
                                             count += 1;
@@ -361,10 +368,10 @@ pub fn start_background_cache(
                                     let mut sum = 0.0f32; let mut count = 0u32;
                                     for dy in 0..step {
                                         let sy = oy * step + dy;
-                                        if sy >= *src_h { continue; }
+                                        if sy >= src_h { continue; }
                                         for dx in 0..step {
                                             let sx = ox * step + dx;
-                                            if sx >= *src_w { continue; }
+                                            if sx >= src_w { continue; }
                                             let idx = (sy * src_w + sx) * num_ch + ch;
                                             let val = v[idx];
                                             if val.is_finite() { sum += val; count += 1; }
@@ -382,10 +389,10 @@ pub fn start_background_cache(
                                     let mut sum = 0u32; let mut count = 0u32;
                                     for dy in 0..step {
                                         let sy = oy * step + dy;
-                                        if sy >= *src_h { continue; }
+                                        if sy >= src_h { continue; }
                                         for dx in 0..step {
                                             let sx = ox * step + dx;
-                                            if sx >= *src_w { continue; }
+                                            if sx >= src_w { continue; }
                                             let idx = (sy * src_w + sx) * num_ch + ch;
                                             sum += v[idx] as u32;
                                             count += 1;
@@ -427,26 +434,29 @@ pub fn start_background_cache(
                 let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
                 let mut buf = std::io::Cursor::new(Vec::new());
                 JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY).encode_image(&img).ok()?;
-                Some((path.clone(), buf.into_inner()))
-            }).collect()
-        });
+                Some((snap.path.clone(), buf.into_inner()))
+            }).collect();
+
+            display_results.extend(chunk_results);
+            // This chunk's cloned pixel buffers (`frames`) drop here,
+            // before the next chunk is snapshotted.
+        }
 
         tracing::info!("Background cache: display-resolution stretched JPEGs complete");
 
+        // Thumbnails are derived from the (much smaller) display-res JPEGs —
+        // no raw pixel data is held past this point.
         for &(res_name, target_w) in &[("12", 376u32), ("25", 752u32)] {
-            let results: Vec<(String, Vec<u8>)> = pool.install(|| {
-                use rayon::prelude::*;
-                display_results.par_iter().filter_map(|(path, jpeg_bytes)| {
-                    let img = image::load_from_memory(jpeg_bytes).ok()?;
-                    let src_w = img.width();
-                    let src_h = img.height();
-                    let target_h = (src_h as f32 * target_w as f32 / src_w as f32).round() as u32;
-                    let resized = img.resize(target_w, target_h, image::imageops::FilterType::Triangle);
-                    let mut buf = std::io::Cursor::new(Vec::new());
-                    JpegEncoder::new_with_quality(&mut buf, THUMBNAIL_JPEG_QUALITY).encode_image(&resized).ok()?;
-                    Some((path.clone(), buf.into_inner()))
-                }).collect()
-            });
+            let results: Vec<(String, Vec<u8>)> = display_results.par_iter().filter_map(|(path, jpeg_bytes)| {
+                let img = image::load_from_memory(jpeg_bytes).ok()?;
+                let src_w = img.width();
+                let src_h = img.height();
+                let target_h = (src_h as f32 * target_w as f32 / src_w as f32).round() as u32;
+                let resized = img.resize(target_w, target_h, image::imageops::FilterType::Triangle);
+                let mut buf = std::io::Cursor::new(Vec::new());
+                JpegEncoder::new_with_quality(&mut buf, THUMBNAIL_JPEG_QUALITY).encode_image(&resized).ok()?;
+                Some((path.clone(), buf.into_inner()))
+            }).collect();
 
             {
                 let mut ctx = state_arc.context.lock().expect("context lock poisoned");

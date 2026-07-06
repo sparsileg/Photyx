@@ -95,22 +95,32 @@ impl PhotonPlugin for AddFiles {
         });
 
         if let Some(raw_bytes) = estimated_bytes {
-            let peak_bytes = (raw_bytes as f64 * 2.1) as i64;
-            if peak_bytes > ctx.buffer_pool_bytes {
+            // Already-loaded files sit at their actual settled size (no
+            // transient multiplier — they aren't mid-load). Only the
+            // incoming batch incurs the 2.1x peak overhead during loading
+            // and analysis. Combining the two catches a limit breach that
+            // builds up across several smaller AddFiles calls, not just
+            // one large one.
+            let already_loaded_bytes = ctx.total_memory_used() as i64;
+            let new_peak_bytes       = (raw_bytes as f64 * 2.1) as i64;
+            let projected_peak_bytes = already_loaded_bytes + new_peak_bytes;
+
+            if projected_peak_bytes > ctx.buffer_pool_bytes {
                 return Err(PluginError::new(
                     "MEMORY_LIMIT_EXCEEDED",
                     &format!(
-                        "Load cancelled: {} files require ~{:.1} GB of memory. Preferences limit is set to {:.1} GB.",
+                        "Load cancelled: {} new file(s) would bring total memory to ~{:.1} GB \
+                         (~{:.1} GB already loaded + ~{:.1} GB for these files). \
+                         Preferences limit is set to {:.1} GB.",
                         paths.len(),
-                        peak_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                        projected_peak_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                        already_loaded_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                        new_peak_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
                         ctx.buffer_pool_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
                     ),
                 ));
             }
         }
-
-        let raw_mb  = estimated_bytes.unwrap_or(0) / (1024 * 1024);
-        let peak_mb = (estimated_bytes.unwrap_or(0) as f64 * 2.1) as i64 / (1024 * 1024);
 
         // Filter out files already in the session
         let paths: Vec<String> = paths.into_iter()
@@ -166,9 +176,17 @@ impl PhotonPlugin for AddFiles {
 
         info!("AddFiles: loaded {} of {} files", loaded, paths.len());
 
+        // Cumulative totals across the whole session (not just this batch),
+        // using actual loaded buffer sizes rather than the pre-load estimate
+        // above (which only ever covered the new files being added, and was
+        // extrapolated from peeking a single file's dimensions).
+        let cumulative_raw_bytes = ctx.total_memory_used() as i64;
+        let cumulative_raw_mb    = cumulative_raw_bytes / (1024 * 1024);
+        let cumulative_peak_mb   = (cumulative_raw_bytes as f64 * 2.1) as i64 / (1024 * 1024);
+
         let mut msg = format!(
             "Loaded {} file(s) (~{} MB raw, ~{} MB peak with analysis).",
-            loaded, raw_mb, peak_mb
+            loaded, cumulative_raw_mb, cumulative_peak_mb
         );
         if !glob_warnings.is_empty() {
             for w in &glob_warnings {
