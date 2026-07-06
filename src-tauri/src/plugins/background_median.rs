@@ -10,7 +10,7 @@ use crate::analysis::{
     BackgroundConfig
 };
 use crate::context::AppContext;
-use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
+use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
 use serde_json::json;
 
 // ── Shared pixel preparation ──────────────────────────────────────────────────
@@ -98,7 +98,7 @@ fn run_and_store(
 
 pub struct BackgroundMedianPlugin;
 
-impl PhotonPlugin for BackgroundMedianPlugin {
+impl PhotyxPlugin for BackgroundMedianPlugin {
     fn name(&self)        -> &str { "BackgroundMedian" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {
@@ -153,7 +153,7 @@ impl PhotonPlugin for BackgroundMedianPlugin {
 
 pub struct BackgroundStdDevPlugin;
 
-impl PhotonPlugin for BackgroundStdDevPlugin {
+impl PhotyxPlugin for BackgroundStdDevPlugin {
     fn name(&self)        -> &str { "BackgroundStdDev" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {
@@ -179,7 +179,7 @@ impl PhotonPlugin for BackgroundStdDevPlugin {
 
 pub struct BackgroundGradientPlugin;
 
-impl PhotonPlugin for BackgroundGradientPlugin {
+impl PhotyxPlugin for BackgroundGradientPlugin {
     fn name(&self)        -> &str { "BackgroundGradient" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {

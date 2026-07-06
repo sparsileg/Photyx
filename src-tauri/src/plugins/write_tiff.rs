@@ -5,12 +5,12 @@ use std::io::BufWriter;
 use std::path::Path;
 use tracing::{info, warn};
 use tiff::encoder::{TiffEncoder, colortype};
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, ColorSpace, ImageBuffer, PixelData};
 
 pub struct WriteTIFF;
 
-impl PhotonPlugin for WriteTIFF {
+impl PhotyxPlugin for WriteTIFF {
     fn name(&self)        -> &str { "WriteTIFF" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Writes all loaded images as TIFF files to a destination directory" }

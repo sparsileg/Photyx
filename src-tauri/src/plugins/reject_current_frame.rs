@@ -7,12 +7,12 @@
 // panel's Reject button (passes an explicit index, since blink playback's
 // local frame index can diverge from ctx.current_frame).
 
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::AppContext;
 
 pub struct RejectCurrentFrame;
 
-impl PhotonPlugin for RejectCurrentFrame {
+impl PhotyxPlugin for RejectCurrentFrame {
     fn name(&self) -> &str { "RejectCurrentFrame" }
     fn version(&self) -> &str { "1.0.0" }
     fn description(&self) -> &str {

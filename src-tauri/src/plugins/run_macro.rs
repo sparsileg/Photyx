@@ -3,12 +3,12 @@
 // Spec §7.7, §6.3
 
 use tracing::info;
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::AppContext;
 
 pub struct RunMacro;
 
-impl PhotonPlugin for RunMacro {
+impl PhotyxPlugin for RunMacro {
     fn name(&self)        -> &str { "RunMacro" }
     fn version(&self)     -> &str { "1.1" }
     fn description(&self) -> &str { "Executes a macro stored in the database" }

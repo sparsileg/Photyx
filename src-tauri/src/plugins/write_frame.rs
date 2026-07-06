@@ -3,14 +3,14 @@
 // Spec §5.3, §6.3
 
 use tracing::info;
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
 use super::write_fits::write_fits_new;
 use super::write_tiff::write_tiff_file;
 
 pub struct WriteFrame;
 
-impl PhotonPlugin for WriteFrame {
+impl PhotyxPlugin for WriteFrame {
     fn name(&self)        -> &str { "WriteFrame" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Writes the currently active frame back to its source path in its original format" }

@@ -2,14 +2,14 @@
 // Appends explicit file paths to the session; does not clear existing files.
 
 use tracing::info;
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::AppContext;
 use glob::glob;
 use crate::plugins::image_reader::{read_image_file, peek_fits_dimensions, peek_xisf_dimensions, peek_tiff_dimensions};
 
 pub struct AddFiles;
 
-impl PhotonPlugin for AddFiles {
+impl PhotyxPlugin for AddFiles {
     fn name(&self)        -> &str { "AddFiles" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Appends a list of explicit file paths to the session" }

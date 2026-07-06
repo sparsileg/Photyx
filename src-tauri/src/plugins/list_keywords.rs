@@ -1,12 +1,12 @@
 // plugins/list_keywords.rs — ListKeywords built-in plugin
 // Returns all keywords for the current frame as formatted text.
 
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
 
 pub struct ListKeywords;
 
-impl PhotonPlugin for ListKeywords {
+impl PhotyxPlugin for ListKeywords {
     fn name(&self) -> &str { "ListKeywords" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str { "Lists all header keywords for the current frame" }

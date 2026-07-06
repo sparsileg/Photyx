@@ -9,12 +9,12 @@ use crate::analysis::{
     StarDetectionConfig,
 };
 use crate::context::AppContext;
-use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
+use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
 use serde_json::json;
 
 pub struct ComputeFWHM;
 
-impl PhotonPlugin for ComputeFWHM {
+impl PhotyxPlugin for ComputeFWHM {
     fn name(&self)        -> &str { "ComputeFWHM" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {

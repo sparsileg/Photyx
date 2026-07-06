@@ -1,4 +1,4 @@
-// plugin/mod.rs — PhotonPlugin trait, types, and plugin infrastructure
+// plugin/mod.rs — PhotyxPlugin trait, types, and plugin infrastructure
 // Spec §6.4
 
 pub mod registry;
@@ -80,10 +80,10 @@ impl std::fmt::Display for PluginError {
     }
 }
 
-// ── PhotonPlugin trait ────────────────────────────────────────────────────────
+// ── PhotyxPlugin trait ────────────────────────────────────────────────────────
 // Spec §6.4 — all plugins implement this trait
 
-pub trait PhotonPlugin: Send + Sync {
+pub trait PhotyxPlugin: Send + Sync {
     fn name(&self)        -> &str;
     fn version(&self)     -> &str;
     fn description(&self) -> &str;

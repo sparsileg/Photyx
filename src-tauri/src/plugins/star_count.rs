@@ -9,12 +9,12 @@
 
 use crate::analysis::{self, stars::detect_stars, StarDetectionConfig};
 use crate::context::AppContext;
-use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
+use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
 use serde_json::json;
 
 pub struct CountStarsPlugin;
 
-impl PhotonPlugin for CountStarsPlugin {
+impl PhotyxPlugin for CountStarsPlugin {
     fn name(&self)        -> &str { "CountStars" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {

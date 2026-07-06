@@ -11,7 +11,7 @@ use tracing::info;
 use image::{RgbImage, ImageFormat};
 use std::io::Cursor;
 
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, ColorSpace, PixelData};
 
 // ── AutoStretch defaults ──────────────────────────────────────────────────
@@ -20,7 +20,7 @@ const DEFAULT_TARGET_BACKGROUND: f32 = 0.15;
 
 pub struct AutoStretch;
 
-impl PhotonPlugin for AutoStretch {
+impl PhotyxPlugin for AutoStretch {
     fn name(&self) -> &str { "AutoStretch" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str { "Applies automatic screen transfer function stretch" }

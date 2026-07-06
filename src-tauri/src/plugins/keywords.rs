@@ -3,7 +3,7 @@
 // Spec §13.1, §6.3
 
 use tracing::info;
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, KeywordEntry};
 
 // ── Scope helper ──────────────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ fn parse_scope(args: &ArgMap) -> Result<bool, PluginError> {
 
 pub struct AddKeyword;
 
-impl PhotonPlugin for AddKeyword {
+impl PhotyxPlugin for AddKeyword {
     fn name(&self)        -> &str { "AddKeyword" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Adds or replaces a keyword on loaded images (scope=all|current, default: all)" }
@@ -117,7 +117,7 @@ impl PhotonPlugin for AddKeyword {
 
 pub struct DeleteKeyword;
 
-impl PhotonPlugin for DeleteKeyword {
+impl PhotyxPlugin for DeleteKeyword {
     fn name(&self)        -> &str { "DeleteKeyword" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Removes a keyword from loaded images (scope=all|current, default: all)" }
@@ -182,7 +182,7 @@ impl PhotonPlugin for DeleteKeyword {
 
 pub struct ModifyKeyword;
 
-impl PhotonPlugin for ModifyKeyword {
+impl PhotyxPlugin for ModifyKeyword {
     fn name(&self)        -> &str { "ModifyKeyword" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Changes the value of an existing keyword (scope=all|current, default: all)" }
@@ -280,7 +280,7 @@ impl PhotonPlugin for ModifyKeyword {
 
 pub struct CopyKeyword;
 
-impl PhotonPlugin for CopyKeyword {
+impl PhotyxPlugin for CopyKeyword {
     fn name(&self)        -> &str { "CopyKeyword" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Copies a keyword value to a new keyword name (scope=all|current, default: all)" }

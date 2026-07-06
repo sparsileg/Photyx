@@ -48,7 +48,7 @@ use crate::analysis::{
     SigmaClipConfig, StarDetectionConfig,
 };
 use crate::context::{AppContext, BitDepth, ColorSpace, ImageBuffer, PixelData};
-use crate::plugin::{ArgMap, ParamSpec, PhotonPlugin, PluginError, PluginOutput};
+use crate::plugin::{ArgMap, ParamSpec, PhotyxPlugin, PluginError, PluginOutput};
 use chrono::Utc;
 use rayon::prelude::*;
 use tracing::info;
@@ -87,7 +87,7 @@ struct FrameSnapshot {
     group:         usize,
 }
 
-impl PhotonPlugin for StackFrames {
+impl PhotyxPlugin for StackFrames {
     fn name(&self) -> &str { "StackFrames" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str {

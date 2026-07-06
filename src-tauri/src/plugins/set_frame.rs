@@ -1,12 +1,12 @@
 // plugins/set_frame.rs — SetFrame built-in plugin
 // Sets the current frame index. Used by UI navigation.
 
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::AppContext;
 
 pub struct SetFrame;
 
-impl PhotonPlugin for SetFrame {
+impl PhotyxPlugin for SetFrame {
     fn name(&self) -> &str { "SetFrame" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str { "Sets the current frame index" }

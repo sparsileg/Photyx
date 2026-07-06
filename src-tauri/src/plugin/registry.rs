@@ -5,12 +5,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tracing::{info, warn};
 use crate::context::AppContext;
-use super::{PhotonPlugin, ArgMap, PluginOutput, PluginError};
+use super::{PhotyxPlugin, ArgMap, PluginOutput, PluginError};
 
 // ── Plugin registry ───────────────────────────────────────────────────────────
 
 pub struct PluginRegistry {
-    plugins: RwLock<HashMap<String, Arc<dyn PhotonPlugin>>>,
+    plugins: RwLock<HashMap<String, Arc<dyn PhotyxPlugin>>>,
 }
 
 impl PluginRegistry {
@@ -21,7 +21,7 @@ impl PluginRegistry {
     }
 
     // Register a plugin — name is normalized to lowercase for lookup
-    pub fn register(&self, plugin: Arc<dyn PhotonPlugin>) {
+    pub fn register(&self, plugin: Arc<dyn PhotyxPlugin>) {
         let name = plugin.name().to_lowercase();
         info!("Registering plugin: {} v{}", plugin.name(), plugin.version());
         self.plugins
@@ -31,7 +31,7 @@ impl PluginRegistry {
     }
 
     // Look up a plugin by name (case-insensitive)
-    pub fn get(&self, name: &str) -> Option<Arc<dyn PhotonPlugin>> {
+    pub fn get(&self, name: &str) -> Option<Arc<dyn PhotyxPlugin>> {
         self.plugins
             .read()
             .expect("plugin registry lock poisoned")

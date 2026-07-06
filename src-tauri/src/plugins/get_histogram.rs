@@ -2,12 +2,12 @@
 // Computes histogram statistics for the current frame's raw buffer.
 // For mono images: single histogram. For RGB: per-channel histograms.
 
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::{AppContext, ColorSpace, PixelData};
 
 pub struct GetHistogram;
 
-impl PhotonPlugin for GetHistogram {
+impl PhotyxPlugin for GetHistogram {
     fn name(&self) -> &str { "GetHistogram" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str { "Computes histogram statistics for the current frame" }

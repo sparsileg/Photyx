@@ -2,12 +2,12 @@
 // Clears all loaded image buffers and resets session state.
 // Active directory is preserved.
 
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
 
 pub struct ClearSession;
 
-impl PhotonPlugin for ClearSession {
+impl PhotyxPlugin for ClearSession {
     fn name(&self) -> &str { "ClearSession" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str { "Clears all loaded images and resets session state. Active directory is preserved." }

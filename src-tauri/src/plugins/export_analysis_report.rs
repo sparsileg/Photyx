@@ -2,11 +2,11 @@
 // Spec §11
 
 use crate::context::AppContext;
-use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
+use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
 
 pub struct ExportAnalysisReport;
 
-impl PhotonPlugin for ExportAnalysisReport {
+impl PhotyxPlugin for ExportAnalysisReport {
     fn name(&self)        -> &str { "ExportAnalysisReport" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {

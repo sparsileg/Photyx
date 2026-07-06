@@ -16,7 +16,7 @@
 
 use crate::analysis::{self, fwhm::star_fwhm, stars::detect_stars, StarDetectionConfig};
 use crate::context::{AppContext, BitDepth, ColorSpace, ImageBuffer, KeywordEntry, PixelData};
-use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
+use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
 use serde_json::json;
 use std::collections::HashMap;
 use tracing::info;
@@ -144,7 +144,7 @@ fn contour_dash_color(bg: [u8; 3]) -> [u8; 3] {
 
 pub struct ContourHeatmap;
 
-impl PhotonPlugin for ContourHeatmap {
+impl PhotyxPlugin for ContourHeatmap {
     fn name(&self)        -> &str { "ContourHeatmap" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {

@@ -5,12 +5,12 @@
 // or produce stale UI state — mirrors the cleanup MoveFile already does.
 
 use tracing::info;
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::AppContext;
 
 pub struct FilterByKeyword;
 
-impl PhotonPlugin for FilterByKeyword {
+impl PhotyxPlugin for FilterByKeyword {
     fn name(&self)        -> &str { "FilterByKeyword" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Filters the session file list to frames where the given keyword matches the given value" }

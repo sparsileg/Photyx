@@ -9,12 +9,12 @@ use image::RgbImage;
 use std::io::Cursor;
 use rayon::prelude::*;
 
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, PixelData};
 
 pub struct CacheFrames;
 
-impl PhotonPlugin for CacheFrames {
+impl PhotyxPlugin for CacheFrames {
     fn name(&self) -> &str { "CacheFrames" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str { "Pre-renders all loaded images to blink-resolution JPEGs" }

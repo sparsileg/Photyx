@@ -3,13 +3,13 @@
 // Spec §5.3, §6.3
 
 use tracing::{info, warn};
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
 use super::write_tiff::write_tiff_file;
 
 pub struct WriteCurrent;
 
-impl PhotonPlugin for WriteCurrent {
+impl PhotyxPlugin for WriteCurrent {
     fn name(&self)        -> &str { "WriteCurrent" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Writes all buffered images back to their source paths in their original format" }

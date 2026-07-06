@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::context::AppContext;
-use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
+use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
 
 // ── GetKeyword ────────────────────────────────────────────────────────────────
 
@@ -15,7 +15,7 @@ use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, Plu
 /// Result is stored in $PXFLAG (uppercase of the name arg) in AppContext.variables.
 pub struct GetKeyword;
 
-impl PhotonPlugin for GetKeyword {
+impl PhotyxPlugin for GetKeyword {
     fn name(&self)        -> &str { "GetKeyword" }
     fn version(&self)     -> &str { "1.1.0" }
     fn description(&self) -> &str { "Retrieves a FITS keyword value from the current frame into a script variable" }
@@ -83,7 +83,7 @@ impl PhotonPlugin for GetKeyword {
 ///        MoveFile source="$NEW_FILE" destination="D:/Heatmaps"
 pub struct MoveFile;
 
-impl PhotonPlugin for MoveFile {
+impl PhotyxPlugin for MoveFile {
     fn name(&self)        -> &str { "MoveFile" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str { "Moves a file to a destination directory. Uses current frame if source= is not specified." }
@@ -197,7 +197,7 @@ impl PhotonPlugin for MoveFile {
 ///        CopyFile source="$NEW_FILE" destination="D:/Heatmaps"
 pub struct CopyFile;
 
-impl PhotonPlugin for CopyFile {
+impl PhotyxPlugin for CopyFile {
     fn name(&self)        -> &str { "CopyFile" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str { "Copies a file to a destination directory. Uses current frame if source= is not specified." }
@@ -271,7 +271,7 @@ impl PhotonPlugin for CopyFile {
 /// Usage: Print message="Hello, world!"
 pub struct Print;
 
-impl PhotonPlugin for Print {
+impl PhotyxPlugin for Print {
     fn name(&self)        -> &str { "Print" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str { "Outputs a literal message to the console" }
@@ -304,7 +304,7 @@ impl PhotonPlugin for Print {
 /// Usage: Assert expression="$filecount > 0"
 pub struct Assert;
 
-impl PhotonPlugin for Assert {
+impl PhotyxPlugin for Assert {
     fn name(&self)        -> &str { "Assert" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str { "Halts execution if the expression evaluates to false" }
@@ -341,7 +341,7 @@ impl PhotonPlugin for Assert {
 /// Usage: CountFiles
 pub struct CountFiles;
 
-impl PhotonPlugin for CountFiles {
+impl PhotyxPlugin for CountFiles {
     fn name(&self)        -> &str { "CountFiles" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str { "Returns the number of loaded files; stores result in $filecount" }
@@ -362,7 +362,7 @@ impl PhotonPlugin for CountFiles {
 /// Usage: CountMatches pattern="J:/projects/M82/*-duo-*"
 pub struct CountMatches;
 
-impl PhotonPlugin for CountMatches {
+impl PhotyxPlugin for CountMatches {
     fn name(&self)        -> &str { "CountMatches" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str { "Counts filesystem entries matching a glob pattern; stores result in $matchcount" }
@@ -407,7 +407,7 @@ impl PhotonPlugin for CountMatches {
 /// Result is stored in $<name> (e.g. $downloads).
 pub struct GetSystemPath;
 
-impl PhotonPlugin for GetSystemPath {
+impl PhotyxPlugin for GetSystemPath {
     fn name(&self)        -> &str { "GetSystemPath" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str { "Retrieves a well-known system directory path; stores result in $<name>" }
@@ -462,7 +462,7 @@ impl PhotonPlugin for GetSystemPath {
 /// Usage: LoadFile path="D:/images/my_heatmap.xisf"
 pub struct LoadFile;
 
-impl PhotonPlugin for LoadFile {
+impl PhotyxPlugin for LoadFile {
     fn name(&self)        -> &str { "LoadFile" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str { "Loads a single file for display without adding it to the session" }

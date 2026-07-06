@@ -5,12 +5,12 @@ use std::path::Path;
 use tracing::{info, warn};
 use fitsio::FitsFile;
 use fitsio::images::{ImageDescription, ImageType};
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, BitDepth, ImageBuffer, PixelData};
 
 pub struct WriteFIT;
 
-impl PhotonPlugin for WriteFIT {
+impl PhotyxPlugin for WriteFIT {
     fn name(&self)        -> &str { "WriteFIT" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Writes all loaded images as FITS files to a destination directory" }

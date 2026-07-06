@@ -2,14 +2,14 @@
 // Applies Auto-STF stretch permanently to ctx.stack_result pixel buffer.
 // Parameters: shadow_clip (float, optional), target_bg (float, optional)
 
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, ColorSpace, PixelData};
 use crate::plugins::auto_stretch::{compute_stf_params, mtf};
 use tracing::info;
 
 pub struct CommitStretch;
 
-impl PhotonPlugin for CommitStretch {
+impl PhotyxPlugin for CommitStretch {
     fn name(&self) -> &str { "CommitStretch" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str {

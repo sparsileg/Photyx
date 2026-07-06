@@ -6,12 +6,12 @@
 
 use crate::analysis::debayer::{debayer_bilinear, BayerPattern};
 use crate::context::{AppContext, ColorSpace, PixelData};
-use crate::plugin::{ArgMap, ParamSpec, PhotonPlugin, PluginError, PluginOutput};
+use crate::plugin::{ArgMap, ParamSpec, PhotyxPlugin, PluginError, PluginOutput};
 use tracing::info;
 
 pub struct DebayerImage;
 
-impl PhotonPlugin for DebayerImage {
+impl PhotyxPlugin for DebayerImage {
     fn name(&self) -> &str { "DebayerImage" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str {

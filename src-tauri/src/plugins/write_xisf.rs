@@ -4,12 +4,12 @@
 use tracing::info;
 use photyx_xisf::{XisfWriter, WriteOptions, Codec};
 use photyx_xisf::{XisfImage, PixelData as XisfPixelData, SampleFormat, ColorSpace as XisfColorSpace};
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, BitDepth, ColorSpace, PixelData};
 
 pub struct WriteXISF;
 
-impl PhotonPlugin for WriteXISF {
+impl PhotyxPlugin for WriteXISF {
     fn name(&self)        -> &str { "WriteXISF" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str { "Writes all loaded images as XISF files to a destination directory" }

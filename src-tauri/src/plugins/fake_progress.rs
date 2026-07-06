@@ -1,11 +1,11 @@
 // plugins/fake_progress.rs — FakeProgress plugin
 // Simulates a long-running plugin for testing the progress feedback pipeline.
-use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
+use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
 use crate::context::AppContext;
 
 pub struct FakeProgress;
 
-impl PhotonPlugin for FakeProgress {
+impl PhotyxPlugin for FakeProgress {
     fn name(&self) -> &str { "FakeProgress" }
     fn version(&self) -> &str { "1.0" }
     fn description(&self) -> &str { "Simulates a long-running plugin for progress pipeline testing" }

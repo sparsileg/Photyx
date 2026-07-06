@@ -21,7 +21,7 @@ use crate::analysis::{
     AnalysisResult, BackgroundConfig, StarDetectionConfig,
 };
 use crate::context::{AppContext, ImageBuffer, KeywordEntry};
-use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotonPlugin, PluginError, PluginOutput};
+use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
 use rayon::prelude::*;
 use serde_json::json;
 use tracing::info;
@@ -66,7 +66,7 @@ fn load_thresholds_by_name(
     ))
 }
 
-impl PhotonPlugin for AnalyzeFrames {
+impl PhotyxPlugin for AnalyzeFrames {
     fn name(&self)        -> &str { "AnalyzeFrames" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {

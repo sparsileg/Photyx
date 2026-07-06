@@ -4,13 +4,13 @@
 
 use std::path::Path;
 use tracing::info;
-use crate::plugin::{PhotonPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
+use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::AppContext;
 use crate::plugins::image_reader::read_image_file;
 
 pub struct ReadImages;
 
-impl PhotonPlugin for ReadImages {
+impl PhotyxPlugin for ReadImages {
     fn name(&self)        -> &str { "ReadImages" }
     fn version(&self)     -> &str { "1.0" }
     fn description(&self) -> &str {
