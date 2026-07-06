@@ -105,6 +105,26 @@ frame display — for its duration. Extract owned data before any Rayon
 parallel section; `&mut AppContext` cannot be borrowed inside Rayon
 closures.
 
+**Memory management (Linux):** `pin_mmap_threshold()` in `lib.rs`,
+called as the first statement of `run()`, sets glibc's mmap threshold
+to a static 1 MB via `mallopt(M_MMAP_THRESHOLD)` (gated behind
+`#[cfg(target_os = "linux")]`; a no-op elsewhere). Without this,
+glibc's dynamic threshold adaptation raises the threshold above the
+~17 MB per-frame pixel-buffer size after the first few frees, shifting
+subsequent large allocations onto the brk heap — where freed blocks
+cannot be returned to the OS while interleaved small allocations pin
+the heap top, leaving multi-GB freed-but-resident residuals after
+`ClearSession`. With the threshold pinned, every allocation ≥ 1 MB
+gets its own mmap and is returned to the OS immediately on free.
+Related discipline: all bulk pixel-processing paths — `AnalyzeFrames`,
+`CacheFrames`, and `start_background_cache` — snapshot pixel data in
+chunks via `plugins/pixel_chunking.rs` (chunk size =
+`rayon_thread_count`), bounding peak memory to one chunk of raw
+buffers rather than a full-session clone. `start_background_cache`
+additionally takes the `AppContext` lock per chunk rather than for the
+whole build, so display commands are not starved for its duration, and
+uses the global Rayon pool like its sibling plugins.
+
 `AutoStretch` operates on a dynamic display-resolution downsampled
 copy (~50x pixel-count reduction vs. the full
 buffer). `get_full_frame` encodes the full-resolution raw buffer as
@@ -1373,7 +1393,7 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 | `set_active_threshold_profile`      | Sets the active profile; propagates thresholds into `AppContext` immediately                                       |
 | `set_frame_flag`                    | Updates the PASS/REJECT flag for a single frame in `ctx.analysis_results` by path; used before Commit to sync toggled flags |
 | `set_preference`                    | Upserts a single preference key/value; writes through the `AppSettings` struct                                     |
-| `start_background_cache`            | Spawns a background task to build blink cache JPEGs                                                                 |
+| `start_background_cache`            | Spawns a background task that builds display-resolution JPEGs and both blink caches, snapshotting pixel data in chunks via `pixel_chunking` with a short `AppContext` lock per chunk (§2.2) |
 | `write_crash_recovery`              | Upserts the single `crash_recovery` row with current session state (file list, current frame)                      |
 
 ---
@@ -1534,7 +1554,6 @@ believed still open as of this document.
 | `AnalysisThresholds::default()` hardcodes 3.0 for Star Count | Contradicts the confirmed 1.5σ default everywhere else in the codebase (§8.2); likely a real bug worth fixing |
 | `validate_alignment()` unused in StackFrames | Defined but never called; all frames pass without this validation step — see §7.4                       |
 | Full-res JPEG quality documented as 90, but no matching constant found | `defaults.rs` defines `DISPLAY_JPEG_QUALITY` (92) and `BLINK_JPEG_QUALITY` (85) but no full-res-specific constant — see §2.2, §9.3 |
-| Memory usage grows across sessions        | 103GB virtual / 20GB RSS observed after multiple sessions; not yet root-caused                              |
 | Linux GTK file picker multi-select        | Silently refuses to confirm a selection containing both files and folders (e.g. Ctrl+A when a `rejected/` subfolder is present) — select files manually instead |
 | Separate RGB channel views not working correctly | Pre-existing display bug                                                                          |
 | `TRI_MAX_STARS = 30` unvalidated on sparse-star sessions | Current value works for typical sessions; not yet confirmed as a safe floor for sparse-star fields — see §7.2 |
