@@ -548,6 +548,7 @@ only.
 | MoveFile              | File Management   | Moves a file to a destination directory; defaults to current frame if source= not specified; stores path in `$NEW_FILE`        | [source], destination                                        |
 | Print                 | Scripting         | Outputs a message to the pcode console; accepts bare expressions — `Print $x + 1` and `Print "hello"` are both valid           | message (positional or bare expression)                      |
 | ReadImages            | Session           | Reads a single image or all supported files in a directory                                                                     | path                                                          |
+| RejectCurrentFrame    | Session           | Moves a single frame to a rejected/ subfolder within its own source directory, removing it from the session and all caches; defaults to the current frame | [index], [append]                                            |
 | RunMacro              | Scripting         | Executes a saved macro by name from the database                                                                               | name                                                          |
 | Set                   | Scripting         | Assigns a value to a variable; string literals on the RHS must use double quotes                                               | varname = value                                              |
 | SetFrame              | Navigation        | Sets the current active frame by index (0-based)                                                                               | index                                                         |
@@ -1441,6 +1442,7 @@ implementation status and group plugins by category.
 | ModifyKeyword | Keyword |
 | MoveFile | File Management |
 | ReadImages | Session |
+| RejectCurrentFrame | Session |
 | RunMacro | Scripting |
 | SetFrame | Navigation |
 | SetZoom | Blink & View |

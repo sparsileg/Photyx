@@ -33,6 +33,7 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
     - [LoadFile](#loadfile)
     - [CountFiles](#countfiles)
     - [FilterByKeyword](#filterbykeyword)
+    - [RejectCurrentFrame](#rejectcurrentframe)
   - [Write / Export](#write--export)
     - [WriteCurrent](#writecurrent)
     - [WriteFrame](#writeframe)
@@ -480,6 +481,35 @@ FilterByKeyword name=<string> value=<string>
 ```
 FilterByKeyword name=FILTER value=Ha
 FilterByKeyword name=OBJECT value="M31"
+```
+
+---
+
+#### `RejectCurrentFrame`
+
+Moves a single frame to a `rejected/` subfolder within its own source
+directory, removing it from the session and all caches. Defaults to
+the current frame if `index` is omitted.
+
+```
+RejectCurrentFrame [index=<integer>] [append=<ext>]
+```
+
+| Argument | Required | Default | Description                                                                              |
+| -------- | -------- | ------- | ------------------------------------------------------------------------------------------ |
+| `index`  | No       | current frame | Zero-based frame index to reject                                                    |
+| `append` | No       |         | Suffix appended after the original filename extension (e.g. `append=cloudy` → `frame.fit.cloudy`). Leading dot is optional. |
+
+Unlike `CopyFile`, `MoveFile`, and `ContourHeatmap`, this command does
+**not** store its output path in `$NEW_FILE` — it has no system-set
+variable side effect.
+
+```
+# Reject the current frame
+RejectCurrentFrame
+
+# Reject a specific frame by index, with a custom suffix
+RejectCurrentFrame index=12 append=cloudy
 ```
 
 ---
