@@ -460,8 +460,7 @@ on OK/Apply.
 **Threshold fields** (label / direction / input / unit): Background
 Median (`> +σ`, 0.5–4.0, default 2.5) · FWHM (`> +σ`, 0.5–4.0, default
 2.5) · Eccentricity (`> absolute`, 0.10–1.00, default 0.85) · Star
-Count (`< σ`, 0.5–5.0, default 1.5) · Signal Weight (`< σ`, 0.5–5.0,
-default 2.5).
+Count (`< σ`, 0.5–5.0, default 1.5)
 
 Switching profiles with unsaved edits shows an inline confirmation
 bar. OK/Apply saves to DB and sets the profile active (propagated to
@@ -662,19 +661,12 @@ Five metrics are computed per frame:
 | FWHM                | Sigma      | `+σ` (high is worse)    | 2.5σ                | ✓                    |
 | Eccentricity         | Absolute   | `> threshold`            | 0.85                | ✓                    |
 | Star Count           | Sigma      | `−σ` (low is worse)      | 1.5σ                | ✓                    |
-| Signal Weight        | Sigma      | `−σ` (low is worse)      | 2.5σ                | ✓                    |
 
 All metrics except Background Median are derived from elliptical 2D
 Moffat PSF fitting per detected star. Star Count only counts stars
 that pass Moffat PSF acceptance criteria (a lenient connected-pixel
-detector was replaced by this). Signal Weight is a PSF-based signal
-quality measure: `A² / (A + B·π·a·b)`, where `A` is fitted peak
-amplitude, `B` is local background, and `π·a·b` is effective PSF area
-— it catches transparency and thin-cloud events that Star Count
-misses, and correctly flags frames where Star Count is inflated by a
-false-positive source such as a satellite trail. PSF Residual is
-computed internally as the star-acceptance gate but is not
-user-facing.
+detector was replaced by this). PSF Residual is computed internally as
+the star-acceptance gate but is not user-facing.
 
 **SNR** is computed and displayed as a diagnostic value only — it does
 **not** drive classification. Cross-session analysis confirmed a PSF
@@ -697,7 +689,7 @@ its threshold:
 
 - Background Median, FWHM: REJECT if `sigma_deviation ≥
   threshold.reject`
-- Star Count, Signal Weight: REJECT if `sigma_deviation ≤
+- Star Count: REJECT if `sigma_deviation ≤
   −threshold.reject`
 - Eccentricity: REJECT if the raw value `≥ threshold.reject`
   (absolute, not sigma-based)
@@ -753,7 +745,7 @@ triggered:
 | Category | Label          | Triggered by                                    |
 | ---------- | ---------------- | ---------------------------------------------------- |
 | O          | Optical         | FWHM and/or Eccentricity                              |
-| T          | Transparency    | Star Count and/or Signal Weight, without Background Median |
+| T          | Transparency    | Star Count without Background Median |
 | B          | Sky Brightness  | Background Median                                      |
 
 **Ordering:** O always leads when present. When both B and T are
@@ -1129,18 +1121,19 @@ have them — but since `CREATE TABLE IF NOT EXISTS` never alters an
 existing table, a database created before this cleanup may still carry
 those two unused columns. Rust code ignores them either way.
 
-**Note on threshold default inconsistency — confirmed via
+**Note on threshold default consistency — confirmed via
 `defaults.rs`:** `DEFAULT_STAR_COUNT_SIGMA = 1.5` in
 `settings/defaults.rs`, which states explicitly in its header comment
 that it is *"the single source of truth. No magic numbers or default
 strings anywhere else."* The DB column default
 (`star_count_reject_sigma REAL NOT NULL DEFAULT 1.5`) matches this
-exactly. However, `AnalysisThresholds::default()` in
-`analysis/session_stats.rs` — a separate, independent fallback —
-hardcodes `star_count: 3.0`. Given `defaults.rs`'s own stated mandate,
-this isn't just a doc inconsistency; it's a real violation of that
-invariant in the codebase itself, and worth fixing or auditing (see
-§14).
+exactly, and `AnalysisThresholds::default()` in
+`analysis/session_stats.rs` correctly sources its `star_count` value
+from `DEFAULT_STAR_COUNT_SIGMA` rather than hardcoding a literal —
+confirmed fixed (issue #67). One remaining discrepancy: `defaults.rs`
+bounds `star_count` to `STAR_COUNT_SIGMA_MIN`/`MAX` of `0.5`–`4.0`,
+while §8.5 below documents the bound as `0.5σ`–`5.0σ`. Worth
+reconciling.
 
 ### 8.3 Preferences
 
@@ -1198,22 +1191,20 @@ Named sets of AnalyzeFrames rejection thresholds, stored in
 | Background Median reject | `> +σ` | 2.5σ | 0.5σ | 4.0σ |
 | FWHM reject | `> +σ` | 2.5σ | 0.5σ | 4.0σ |
 | Eccentricity reject | `> abs` | 0.85 | 0.10 | 1.00 |
-| Star Count reject | `< σ` | 1.5σ | 0.5σ | 5.0σ |
-| Signal Weight reject | `< σ` | 2.5σ | 0.5σ | 5.0σ |
+| Star Count reject | `< σ` | 1.5σ | 0.5σ | 4.0σ |
 
 Star Count uses bimodal-aware anchoring — the 1.5σ threshold is
 relative to the clear-sky upper cluster, not the full mixed
 population, so a cloud-induced population split doesn't distort the
-threshold. (See §8.2 for the confirmed conflict between this value and
-`AnalysisThresholds::default()`'s independent fallback.)
+threshold. Note that the recommended default for Star Count reject for
+duo-band frames is 1.75σ.
 
 **Business logic:**
 
 - Default profile name is "Default" (not "Standard").
 - All thresholds are stored and displayed as positive values
   regardless of metric direction; negation for `<σ` metrics (Star
-  Count, Signal Weight) is applied at classification time, not at
-  storage time.
+  Count.
 - Values are clamped to bounds on save.
 - `set_active_threshold_profile` propagates thresholds into
   `AppContext.analysis_thresholds`
@@ -1553,7 +1544,6 @@ believed still open as of this document.
 | SNR estimator PSF artifact                | Worse-seeing frames produce higher SNR due to bloated star flux; excluded from rejection classification — see §6.2 |
 | AnalyzeFrames progress reporting          | Documented as having no per-frame progress reporting (unlike StackFrames, which does — §2.7); not independently re-verified against AnalyzeFrames source in this pass |
 | `threshold_profiles` orphaned columns     | `bg_stddev_reject_sigma`/`bg_gradient_reject_sigma` may still exist on pre-cleanup databases — see §8.2   |
-| `AnalysisThresholds::default()` hardcodes 3.0 for Star Count | Contradicts the confirmed 1.5σ default everywhere else in the codebase (§8.2); likely a real bug worth fixing |
 | `validate_alignment()` unused in StackFrames | Defined but never called; all frames pass without this validation step — see §7.4                       |
 | Full-res JPEG quality documented as 90, but no matching constant found | `defaults.rs` defines `DISPLAY_JPEG_QUALITY` (92) and `BLINK_JPEG_QUALITY` (85) but no full-res-specific constant — see §2.2, §9.3 |
 | Linux GTK file picker multi-select        | Silently refuses to confirm a selection containing both files and folders (e.g. Ctrl+A when a `rejected/` subfolder is present) — select files manually instead |
