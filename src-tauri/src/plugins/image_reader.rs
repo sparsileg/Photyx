@@ -60,6 +60,25 @@ pub fn peek_fits_dimensions(path: &str) -> Option<(u32, u32, u8, usize)> {
     }
 }
 
+/// Convert planar color data [R plane, G plane, B plane] to interleaved
+/// [R0,G0,B0,R1,G1,B1,...]. FITS stores color as planar; Photyx's internal
+/// format is interleaved. Mono data (channels != 3) is returned unchanged.
+/// Shared by all three FITS bit-depth read branches (Issue 79) — previously
+/// only the F32 branch performed this conversion, so U8/U16 RGB FITS
+/// (including files Photyx itself writes, which correctly deinterleave on
+/// write — see write_fits.rs's deinterleave_u8/u16/f32) loaded scrambled.
+fn planar_to_interleaved<T: Copy + Default>(data: &[T], width: u32, height: u32, channels: u8) -> Vec<T> {
+    if channels != 3 { return data.to_vec(); }
+    let n_pixels = (width * height) as usize;
+    let mut interleaved = vec![T::default(); data.len()];
+    for ch in 0..3 {
+        for px in 0..n_pixels {
+            interleaved[px * 3 + ch] = data[ch * n_pixels + px];
+        }
+    }
+    interleaved
+}
+
 pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
     let mut fitsfile = FitsFile::open(path)
         .map_err(|e| format!("Cannot open: {}", e))?;
@@ -67,7 +86,7 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
     let hdu = fitsfile.primary_hdu()
         .map_err(|e| format!("Cannot read primary HDU: {}", e))?;
 
-    let (width, height, channels, bit_depth) = match &hdu.info {
+    let (width, height, channels, bit_depth, is_unsigned_long) = match &hdu.info {
         HduInfo::ImageInfo { shape, image_type } => {
             let (w, h, c) = match shape.as_slice() {
                 [h, w]    => (*w as u32, *h as u32, 1u8),
@@ -83,7 +102,20 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
                 ImageType::Double        => BitDepth::F32,
                 _                        => BitDepth::U16,
             };
-            (w, h, c, bd)
+            // 32-bit integer fits (bitpix=32) shares bitdepth::u16's
+            // downconvert-to-16-bit destination, but needs different
+            // handling at read time — see the bitdepth::u16 match arm
+            // below (issue 79).
+            // The crate itself already detects the unsigned-32 BZERO/BSCALE
+            // convention (matching cfitsio's ffgiet "equivalent type" logic)
+            // and reports it as ImageType::UnsignedLong, distinct from plain
+            // ImageType::Long — confirmed empirically via a standalone probe
+            // against a real PixInsight-written unsigned-32 file, which
+            // reported exactly this variant. Checking only for `Long` (as
+            // an earlier version of this fix did) meant the unsigned branch
+            // below never actually executed for real unsigned-32 files.
+            let is_unsigned_long = matches!(image_type, ImageType::UnsignedLong);
+            (w, h, c, bd, is_unsigned_long)
         }
         _ => return Err("Primary HDU is not an image".to_string()),
     };
@@ -117,15 +149,47 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
 
             if record_str.len() > 10 && &record_str[8..9] == "=" {
                 let rest = &record_str[9..].trim_start().to_string();
-                let (value, comment) = if let Some(slash) = rest.find(" /") {
+                let (value, comment) = if rest.starts_with('\'') {
+                    // Quoted string value — scan for the real closing quote,
+                    // treating a doubled '' as an escaped literal quote
+                    // rather than the delimiter (Issue 79 item 4: the old
+                    // code searched for " /" across the whole remainder,
+                    // which misparsed values like 'M31 / companion' by
+                    // treating the space-slash inside the string as the
+                    // comment separator). The comment, if any, is searched
+                    // for only after the real closing quote.
+                    let chars: Vec<char> = rest.chars().collect();
+                    let mut i = 1; // skip opening quote
+                    let mut raw_value = String::new();
+                    let mut closed = false;
+                    while i < chars.len() {
+                        if chars[i] == '\'' {
+                            if i + 1 < chars.len() && chars[i + 1] == '\'' {
+                                raw_value.push('\''); // escaped literal quote
+                                i += 2;
+                                continue;
+                            } else {
+                                closed = true;
+                                i += 1;
+                                break;
+                            }
+                        }
+                        raw_value.push(chars[i]);
+                        i += 1;
+                    }
+                    let comment = if closed {
+                        let after_close: String = chars[i..].iter().collect();
+                        after_close.trim_start().strip_prefix('/').map(|c| c.trim().to_string())
+                    } else {
+                        None
+                    };
+                    (raw_value.trim_end().to_string(), comment)
+                } else if let Some(slash) = rest.find(" /") {
+                    // Numeric/logical value — unchanged; these never
+                    // legitimately contain " /" as part of the value.
                     (rest[..slash].trim().to_string(), Some(rest[slash+2..].trim().to_string()))
                 } else {
                     (rest.trim().to_string(), None)
-                };
-                let value = if value.starts_with('\'') && value.ends_with('\'') {
-                    value[1..value.len()-1].trim_end().to_string()
-                } else {
-                    value
                 };
                 keywords.insert(
                     key.clone(),
@@ -152,33 +216,72 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
             let data: Vec<u8> = hdu.read_image(&mut fitsfile)
                 .map_err(|e| format!("Cannot read pixel data: {}", e))?;
             if data.is_empty() { return Err("Pixel data is empty".to_string()); }
+            let data = planar_to_interleaved(&data, width, height, channels);
             Some(PixelData::U8(data))
         }
         BitDepth::U16 => {
-            let data: Vec<i32> = hdu.read_image(&mut fitsfile)
-                .map_err(|e| format!("Cannot read pixel data: {}", e))?;
-            if data.is_empty() { return Err("Pixel data is empty".to_string()); }
-            let data_u16: Vec<u16> = data.iter().map(|&v| v.clamp(0, 65535) as u16).collect();
+            let data_u16: Vec<u16> = if is_unsigned_long {
+                // ImageType::UnsignedLong means the fitsio crate has
+                // already confirmed (via cfitsio's own BZERO/BSCALE
+                // equivalent-type detection) that this is a standard
+                // unsigned-32-bit-convention file. cfitsio's automatic
+                // scaling correctly produces the physical value here —
+                // confirmed against a real PixInsight-written master via
+                // a standalone probe (values matched an independent
+                // astropy cross-check exactly). >> 16 downconverts to
+                // 16-bit the same way XISF/TIFF already do (retain the
+                // high 16 bits).
+                let data: Vec<u32> = hdu.read_image(&mut fitsfile)
+                    .map_err(|e| format!("Cannot read pixel data: {}", e))?;
+                if data.is_empty() { return Err("Pixel data is empty".to_string()); }
+                data.iter().map(|&v| (v >> 16) as u16).collect()
+            } else {
+                // Real 16-bit FITS (BITPIX=16, incl. the BZERO=32768
+                // unsigned-short convention), or a genuinely signed
+                // BITPIX=32 file — unchanged from previous behavior.
+                let data: Vec<i32> = hdu.read_image(&mut fitsfile)
+                    .map_err(|e| format!("Cannot read pixel data: {}", e))?;
+                if data.is_empty() { return Err("Pixel data is empty".to_string()); }
+                data.iter().map(|&v| v.clamp(0, 65535) as u16).collect()
+            };
+            let data_u16 = planar_to_interleaved(&data_u16, width, height, channels);
             Some(PixelData::U16(data_u16))
         }
         BitDepth::F32 => {
             let data: Vec<f32> = hdu.read_image(&mut fitsfile)
                 .map_err(|e| format!("Cannot read pixel data: {}", e))?;
             if data.is_empty() { return Err("Pixel data is empty".to_string()); }
-            let data = if channels == 3 {
-                // FITS stores color as planar [R plane, G plane, B plane].
-                // Photyx expects interleaved [R0,G0,B0,R1,G1,B1,...].
-                let n_pixels = (width * height) as usize;
-                let mut interleaved = vec![0.0f32; data.len()];
-                for ch in 0..3 {
-                    for px in 0..n_pixels {
-                        interleaved[px * 3 + ch] = data[ch * n_pixels + px];
+            let mut data = planar_to_interleaved(&data, width, height, channels);
+
+            // Probe for non-normalized float data (Issue 79, item 3).
+            // Photyx's display/analysis paths assume F32 pixel values are
+            // normalized to 0-1; some third-party tools write float FITS
+            // in a much wider range (e.g. 0-65535). A value comfortably
+            // above 1.0 reliably signals unnormalized data — normalized
+            // data tops out at 1.0 plus ordinary floating-point noise, so
+            // 1.5 clears that noise floor without being so high it misses
+            // real cases.
+            const NORMALIZED_MAX_THRESHOLD: f32 = 1.5;
+            if let Some(&max_val) = data.iter()
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            {
+                if max_val > NORMALIZED_MAX_THRESHOLD {
+                    // Guess the source range from the observed max: treat
+                    // anything above the 8-bit ceiling as accidentally
+                    // 16-bit-range data (the common case for third-party
+                    // float FITS), otherwise assume 8-bit range.
+                    let divisor = if max_val > 255.0 { 65535.0 } else { 255.0 };
+                    tracing::warn!(
+                        "read_fits_file: F32 data in '{}' has max value {:.2}, outside \
+                         the expected 0-1 normalized range — dividing by {} to normalize",
+                        path, max_val, divisor
+                    );
+                    for v in data.iter_mut() {
+                        *v /= divisor;
                     }
                 }
-                interleaved
-            } else {
-                data
-            };
+            }
+
             Some(PixelData::F32(data))
         }
     };
