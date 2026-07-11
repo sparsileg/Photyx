@@ -21,6 +21,25 @@ fn parse_scope(args: &ArgMap) -> Result<bool, PluginError> {
     }
 }
 
+const MAX_KEYWORD_NAME_LEN: usize = 8;
+
+/// FITS keyword names are limited to 8 characters. Names longer than this
+/// fall back to the non-standard HIERARCH convention on write, which
+/// Photyx's own reader cannot currently parse back — silently writing a
+/// keyword the app itself can never retrieve. See Issue 102.
+fn validate_keyword_name_length(arg_name: &str, name: &str) -> Result<(), PluginError> {
+    if name.len() > MAX_KEYWORD_NAME_LEN {
+        return Err(PluginError::invalid_arg(
+            arg_name,
+            &format!(
+                "keyword name '{}' is {} characters; FITS keyword names are limited to {} characters",
+                name, name.len(), MAX_KEYWORD_NAME_LEN
+            ),
+        ));
+    }
+    Ok(())
+}
+
 // ── AddKeyword ────────────────────────────────────────────────────────────────
 
 pub struct AddKeyword;
@@ -77,6 +96,7 @@ impl PhotyxPlugin for AddKeyword {
         if name.is_empty() {
             return Err(PluginError::invalid_arg("name", "keyword name cannot be empty"));
         }
+        validate_keyword_name_length("name", &name)?;
         if ctx.image_buffers.is_empty() {
             return Err(PluginError::new("NO_IMAGES", "No images loaded."));
         }
@@ -328,6 +348,7 @@ impl PhotyxPlugin for CopyKeyword {
         if to.is_empty() {
             return Err(PluginError::invalid_arg("to", "keyword name cannot be empty"));
         }
+        validate_keyword_name_length("to", &to)?;
         if ctx.image_buffers.is_empty() {
             return Err(PluginError::new("NO_IMAGES", "No images loaded."));
         }
