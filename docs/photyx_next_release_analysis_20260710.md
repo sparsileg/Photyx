@@ -334,7 +334,7 @@ docs and frontend — the issue recommends implementing the first three since
 the Guide's blink examples depend on them. Exit test: the documented
 Session/Project two-pass workflow, driven both by pure pcode and by the
 UI-review path, produces identical rejected/ contents.
-
+p
 **Phase 3 — Robustness & consistency.** Issue 07's panic-boundary work
 meaningfully de-risks everything after it (a bug during Phase 4 perf work no
 longer bricks the app). 15/16/20 are small alignment fixes. Exit test:
