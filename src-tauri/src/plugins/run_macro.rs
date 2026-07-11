@@ -107,7 +107,10 @@ impl PhotyxPlugin for RunMacro {
             let mut full_msg = inner_output.join("\n");
             if !full_msg.is_empty() { full_msg.push('\n'); }
             full_msg.push_str(&summary);
-            Ok(PluginOutput::Message(full_msg))
+            // Propagate as an error so the calling script halts here too,
+            // instead of recording RunMacro as a successful command and
+            // continuing past a failed sub-macro.
+            Err(PluginError::new("MACRO_FAILED", &full_msg))
         }
     }
 }

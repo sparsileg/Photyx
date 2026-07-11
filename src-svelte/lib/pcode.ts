@@ -53,16 +53,13 @@ export const PCODE_COMMANDS = new Set([
   'ContourHeatmap',
   'CountStars',
   'GetHistogram',
-  'MedianValue',
   //    Image processing
   'AutoStretch',
   'DebayerImage',
   //    Display & navigation
-  'BlinkSequence',
   'CacheFrames',
   'RejectCurrentFrame',
   'SetFrame',
-  'SetZoom',
   //    Scripting
   'Assert',
   'CountFiles',
@@ -114,7 +111,6 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   backgroundmedian:    '[sigma=]  [iterations=]  [grid=]',
   backgroundstddev:    '[sigma=]  [iterations=]  [grid=]',
   basename:            '($path)',
-  blinksequence:       'fps=',
   cacheframes:         '[resolution=12|25]',
   ceil:                '(#)',
   clear:               '',
@@ -151,7 +147,6 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   loadfile:            'path=',
   log:                 'path=  append=',
   max:                 '(#,#)',
-  medianvalue:         '',
   min:                 '(#,#)',
   modifykeyword:       'name=  value=  comment=  scope=',
   movefile:            'destination=  [source=]',
@@ -163,7 +158,6 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   runmacro:            'name=',
   set:                 '<varname> = <value>',
   setframe:            'index=',
-  setzoom:             'level=[fit|25|50|100|200]',
   showanalysisgraph:   '',
   showanalysisresults: '',
   sqrt:                '(#)',
@@ -517,15 +511,6 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'CountStars\nPrint $starcount',
   },
 
-  medianvalue: {
-    name:        'MedianValue',
-    description: 'Returns the median pixel value per channel for the current frame.',
-    syntax:      'MedianValue',
-    arguments:   [],
-    output:  'Outputs median value(s) to the console.',
-    example: 'MedianValue',
-  },
-
   gethistogram: {
     name:        'GetHistogram',
     description: 'Computes the histogram and basic statistics for the current frame.',
@@ -632,17 +617,6 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'SetFrame index=0',
   },
 
-  setzoom: {
-    name:        'SetZoom',
-    description: 'Sets the viewer zoom level.',
-    syntax:      'SetZoom level=<fit|25|50|100|200>',
-    arguments: [
-      { name: 'level', type: 'string', required: true, description: 'Zoom level: fit, 25, 50, 100, or 200' },
-    ],
-    output:  'Updates the viewer zoom.',
-    example: 'SetZoom level=fit\nSetZoom level=100',
-  },
-
   cacheframes: {
     name:        'CacheFrames',
     description: 'Pre-builds the blink cache for all session frames in the background. Required before using BlinkSequence.',
@@ -664,17 +638,6 @@ export const HELP_DB: Record<string, HelpEntry> = {
     ],
     output:  'Moves the file to rejected/<filename>.<suffix> and removes it from the session. Reports the new path.',
     example: 'RejectCurrentFrame\nRejectCurrentFrame index=42\nRejectCurrentFrame append=cloudy',
-  },
-
-  blinksequence: {
-    name:        'BlinkSequence',
-    description: 'Starts blinking through all session frames in sequence for visual quality inspection. Requires CacheFrames to have been run first.',
-    syntax:      'BlinkSequence [fps=<float>]',
-    arguments: [
-      { name: 'fps', type: 'float', required: false, default: '2.0', description: 'Frames per second for blink playback' },
-    ],
-    output:  'Activates the blink viewer.',
-    example: 'CacheFrames\nBlinkSequence fps=3',
   },
 
   clearannotations: {

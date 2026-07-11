@@ -128,6 +128,8 @@ Nothing in this review suggests the 1.0 analysis results you have validated
 against SFS are wrong — the metric computations themselves are solid; the
 defects cluster in the *plumbing around* them.
 
+**Issue 1 is Photyx 77.**
+
 ## 3. Findings by Area
 
 ### 3.1 pcode Interpreter (Issues 01, 14, 20)
@@ -306,13 +308,13 @@ the standing methodology: discussion before code, fresh source uploads before
 any change, one BEFORE/AFTER at a time, a verification test after each
 significant change, and both-platform testing where I/O or paths are touched.
 
-| Phase | Theme | Issues | Est. sizes |
-|---|---|---|---|
-| 1 | Data integrity & pcode correctness | 01, 03, 04, 05, 06 | M, M, M, M, S |
-| 2 | Analysis workflow correctness | 02, 19, 17, 14 | M, S, S, M |
-| 3 | Robustness & consistency | 07, 15, 16, 20 | M, S, S, S |
-| 4 | Performance & display architecture | 08, 09, 10 | L, M, M |
-| 5 | Cleanup, schema, standards, docs | 11, 12, 13, 18, 21 | S, S, M, S, M |
+| Phase | Theme                              | Issues             | Est. sizes    |
+| ----- | ---------------------------------- | ------------------ | ------------- |
+| 1     | Data integrity & pcode correctness | 01, 03, 04, 05, 06 | M, M, M, M, S |
+| 2     | Analysis workflow correctness      | 02, 19, 17, 14     | M, S, S, M    |
+| 3     | Robustness & consistency           | 07, 15, 16, 20     | M, S, S, S    |
+| 4     | Performance & display architecture | 08, 09, 10         | L, M, M       |
+| 5     | Cleanup, schema, standards, docs   | 11, 12, 13, 18, 21 | S, S, M, S, M |
 
 **Phase 1 — Data integrity & pcode correctness.** These are the findings that
 can corrupt files or silently mis-execute scripts. Issue 01 first (smallest
@@ -354,29 +356,29 @@ pass.
 
 ## 5. Issue Index
 
-| # | Title | Size | Labels |
-|---|---|---|---|
-| 01 | pcode interpreter: For-loop bounds and error-propagation defects | M | bug, pcode |
-| 02 | Analysis results silently reclassified under the active profile | M | bug, analysis, workflow |
-| 03 | Image reader correctness: FITS RGB interleave, 32-bit scaling, F32 range | M | bug, io, data-integrity |
-| 04 | FITS keyword type fidelity lost on WriteCurrent; unsafe ffgkyn buffers | M | bug, io, data-integrity |
-| 05 | MoveFile/CopyFile: silent overwrite, non-atomic fallback, frame-index shift | M | bug, data-integrity, pcode |
-| 06 | Batch writers (WriteFIT/WriteXISF/WriteTIFF) are not atomic | S | bug, io |
-| 07 | Job dispatch: concurrency races, lost JobResults, poisoned-mutex fragility | M | bug, architecture |
-| 08 | Display cache is dead; frame navigation re-renders raw via 5-IPC waterfall | L | performance, architecture, ux |
-| 09 | get_full_frame renders under lock; JPEG caches unbounded and unaccounted | M | performance, memory |
-| 10 | Consolidate duplicated downsample/render code; estimator inefficiencies | M | refactor, performance |
-| 11 | Constants drift: duplicated magic numbers vs defaults.rs mandate | S | code-quality |
-| 12 | Remove shipped dev scaffolding (FakeProgress, get_stack_frame, console.trace) | S | code-quality |
-| 13 | Dead persistence schema: implement or drop frame_analysis_results et al. | M | architecture, database |
-| 14 | Documented commands that don't exist: SetZoom, BlinkSequence, MedianValue, BinImage | M | bug, pcode, docs |
-| 15 | ReadImages bypasses memory limit; no progress; no session re-sort | S | bug, consistency |
-| 16 | CacheFrames: no progress reporting; inaccurate completion message | S | bug, ux |
-| 17 | AnalysisGraph commit flow diverges from AnalysisResults | S | bug, ux |
-| 18 | Frontend standards: inline styles, consolePipe misuse, no type-check gate | S | code-quality, ux |
-| 19 | Reference-frame formula degenerate; REF flag masks PASS/REJECT | S | bug, analysis |
-| 20 | Path convention gaps: ~ expansion, Log/AddFiles relative resolution | S | bug, consistency |
-| 21 | Documentation reconciliation: Moffat claim, constants, §14 staleness, ghosts | M | docs |
+| #   | Title                                                                               | Size | Labels                        |
+| --- | ----------------------------------------------------------------------------------- | ---- | ----------------------------- |
+| 01  | pcode interpreter: For-loop bounds and error-propagation defects                    | M    | bug, pcode                    |
+| 02  | Analysis results silently reclassified under the active profile                     | M    | bug, analysis, workflow       |
+| 03  | Image reader correctness: FITS RGB interleave, 32-bit scaling, F32 range            | M    | bug, io, data-integrity       |
+| 04  | FITS keyword type fidelity lost on WriteCurrent; unsafe ffgkyn buffers              | M    | bug, io, data-integrity       |
+| 05  | MoveFile/CopyFile: silent overwrite, non-atomic fallback, frame-index shift         | M    | bug, data-integrity, pcode    |
+| 06  | Batch writers (WriteFIT/WriteXISF/WriteTIFF) are not atomic                         | S    | bug, io                       |
+| 07  | Job dispatch: concurrency races, lost JobResults, poisoned-mutex fragility          | M    | bug, architecture             |
+| 08  | Display cache is dead; frame navigation re-renders raw via 5-IPC waterfall          | L    | performance, architecture, ux |
+| 09  | get_full_frame renders under lock; JPEG caches unbounded and unaccounted            | M    | performance, memory           |
+| 10  | Consolidate duplicated downsample/render code; estimator inefficiencies             | M    | refactor, performance         |
+| 11  | Constants drift: duplicated magic numbers vs defaults.rs mandate                    | S    | code-quality                  |
+| 12  | Remove shipped dev scaffolding (FakeProgress, get_stack_frame, console.trace)       | S    | code-quality                  |
+| 13  | Dead persistence schema: implement or drop frame_analysis_results et al.            | M    | architecture, database        |
+| 14  | Documented commands that don't exist: SetZoom, BlinkSequence, MedianValue, BinImage | M    | bug, pcode, docs              |
+| 15  | ReadImages bypasses memory limit; no progress; no session re-sort                   | S    | bug, consistency              |
+| 16  | CacheFrames: no progress reporting; inaccurate completion message                   | S    | bug, ux                       |
+| 17  | AnalysisGraph commit flow diverges from AnalysisResults                             | S    | bug, ux                       |
+| 18  | Frontend standards: inline styles, consolePipe misuse, no type-check gate           | S    | code-quality, ux              |
+| 19  | Reference-frame formula degenerate; REF flag masks PASS/REJECT                      | S    | bug, analysis                 |
+| 20  | Path convention gaps: ~ expansion, Log/AddFiles relative resolution                 | S    | bug, consistency              |
+| 21  | Documentation reconciliation: Moffat claim, constants, §14 staleness, ghosts        | M    | docs                          |
 
 ---
 

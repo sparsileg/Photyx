@@ -56,7 +56,6 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
     - [ComputeFWHM](#computefwhm)
     - [ComputeEccentricity](#computeeccentricity)
     - [CountStars](#countstars)
-    - [MedianValue](#medianvalue)
     - [GetHistogram](#gethistogram)
     - [ContourHeatmap](#contourheatmap)
     - [BackgroundMedian](#backgroundmedian)
@@ -71,9 +70,7 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
     - [ClearStack](#clearstack)
   - [Display & Navigation](#display--navigation)
     - [SetFrame](#setframe)
-    - [SetZoom](#setzoom)
     - [CacheFrames](#cacheframes)
-    - [BlinkSequence](#blinksequence)
     - [ClearAnnotations](#clearannotations)
     - [ShowAnalysisGraph](#showanalysisgraph)
     - [ShowAnalysisResults](#showanalysisresults)
@@ -911,16 +908,6 @@ Print $starcount
 
 ---
 
-#### `MedianValue`
-
-Returns the median pixel value per channel for the current frame.
-
-```
-MedianValue
-```
-
----
-
 #### `GetHistogram`
 
 Computes the histogram and basic statistics (median, std dev, clipping %) for the current frame. RGB frames get per-channel statistics.
@@ -1109,24 +1096,6 @@ SetFrame index=0
 
 ---
 
-#### `SetZoom`
-
-Sets the viewer zoom level.
-
-```
-SetZoom level=<fit|25|50|100|200>
-```
-
-| Argument | Required | Description                          |
-| -------- | -------- | -------------------------------------- |
-| `level`  | Yes      | Zoom level: `fit`, `25`, `50`, `100`, or `200` |
-
-```
-SetZoom level=fit
-SetZoom level=100
-```
-
----
 
 #### `CacheFrames`
 
@@ -1147,24 +1116,6 @@ CacheFrames resolution=25
 
 ---
 
-#### `BlinkSequence`
-
-Starts blinking through all session frames for visual inspection. `CacheFrames` must have been run first.
-
-```
-BlinkSequence [fps=<float>]
-```
-
-| Argument | Required | Default | Description       |
-| -------- | -------- | ------- | ------------------- |
-| `fps`    | No       | `2.0`   | Frames per second |
-
-```
-CacheFrames
-BlinkSequence fps=3
-```
-
----
 
 #### `ClearAnnotations`
 

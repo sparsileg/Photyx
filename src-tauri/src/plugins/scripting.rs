@@ -265,74 +265,6 @@ impl PhotyxPlugin for CopyFile {
     }
 }
 
-// ── Print ─────────────────────────────────────────────────────────────────────
-
-/// Outputs a literal message to the pcode console.
-/// Usage: Print message="Hello, world!"
-pub struct Print;
-
-impl PhotyxPlugin for Print {
-    fn name(&self)        -> &str { "Print" }
-    fn version(&self)     -> &str { "1.0.0" }
-    fn description(&self) -> &str { "Outputs a literal message to the console" }
-
-    fn parameters(&self) -> Vec<ParamSpec> {
-        vec![
-            ParamSpec {
-                name:        "message".to_string(),
-                param_type:  ParamType::String,
-                required:    true,
-                description: "Message text to print".to_string(),
-                default:     None,
-            },
-        ]
-    }
-
-    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        let message = args.get("message")
-            .cloned()
-            .unwrap_or_default();
-        let evaluated = crate::pcode::expr::evaluate_expr(&message, &ctx.variables)
-            .unwrap_or(message);
-        Ok(PluginOutput::Message(evaluated))
-    }
-}
-
-// ── Assert ────────────────────────────────────────────────────────────────────
-
-/// Halts execution with an error if the condition is false.
-/// Usage: Assert expression="$filecount > 0"
-pub struct Assert;
-
-impl PhotyxPlugin for Assert {
-    fn name(&self)        -> &str { "Assert" }
-    fn version(&self)     -> &str { "1.0.0" }
-    fn description(&self) -> &str { "Halts execution if the expression evaluates to false" }
-
-    fn parameters(&self) -> Vec<ParamSpec> {
-        vec![
-            ParamSpec {
-                name:        "expression".to_string(),
-                param_type:  ParamType::String,
-                required:    true,
-                description: "Boolean expression to test".to_string(),
-                default:     None,
-            },
-        ]
-    }
-
-    fn execute(&self, _ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        let expression = args.get("expression")
-            .ok_or_else(|| PluginError::missing_arg("expression"))?;
-
-        let empty = std::collections::HashMap::new();
-        match crate::pcode::expr::evaluate_condition(expression, &empty) {
-            Ok(true)  => Ok(PluginOutput::Success),
-            Ok(false) => Err(PluginError::new("ASSERT_FAILED", &format!("Assertion failed: {}", expression))),
-            Err(e)    => Err(PluginError::new("EXPR_ERROR", &format!("Assert expression error: {}", e))),
-        }
-    }
-}
 
 // ── CountFiles ────────────────────────────────────────────────────────────────
 
@@ -506,7 +438,6 @@ impl PhotyxPlugin for LoadFile {
 // ── Registration ──────────────────────────────────────────────────────────────
 
 pub fn register_all(registry: &crate::plugin::registry::PluginRegistry) {
-    registry.register(Arc::new(Assert));
     registry.register(Arc::new(CopyFile));
     registry.register(Arc::new(CountFiles));
     registry.register(Arc::new(CountMatches));
@@ -514,7 +445,6 @@ pub fn register_all(registry: &crate::plugin::registry::PluginRegistry) {
     registry.register(Arc::new(GetSystemPath));
     registry.register(Arc::new(LoadFile));
     registry.register(Arc::new(MoveFile));
-    registry.register(Arc::new(Print));
 }
 
 // ----------------------------------------------------------------------

@@ -14,7 +14,7 @@ mod utils;
 use commands::session::start_crash_recovery_timer;
 use context::AppContext;
 use plugin::registry::PluginRegistry;
-use plugin::{ArgMap, PluginOutput};
+use plugin::{ArgMap, PluginError, PluginOutput};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::State;
@@ -110,7 +110,28 @@ async fn dispatch_command(
     let result = tokio::task::spawn_blocking(move || {
         tracing::info!("spawn_blocking: starting {}", command);
         let mut ctx = state.context.lock().expect("context lock poisoned");
-        state.registry.dispatch(&mut ctx, &command, &args)
+
+        // Assert and Print are handled here directly, not via the plugin
+        // registry, so the interactive console path shares exactly the same
+        // variable-resolution logic as the script/macro path
+        // (pcode::mod::execute_line) — one implementation, two entry points.
+        match command.to_lowercase().as_str() {
+            "assert" => {
+                let expression = args.get("expression").cloned().unwrap_or_default();
+                match crate::pcode::expr::evaluate_condition(&expression, &ctx.variables) {
+                    Ok(true)  => Ok(PluginOutput::Success),
+                    Ok(false) => Err(PluginError::new("ASSERT_FAILED", &format!("Assertion failed: {}", expression))),
+                    Err(e)    => Err(PluginError::new("EXPR_ERROR", &format!("Assert expression error: {}", e))),
+                }
+            }
+            "print" => {
+                let message = args.get("message").cloned().unwrap_or_default();
+                let evaluated = crate::pcode::expr::evaluate_expr(&message, &ctx.variables)
+                    .unwrap_or_else(|_| crate::pcode::substitute_vars(&message, &ctx.variables));
+                Ok(PluginOutput::Message(evaluated))
+            }
+            _ => state.registry.dispatch(&mut ctx, &command, &args),
+        }
     }).await.map_err(|e| format!("spawn_blocking panicked: {:?}", e))?;
     match result {
         Ok(output) => {

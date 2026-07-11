@@ -255,7 +255,7 @@ fn execute_blocks(
     last_log_index: &mut usize,
     halted:         &mut bool,
 ) {
-    for block in blocks {
+    'blocks: for block in blocks {
         if *halted { return; }
 
         match block {
@@ -267,13 +267,31 @@ fn execute_blocks(
             }
 
             Block::If { line_number, expr, then_blocks, else_blocks } => {
-                let condition = evaluate_condition(expr, variables);
-                info!("pcode line {}: If [{}] -> {}", line_number, expr, condition);
-                let branch = if condition { then_blocks } else { else_blocks };
-                execute_blocks(
-                    branch, ctx, registry, halt_on_error,
-                    variables, results, last_log_index, halted,
-                );
+                // Propagate condition errors instead of swallowing to false —
+                // a malformed condition now halts (when halt_on_error is set)
+                // rather than silently executing the Else branch.
+                match expr::evaluate_condition(expr, variables) {
+                    Ok(condition) => {
+                        info!("pcode line {}: If [{}] -> {}", line_number, expr, condition);
+                        let branch = if condition { then_blocks } else { else_blocks };
+                        execute_blocks(
+                            branch, ctx, registry, halt_on_error,
+                            variables, results, last_log_index, halted,
+                        );
+                    }
+                    Err(e) => {
+                        results.push(PcodeResult {
+                            line_number: *line_number,
+                            command:    "If".to_string(),
+                            success:    false,
+                            message:    Some(format!("If: invalid condition '{}': {}", expr, e)),
+                            data:       None,
+                            trace_line: None,
+            client_actions: vec![],
+                        });
+                        if halt_on_error { *halted = true; }
+                    }
+                }
             }
 
             Block::ForIn { line_number, var, pattern, body } => {
@@ -323,39 +341,51 @@ fn execute_blocks(
             }
 
             Block::For { line_number, var, from, to, body } => {
-                let from_str = substitute_vars(from, variables);
-                let to_str   = substitute_vars(to,   variables);
+                // Bounds are expressions ("$filecount - 1"), not bare numbers —
+                // evaluate through the shared expression evaluator (same one
+                // Set/Print use) before parsing to an integer. Note: raw
+                // `from`/`to` are passed in, NOT pre-substituted — evaluate_expr
+                // resolves $vars itself (see expr.rs header comment).
+                fn eval_bound(expr: &str, variables: &HashMap<String, String>) -> Result<i64, String> {
+                    let resolved = expr::evaluate_expr(expr, variables)?;
+                    resolved.trim().parse::<i64>().map_err(|_| {
+                        match resolved.trim().parse::<f64>() {
+                            Ok(n)  => format!("expression evaluated to non-integer value '{}'", n),
+                            Err(_) => format!("expression did not evaluate to a number (got '{}')", resolved),
+                        }
+                    })
+                }
 
-                let from_val = match from_str.parse::<i64>() {
+                let from_val = match eval_bound(from, variables) {
                     Ok(v)  => v,
-                    Err(_) => {
+                    Err(msg) => {
                         results.push(PcodeResult {
                             line_number: *line_number,
                             command:    "For".to_string(),
                             success:    false,
-                            message:    Some(format!("For: cannot parse 'from' value '{}'", from_str)),
+                            message:    Some(format!("For: cannot parse 'from' value '{}': {}", from, msg)),
                             data:       None,
                             trace_line: None,
             client_actions: vec![],
                         });
                         if halt_on_error { *halted = true; }
-                        return;
+                        continue 'blocks;
                     }
                 };
-                let to_val = match to_str.parse::<i64>() {
+                let to_val = match eval_bound(to, variables) {
                     Ok(v)  => v,
-                    Err(_) => {
+                    Err(msg) => {
                         results.push(PcodeResult {
                             line_number: *line_number,
                             command:    "For".to_string(),
                             success:    false,
-                            message:    Some(format!("For: cannot parse 'to' value '{}'", to_str)),
+                            message:    Some(format!("For: cannot parse 'to' value '{}': {}", to, msg)),
                             data:       None,
                             trace_line: None,
             client_actions: vec![],
                         });
                         if halt_on_error { *halted = true; }
-                        return;
+                        continue 'blocks;
                     }
                 };
 
@@ -600,21 +630,10 @@ fn execute_line(
     }
 }
 
-// ── Condition evaluator ───────────────────────────────────────────────────────
-
-fn evaluate_condition(expression: &str, variables: &HashMap<String, String>) -> bool {
-    match expr::evaluate_condition(expression, variables) {
-        Ok(b)  => b,
-        Err(e) => {
-            tracing::warn!("pcode condition error: {}", e);
-            false
-        }
-    }
-}
 
 // ── Variable substitution ─────────────────────────────────────────────────────
 
-fn substitute_vars(s: &str, variables: &HashMap<String, String>) -> String {
+pub(crate) fn substitute_vars(s: &str, variables: &HashMap<String, String>) -> String {
     let mut result = String::new();
     let mut chars  = s.chars().peekable();
 

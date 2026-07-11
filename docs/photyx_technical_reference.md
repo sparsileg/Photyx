@@ -518,8 +518,6 @@ only.
 | AnalyzeFrames         | Frame Analysis    | Computes five quality metrics for all loaded frames, classifies each as PASS or REJECT                                        | [profile]                                                    |
 | Assert                | Scripting         | Halts execution with an error if expression is false; silent on pass in both Trace and No Trace modes                          | expression                                                   |
 | AutoStretch           | Processing        | Applies Auto-STF stretch to current frame (display only — raw buffer unchanged)                                                | [shadowClip], [targetBackground]                             |
-| BinImage              | Processing        | Bins the image by an integer factor                                                                                            | factor                                                       |
-| BlinkSequence         | Blink & View      | Starts blinking the loaded image set                                                                                           | [fps]                                                        |
 | CacheFrames           | Blink & View      | Pre-decodes and caches all frames for blinking at both resolutions                                                             | —                                                            |
 | ClearAnnotations      | Display           | Removes all star and analysis overlay annotations from the viewer                                                              | —                                                            |
 | ClearSession          | Session           | Clears all loaded images and resets session state                                                                              | —                                                            |
@@ -542,7 +540,6 @@ only.
 | ListKeywords          | Keyword           | Lists all keywords for the current image                                                                                       | —                                                            |
 | LoadFile              | File Management   | Loads a single image file for display without adding it to the session; stores path in `$LOAD_FILE_PATH`                       | path                                                         |
 | Log                   | Scripting         | Writes collected macro output since last Log call to a file                                                                    | path, [append]                                               |
-| MedianValue           | Analysis          | Returns the median pixel value per channel                                                                                     | —                                                            |
 | ModifyKeyword         | Keyword           | Changes the value of an existing keyword                                                                                       | name, value, [comment], [scope=all\|current]                 |
 | MoveFile              | File Management   | Moves a file to a destination directory; defaults to current frame if source= not specified; stores path in `$NEW_FILE`        | [source], destination                                        |
 | Print                 | Scripting         | Outputs a message to the pcode console; accepts bare expressions — `Print $x + 1` and `Print "hello"` are both valid           | message (positional or bare expression)                      |
@@ -551,7 +548,6 @@ only.
 | RunMacro              | Scripting         | Executes a saved macro by name from the database                                                                               | name                                                          |
 | Set                   | Scripting         | Assigns a value to a variable; string literals on the RHS must use double quotes                                               | varname = value                                              |
 | SetFrame              | Navigation        | Sets the current active frame by index (0-based)                                                                               | index                                                         |
-| SetZoom               | Blink & View      | Sets the viewer zoom level                                                                                                     | level (fit, 25, 50, 100, 200)                                 |
 | ShowAnalysisGraph     | Display           | Opens the Analysis Graph view in the viewer region                                                                             | —                                                            |
 | ShowAnalysisResults   | Display           | Opens the Analysis Results table view in the viewer region                                                                     | —                                                            |
 | StackFrames           | Stacking          | Stacks all session frames using FFT alignment and sigma-clipped mean combination; result stored as transient stack buffer      | [calibration_dir]                                             |
@@ -1407,7 +1403,6 @@ implementation status and group plugins by category.
 | AnalyzeFrames | Frame Analysis |
 | Assert | Scripting |
 | AutoStretch | Processing |
-| BinImage | Processing |
 | CacheFrames | Blink & View |
 | ClearAnnotations | Display |
 | ClearSession | Session |
@@ -1429,14 +1424,12 @@ implementation status and group plugins by category.
 | GetKeyword | Interrogation |
 | ListKeywords | Keyword |
 | LoadFile | File Management |
-| MedianValue | Analysis |
 | ModifyKeyword | Keyword |
 | MoveFile | File Management |
 | ReadImages | Session |
 | RejectCurrentFrame | Session |
 | RunMacro | Scripting |
 | SetFrame | Navigation |
-| SetZoom | Blink & View |
 | ShowAnalysisGraph | Display |
 | ShowAnalysisResults | Display |
 | StackFrames | Stacking |

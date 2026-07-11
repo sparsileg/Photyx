@@ -43,7 +43,15 @@
 
     for (const r of result.results) {
       if (!r.success) {
-        notifications.error(`${r.command}: ${r.message ?? 'error'}`);
+        // A failed result's message can be a single line (a typical plugin
+        // error) or, for RunMacro, the entire accumulated output of a long
+        // successful run followed by the failure summary. Pipe everything
+        // but the last line to the console where it belongs; reserve the
+        // notification banner for just the final summary/error line.
+        const lines = (r.message ?? 'error').split('\n').filter(Boolean);
+        const summaryLine = lines.length > 0 ? lines[lines.length - 1] : 'error';
+        lines.slice(0, -1).forEach(line => pipeToConsole(line, 'success'));
+        notifications.error(`${r.command}: ${summaryLine}`);
         anyError = true;
       } else if (r.message) {
         r.message.split('\n').forEach(line => {
