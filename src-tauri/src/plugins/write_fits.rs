@@ -8,7 +8,106 @@ use fitsio::images::{ImageDescription, ImageType};
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, BitDepth, ImageBuffer, PixelData};
 
+/// Classification of a keyword's raw string value for typed FITS writing.
+/// FITS headers written by capture software follow strict conventions, so
+/// inference from the stored string is reliable without needing to retain
+/// the original cfitsio type at read time.
+enum FitsValue<'a> {
+    Int(i64),
+    Float(f64),
+    Logical(bool),
+    Str(&'a str),
+}
+
+/// Infer the FITS type of a keyword value string. Conservative: anything
+/// that could represent a non-numeric convention (leading zero, leading
+/// '+', internal/surrounding whitespace, or a parse failure) falls back
+/// to Str rather than risk misrepresenting the value.
+fn infer_fits_value(raw: &str) -> FitsValue<'_> {
+    if raw == "T" { return FitsValue::Logical(true); }
+    if raw == "F" { return FitsValue::Logical(false); }
+
+    let looks_string_like = raw.is_empty()
+        || raw.starts_with('+')
+        || raw != raw.trim()
+        || (raw.starts_with('0') && raw.len() > 1 && !raw.starts_with("0."));
+
+    if !looks_string_like {
+        if let Ok(i) = raw.parse::<i64>() {
+            return FitsValue::Int(i);
+        }
+        if let Ok(f) = raw.parse::<f64>() {
+            return FitsValue::Float(f);
+        }
+    }
+
+    FitsValue::Str(raw)
+}
+
+/// Write a FITS logical (T/F) keyword via a direct cfitsio call. fitsio-sys
+/// 0.5.7's WritesKey trait has no impl for `bool`, so logical keywords
+/// aren't reachable through the typed write_key() API in this crate version.
+fn write_logical_key(
+    fitsfile: &mut FitsFile,
+    name: &str,
+    value: bool,
+    comment: Option<&str>,
+) -> Result<(), String> {
+    let c_name = std::ffi::CString::new(name)
+        .map_err(|e| format!("Invalid keyword name '{}': {}", name, e))?;
+    let c_comment = comment
+        .map(std::ffi::CString::new)
+        .transpose()
+        .map_err(|e| format!("Invalid comment for '{}': {}", name, e))?;
+    let comment_ptr = c_comment
+        .as_ref()
+        .map(|c| c.as_ptr())
+        .unwrap_or(std::ptr::null());
+    let mut status: std::os::raw::c_int = 0;
+    unsafe {
+        fitsio_sys::ffpkyl(
+            fitsfile.as_raw(),
+            c_name.as_ptr(),
+            if value { 1 } else { 0 },
+            comment_ptr,
+            &mut status,
+        );
+    }
+    if status != 0 {
+        return Err(format!("cfitsio error writing logical keyword '{}' (status {})", name, status));
+    }
+    Ok(())
+}
+
+/// Write a single keyword to the FITS header using the type inferred from
+/// its stored string value, so numeric and logical keywords round-trip as
+/// typed FITS values instead of quoted strings (Issue 80).
+fn write_typed_key(
+    fitsfile: &mut FitsFile,
+    hdu: &fitsio::hdu::FitsHdu,
+    name: &str,
+    value: &str,
+    comment: Option<&str>,
+) -> Result<(), String> {
+    match infer_fits_value(value) {
+        FitsValue::Int(i) => match comment {
+            Some(c) => hdu.write_key(fitsfile, name, (i, c)).map_err(|e| e.to_string()),
+            None    => hdu.write_key(fitsfile, name, i).map_err(|e| e.to_string()),
+        },
+        FitsValue::Float(f) => match comment {
+            Some(c) => hdu.write_key(fitsfile, name, (f, c)).map_err(|e| e.to_string()),
+            None    => hdu.write_key(fitsfile, name, f).map_err(|e| e.to_string()),
+        },
+        FitsValue::Logical(b) => write_logical_key(fitsfile, name, b, comment),
+        FitsValue::Str(s) => match comment {
+            Some(c) => hdu.write_key(fitsfile, name, (s, c)).map_err(|e| e.to_string()),
+            None    => hdu.write_key(fitsfile, name, s).map_err(|e| e.to_string()),
+        },
+    }
+}
+
 pub struct WriteFIT;
+
 
 impl PhotyxPlugin for WriteFIT {
     fn name(&self)        -> &str { "WriteFIT" }
@@ -239,11 +338,13 @@ pub(crate) fn update_fits_keywords(path: &str, buffer: &ImageBuffer) -> Result<(
                 | "EXTNAME" | "ROWORDER" => continue,
             _ => {}
         }
-        let result = if let Some(comment) = &kw.comment {
-            hdu.write_key(&mut fitsfile, &kw.name, (kw.value.as_str(), comment.as_str()))
-        } else {
-            hdu.write_key(&mut fitsfile, &kw.name, kw.value.as_str())
-        };
+        let result = write_typed_key(
+            &mut fitsfile,
+            &hdu,
+            &kw.name,
+            &kw.value,
+            kw.comment.as_deref(),
+        );
         if let Err(e) = result {
             warn!("Could not write keyword {}: {}", kw.name, e);
         }
@@ -308,18 +409,20 @@ pub(crate) fn write_fits_new(out_path: &str, buffer: &ImageBuffer) -> Result<(),
         let _ = hdu.write_key(&mut fitsfile, "BSCALE", (1i32, "default scaling factor"));
     }
 
-    for kw in buffer.keywords.values() {
+for kw in buffer.keywords.values() {
         match kw.name.as_str() {
             "SIMPLE" | "BITPIX" | "NAXIS" | "NAXIS1" | "NAXIS2" | "NAXIS3"
                 | "EXTEND" | "END" | "FILENAME" | "BZERO" | "BSCALE"
                 | "EXTNAME" | "ROWORDER" => continue,
             _ => {}
         }
-        let result = if let Some(comment) = &kw.comment {
-            hdu.write_key(&mut fitsfile, &kw.name, (kw.value.as_str(), comment.as_str()))
-        } else {
-            hdu.write_key(&mut fitsfile, &kw.name, kw.value.as_str())
-        };
+        let result = write_typed_key(
+            &mut fitsfile,
+            &hdu,
+            &kw.name,
+            &kw.value,
+            kw.comment.as_deref(),
+        );
         if let Err(e) = result {
             warn!("Could not write keyword {}: {}", kw.name, e);
         }
