@@ -6,6 +6,42 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { notifications } from './stores/notifications';
 import { session } from './stores/session';
 import { ui } from './stores/ui';
+import { analysisToggles } from './stores/analysisToggles';
+import { pipeToConsole } from './stores/consoleHistory';
+
+/** Runs AnalyzeFrames with an explicit profile (Issue 101) — used by the
+ *  Analyze Frames profile-selection popup so a menu-triggered run is
+ *  always self-contained and explicit about which thresholds it used,
+ *  instead of silently depending on whatever profile happened to be
+ *  active. Deliberately does NOT change the saved active profile —
+ *  equivalent to typing `AnalyzeFrames profile="..."` by hand. Quick
+ *  Launch, saved macros, RunMacro, and the console dispatch AnalyzeFrames
+ *  independently of this function and are unaffected. */
+export async function runAnalyzeFramesWithProfile(profileName: string) {
+  notifications.running('AnalyzeFrames');
+  try {
+    const response = await invoke<{
+      success: boolean;
+      output: string | null;
+      error: string | null;
+    }>('dispatch_command', {
+      request: { command: 'AnalyzeFrames', args: { profile: profileName } }
+    });
+    if (response.success) {
+      const msg = response.output ?? 'AnalyzeFrames complete';
+      pipeToConsole(msg, 'success');
+      notifications.success('AnalyzeFrames complete');
+    } else {
+      const err = response.error ?? 'AnalyzeFrames failed';
+      pipeToConsole(err, 'error');
+      notifications.error(err);
+    }
+  } catch (err) {
+    const msg = `AnalyzeFrames error: ${err}`;
+    pipeToConsole(msg, 'error');
+    notifications.error(msg);
+  }
+}
 
 /** Sync session store from backend state */
 export async function syncSession() {
@@ -15,6 +51,45 @@ export async function syncSession() {
   }>('get_session');
   session.setFileList(state.fileList);
   session.setCurrentFrame(state.currentFrame);
+}
+
+/** Shared commit sequence for Analysis Results and Analysis Graph
+ *  (Issue 93) — syncs any pending PXFLAG toggles, commits, syncs the
+ *  session store, closes the view, and clears the viewer. Both views
+ *  call this so committing produces identical on-disk results and
+ *  identical post-commit UI state regardless of which view triggered
+ *  it. `isImported` is passed in by the caller (each view already has
+ *  it from its own get_analysis_results load) rather than re-fetched
+ *  here. */
+export async function commitAnalysis(isImported: boolean) {
+  if (isImported) {
+    notifications.error('Cannot commit an imported session — no images are loaded.');
+    return;
+  }
+
+  const toggled = analysisToggles.entries();
+  if (toggled.length > 0) {
+    try {
+      for (const [path, flag] of toggled) {
+        await invoke('set_frame_flag', { path, flag });
+      }
+    } catch (e) {
+      notifications.error(`Failed to sync flag changes: ${e}`);
+      return;
+    }
+  }
+
+  notifications.running('Committing results…');
+  try {
+    const msg = await invoke<string>('commit_analysis_results', { append: '.reject' });
+    notifications.success(msg);
+    await syncSession();
+    ui.showView(null);
+    ui.clearViewer();
+    analysisToggles.clear();
+  } catch (e) {
+    notifications.error(`Commit failed: ${e}`);
+  }
 }
 
 const SUPPORTED_ADD_FILES_EXTENSIONS = ['fit', 'fits', 'fts', 'xisf', 'tif', 'tiff'];

@@ -4,6 +4,7 @@
   import AboutModal from '../lib/components/AboutModal.svelte';
   import AnalysisGraph from '../lib/components/AnalysisGraph.svelte';
   import AnalysisResults from '../lib/components/AnalysisResults.svelte';
+  import AnalyzeFramesProfileDialog from '../lib/components/AnalyzeFramesProfileDialog.svelte';
   import Console from '../lib/components/Console.svelte';
   import HelpModal from '../lib/components/HelpModal.svelte';
   import IconSidebar from '../lib/components/IconSidebar.svelte';
@@ -168,6 +169,9 @@
 
 {#if $ui.analysisParametersOpen}
   <ThresholdProfilesDialog onclose={() => ui.closeAnalysisParameters()} />
+{/if}
+{#if $ui.analyzeFramesProfilePickerOpen}
+  <AnalyzeFramesProfileDialog onclose={() => ui.closeAnalyzeFramesProfilePicker()} />
 {/if}
 {#if $ui.preferencesOpen}
   <PreferencesDialog onclose={() => ui.closePreferences()} />

@@ -30,7 +30,7 @@
     case 'analysis-graph':      ui.showView('analysisGraph'); break;
     case 'analysis-parameters': ui.openAnalysisParameters(); break;
     case 'analysis-results':    ui.showView('analysisResults'); break;
-    case 'analyze-frames':      runAnalyzeFrames(); break;
+    case 'analyze-frames':      ui.openAnalyzeFramesProfilePicker(); break;
     case 'backup-database':     backupDatabase(); break;
     case 'close-session':       closeSession(); break;
     case 'contour-plot':        runContourHeatmap(); break;
@@ -54,31 +54,10 @@
     }
   }
 
-  async function runAnalyzeFrames() {
-    notifications.running('AnalyzeFrames');
-    try {
-      const response = await invoke<{
-        success: boolean;
-        output: string | null;
-        error: string | null;
-      }>('dispatch_command', {
-        request: { command: 'AnalyzeFrames', args: {} }
-      });
-      if (response.success) {
-        const msg = response.output ?? 'AnalyzeFrames complete';
-        pipeToConsole(msg, 'success');
-        notifications.success('AnalyzeFrames complete');
-      } else {
-        const err = response.error ?? 'AnalyzeFrames failed';
-        pipeToConsole(err, 'error');
-        notifications.error(err);
-      }
-    } catch (err) {
-      const msg = `AnalyzeFrames error: ${err}`;
-      pipeToConsole(msg, 'error');
-      notifications.error(msg);
-    }
-  }
+  // AnalyzeFrames dispatch (Issue 101) now lives in commands.ts as
+  // runAnalyzeFramesWithProfile(), called from AnalyzeFramesProfileDialog
+  // after the user picks a profile — see openAnalyzeFramesProfilePicker
+  // above. Kept out of this file since the dialog itself triggers it.
 
   async function runAutoStretch() {
     try {

@@ -60,8 +60,9 @@ pub struct AnalysisResult {
     pub triggered_by:         Vec<String>,
 
     /// True for the single frame selected as the session reference frame.
-    /// Selected by lowest fwhm × eccentricity product after Pass 2;
-    /// star_count used as tiebreaker. Authoritative on import.
+    /// Selected by highest frame_quality_score() among PASS frames
+    /// (falling back to all frames if none passed); star_count used as
+    /// tiebreaker. Authoritative on import.
     pub is_reference:         bool,
 
     // Rejection category — only populated for REJECT frames.
@@ -79,6 +80,52 @@ impl AnalysisResult {
             filename: filename.to_string(),
             ..Default::default()
         }
+    }
+}
+
+// ── Frame quality score ─────────────────────────────────────────────────────
+// Shared by AnalyzeFrames' reference-frame selection and StackFrames'
+// group/master reference selection (Issue 95) — one definition of "best
+// frame" for both, instead of two formulas that could silently disagree.
+// Bounded and well-behaved as eccentricity → 0, unlike a raw
+// fwhm × eccentricity product (which degenerates toward zero and lets a
+// bloated-but-round frame beat a sharp, moderately elongated one).
+
+/// Higher is better. `1/FWHM` rewards sharpness (clamped to avoid
+/// division blowup on a near-zero FWHM); `(1 - eccentricity)` rewards
+/// roundness as a bounded penalty rather than a multiplicative gate.
+/// Missing values contribute 0 to their term rather than disqualifying
+/// the frame outright.
+pub fn frame_quality_score(fwhm: Option<f32>, eccentricity: Option<f32>) -> f32 {
+    let fwhm_score = fwhm.map(|f| 1.0 / f.max(0.1)).unwrap_or(0.0);
+    let ecc_score  = eccentricity.map(|e| 1.0 - e).unwrap_or(0.0);
+    fwhm_score + ecc_score
+}
+
+#[cfg(test)]
+mod quality_score_tests {
+    use super::*;
+
+    #[test]
+    fn sharp_moderate_eccentricity_beats_bloated_round() {
+        // The exact degenerate case from Issue 95: a bloated but round
+        // star field used to beat a sharp, slightly elongated one under
+        // the old fwhm * eccentricity formula (0.12 vs 0.66 — backwards).
+        let bloated_round = frame_quality_score(Some(6.0), Some(0.02));
+        let sharp_moderate = frame_quality_score(Some(2.2), Some(0.30));
+        assert!(
+            sharp_moderate > bloated_round,
+            "sharp moderate-eccentricity frame ({sharp_moderate}) should beat \
+             bloated round frame ({bloated_round})"
+        );
+    }
+
+    #[test]
+    fn missing_values_score_zero_for_that_term_not_disqualified() {
+        let fwhm_only = frame_quality_score(Some(3.0), None);
+        let neither    = frame_quality_score(None, None);
+        assert!(fwhm_only > neither);
+        assert_eq!(neither, 0.0);
     }
 }
 

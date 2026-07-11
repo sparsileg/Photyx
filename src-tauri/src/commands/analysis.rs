@@ -29,7 +29,16 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
         categorize_rejection, classify_frame, compute_session_stats_iterative, AnalysisThresholds,
     };
 
-    let thresholds: AnalysisThresholds = ctx.analysis_thresholds.clone();
+    // Prefer the thresholds the last AnalyzeFrames run (or JSON import)
+    // actually used, falling back to the active profile only if nothing
+    // has been analyzed yet. This is what keeps a `profile=`-pinned run's
+    // classifications stable across Refresh instead of silently drifting
+    // to whatever the active profile happens to be — see Issue 78. An
+    // explicit active-profile change (Edit > Analysis Parameters OK/Apply)
+    // updates last_analysis_thresholds itself, so that path still takes
+    // effect on the next Refresh as documented in §6.8.
+    let thresholds: AnalysisThresholds = ctx.last_analysis_thresholds.clone()
+        .unwrap_or_else(|| ctx.analysis_thresholds.clone());
 
     // For imported sessions, classifications are already authoritative — skip reclassification.
     // For live sessions, reclassify on the fly so threshold changes take effect immediately.
@@ -67,11 +76,7 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
         let label = extract_frame_label(short);
 
         if let Some(r) = ctx.analysis_results.get(path) {
-            let flag = if r.is_reference {
-                "REF".to_string()
-            } else {
-                r.flag.as_ref().map(|f| f.as_str().to_string()).unwrap_or_default()
-            };
+            let flag = r.flag.as_ref().map(|f| f.as_str().to_string()).unwrap_or_default();
             serde_json::json!({
                 "index":              i,
                 "filename":           path,

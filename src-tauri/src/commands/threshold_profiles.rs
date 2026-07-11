@@ -172,16 +172,25 @@ pub fn set_active_threshold_profile(
         .ok_or_else(|| format!("No threshold profile with id {}", id))?
         .clone();
 
-    settings.save_preference("active_threshold_profile_id", &id.to_string(), &db)?;
+settings.save_preference("active_threshold_profile_id", &id.to_string(), &db)?;
 
     // Propagate new thresholds into AppContext immediately
     let mut ctx = state.context.lock().expect("context lock poisoned");
-    ctx.analysis_thresholds = crate::analysis::session_stats::AnalysisThresholds {
+    let new_thresholds = crate::analysis::session_stats::AnalysisThresholds {
         background_median: crate::analysis::session_stats::MetricThresholds { reject: profile.bg_median_reject_sigma as f32 },
         fwhm:              crate::analysis::session_stats::MetricThresholds { reject: profile.fwhm_reject_sigma as f32 },
         star_count:        crate::analysis::session_stats::MetricThresholds { reject: profile.star_count_reject_sigma as f32 },
         eccentricity:      crate::analysis::session_stats::MetricThresholds { reject: profile.eccentricity_reject_abs as f32 },
     };
+    ctx.analysis_thresholds = new_thresholds.clone();
+
+    // An explicit active-profile change is a deliberate re-baseline — also
+    // update last_analysis_thresholds so get_analysis_results (which now
+    // prefers last_analysis_thresholds over the active profile, see Issue
+    // 78) picks up this change on the next Refresh, preserving the §6.8
+    // live-tuning workflow while a profile=-pinned AnalyzeFrames run stays
+    // pinned until a change like this one deliberately re-baselines it.
+    ctx.last_analysis_thresholds = Some(new_thresholds);
 
     Ok(())
 }

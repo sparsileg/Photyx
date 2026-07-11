@@ -311,20 +311,27 @@ fn execute_all(
     }
 
     // ── Reference frame selection ─────────────────────────────────────────
-    // Best reference = lowest fwhm × eccentricity product among frames that
-    // have both values. star_count (higher = better) used as tiebreaker.
+    // Shared quality formula with StackFrames (Issue 95) — one definition
+    // of "best frame" for both. Restricted to PASS frames so a REJECT
+    // frame isn't crowned reference while any PASS frame exists; falls
+    // back to the whole set only if the entire session failed
+    // classification (rare, but a reference is still useful in that
+    // case — see Issue 95 discussion). star_count remains the tiebreak,
+    // higher wins.
     let ref_path: Option<String> = {
-        results.iter()
-            .filter_map(|r| {
-                let product = r.fwhm? * r.eccentricity?;
-                Some((r.filename.clone(), product, r.star_count.unwrap_or(0)))
-            })
-            .min_by(|(_, pa, ca), (_, pb, cb)| {
-                pa.partial_cmp(pb)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then_with(|| cb.cmp(ca)) // higher star_count wins tiebreak
-            })
-            .map(|(path, _, _)| path)
+        let score_candidates = |only_pass: bool| {
+            results.iter()
+                .filter(|r| !only_pass || r.flag == Some(crate::analysis::PxFlag::Pass))
+                .map(|r| (r.filename.clone(), crate::analysis::frame_quality_score(r.fwhm, r.eccentricity), r.star_count.unwrap_or(0)))
+                .max_by(|(_, sa, ca), (_, sb, cb)| {
+                    sa.partial_cmp(sb)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then_with(|| ca.cmp(cb)) // higher star_count wins tiebreak
+                })
+                .map(|(path, _, _)| path)
+        };
+
+        score_candidates(true).or_else(|| score_candidates(false))
     };
 
     for result in &mut results {

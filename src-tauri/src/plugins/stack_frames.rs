@@ -739,9 +739,7 @@ fn select_reference_in_group(snapshots: &[FrameSnapshot], group: usize) -> usize
 }
 
 fn quality_score(snap: &FrameSnapshot) -> f32 {
-    let fwhm_score = snap.fwhm.map(|f| 1.0 / f.max(0.1)).unwrap_or(0.0);
-    let ecc_score  = snap.eccentricity.map(|e| 1.0 - e).unwrap_or(0.0);
-    fwhm_score + ecc_score
+    crate::analysis::frame_quality_score(snap.fwhm, snap.eccentricity)
 }
 
 //  ── Frame pixel loading ───────────────────────────────────────────────────────

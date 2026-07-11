@@ -1,4 +1,5 @@
 <!-- AnalysisGraph.svelte — Analysis graph displayed in the viewer region. Spec §15 -->
+
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
@@ -7,7 +8,8 @@
   import { writeImage } from '@tauri-apps/plugin-clipboard-manager';
   import { ui } from '../stores/ui';
   import { notifications } from '../stores/notifications';
-  import { displayFrame } from '../commands';
+  import { displayFrame, commitAnalysis } from '../commands';
+  import { analysisToggles } from '../stores/analysisToggles';
   import Dropdown from './Dropdown.svelte';
 
   // ── Data types ────────────────────────────────────────────────────────────
@@ -118,6 +120,12 @@
     error = '';
     try {
       data = await invoke<AnalysisData>('get_analysis_results');
+      analysisToggles.clear();
+      const passCount   = data.frames.filter(f => f.flag === 'PASS').length;
+      const rejectCount = data.frames.filter(f => f.flag === 'REJECT').length;
+      notifications.success(
+        `AnalyzeFrames refresh: ${data.frames.length} frames - ${passCount} PASS, ${rejectCount} REJECT`
+      );
     } catch (e) {
       error = `${e}`;
     } finally {
@@ -126,14 +134,9 @@
     }
   }
 
+  // Shared with Analysis Results (Issue 93) — see commands.ts commitAnalysis().
   async function commitResults() {
-    notifications.running('Committing analysis results…');
-    try {
-      const msg = await invoke<string>('commit_analysis_results', { append: '.reject' });
-      notifications.success(msg);
-    } catch (e) {
-      notifications.error(`Commit failed: ${e}`);
-    }
+    await commitAnalysis(data?.is_imported ?? false);
   }
 
   async function copyCanvasToClipboard() {
@@ -326,7 +329,10 @@
     C:         ReturnType<typeof getThemeColors>,
   ) {
     if (isRef) {
-      drawStar(ctx, x, y, 12, '#ffd700', '#000000');
+      // Stroke color signals the frame's real classification (Issue 95) —
+      // REF no longer hides whether the reference frame passed or failed.
+      const stroke = flag === 'REJECT' ? '#dc3232' : '#000000';
+      drawStar(ctx, x, y, 12, '#ffd700', stroke);
       return;
     }
 
@@ -833,7 +839,7 @@
       />
 
       <button class="ag-btn" onclick={loadData}>↻ Refresh</button>
-      <button class="ag-btn" onclick={commitResults}>✓ Commit Results</button>
+      <button class="ag-btn" onclick={commitResults} disabled={data?.is_imported}>✓ Commit Results</button>
       <button class="ag-btn" onclick={copyCanvasToClipboard}>⎘ Copy</button>
       <button class="ag-btn" onclick={saveCanvasToFile}>⬇ Save Image</button>
       <button class="ag-btn ag-close" onclick={() => ui.showView(null)}>✕ Close</button>

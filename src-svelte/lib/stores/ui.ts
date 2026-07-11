@@ -25,6 +25,7 @@ export interface UIState {
   activePanel:         PanelId;
   activeView:          ViewName | null;
   analysisParametersOpen: boolean;
+  analyzeFramesProfilePickerOpen: boolean;
   annotationToken:     number;
   autostretchImageUrl: string | null;
   blinkCached:         boolean;
@@ -59,6 +60,7 @@ const initial: UIState = {
   activePanel:         null,
   activeView:          null,
   analysisParametersOpen: false,
+  analyzeFramesProfilePickerOpen: false,
   annotationToken:     0,
   autostretchImageUrl: null,
   blinkCached:         false,
@@ -161,6 +163,8 @@ function createUIStore() {
     closeAbout: () => update(s => ({ ...s, aboutOpen: false })),
     openAnalysisParameters: () => update(s => ({ ...s, analysisParametersOpen: true })),
     closeAnalysisParameters: () => update(s => ({ ...s, analysisParametersOpen: false })),
+    openAnalyzeFramesProfilePicker: () => update(s => ({ ...s, analyzeFramesProfilePickerOpen: true })),
+    closeAnalyzeFramesProfilePicker: () => update(s => ({ ...s, analyzeFramesProfilePickerOpen: false })),
     openPreferences: () => update(s => ({ ...s, preferencesOpen: true })),
     closePreferences: () => update(s => ({ ...s, preferencesOpen: false })),
     openMacroEditor:   (file: { id: number | null; name: string; displayName: string; script: string } | null) => update(s => ({

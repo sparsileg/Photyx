@@ -1,10 +1,12 @@
 <!-- AnalysisResults.svelte — Per-frame analysis results table. Spec §8.11 -->
+
 <script lang="ts">
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { ui } from '../stores/ui';
   import { notifications } from '../stores/notifications';
-  import { session } from '../stores/session';
+  import { analysisToggles, type PxFlag } from '../stores/analysisToggles';
+  import { commitAnalysis } from '../commands';
 
   interface FrameResult {
     index: number;
@@ -17,7 +19,6 @@
     flag?: string;
     rejection_category?: string;
     triggered?: string[];
-    toggled?: boolean;
     is_reference?: boolean;
   }
 
@@ -51,11 +52,14 @@
 
   function toggleFlag(index: number) {
     closeContextMenu();
-    frames = frames.map(f => {
-      if (f.index !== index) return f;
-      const newFlag = f.flag === 'REJECT' ? 'PASS' : 'REJECT';
-      return { ...f, flag: newFlag, toggled: true };
-    });
+    const f = frames.find(f => f.index === index);
+    if (!f) return;
+    const newFlag = f.flag === 'REJECT' ? 'PASS' : 'REJECT';
+    // Shared store (Issue 93) so a toggle made here is honored even if
+    // the user commits from Analysis Graph instead. The local `frames`
+    // update below is purely for this table's own immediate display.
+    analysisToggles.toggle(f.filename, f.flag as PxFlag);
+    frames = frames.map(fr => fr.index === index ? { ...fr, flag: newFlag } : fr);
   }
 
   function contextMenuLabel(index: number): string {
@@ -130,9 +134,16 @@
     loading = true;
     try {
       const data = await invoke<AnalysisResponse>('get_analysis_results');
-      frames      = data.frames.map(f => ({ ...f, toggled: false }));
+      frames      = data.frames;
       sessionPath = data.session_path ?? '';
       isImported  = data.is_imported ?? false;
+      analysisToggles.clear();
+
+      const passCount   = frames.filter(f => f.flag === 'PASS').length;
+      const rejectCount = frames.filter(f => f.flag === 'REJECT').length;
+      notifications.success(
+        `AnalyzeFrames refresh: ${frames.length} frames - ${passCount} PASS, ${rejectCount} REJECT`
+      );
     } catch (e) {
       notifications.error(`Analysis Results: ${e}`);
     } finally {
@@ -141,37 +152,9 @@
   }
 
   // ── Commit ────────────────────────────────────────────────────────────────
+  // Shared with Analysis Graph (Issue 93) — see commands.ts commitAnalysis().
   async function commitResults() {
-    if (isImported) {
-      notifications.error('Cannot commit an imported session — no images are loaded.');
-      return;
-    }
-
-    // Push any local flag toggles back to Rust before committing
-    const toggled = frames.filter(f => f.toggled);
-    if (toggled.length > 0) {
-      try {
-        for (const f of toggled) {
-          await invoke('set_frame_flag', { path: f.filename, flag: f.flag });
-        }
-      } catch (e) {
-        notifications.error(`Failed to sync flag changes: ${e}`);
-        return;
-      }
-    }
-
-    notifications.running('Committing results…');
-    try {
-      const msg = await invoke<string>('commit_analysis_results', { append: '.reject' });
-      notifications.success(msg);
-      const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
-      session.setFileList(s.fileList);
-      session.setCurrentFrame(s.currentFrame);
-      ui.showView(null);
-      ui.clearViewer();
-    } catch (e) {
-      notifications.error(`Commit failed: ${e}`);
-    }
+    await commitAnalysis(isImported);
   }
 
   // ── Clipboard copy ────────────────────────────────────────────────────────
@@ -248,7 +231,7 @@
         <tbody>
           {#each sorted as row (row.index)}
             <tr
-              class:ar-row-toggled={row.toggled}
+              class:ar-row-toggled={$analysisToggles[row.filename] !== undefined}
               oncontextmenu={(e) => onRowContextMenu(e, row.index)}
             >
               <td>{row.index + 1}</td>
@@ -257,11 +240,12 @@
               <td>{fmt(row.eccentricity)}</td>
               <td>{fmt(row.star_count, 0)}</td>
               <td>{fmt(row.background_median)}</td>
-              <td>{row.is_reference ? 'REF' : (row.flag ?? '—')}</td>
+              <td>{row.flag ?? '—'}</td>
               <td>
                 {#if row.is_reference}
                   <span class="ar-cat-badge ar-cat-ref" title="Reference frame">★</span>
-                {:else if row.rejection_category}
+                {/if}
+                {#if row.rejection_category}
                   <span class={catClass(row.rejection_category)}>{row.rejection_category}</span>
                 {/if}
               </td>

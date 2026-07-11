@@ -330,6 +330,16 @@ JSON… · Import Session JSON…
 **Analyze** — Analyze Frames · Analysis Results · Analysis Graph ·
 Contour Plot
 
+Analyze Frames requires an explicit threshold profile selection before
+running: clicking it opens a popup listing all saved profiles,
+pre-selected to whichever is currently active. Confirming runs
+`AnalyzeFrames` with the selected profile for that run only — the
+saved active profile is unchanged regardless of what's picked.
+Cancelling runs nothing. This popup only appears for the menu trigger;
+`AnalyzeFrames` invoked from Quick Launch, a saved macro, `RunMacro`,
+or the console runs immediately as before, using whatever `profile=`
+argument (or the active profile, if none given) the script specifies.
+
 **Tools** — Backup Database · Restore Database · Log Viewer
 
 **Help** — About Photyx · Documentation
@@ -395,6 +405,15 @@ yellow (`#d4a820`); Sky Brightness (B) = blue
 the respective colors, slightly larger radius, with a black dividing
 line.
 
+**Reference frame:** the session's reference frame (selected by
+highest `frame_quality_score()` — see §7.1 — among PASS frames,
+falling back to all frames if none passed) renders as a gold 5-point
+star instead of the normal PASS/REJECT dot. The star's stroke color
+still signals the frame's real classification — black stroke for
+PASS, red stroke (`#dc3232`) if the reference frame is itself REJECT
+(rare, but possible when the fallback applies). The reference frame
+is never hidden or miscategorized by being selected as REF.
+
 **Legend:** fixed top-left corner of the canvas, always visible,
 showing all four categories.
 
@@ -410,24 +429,34 @@ and rejection category.
 Close **Toolbar row 2:** [IMPORTED badge if applicable] | session path
 (derived from the file list)
 
-**Columns:** # | Filename | FWHM | Eccentricity | Stars | Signal
-Weight | Bg Median | PXFLAG | Category
+**Columns:** # | Filename | FWHM | Eccentricity | Stars | Bg Median |
+PXFLAG | Category
 
 Category badges are color-coded (O = red, T = yellow, B = blue,
-multi-category = purple), centered.
+multi-category = purple), centered. The session's reference frame
+(see §3.9, §7.1) additionally shows a gold ★ badge in the Category
+column, alongside its rejection category badge if it has one — the
+PXFLAG column always shows the frame's real PASS/REJECT
+classification; being selected as reference never overrides or hides
+it.
 
 **PXFLAG toggle:** right-click any row → "Set to PASS" (on a REJECT
 row) or "Set to REJECT" (on a PASS row). Local state only until
-Commit; toggled rows get an amber left border and subtle background
-tint. All underlying metric data is preserved regardless of toggle
-direction, so a REJECT→PASS toggle keeps its category badge visible
-and can be toggled back.
+Commit, held in a shared store (not per-view) so a toggle made here is
+honored even if the user commits from Analysis Graph instead — see
+Commit sequence below. Toggled rows get an amber left border and
+subtle background tint. All underlying metric data is preserved
+regardless of toggle direction, so a REJECT→PASS toggle keeps its
+category badge visible and can be toggled back. Refresh discards all
+pending toggles in both views.
 
-**Commit sequence:** sync toggled flags to Rust →
-`commit_analysis_results` → on success: sync session from backend →
-`ui.showView(null)` → `ui.clearViewer()`. Non-terminal — the session
-stays open and pass frames remain loaded and ready for subsequent
-operations (e.g. stacking). Disabled for imported sessions.
+**Commit sequence:** shared with Analysis Graph — committing from
+either view runs the identical sequence: sync any pending toggled
+flags to Rust → `commit_analysis_results` → on success: sync session
+from backend → `ui.showView(null)` → `ui.clearViewer()` → clear
+pending toggles. Non-terminal — the session stays open and pass
+frames remain loaded and ready for subsequent operations (e.g.
+stacking). Disabled for imported sessions in both views.
 
 ### 3.11 Info Panel
 
@@ -704,11 +733,11 @@ the first.
    deviates beyond `OUTLIER_SIGMA_THRESHOLD` (confirmed 4.0σ in
    `defaults.rs`) from the *initial* stats is marked an outlier.
 3. Recompute session stats on the outlier-free subset — but **only**
-   for the non-bimodal metrics (Background Median, FWHM, Signal
-   Weight). Star Count's bimodal anchor is carried forward unchanged
-   from step 1 rather than recomputed, specifically to prevent the
-   anchor from drifting between passes, which would otherwise make
-   classification non-deterministic.
+   for the non-bimodal metric (Background Median, FWHM). Star Count's
+   bimodal anchor is carried forward unchanged from step 1 rather than
+   recomputed, specifically to prevent the anchor from drifting
+   between passes, which would otherwise make classification
+   non-deterministic.
 4. Returns the final `SessionStats` plus the set of outlier frame
    paths.
 
@@ -781,10 +810,14 @@ still update while mounted.
 ### 6.8 On-the-Fly Reclassification
 
 `get_analysis_results` reclassifies every frame on every call, using
-cached per-frame metrics against the *current* active threshold
-profile — it does not re-run `AnalyzeFrames`. This means a threshold
-change takes effect immediately on the next Refresh, with no need to
-redo star detection or PSF fitting.
+cached per-frame metrics — it does not re-run `AnalyzeFrames`. It
+classifies against `ctx.last_analysis_thresholds` (the thresholds the
+last `AnalyzeFrames` run, or a JSON import, actually used) when
+present, falling back to the active profile
+(`ctx.analysis_thresholds`) only if nothing has been analyzed yet.
+This is what keeps a `profile=`-pinned run's classifications stable
+across Refresh — see §8.5 for how a *deliberate* threshold change
+still takes effect live.
 
 1. Returns empty if `analysis_results` is empty.
 2. Skipped entirely if `is_imported_session` — an imported session's
@@ -792,21 +825,26 @@ redo star detection or PSF fitting.
    recomputed.
 3. Otherwise: runs `compute_session_stats_iterative`, updates session
    stats in `ctx`, reclassifies each frame (`classify_frame` +
-   `categorize_rejection`), updates
-   `flag`/`triggered_by`/`rejection_category` in place, and returns
-   the results plus `applied_thresholds` (which becomes
-   `ctx.last_analysis_thresholds`) and the `is_imported` flag.
+   `categorize_rejection`) against the thresholds described above,
+   updates `flag`/`triggered_by`/`rejection_category` in place, and
+   returns the results plus `applied_thresholds` (the thresholds
+   actually used for this classification) and the `is_imported` flag.
 
-### 6.9 PXFLAG Toggle (Analysis Results)
+### 6.9 PXFLAG Toggle (Analysis Results and Analysis Graph)
 
 Right-click a row in Analysis Results → "Set to PASS" (REJECT row) or
-"Set to REJECT" (PASS row). This is local UI state only — `toggled:
-boolean` on the row — until Commit; `set_frame_flag` is called per
-toggled frame just before commit and updates
+"Set to REJECT" (PASS row). This is local UI state only — held in a
+shared frontend store (`analysisToggles`), not per-view or persisted
+to the row itself — until Commit. Being shared means a toggle made in
+Analysis Results is honored even if the user commits from Analysis
+Graph instead, and vice versa; both views' Commit buttons run the
+same shared sequence (§3.10). `set_frame_flag` is called per pending
+toggle just before commit and updates
 `ctx.analysis_results[path].flag` directly with no reclassification
 side effects. All underlying metric data and category badge are
 preserved regardless of toggle direction, so a toggle can be reversed
-before commit without losing information.
+before commit without losing information. A Refresh in either view
+discards all pending toggles.
 
 ---
 
@@ -834,8 +872,13 @@ sigma-clipped mean combination. Implementation lives in
    A time gap alone, with an unchanged rotator, does not start a new
    group.
 3. **Master group.** The largest group by frame count is the master
-   group. Its best-quality frame (highest `1/FWHM + (1 −
-   eccentricity)`) becomes the master reference for the whole stack.
+   group. Its best-quality frame (highest `frame_quality_score()` =
+   `1/FWHM + (1 − eccentricity)`) becomes the master reference for the
+   whole stack. This is the same shared quality function `AnalyzeFrames`
+   uses to select the session's displayed reference frame (§3.9, §6.2)
+   — one definition of "best frame" for both, restricted to PASS
+   frames on the `AnalyzeFrames` side (StackFrames has no PASS/REJECT
+   concept of its own to restrict against).
 4. **Per-group reference.** Every group — master or not — selects its
    own best-quality frame as a group reference. Frames align natively
    to their own group's reference, avoiding a per-frame buffer
@@ -1203,12 +1246,16 @@ duo-band frames is 1.75σ.
   Count.
 - Values are clamped to bounds on save.
 - `set_active_threshold_profile` propagates thresholds into
-  `AppContext.analysis_thresholds`
-  immediately. `AppContext.last_analysis_thresholds` holds the
-  thresholds actually used in the last analysis run, returned as
-  `applied_thresholds` — the Analysis Graph draws reject lines from
-  this, not from the current active profile, so switching profiles
-  doesn't retroactively redraw a run made under different thresholds.
+  `AppContext.analysis_thresholds` immediately, and also updates
+  `AppContext.last_analysis_thresholds` to match — an explicit active-
+  profile change (via Edit > Analysis Parameters OK/Apply) is treated
+  as a deliberate re-baseline. `AppContext.last_analysis_thresholds`
+  otherwise holds the thresholds actually used in the last
+  `AnalyzeFrames` run, returned as `applied_thresholds` by
+  `get_analysis_results` (§6.8) — the Analysis Graph draws reject
+  lines from this, not from the current active profile, so switching
+  profiles doesn't retroactively redraw a run made under different
+  thresholds unless done explicitly through this command.
 - Deleting a profile — including the last one — is allowed; deleting
   the last profile re-seeds a "Default" profile.
 
