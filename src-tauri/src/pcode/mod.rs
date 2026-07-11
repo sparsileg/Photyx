@@ -5,6 +5,7 @@ pub mod expr;
 pub mod tokenizer;
 
 use std::collections::HashMap;
+use std::path::Path;
 use tracing::{info, warn};
 
 use crate::context::AppContext;
@@ -544,7 +545,9 @@ fn execute_line(
 
             // Handle Log internally
             if command.to_lowercase() == "log" {
-                let result = handle_log(&resolved_args, &results[*last_log_index..]);
+                let common_parent = ctx.common_parent();
+                let common_parent_str = common_parent.as_deref().and_then(|p| p.to_str());
+                let result = handle_log(&resolved_args, &results[*last_log_index..], common_parent_str);
                 *last_log_index = results.len();
                 results.push(PcodeResult {
                     line_number,
@@ -684,8 +687,9 @@ pub(crate) fn substitute_vars(s: &str, variables: &HashMap<String, String>) -> S
 // ── Log handler ───────────────────────────────────────────────────────────────
 
 fn handle_log(
-    args:    &HashMap<String, String>,
-    results: &[PcodeResult],
+    args:           &HashMap<String, String>,
+    results:        &[PcodeResult],
+    common_parent:  Option<&str>,
 ) -> Result<String, String> {
     let path = args.get("path")
         .ok_or_else(|| "Log: missing path argument".to_string())?;
@@ -694,7 +698,19 @@ fn handle_log(
         .map(|v| v == "true")
         .unwrap_or(false);
 
-    let resolved_path = crate::utils::resolve_path(path, None);
+    let resolved_path = crate::utils::resolve_path(path, common_parent);
+
+    // A relative path (after tilde/active-directory resolution) with
+    // nowhere to resolve against is a clear error rather than a silent
+    // fall-through to whatever the process's working directory happens
+    // to be — that silent fallback was the bug this fix removes.
+    if !Path::new(&resolved_path).is_absolute() {
+        return Err(format!(
+            "Log: path '{}' is relative and no session common parent is available \
+             (load files sharing one directory first, or use an absolute path)",
+            path
+        ));
+    }
 
     use std::io::Write;
     let file = if append {

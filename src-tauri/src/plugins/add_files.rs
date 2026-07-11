@@ -35,6 +35,15 @@ impl PhotyxPlugin for AddFiles {
         let mut glob_warnings: Vec<String> = Vec::new();
 
         for token in raw.split(',').map(|s| s.trim().trim_matches('"')).filter(|s| !s.is_empty()) {
+            // Expand a leading ~ before glob matching — ~ isn't a glob-legal
+            // character, so an unexpanded "~/lights/*.fit" would never match
+            // anything and silently produce a "no files matched" warning.
+            // No active-directory resolution here (relative, non-~ paths
+            // are unaffected) — that's the separate, deferred AddFiles
+            // relative-path question tracked in the `cd` command issue.
+            let token = crate::utils::resolve_path(token, None);
+            let token = token.as_str();
+
             let is_glob = token.contains('*') || token.contains('?') || token.contains('[');
             if is_glob {
                 match glob(token) {
