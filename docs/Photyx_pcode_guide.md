@@ -599,16 +599,17 @@ Print $STACKED
 
 #### `CopyFile`
 
-Copies a file to a destination directory. Uses the current frame if no source is specified. Stores the destination path in `$NEW_FILE`. The source file and session are unchanged.
+Copies a file to a destination directory. Uses the current frame if no source is specified. Stores the destination path in `$NEW_FILE`. The source file and session are unchanged. Fails with an error if a file already exists at the destination, unless `overwrite=true`.
 
 ```
-CopyFile destination=<path> [source=<path>]
+CopyFile destination=<path> [source=<path>] [overwrite=<bool>]
 ```
 
-| Argument      | Required | Description                                                |
-| ------------- | -------- | ------------------------------------------------------------ |
-| `destination` | Yes      | Destination directory path (created automatically if needed) |
-| `source`      | No       | Source file path (default: current frame)                  |
+| Argument      | Required | Default | Description                                                |
+| ------------- | -------- | ------- | ------------------------------------------------------------ |
+| `destination` | Yes      |         | Destination directory path (created automatically if needed) |
+| `source`      | No       |         | Source file path (default: current frame)                  |
+| `overwrite`   | No       | `false` | Overwrite an existing file at the destination                |
 
 For example, to back up every frame in the session before processing:
 
@@ -616,7 +617,7 @@ For example, to back up every frame in the session before processing:
 CountFiles
 For i = 0 To $filecount - 1
   SetFrame index=$i
-  CopyFile destination="/data/Backups"
+  CopyFile destination="/data/Backups" overwrite=true
 EndFor
 ```
 
@@ -624,20 +625,22 @@ EndFor
 
 #### `MoveFile`
 
-Moves a file to a destination. Uses the current frame if no source is specified. If the destination is an existing directory (or ends with a path separator), the file is moved into it preserving its filename. Otherwise the destination is treated as a full file path, allowing rename-during-move (`mv` semantics). The destination parent directory is created automatically if needed. Stores the destination path in `$NEW_FILE`. Removes the file from the session file list if it was a session file.
+Moves a file to a destination. Uses the current frame if no source is specified. If the destination is an existing directory (or ends with a path separator), the file is moved into it preserving its filename. Otherwise the destination is treated as a full file path, allowing rename-during-move (`mv` semantics). The destination parent directory is created automatically if needed. Stores the destination path in `$NEW_FILE`. Removes the file from the session file list if it was a session file. Fails with an error if a file already exists at the destination, unless `overwrite=true`. Cross-filesystem moves (e.g. external drive to local disk) use an atomic copy-to-temp-then-rename sequence, so an interrupted move never leaves a partial file at the destination name.
 
 ```
-MoveFile destination=<path> [source=<path>]
+MoveFile destination=<path> [source=<path>] [overwrite=<bool>]
 ```
 
-| Argument      | Required | Description                                                                |
-| ------------- | -------- | ----------------------------------------------------------------------------- |
-| `destination` | Yes      | Destination directory path, or full destination file path for rename-during-move |
-| `source`      | No       | Source file path (default: current frame). May be a file outside the session |
+| Argument      | Required | Default | Description                                                                |
+| ------------- | -------- | ------- | ----------------------------------------------------------------------------- |
+| `destination` | Yes      |         | Destination directory path, or full destination file path for rename-during-move |
+| `source`      | No       |         | Source file path (default: current frame). May be a file outside the session |
+| `overwrite`   | No       | `false` | Overwrite an existing file at the destination                                |
 
 ```
 MoveFile destination="/data/Rejects"
 MoveFile source="$f" destination="/data/Rejects"
+MoveFile source="$f" destination="/data/Rejects" overwrite=true
 # Rename during move (mv semantics):
 Set cleaned = stripext($f)
 MoveFile source="$f" destination="$cleaned"

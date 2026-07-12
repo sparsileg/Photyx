@@ -85,7 +85,7 @@ pub struct MoveFile;
 
 impl PhotyxPlugin for MoveFile {
     fn name(&self)        -> &str { "MoveFile" }
-    fn version(&self)     -> &str { "1.0.0" }
+    fn version(&self)     -> &str { "1.1.0" }
     fn description(&self) -> &str { "Moves a file to a destination directory. Uses current frame if source= is not specified." }
 
     fn parameters(&self) -> Vec<ParamSpec> {
@@ -104,12 +104,20 @@ impl PhotyxPlugin for MoveFile {
                 description: "Destination directory path".to_string(),
                 default:     None,
             },
+            ParamSpec {
+                name:        "overwrite".to_string(),
+                param_type:  ParamType::Boolean,
+                required:    false,
+                description: "Overwrite an existing file at the destination (default: false)".to_string(),
+                default:     Some("false".to_string()),
+            },
         ]
     }
 
     fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
         let destination = args.get("destination")
             .ok_or_else(|| PluginError::missing_arg("destination"))?;
+        let overwrite = args.get("overwrite").map(|v| v == "true").unwrap_or(false);
 
         let dest_dir = crate::utils::resolve_path(
             destination,
@@ -152,10 +160,35 @@ impl PhotyxPlugin for MoveFile {
             Path::new(&dest_dir).to_path_buf()
         };
 
+        // Existence check applies uniformly whether destination was given as
+        // a directory (filename preserved) or a full path (rename-during-move) —
+        // both forms resolve to dest_path above before this check runs.
+        // See Issue 81.
+        if !overwrite && dest_path.exists() {
+            return Err(PluginError::new(
+                "FILE_EXISTS",
+                &format!(
+                    "MoveFile: destination '{}' already exists. Use overwrite=true to replace it.",
+                    dest_path.display(),
+                ),
+            ));
+        }
+
         if let Err(rename_err) = std::fs::rename(&src_path, &dest_path) {
             // rename() only works within a single filesystem. Fall back to
             // copy + delete for cross-device moves (e.g. external drive -> local disk).
-            std::fs::copy(&src_path, &dest_path)
+            // Copy to a distinctively-suffixed temp file in the destination
+            // directory first, then rename into place — that rename is
+            // within a single filesystem (same directory), so it's atomic.
+            // This guarantees a killed process mid-copy never leaves a
+            // partial file under the real destination name. See Issue 81.
+            let tmp_path = {
+                let mut tmp_name = filename.to_os_string();
+                tmp_name.push(".photyx-tmp");
+                dest_path.with_file_name(tmp_name)
+            };
+
+            std::fs::copy(&src_path, &tmp_path)
                 .map_err(|copy_err| PluginError::new(
                     "IO_ERROR",
                     &format!(
@@ -163,6 +196,18 @@ impl PhotyxPlugin for MoveFile {
                         src_path, dest_path.display(), rename_err, copy_err,
                     ),
                 ))?;
+
+            if let Err(rename_tmp_err) = std::fs::rename(&tmp_path, &dest_path) {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(PluginError::new(
+                    "IO_ERROR",
+                    &format!(
+                        "MoveFile: copied '{}' to a temp file but could not rename it into place at '{}': {}",
+                        src_path, dest_path.display(), rename_tmp_err,
+                    ),
+                ));
+            }
+
             std::fs::remove_file(&src_path)
                 .map_err(|e| PluginError::new(
                     "IO_ERROR",
@@ -175,12 +220,14 @@ impl PhotyxPlugin for MoveFile {
 
         let dest_str = dest_path.display().to_string();
 
-        // Only remove from session caches if it was a session file
-        ctx.file_list.retain(|f| f != &src_path);
-        ctx.remove_frame_data(&src_path);
-
-        if ctx.current_frame >= ctx.file_list.len() && !ctx.file_list.is_empty() {
-            ctx.current_frame = ctx.file_list.len() - 1;
+        // Only remove from session caches if it was a session file.
+        // remove_single_frame() correctly adjusts current_frame whether the
+        // moved file sat before, at, or after the current index. Previously
+        // this only clamped current_frame when it fell off the end of the
+        // shrunk list, leaving it silently pointed at the wrong file
+        // whenever a preceding file was moved. See Issue 81.
+        if let Some(idx) = ctx.file_list.iter().position(|f| f == &src_path) {
+            ctx.remove_single_frame(idx);
         }
 
         ctx.variables.insert("NEW_FILE".to_string(), dest_str.clone());
@@ -199,7 +246,7 @@ pub struct CopyFile;
 
 impl PhotyxPlugin for CopyFile {
     fn name(&self)        -> &str { "CopyFile" }
-    fn version(&self)     -> &str { "1.0.0" }
+    fn version(&self)     -> &str { "1.1.0" }
     fn description(&self) -> &str { "Copies a file to a destination directory. Uses current frame if source= is not specified." }
 
     fn parameters(&self) -> Vec<ParamSpec> {
@@ -218,12 +265,20 @@ impl PhotyxPlugin for CopyFile {
                 description: "Destination directory path".to_string(),
                 default:     None,
             },
+            ParamSpec {
+                name:        "overwrite".to_string(),
+                param_type:  ParamType::Boolean,
+                required:    false,
+                description: "Overwrite an existing file at the destination (default: false)".to_string(),
+                default:     Some("false".to_string()),
+            },
         ]
     }
 
     fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
         let destination = args.get("destination")
             .ok_or_else(|| PluginError::missing_arg("destination"))?;
+        let overwrite = args.get("overwrite").map(|v| v == "true").unwrap_or(false);
 
         let dest_dir = crate::utils::resolve_path(
             destination,
@@ -250,6 +305,16 @@ impl PhotyxPlugin for CopyFile {
             ))?;
 
         let dest_path = Path::new(&dest_dir).join(filename);
+
+        if !overwrite && dest_path.exists() {
+            return Err(PluginError::new(
+                "FILE_EXISTS",
+                &format!(
+                    "CopyFile: destination '{}' already exists. Use overwrite=true to replace it.",
+                    dest_path.display(),
+                ),
+            ));
+        }
 
         std::fs::copy(&src_path, &dest_path)
             .map_err(|e| PluginError::new(
@@ -336,13 +401,13 @@ impl PhotyxPlugin for CountMatches {
 /// Retrieves a well-known system directory path and stores it in a variable.
 /// Usage: GetSystemPath name=downloads
 /// Supported names: downloads, documents, desktop, temp
-/// Result is stored in $<name> (e.g. $downloads).
+/// Result is stored in $<n> (e.g. $downloads).
 pub struct GetSystemPath;
 
 impl PhotyxPlugin for GetSystemPath {
     fn name(&self)        -> &str { "GetSystemPath" }
     fn version(&self)     -> &str { "1.0.0" }
-    fn description(&self) -> &str { "Retrieves a well-known system directory path; stores result in $<name>" }
+    fn description(&self) -> &str { "Retrieves a well-known system directory path; stores result in $<n>" }
 
     fn parameters(&self) -> Vec<ParamSpec> {
         vec![
