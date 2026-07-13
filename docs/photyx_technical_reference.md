@@ -145,10 +145,15 @@ Photyx uses a **global file context** — a flat list of file paths
 (`ctx.file_list`) with no concept of an "active directory." Files from
 multiple directories coexist in a single session.
 
-- `AddFiles` is the sole entry point for loading images. It appends
-  explicit file paths to the session (skipping duplicates already
-  loaded) — it does not clear the session or accept directory
-  expansion. Memory is checked against the buffer pool limit before
+- `AddFiles` and `ReadImages` are the two entry points for loading
+  images into the session. `AddFiles` appends a comma-separated list
+  of explicit file paths and/or glob patterns (`*`, `?`, `[...]`,
+  usable in any path segment) — it does not accept a bare directory.
+  `ReadImages` takes a single `path` argument that is either one file
+  or one directory (all supported files within the directory are
+  loaded) — it does not accept glob patterns or a comma-separated
+  list. Both skip files already loaded and neither clears the session
+  on its own. Memory is checked against the buffer pool limit before
   loading, based on first-file dimensions × total count. Use
   `ClearSession` first to start fresh.
 - `ctx.source_directories()` returns the unique parent directories of

@@ -329,7 +329,7 @@
     ]},
     { name: 'Session', items: [
       { label: 'Add Files', action: 'add-files', shortcut: 'Ctrl+O' },
-      { label: 'Close Session', action: 'close-session' },
+      { label: 'Clear Session', action: 'close-session' },
     ]},
     { name: 'Edit', items: [
       { label: 'Preferences',         action: 'preferences' },
