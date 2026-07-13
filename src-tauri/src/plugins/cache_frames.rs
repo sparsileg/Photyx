@@ -16,7 +16,7 @@ pub struct CacheFrames;
 
 impl PhotyxPlugin for CacheFrames {
     fn name(&self) -> &str { "CacheFrames" }
-    fn version(&self) -> &str { "1.0" }
+    fn version(&self) -> &str { "1.1.0" }
     fn description(&self) -> &str { "Pre-renders all loaded images to blink-resolution JPEGs" }
 
     fn parameters(&self) -> Vec<ParamSpec> {
@@ -25,8 +25,8 @@ impl PhotyxPlugin for CacheFrames {
                 name:        "resolution".to_string(),
                 param_type:  ParamType::String,
                 required:    false,
-                description: "Blink resolution: 12 (12.5%) or 25 (25%). Default: 25".to_string(),
-                default:     Some("25".to_string()),
+                description: "Blink resolution: 12 (12.5%) or 25 (25%). Default: both".to_string(),
+                default:     Some("both".to_string()),
             },
         ]
     }
@@ -59,6 +59,16 @@ impl PhotyxPlugin for CacheFrames {
         let file_list = ctx.file_list.clone();
         let mut cached_counts: std::collections::HashMap<&str, usize> =
             resolutions.iter().map(|&(name, _)| (name, 0)).collect();
+        let mut failed_counts: std::collections::HashMap<&str, usize> =
+            resolutions.iter().map(|&(name, _)| (name, 0)).collect();
+
+        // One progress unit per (frame × requested resolution) — matches
+        // the atomic-counter pattern AnalyzeFrames uses. Incremented at the
+        // start of each frame's processing (below) so progress reflects
+        // frames attempted, not just frames that succeeded.
+        let progress_total   = (total * resolutions.len()) as u32;
+        let progress_counter = std::sync::atomic::AtomicUsize::new(0);
+        crate::set_progress("Caching frames", 0, progress_total);
 
         for path_chunk in file_list.chunks(chunk_len) {
             // Sequential: clone this chunk's pixel data once, reused across
@@ -70,6 +80,9 @@ impl PhotyxPlugin for CacheFrames {
 
             for &(res_name, max_w) in resolutions {
             let results: Vec<(String, Vec<u8>)> = frames.par_iter().filter_map(|frame| {
+                let done = progress_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                crate::set_progress("Caching frames", done as u32, progress_total);
+
                 let src_w = frame.width;
                 let src_h = frame.height;
 
@@ -181,17 +194,33 @@ impl PhotyxPlugin for CacheFrames {
                     _    => { for (path, jpeg) in results { ctx.blink_cache_25.insert(path, jpeg); } }
                 }
                 *cached_counts.get_mut(res_name).unwrap() += n;
+                *failed_counts.get_mut(res_name).unwrap() += frames.len() - n;
             } // end resolution loop
             // This chunk's cloned pixel buffers (`frames`) drop here,
             // before the next chunk is loaded.
         } // end chunk loop
 
         for &(res_name, _) in resolutions {
-            info!("CacheFrames: {}% resolution — {}/{} frames cached", res_name, cached_counts[&res_name], total);
+            info!("CacheFrames: {}% resolution — {}/{} frames cached ({} failed)",
+                res_name, cached_counts[&res_name], total, failed_counts[&res_name]);
         }
 
+        crate::set_progress("", 0, 0);
         ctx.blink_cache_status = crate::context::BlinkCacheStatus::Ready;
-        Ok(PluginOutput::Message(format!("Cached {}/{} frames at both resolutions", total, total)))
+
+        let total_failed: usize = failed_counts.values().sum();
+        let resolution_summary = resolutions.iter()
+            .map(|&(res_name, _)| format!("{}/{} at {}%", cached_counts[&res_name], total, res_name))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let msg = if total_failed > 0 {
+            format!("Cached {} ({} failure(s))", resolution_summary, total_failed)
+        } else {
+            format!("Cached {}", resolution_summary)
+        };
+
+        Ok(PluginOutput::Message(msg))
     }
 }
 
