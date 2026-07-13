@@ -10,7 +10,7 @@ use std::io::Cursor;
 use rayon::prelude::*;
 
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
-use crate::context::{AppContext, PixelData};
+use crate::context::AppContext;
 
 pub struct CacheFrames;
 
@@ -79,101 +79,28 @@ impl PhotyxPlugin for CacheFrames {
             let frames = crate::plugins::pixel_chunking::snapshot_pixel_chunk(ctx, path_chunk);
 
             for &(res_name, max_w) in resolutions {
-            let results: Vec<(String, Vec<u8>)> = frames.par_iter().filter_map(|frame| {
+                let results: Vec<(String, Vec<u8>)> = frames.par_iter().filter_map(|frame| {
                 let done = progress_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                 crate::set_progress("Caching frames", done as u32, progress_total);
 
-                let src_w = frame.width;
-                let src_h = frame.height;
-
-                // Box filter downsampling — averages step×step block per output pixel
-                // Preserves fine detail (thin clouds, gradients) better than point sampling
-                let step = if src_w > max_w {
-                    (src_w + max_w - 1) / max_w
-                } else {
-                    1
-                };
-
-                let disp_w = src_w / step;
-                let disp_h = src_h / step;
+                // Forced mono (channels=1) regardless of source color — blink
+                // thumbnails have never included color; this preserves that
+                // existing behavior while sharing the same box-filter core
+                // as the other display/cache paths (Issue 86).
+                let (mut planes, disp_w, disp_h) = crate::render::downsample_to_planes(
+                    &frame.pixels, frame.width, frame.height, 1, max_w,
+                );
                 let pixel_count = disp_w * disp_h;
 
-                let mut display: Vec<f32> = Vec::with_capacity(pixel_count);
-
-                match &frame.pixels {
-                    PixelData::U16(v) => {
-                        for oy in 0..disp_h {
-                            for ox in 0..disp_w {
-                                let mut sum = 0u32;
-                                let mut count = 0u32;
-                                for dy in 0..step {
-                                    let sy = oy * step + dy;
-                                    if sy >= src_h { continue; }
-                                    for dx in 0..step {
-                                        let sx = ox * step + dx;
-                                        if sx >= src_w { continue; }
-                                        sum += v[sy * src_w + sx] as u32;
-                                        count += 1;
-                                    }
-                                }
-                                display.push(sum as f32 / (count as f32 * 65535.0));
-                            }
-                        }
-                    }
-                    PixelData::F32(v) => {
-                        for oy in 0..disp_h {
-                            for ox in 0..disp_w {
-                                let mut sum = 0.0f32;
-                                let mut count = 0u32;
-                                for dy in 0..step {
-                                    let sy = oy * step + dy;
-                                    if sy >= src_h { continue; }
-                                    for dx in 0..step {
-                                        let sx = ox * step + dx;
-                                        if sx >= src_w { continue; }
-                                        let val = v[sy * src_w + sx];
-                                        if val.is_finite() { sum += val; count += 1; }
-                                    }
-                                }
-                                display.push(if count > 0 { sum / count as f32 } else { 0.0 });
-                            }
-                        }
-                    }
-                    PixelData::U8(v) => {
-                        for oy in 0..disp_h {
-                            for ox in 0..disp_w {
-                                let mut sum = 0u32;
-                                let mut count = 0u32;
-                                for dy in 0..step {
-                                    let sy = oy * step + dy;
-                                    if sy >= src_h { continue; }
-                                    for dx in 0..step {
-                                        let sx = ox * step + dx;
-                                        if sx >= src_w { continue; }
-                                        sum += v[sy * src_w + sx] as u32;
-                                        count += 1;
-                                    }
-                                }
-                                display.push(sum as f32 / (count as f32 * 255.0));
-                            }
-                        }
-                    }
-                }
-
                 // Compute STF parameters and stretch
-                let (c0, m) = compute_stf_params_pub(&display);
+                let (c0, m) = compute_stf_params_pub(&planes[0]);
                 let c0_range = (1.0 - c0).max(f32::EPSILON);
-                for p in display.iter_mut() {
+                for p in planes[0].iter_mut() {
                     let clipped = ((*p - c0) / c0_range).clamp(0.0, 1.0);
                     *p = mtf_pub(m, clipped);
                 }
 
-                // Encode to JPEG at quality 75 — sufficient for blink
-                let mut rgb = Vec::with_capacity(pixel_count * 3);
-                for &p in &display {
-                    let val = (p.clamp(0.0, 1.0) * 255.0) as u8;
-                    rgb.push(val); rgb.push(val); rgb.push(val);
-                }
+                let rgb = crate::render::planes_to_rgb8(&planes, pixel_count);
 
                 let img = RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
                 let mut buf = Cursor::new(Vec::new());

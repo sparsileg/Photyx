@@ -66,125 +66,15 @@ pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, Strin
         }
     }
 
-    // Normal path: render raw pixels without stretch
-    let mut rgb = Vec::with_capacity(pixel_count * 3);
-
-    match pixels {
-        PixelData::U16(v) => {
-            for oy in 0..disp_h {
-                for ox in 0..disp_w {
-                    let mut sum = 0u32; let mut count = 0u32;
-                    for dy in 0..step {
-                        let sy = oy * step + dy;
-                        if sy >= src_h { continue; }
-                        for dx in 0..step {
-                            let sx = ox * step + dx;
-                            if sx >= src_w { continue; }
-                            let idx = if is_rgb { (sy * src_w + sx) * channels } else { sy * src_w + sx };
-                            sum += v[idx] as u32;
-                            count += 1;
-                        }
-                    }
-                    let val = (sum as f32 / (count as f32 * 65535.0) * 255.0) as u8;
-                    if is_rgb {
-                        let mut sr = 0u32; let mut sg = 0u32; let mut sb = 0u32; let mut sc = 0u32;
-                        for dy in 0..step {
-                            let sy = oy * step + dy;
-                            if sy >= src_h { continue; }
-                            for dx in 0..step {
-                                let sx = ox * step + dx;
-                                if sx >= src_w { continue; }
-                                let idx = (sy * src_w + sx) * 3;
-                                sr += v[idx] as u32;
-                                sg += v[idx + 1] as u32;
-                                sb += v[idx + 2] as u32;
-                                sc += 1;
-                            }
-                        }
-                        let scale = sc as f32 * 65535.0;
-                        rgb.push((sr as f32 / scale * 255.0) as u8);
-                        rgb.push((sg as f32 / scale * 255.0) as u8);
-                        rgb.push((sb as f32 / scale * 255.0) as u8);
-                    } else {
-                        rgb.push(val); rgb.push(val); rgb.push(val);
-                    }
-                }
-            }
-        }
-        PixelData::F32(v) => {
-            for oy in 0..disp_h {
-                for ox in 0..disp_w {
-                    if is_rgb {
-                        let mut sr = 0.0f32; let mut sg = 0.0f32; let mut sb = 0.0f32; let mut sc = 0u32;
-                        for dy in 0..step {
-                            let sy = oy * step + dy;
-                            if sy >= src_h { continue; }
-                            for dx in 0..step {
-                                let sx = ox * step + dx;
-                                if sx >= src_w { continue; }
-                                let idx = (sy * src_w + sx) * 3;
-                                if v[idx].is_finite() { sr += v[idx]; sg += v[idx+1]; sb += v[idx+2]; sc += 1; }
-                            }
-                        }
-                        let sc = sc as f32;
-                        rgb.push((sr / sc * 255.0).clamp(0.0, 255.0) as u8);
-                        rgb.push((sg / sc * 255.0).clamp(0.0, 255.0) as u8);
-                        rgb.push((sb / sc * 255.0).clamp(0.0, 255.0) as u8);
-                    } else {
-                        let mut sum = 0.0f32; let mut count = 0u32;
-                        for dy in 0..step {
-                            let sy = oy * step + dy;
-                            if sy >= src_h { continue; }
-                            for dx in 0..step {
-                                let sx = ox * step + dx;
-                                if sx >= src_w { continue; }
-                                let val = v[sy * src_w + sx];
-                                if val.is_finite() { sum += val; count += 1; }
-                            }
-                        }
-                        let val = (sum / count as f32 * 255.0).clamp(0.0, 255.0) as u8;
-                        rgb.push(val); rgb.push(val); rgb.push(val);
-                    }
-                }
-            }
-        }
-        PixelData::U8(v) => {
-            for oy in 0..disp_h {
-                for ox in 0..disp_w {
-                    if is_rgb {
-                        let mut sr = 0u32; let mut sg = 0u32; let mut sb = 0u32; let mut sc = 0u32;
-                        for dy in 0..step {
-                            let sy = oy * step + dy;
-                            if sy >= src_h { continue; }
-                            for dx in 0..step {
-                                let sx = ox * step + dx;
-                                if sx >= src_w { continue; }
-                                let idx = (sy * src_w + sx) * 3;
-                                sr += v[idx] as u32; sg += v[idx+1] as u32; sb += v[idx+2] as u32; sc += 1;
-                            }
-                        }
-                        let scale = sc as f32 * 255.0;
-                        rgb.push((sr as f32 / scale * 255.0) as u8);
-                        rgb.push((sg as f32 / scale * 255.0) as u8);
-                        rgb.push((sb as f32 / scale * 255.0) as u8);
-                    } else {
-                        let mut sum = 0u32; let mut count = 0u32;
-                        for dy in 0..step {
-                            let sy = oy * step + dy;
-                            if sy >= src_h { continue; }
-                            for dx in 0..step {
-                                let sx = ox * step + dx;
-                                if sx >= src_w { continue; }
-                                sum += v[sy * src_w + sx] as u32; count += 1;
-                            }
-                        }
-                        let val = (sum as f32 / (count as f32 * 255.0) * 255.0) as u8;
-                        rgb.push(val); rgb.push(val); rgb.push(val);
-                    }
-                }
-            }
-        }
-    }
+    // Normal path: render raw pixels without stretch, via the shared
+    // box-filter core (Issue 86). This also eliminates the redundant mono
+    // pass the old U16 branch used to compute and discard on every RGB frame.
+    let render_channels = if is_rgb { 3 } else { 1 };
+    let (planes, disp_w, disp_h) = crate::render::downsample_to_planes(
+        pixels, src_w, src_h, render_channels, MAX_DISPLAY_W,
+    );
+    let pixel_count = disp_w * disp_h;
+    let rgb = crate::render::planes_to_rgb8(&planes, pixel_count);
 
     let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
         .ok_or_else(|| "Failed to create display image".to_string())?;
@@ -196,6 +86,8 @@ pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, Strin
     let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
     Ok(format!("data:image/jpeg;base64,{}", b64))
 }
+
+
 
 #[tauri::command]
 pub fn get_autostretch_frame(
@@ -334,82 +226,17 @@ pub fn start_background_cache(
                     }
                 }
 
-                let num_ch = if is_rgb { 3 } else { 1 };
-                let mut display_channels: Vec<Vec<f32>> = (0..num_ch)
-                    .map(|_| Vec::with_capacity(pixel_count))
-                    .collect();
+                let render_channels = if is_rgb { 3 } else { 1 };
+                let (mut planes, disp_w, disp_h) = crate::render::downsample_to_planes(
+                    pixels, src_w, src_h, render_channels, MAX_DISPLAY_W,
+                );
+                let pixel_count = disp_w * disp_h;
 
-                match pixels {
-                    PixelData::U16(v) => {
-                        for oy in 0..disp_h {
-                            for ox in 0..disp_w {
-                                for ch in 0..num_ch {
-                                    let mut sum = 0u32; let mut count = 0u32;
-                                    for dy in 0..step {
-                                        let sy = oy * step + dy;
-                                        if sy >= src_h { continue; }
-                                        for dx in 0..step {
-                                            let sx = ox * step + dx;
-                                            if sx >= src_w { continue; }
-                                            let idx = (sy * src_w + sx) * num_ch + ch;
-                                            sum += v[idx] as u32;
-                                            count += 1;
-                                        }
-                                    }
-                                    display_channels[ch].push(sum as f32 / (count as f32 * 65535.0));
-                                }
-                            }
-                        }
-                    }
-                    PixelData::F32(v) => {
-                        for oy in 0..disp_h {
-                            for ox in 0..disp_w {
-                                for ch in 0..num_ch {
-                                    let mut sum = 0.0f32; let mut count = 0u32;
-                                    for dy in 0..step {
-                                        let sy = oy * step + dy;
-                                        if sy >= src_h { continue; }
-                                        for dx in 0..step {
-                                            let sx = ox * step + dx;
-                                            if sx >= src_w { continue; }
-                                            let idx = (sy * src_w + sx) * num_ch + ch;
-                                            let val = v[idx];
-                                            if val.is_finite() { sum += val; count += 1; }
-                                        }
-                                    }
-                                    display_channels[ch].push(if count > 0 { sum / count as f32 } else { 0.0 });
-                                }
-                            }
-                        }
-                    }
-                    PixelData::U8(v) => {
-                        for oy in 0..disp_h {
-                            for ox in 0..disp_w {
-                                for ch in 0..num_ch {
-                                    let mut sum = 0u32; let mut count = 0u32;
-                                    for dy in 0..step {
-                                        let sy = oy * step + dy;
-                                        if sy >= src_h { continue; }
-                                        for dx in 0..step {
-                                            let sx = ox * step + dx;
-                                            if sx >= src_w { continue; }
-                                            let idx = (sy * src_w + sx) * num_ch + ch;
-                                            sum += v[idx] as u32;
-                                            count += 1;
-                                        }
-                                    }
-                                    display_channels[ch].push(sum as f32 / (count as f32 * 255.0));
-                                }
-                            }
-                        }
-                    }
-                }
-
-                let stf_params: Vec<(f32, f32)> = display_channels.iter()
+                let stf_params: Vec<(f32, f32)> = planes.iter()
                     .map(|ch| crate::plugins::cache_frames::compute_stf_params_pub(ch))
                     .collect();
 
-                for (ch_data, &(c0, m)) in display_channels.iter_mut().zip(stf_params.iter()) {
+                for (ch_data, &(c0, m)) in planes.iter_mut().zip(stf_params.iter()) {
                     let c0_range = (1.0 - c0).max(f32::EPSILON);
                     for p in ch_data.iter_mut() {
                         let clipped = ((*p - c0) / c0_range).clamp(0.0, 1.0);
@@ -417,19 +244,7 @@ pub fn start_background_cache(
                     }
                 }
 
-                let mut rgb = Vec::with_capacity(pixel_count * 3);
-                if is_rgb {
-                    for i in 0..pixel_count {
-                        rgb.push((display_channels[0][i].clamp(0.0, 1.0) * 255.0) as u8);
-                        rgb.push((display_channels[1][i].clamp(0.0, 1.0) * 255.0) as u8);
-                        rgb.push((display_channels[2][i].clamp(0.0, 1.0) * 255.0) as u8);
-                    }
-                } else {
-                    for &p in &display_channels[0] {
-                        let val = (p.clamp(0.0, 1.0) * 255.0) as u8;
-                        rgb.push(val); rgb.push(val); rgb.push(val);
-                    }
-                }
+                let rgb = crate::render::planes_to_rgb8(&planes, pixel_count);
 
                 let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
                 let mut buf = std::io::Cursor::new(Vec::new());
@@ -739,15 +554,14 @@ pub fn load_file(path: String, state: State<Arc<PhotoxState>>) -> Result<String,
         None => return Err("No pixel data in file".to_string()),
     };
 
-    const MAX_DISPLAY_W: usize = 1200;
+const MAX_DISPLAY_W: usize = 1200;
     let step = if width > MAX_DISPLAY_W { (width + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
     let disp_w = width / step;
     let disp_h = height / step;
     let pixel_count = disp_w * disp_h;
 
-    let mut rgb = Vec::with_capacity(pixel_count * 3);
-
-    if is_prerendered && channels == 3 {
+    let rgb = if is_prerendered && channels == 3 {
+        let mut rgb = Vec::with_capacity(pixel_count * 3);
         if let PixelData::U8(v) = &pixels {
             for oy in 0..disp_h {
                 for ox in 0..disp_w {
@@ -760,137 +574,23 @@ pub fn load_file(path: String, state: State<Arc<PhotoxState>>) -> Result<String,
                 }
             }
         }
+        rgb
     } else {
-        match &pixels {
-            PixelData::U16(v) => {
-                for oy in 0..disp_h {
-                    for ox in 0..disp_w {
-                        if channels == 3 {
-                            let mut sr = 0u32; let mut sg = 0u32; let mut sb = 0u32; let mut sc = 0u32;
-                            for dy in 0..step {
-                                let sy = oy * step + dy;
-                                if sy >= height { continue; }
-                                for dx in 0..step {
-                                    let sx = ox * step + dx;
-                                    if sx >= width { continue; }
-                                    let idx = (sy * width + sx) * 3;
-                                    sr += v[idx] as u32;
-                                    sg += v[idx + 1] as u32;
-                                    sb += v[idx + 2] as u32;
-                                    sc += 1;
-                                }
-                            }
-                            let scale = sc as f32 * 65535.0;
-                            rgb.push((sr as f32 / scale * 255.0) as u8);
-                            rgb.push((sg as f32 / scale * 255.0) as u8);
-                            rgb.push((sb as f32 / scale * 255.0) as u8);
-                        } else {
-                            let mut sum = 0u32; let mut count = 0u32;
-                            for dy in 0..step {
-                                let sy = oy * step + dy;
-                                if sy >= height { continue; }
-                                for dx in 0..step {
-                                    let sx = ox * step + dx;
-                                    if sx >= width { continue; }
-                                    sum += v[sy * width + sx] as u32;
-                                    count += 1;
-                                }
-                            }
-                            let val = (sum as f32 / (count as f32 * 65535.0) * 255.0) as u8;
-                            rgb.push(val); rgb.push(val); rgb.push(val);
-                        }
-                    }
-                }
-            }
-            PixelData::F32(v) => {
-                for oy in 0..disp_h {
-                    for ox in 0..disp_w {
-                        if channels == 3 {
-                            let mut sr = 0.0f32; let mut sg = 0.0f32; let mut sb = 0.0f32; let mut sc = 0u32;
-                            for dy in 0..step {
-                                let sy = oy * step + dy;
-                                if sy >= height { continue; }
-                                for dx in 0..step {
-                                    let sx = ox * step + dx;
-                                    if sx >= width { continue; }
-                                    let idx = (sy * width + sx) * 3;
-                                    if v[idx].is_finite() {
-                                        sr += v[idx];
-                                        sg += v[idx + 1];
-                                        sb += v[idx + 2];
-                                        sc += 1;
-                                    }
-                                }
-                            }
-                            let sc = sc as f32;
-                            rgb.push((sr / sc * 255.0).clamp(0.0, 255.0) as u8);
-                            rgb.push((sg / sc * 255.0).clamp(0.0, 255.0) as u8);
-                            rgb.push((sb / sc * 255.0).clamp(0.0, 255.0) as u8);
-                        } else {
-                            let mut sum = 0.0f32; let mut count = 0u32;
-                            for dy in 0..step {
-                                let sy = oy * step + dy;
-                                if sy >= height { continue; }
-                                for dx in 0..step {
-                                    let sx = ox * step + dx;
-                                    if sx >= width { continue; }
-                                    let val = v[sy * width + sx];
-                                    if val.is_finite() { sum += val; count += 1; }
-                                }
-                            }
-                            let val = (sum / count as f32 * 255.0).clamp(0.0, 255.0) as u8;
-                            rgb.push(val); rgb.push(val); rgb.push(val);
-                        }
-                    }
-                }
-            }
-            PixelData::U8(v) => {
-                for oy in 0..disp_h {
-                    for ox in 0..disp_w {
-                        if channels == 3 {
-                            let mut sr = 0u32; let mut sg = 0u32; let mut sb = 0u32; let mut sc = 0u32;
-                            for dy in 0..step {
-                                let sy = oy * step + dy;
-                                if sy >= height { continue; }
-                                for dx in 0..step {
-                                    let sx = ox * step + dx;
-                                    if sx >= width { continue; }
-                                    let idx = (sy * width + sx) * 3;
-                                    sr += v[idx] as u32;
-                                    sg += v[idx + 1] as u32;
-                                    sb += v[idx + 2] as u32;
-                                    sc += 1;
-                                }
-                            }
-                            let scale = sc as f32 * 255.0;
-                            rgb.push((sr as f32 / scale * 255.0) as u8);
-                            rgb.push((sg as f32 / scale * 255.0) as u8);
-                            rgb.push((sb as f32 / scale * 255.0) as u8);
-                        } else {
-                            let mut sum = 0u32; let mut count = 0u32;
-                            for dy in 0..step {
-                                let sy = oy * step + dy;
-                                if sy >= height { continue; }
-                                for dx in 0..step {
-                                    let sx = ox * step + dx;
-                                    if sx >= width { continue; }
-                                    sum += v[sy * width + sx] as u32;
-                                    count += 1;
-                                }
-                            }
-                            let val = (sum as f32 / (count as f32 * 255.0) * 255.0) as u8;
-                            rgb.push(val); rgb.push(val); rgb.push(val);
-                        }
-                    }
-                }
-            }
-        }
-    }
+        // Render raw pixels without stretch, via the shared box-filter
+        // core (Issue 86) — this path didn't have the redundant-mono-pass
+        // bug get_current_frame had, so this is pure deduplication here,
+        // not a behavior fix.
+        let render_channels = if channels == 3 { 3 } else { 1 };
+        let (planes, _dw, _dh) = crate::render::downsample_to_planes(
+            pixels, width, height, render_channels, MAX_DISPLAY_W,
+        );
+        crate::render::planes_to_rgb8(&planes, pixel_count)
+    };
 
     let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
         .ok_or_else(|| "Failed to create preview image".to_string())?;
     let mut buf = std::io::Cursor::new(Vec::new());
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 90)
+    JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY)
         .encode_image(&img)
         .map_err(|e| e.to_string())?;
     use base64::Engine as _;

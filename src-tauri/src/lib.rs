@@ -22,6 +22,7 @@ use tracing::info;
 
 pub mod constants;
 mod pcode;
+mod render;
 
 /// Global registry reference for use by RunMacro and the pcode interpreter
 pub static GLOBAL_REGISTRY: once_cell::sync::OnceCell<Arc<PluginRegistry>> =

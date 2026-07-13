@@ -50,8 +50,12 @@ pub fn detect_stars(
     }
 
     // ── Step 1: sigma-clipped background estimate ─────────────────────────────
-    // Subsample for speed (every 4th pixel)
-    let sample: Vec<f32> = luma.iter().cloned().step_by(4).collect();
+    // Subsample for speed — see STAR_DETECTION_SUBSAMPLE_STEP's doc comment
+    // (background.rs) for why this uses its own stride rather than
+    // background.rs's own BACKGROUND_SUBSAMPLE_STEP.
+    let sample: Vec<f32> = luma.iter().cloned()
+        .step_by(super::background::STAR_DETECTION_SUBSAMPLE_STEP)
+        .collect();
     let bg_est = sigma_clipped_background(&sample, &config.sigma_clip);
     let bg      = bg_est.median;
     let bg_sd   = bg_est.stddev.max(1e-6); // guard against zero stddev
