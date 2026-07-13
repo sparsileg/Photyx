@@ -49,7 +49,28 @@ impl PluginRegistry {
         match self.get(command) {
             Some(plugin) => {
                 info!("Dispatching: {}", command);
-                plugin.execute(ctx, args)
+                // Catch panics here, before they can unwind through the caller's
+                // AppContext MutexGuard — an uncaught panic during unwind poisons
+                // the mutex, bricking every subsequent command until restart.
+                // Catching at this boundary converts a plugin panic into a normal
+                // error result instead, so the guard drops cleanly.
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    plugin.execute(ctx, args)
+                }));
+                match result {
+                    Ok(output) => output,
+                    Err(payload) => {
+                        let detail = panic_payload_message(&payload);
+                        warn!("Plugin '{}' panicked: {}", command, detail);
+                        Err(PluginError::new(
+                            "PLUGIN_PANIC",
+                            &format!(
+                                "Command '{}' hit an internal error and was stopped: {}",
+                                command, detail
+                            ),
+                        ))
+                    }
+                }
             }
             None => {
                 warn!("Unknown command: {}", command);
@@ -93,8 +114,25 @@ impl PluginRegistry {
     }
 }
 
+
 impl Default for PluginRegistry {
     fn default() -> Self {
         Self::new()
     }
 }
+
+/// Extract a human-readable message from a caught panic payload. Panics
+/// almost always carry either a &str (string-literal panic!/unwrap message)
+/// or a String (formatted panic!), so those two cases cover the overwhelming
+/// majority; anything else falls back to a generic label.
+fn panic_payload_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic payload".to_string()
+    }
+}
+
+// ----------------------------------------------------------------------

@@ -9,13 +9,15 @@ use serde::{Deserialize, Serialize};
 pub enum ExclusionReason {
     FilterMismatch,
     AlignmentFailed,
+    BufferUnavailable,
 }
 
 impl ExclusionReason {
     pub fn as_str(&self) -> &str {
         match self {
-            ExclusionReason::FilterMismatch  => "filter_mismatch",
-            ExclusionReason::AlignmentFailed => "alignment_failed",
+            ExclusionReason::FilterMismatch    => "filter_mismatch",
+            ExclusionReason::AlignmentFailed   => "alignment_failed",
+            ExclusionReason::BufferUnavailable => "buffer_unavailable",
         }
     }
 }
@@ -95,6 +97,10 @@ pub struct StackSummary {
     /// Frames excluded due to alignment failure
     pub alignment_excluded: usize,
 
+    /// Frames excluded because their pixel buffer was unavailable when needed
+    /// (e.g. removed from the session between registration and accumulation)
+    pub buffer_excluded: usize,
+
     /// Frames successfully stacked
     pub stacked_frames: usize,
 
@@ -129,6 +135,9 @@ impl StackSummary {
         let alignment_excluded = contributions.iter()
             .filter(|c| c.exclusion_reason == Some(ExclusionReason::AlignmentFailed))
             .count();
+        let buffer_excluded = contributions.iter()
+            .filter(|c| c.exclusion_reason == Some(ExclusionReason::BufferUnavailable))
+            .count();
         let stacked_frames = contributions.iter().filter(|c| c.included).count();
 
         let snr_improvement = (stacked_frames as f32).sqrt();
@@ -150,6 +159,7 @@ impl StackSummary {
             total_frames,
             filter_excluded,
             alignment_excluded,
+            buffer_excluded,
             stacked_frames,
             snr_improvement,
             alignment_success_rate,
@@ -210,3 +220,5 @@ impl std::fmt::Display for BackgroundUniformity {
         write!(f, "{}", self.as_str())
     }
 }
+
+// ----------------------------------------------------------------------

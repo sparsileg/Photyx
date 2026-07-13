@@ -97,12 +97,16 @@
   // ── Run entry ─────────────────────────────────────────────────────────────
   async function runEntry(script: string) {
     const firstLine = script.trim().split('\n')[0].trim();
-    notifications.running(extractRunningLabel(firstLine));
-    jobOwner.set('quicklaunch');
-    progress.set({ label: '', current: 0, total: 0 });
 
     try {
-      await invoke('run_script', { script });
+      const response = await invoke<{ accepted: boolean }>('run_script', { script });
+      if (!response.accepted) {
+        notifications.error('A script is already running — try again in a moment.');
+        return;
+      }
+      notifications.running(extractRunningLabel(firstLine));
+      jobOwner.set('quicklaunch');
+      progress.set({ label: '', current: 0, total: 0 });
       // Result arrives asynchronously via the $effect watching jobResult
     } catch (err) {
       notifications.error(`Quick Launch error: ${err}`);

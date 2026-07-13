@@ -1,4 +1,4 @@
-// plugins/stack_frames.rs   StackFrames built-in plugin
+// plugins/stack_frames.rs — StackFrames built-in plugin
 //
 // Two-pass stacking with FFT phase correlation + triangle-based rigid
 // alignment. Designed to handle meridian-flipped sessions cleanly.
@@ -89,7 +89,7 @@ struct FrameSnapshot {
 
 impl PhotyxPlugin for StackFrames {
     fn name(&self) -> &str { "StackFrames" }
-    fn version(&self) -> &str { "1.0" }
+    fn version(&self) -> &str { "1.1.0" }
     fn description(&self) -> &str {
         "Stacks loaded frames using FFT alignment, triangle rigid refinement, \
          meridian-flip-aware group reference selection, and two-pass \
@@ -281,7 +281,13 @@ impl PhotyxPlugin for StackFrames {
             }
 
             // Load raw [0,1] pixels
-            let frame_pixels = load_frame_pixels(ctx, snap, is_color);
+            let frame_pixels = match load_frame_pixels(ctx, snap, is_color) {
+                Ok(p) => p,
+                Err(e) => {
+                    buffer_unavailable(snap.index, &e.message, &mut messages, &mut contrib, &mut contributions);
+                    continue;
+                }
+            };
 
             // Extract luma for background estimation and FFT alignment.
             let cal_luma = if is_color {
@@ -386,8 +392,8 @@ impl PhotyxPlugin for StackFrames {
             contributions.push(contrib);
         }
 
-        let stacked_count = contributions.iter().filter(|c| c.included).count();
-        if stacked_count == 0 {
+        let registered_count = contributions.iter().filter(|c| c.included).count();
+        if registered_count == 0 {
             return Err(PluginError::new("NO_FRAMES_STACKED", "No frames could be stacked."));
         }
 
@@ -442,27 +448,51 @@ impl PhotyxPlugin for StackFrames {
         let mut pass2_done = 0usize;
 
         for chunk in pass2_inputs.chunks(n_threads) {
-            // Sequential: load and debayer one batch worth of pixel data.
-            let chunk_pixels: Vec<Vec<f32>> = chunk.iter()
-                .map(|inp| {
-                    let snap   = &snapshots[inp.snap_idx];
-                    let buf    = ctx.image_buffers.get(&snap.path).unwrap();
-                    let pixels = buf.pixels.as_ref().unwrap();
-                    if is_color {
-                        if snap.color_space == ColorSpace::Bayer {
-                            let mono = analysis::to_f32_normalized(pixels);
-                            debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern)
+            // Sequential: load one batch worth of pixel data. A frame whose
+            // buffer disappeared since Pass 1 (the snapshot/re-lookup-by-path
+            // structure means this is looked up again here rather than reusing
+            // what Pass 1 already loaded) is excluded rather than panicking —
+            // its contribution entry is updated in place so the final counts
+            // stay accurate.
+            let mut chunk_ok:     Vec<&Pass2Input> = Vec::with_capacity(chunk.len());
+            let mut chunk_pixels: Vec<Vec<f32>>    = Vec::with_capacity(chunk.len());
+
+            for inp in chunk.iter() {
+                let snap = &snapshots[inp.snap_idx];
+                let loaded = ctx.image_buffers.get(&snap.path)
+                    .and_then(|buf| buf.pixels.as_ref().map(|pixels| (buf, pixels)));
+
+                match loaded {
+                    Some((_buf, pixels)) => {
+                        let px = if is_color {
+                            if snap.color_space == ColorSpace::Bayer {
+                                let mono = analysis::to_f32_normalized(pixels);
+                                debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern)
+                            } else {
+                                analysis::to_f32_normalized(pixels)
+                            }
                         } else {
-                            analysis::to_f32_normalized(pixels)
-                        }
-                    } else {
-                        analysis::to_luminance(pixels, snap.channels)
+                            analysis::to_luminance(pixels, snap.channels)
+                        };
+                        chunk_ok.push(inp);
+                        chunk_pixels.push(px);
                     }
-                })
-                .collect();
+                    None => {
+                        let msg = format!(
+                            "Frame {}: buffer unavailable during stacking — excluded", snap.index
+                        );
+                        info!("{}", msg);
+                        messages.push(msg);
+                        if let Some(c) = contributions.get_mut(inp.snap_idx) {
+                            c.included         = false;
+                            c.exclusion_reason = Some(ExclusionReason::BufferUnavailable);
+                        }
+                    }
+                }
+            }
 
             // Parallel: background estimate and resample each frame in chunk.
-            let aligned_buffers: Vec<Vec<f32>> = chunk.par_iter()
+            let aligned_buffers: Vec<Vec<f32>> = chunk_ok.par_iter()
                 .zip(chunk_pixels.into_par_iter())
                 .map(|(inp, frame_pixels)| {
                     let cal_luma = if is_color {
@@ -496,7 +526,7 @@ impl PhotyxPlugin for StackFrames {
                 .collect();
 
             // Sequential: accumulate aligned buffers into sum_buf / clip_count.
-            for (_inp, aligned) in chunk.iter().zip(aligned_buffers.iter()) {
+            for (_inp, aligned) in chunk_ok.iter().zip(aligned_buffers.iter()) {
                 if is_color {
                     let aligned_rgb = aligned;
                     for px in 0..n_pixels {
@@ -530,6 +560,16 @@ impl PhotyxPlugin for StackFrames {
                 crate::set_progress("Integrating stack", pass2_done as u32, total as u32);
             }
             // aligned_buffers dropped here, releasing chunk memory
+        }
+
+        // Recompute after Pass 2: a frame counted as registered after Pass 1
+        // may have been excluded above if its buffer vanished before Pass 2
+        // could load it. Everything downstream (messages, JSON response,
+        // StackSummary::compute) must reflect this final count, not the
+        // pre-Pass-2 one.
+        let stacked_count = contributions.iter().filter(|c| c.included).count();
+        if stacked_count == 0 {
+            return Err(PluginError::new("NO_FRAMES_STACKED", "No frames could be stacked."));
         }
 
         //  ── Build output pixels ───────────────────────────────────────────────
@@ -744,11 +784,13 @@ fn quality_score(snap: &FrameSnapshot) -> f32 {
 
 //  ── Frame pixel loading ───────────────────────────────────────────────────────
 
-fn load_frame_pixels(ctx: &AppContext, snap: &FrameSnapshot, is_color: bool) -> Vec<f32> {
-    let buf    = ctx.image_buffers.get(&snap.path).unwrap();
-    let pixels = buf.pixels.as_ref().unwrap();
+fn load_frame_pixels(ctx: &AppContext, snap: &FrameSnapshot, is_color: bool) -> Result<Vec<f32>, PluginError> {
+    let buf = ctx.image_buffers.get(&snap.path)
+        .ok_or_else(|| PluginError::new("NO_BUFFER", "Frame buffer missing."))?;
+    let pixels = buf.pixels.as_ref()
+        .ok_or_else(|| PluginError::new("NO_PIXELS", "Frame has no pixel data."))?;
 
-    if is_color {
+    let result = if is_color {
         if snap.color_space == ColorSpace::Bayer {
             let mono = analysis::to_f32_normalized(pixels);
             debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern)
@@ -757,7 +799,9 @@ fn load_frame_pixels(ctx: &AppContext, snap: &FrameSnapshot, is_color: bool) -> 
         }
     } else {
         analysis::to_luminance(pixels, snap.channels)
-    }
+    };
+
+    Ok(result)
 }
 
 fn load_debayered_luma(ctx: &AppContext, snap: &FrameSnapshot) -> Result<Vec<f32>, PluginError> {
@@ -820,6 +864,20 @@ fn alignment_failed(
     messages.push(msg);
     contrib.exclusion_reason    = Some(ExclusionReason::AlignmentFailed);
     contrib.alignment_validated = Some(false);
+    contributions.push(contrib.clone());
+}
+
+fn buffer_unavailable(
+    frame_idx:     usize,
+    reason:        &str,
+    messages:      &mut Vec<String>,
+    contrib:       &mut FrameContribution,
+    contributions: &mut Vec<FrameContribution>,
+) {
+    let msg = format!("Frame {}: buffer unavailable — {} — excluded", frame_idx, reason);
+    info!("{}", msg);
+    messages.push(msg);
+    contrib.exclusion_reason = Some(ExclusionReason::BufferUnavailable);
     contributions.push(contrib.clone());
 }
 

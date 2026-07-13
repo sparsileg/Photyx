@@ -74,6 +74,26 @@ pub struct JobResult {
 pub static JOB_RESULT: once_cell::sync::OnceCell<Mutex<Option<JobResult>>> =
     once_cell::sync::OnceCell::new();
 
+/// Guards against a second run_script call overlapping with one already in
+/// flight. Without this, two threads freely interleave writes to the global
+/// progress atomics and the single-slot JOB_RESULT, causing flicker and lost
+/// results (Issue 83). Released via JobGuard's Drop impl so it resets even if
+/// the spawned thread panics somewhere execute_script itself doesn't catch
+/// (i.e. outside a plugin's execute(), which is caught at the registry
+/// dispatch site) — a flag stuck at `true` would otherwise permanently block
+/// every future script, which is the exact failure mode this issue exists to
+/// eliminate, not reintroduce under a different name.
+pub static JOB_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// RAII guard that releases JOB_RUNNING when dropped, including during a panic unwind.
+struct JobGuard;
+
+impl Drop for JobGuard {
+    fn drop(&mut self) {
+        JOB_RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 // ── Application state ─────────────────────────────────────────────────────────
 
 pub struct PhotoxState {
@@ -172,11 +192,21 @@ const SESSION_COMMANDS: &[&str] = &[
 
 // Commands that alter the pixel data currently displayed in the viewer.
 const DISPLAY_COMMANDS: &[&str] = &[
-    "autostretch", "linearstretch", "histogramequalization",
+    "autostretch",
 ];
 
 #[tauri::command]
 fn run_script(script: String, state: State<Arc<PhotoxState>>) -> ScriptResponse {
+    // Reject a second script while one is already running, rather than
+    // letting both threads interleave writes to the global progress
+    // atomics and the single-slot JOB_RESULT (Issue 83).
+    if JOB_RUNNING
+        .compare_exchange(false, true, std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst)
+        .is_err()
+    {
+        return ScriptResponse { accepted: false };
+    }
+
     // Clear progress atomics, label, and job result slot before starting
     PROGRESS_CURRENT.store(0, std::sync::atomic::Ordering::Relaxed);
     PROGRESS_TOTAL.store(0, std::sync::atomic::Ordering::Relaxed);
@@ -190,6 +220,8 @@ fn run_script(script: String, state: State<Arc<PhotoxState>>) -> ScriptResponse 
     let state = Arc::clone(&state);
 
     std::thread::spawn(move || {
+        let _job_guard = JobGuard; // releases JOB_RUNNING on scope exit, including panics
+
         let mut ctx = state.context.lock().expect("context lock poisoned");
         let results = pcode::execute_script(&script, &mut ctx, &state.registry, true);
 

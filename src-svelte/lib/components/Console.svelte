@@ -226,12 +226,15 @@
       trimmed = `${trimmed} index=${$ui.blinkFrameIndex}`;
     }
 
-    notifications.running(extractRunningLabel(firstLine));
-    jobOwner.set('console');
-    progress.set({ label: '', current: 0, total: 0 });
-
     try {
-      await invoke('run_script', { script: trimmed });
+      const response = await invoke<{ accepted: boolean }>('run_script', { script: trimmed });
+      if (!response.accepted) {
+        notifications.error('A script is already running — try again in a moment.');
+        return;
+      }
+      notifications.running(extractRunningLabel(firstLine));
+      jobOwner.set('console');
+      progress.set({ label: '', current: 0, total: 0 });
       // Result arrives asynchronously via the $effect watching jobResult
     } catch (err) {
       const msg = String(err);
