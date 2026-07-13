@@ -6,12 +6,13 @@ use photyx_xisf::{XisfWriter, WriteOptions, Codec};
 use photyx_xisf::{XisfImage, PixelData as XisfPixelData, SampleFormat, ColorSpace as XisfColorSpace};
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, BitDepth, ColorSpace, PixelData};
+use super::atomic_write::atomic_write;
 
 pub struct WriteXISF;
 
 impl PhotyxPlugin for WriteXISF {
     fn name(&self)        -> &str { "WriteXISF" }
-    fn version(&self)     -> &str { "1.0" }
+    fn version(&self)     -> &str { "1.1.0" }
     fn description(&self) -> &str { "Writes all loaded images as XISF files to a destination directory" }
 
     fn parameters(&self) -> Vec<ParamSpec> {
@@ -102,7 +103,9 @@ impl PhotyxPlugin for WriteXISF {
                 Err(e) => { tracing::warn!("Failed to convert {}: {}", path, e); errors += 1; continue; }
             };
 
-            match XisfWriter::write(&out_path, &xisf_image, &options) {
+            match atomic_write(&out_path, |tmp| {
+                XisfWriter::write(tmp, &xisf_image, &options).map_err(|e| e.to_string())
+            }) {
                 Ok(()) => { info!("Wrote XISF: {}", out_path); written += 1; }
                 Err(e) => { tracing::warn!("Failed to write '{}': {}", out_path, e); errors += 1; }
             }
@@ -162,8 +165,9 @@ fn write_stack_result(
     let xisf_image = buffer_to_xisf_image(buffer)
         .map_err(|e| PluginError::new("CONVERT_ERROR", &e))?;
 
-    XisfWriter::write(&out_path, &xisf_image, &options)
-        .map_err(|e| PluginError::new("WRITE_ERROR", &format!("Failed to write '{}': {}", out_path, e)))?;
+    atomic_write(&out_path, |tmp| {
+        XisfWriter::write(tmp, &xisf_image, &options).map_err(|e| e.to_string())
+    }).map_err(|e| PluginError::new("WRITE_ERROR", &format!("Failed to write '{}': {}", out_path, e)))?;
 
     info!("Wrote stack XISF: {}", out_path);
     ctx.variables.insert("STACKED".to_string(), out_path.replace('\\', "/"));

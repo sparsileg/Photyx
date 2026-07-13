@@ -7,6 +7,7 @@ use fitsio::FitsFile;
 use fitsio::images::{ImageDescription, ImageType};
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, BitDepth, ImageBuffer, PixelData};
+use super::atomic_write::atomic_write;
 
 /// Classification of a keyword's raw string value for typed FITS writing.
 /// FITS headers written by capture software follow strict conventions, so
@@ -111,7 +112,7 @@ pub struct WriteFIT;
 
 impl PhotyxPlugin for WriteFIT {
     fn name(&self)        -> &str { "WriteFIT" }
-    fn version(&self)     -> &str { "1.0" }
+    fn version(&self)     -> &str { "1.1.0" }
     fn description(&self) -> &str { "Writes all loaded images as FITS files to a destination directory" }
 
     fn parameters(&self) -> Vec<ParamSpec> {
@@ -128,6 +129,13 @@ impl PhotyxPlugin for WriteFIT {
                 param_type:  ParamType::Boolean,
                 required:    false,
                 description: "Overwrite existing files (default: false)".to_string(),
+                default:     Some("false".to_string()),
+            },
+            ParamSpec {
+                name:        "stack".to_string(),
+                param_type:  ParamType::Boolean,
+                required:    false,
+                description: "Write the transient stack result as a single FITS file instead of all session frames (default: false)".to_string(),
                 default:     Some("false".to_string()),
             },
         ]
@@ -167,9 +175,6 @@ impl PhotyxPlugin for WriteFIT {
                 return Err(PluginError::new("FILE_EXISTS",
                     &format!("File already exists: '{}'. Use overwrite=true to replace.", out_path)));
             }
-            if Path::new(&out_path).exists() {
-                let _ = std::fs::remove_file(&out_path);
-            }
 
             // Ensure parent directory exists (use original destination, not out_path,
             // to avoid treating the filename stem as a directory name).
@@ -179,7 +184,7 @@ impl PhotyxPlugin for WriteFIT {
                 })?;
             }
 
-            write_fits_new(&out_path, buffer)
+            atomic_write(&out_path, |tmp| write_fits_new(tmp, buffer))
                 .map_err(|e| PluginError::new("WRITE_ERROR", &e))?;
 
             info!("Wrote stack FITS: {}", out_path);
@@ -217,11 +222,7 @@ impl PhotyxPlugin for WriteFIT {
                 continue;
             }
 
-            if Path::new(&out_path).exists() {
-                let _ = std::fs::remove_file(&out_path);
-            }
-
-            match write_fits_new(&out_path, buffer) {
+            match atomic_write(&out_path, |tmp| write_fits_new(tmp, buffer)) {
                 Ok(()) => { info!("Wrote FITS: {}", out_path); written += 1; }
                 Err(e) => { warn!("Failed to write '{}': {}", out_path, e); errors += 1; }
             }
@@ -409,7 +410,7 @@ pub(crate) fn write_fits_new(out_path: &str, buffer: &ImageBuffer) -> Result<(),
         let _ = hdu.write_key(&mut fitsfile, "BSCALE", (1i32, "default scaling factor"));
     }
 
-for kw in buffer.keywords.values() {
+    for kw in buffer.keywords.values() {
         match kw.name.as_str() {
             "SIMPLE" | "BITPIX" | "NAXIS" | "NAXIS1" | "NAXIS2" | "NAXIS3"
                 | "EXTEND" | "END" | "FILENAME" | "BZERO" | "BSCALE"

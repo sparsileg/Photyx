@@ -7,12 +7,13 @@ use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
 use super::write_fits::write_fits_new;
 use super::write_tiff::write_tiff_file;
+use super::atomic_write::atomic_write;
 
 pub struct WriteFrame;
 
 impl PhotyxPlugin for WriteFrame {
     fn name(&self)        -> &str { "WriteFrame" }
-    fn version(&self)     -> &str { "1.0" }
+    fn version(&self)     -> &str { "1.1.0" }
     fn description(&self) -> &str { "Writes the currently active frame back to its source path in its original format" }
     fn parameters(&self)  -> Vec<ParamSpec> { vec![] }
 
@@ -27,26 +28,13 @@ impl PhotyxPlugin for WriteFrame {
             .unwrap_or("")
             .to_lowercase();
 
-        let temp_path = format!("{}.tmp", path);
-        let _ = std::fs::remove_file(&temp_path);
-
         match ext.as_str() {
             "fit" | "fits" | "fts" => {
                 let buffer = ctx.image_buffers.get(&path)
                     .ok_or_else(|| PluginError::new("NO_BUFFER", "Image buffer not found."))?;
-                match write_fits_new(&temp_path, buffer) {
-                    Ok(()) => {
-                        if let Err(e) = std::fs::rename(&temp_path, &path) {
-                            let _ = std::fs::remove_file(&temp_path);
-                            return Err(PluginError::new("WRITE_ERROR", &format!("Cannot replace file: {}", e)));
-                        }
-                        info!("WriteFrame: updated FITS {}", path);
-                    }
-                    Err(e) => {
-                        let _ = std::fs::remove_file(&temp_path);
-                        return Err(PluginError::new("WRITE_ERROR", &e.to_string()));
-                    }
-                }
+                atomic_write(&path, |tmp| write_fits_new(tmp, buffer))
+                    .map_err(|e| PluginError::new("WRITE_ERROR", &e))?;
+                info!("WriteFrame: updated FITS {}", path);
             }
             "xisf" => {
                 let buffer = ctx.image_buffers.get(&path)
@@ -59,36 +47,17 @@ impl PhotyxPlugin for WriteFrame {
                     creator_app:     "Photyx".to_string(),
                     block_alignment: 4096,
                 };
-                match photyx_xisf::XisfWriter::write(&temp_path, &xisf_image, &options) {
-                    Ok(()) => {
-                        if let Err(e) = std::fs::rename(&temp_path, &path) {
-                            let _ = std::fs::remove_file(&temp_path);
-                            return Err(PluginError::new("WRITE_ERROR", &format!("Cannot replace file: {}", e)));
-                        }
-                        info!("WriteFrame: updated XISF {}", path);
-                    }
-                    Err(e) => {
-                        let _ = std::fs::remove_file(&temp_path);
-                        return Err(PluginError::new("WRITE_ERROR", &e.to_string()));
-                    }
-                }
+                atomic_write(&path, |tmp| {
+                    photyx_xisf::XisfWriter::write(tmp, &xisf_image, &options).map_err(|e| e.to_string())
+                }).map_err(|e| PluginError::new("WRITE_ERROR", &e))?;
+                info!("WriteFrame: updated XISF {}", path);
             }
             "tif" | "tiff" => {
                 let buffer = ctx.image_buffers.get(&path)
                     .ok_or_else(|| PluginError::new("NO_BUFFER", "Image buffer not found."))?;
-                match write_tiff_file(&temp_path, buffer) {
-                    Ok(()) => {
-                        if let Err(e) = std::fs::rename(&temp_path, &path) {
-                            let _ = std::fs::remove_file(&temp_path);
-                            return Err(PluginError::new("WRITE_ERROR", &format!("Cannot replace file: {}", e)));
-                        }
-                        info!("WriteFrame: updated TIFF {}", path);
-                    }
-                    Err(e) => {
-                        let _ = std::fs::remove_file(&temp_path);
-                        return Err(PluginError::new("WRITE_ERROR", &e.to_string()));
-                    }
-                }
+                atomic_write(&path, |tmp| write_tiff_file(tmp, buffer))
+                    .map_err(|e| PluginError::new("WRITE_ERROR", &e))?;
+                info!("WriteFrame: updated TIFF {}", path);
             }
             _ => {
                 return Err(PluginError::new("UNSUPPORTED_FORMAT",

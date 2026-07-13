@@ -6,12 +6,13 @@ use tracing::{info, warn};
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
 use super::write_tiff::write_tiff_file;
+use super::atomic_write::atomic_write;
 
 pub struct WriteCurrent;
 
 impl PhotyxPlugin for WriteCurrent {
     fn name(&self)        -> &str { "WriteCurrent" }
-    fn version(&self)     -> &str { "1.0" }
+    fn version(&self)     -> &str { "1.1.0" }
     fn description(&self) -> &str { "Writes all buffered images back to their source paths in their original format" }
     fn parameters(&self)  -> Vec<ParamSpec> { vec![] }
 
@@ -46,7 +47,6 @@ impl PhotyxPlugin for WriteCurrent {
                     }
                 }
                 "xisf" => {
-                    let temp_path = format!("{}.tmp", path);
                     let buffer = match ctx.image_buffers.get(&path) {
                         Some(b) => b,
                         None => { errors += 1; continue; }
@@ -65,44 +65,31 @@ impl PhotyxPlugin for WriteCurrent {
                         creator_app:     "Photyx".to_string(),
                         block_alignment: 4096,
                     };
-                    match photyx_xisf::XisfWriter::write(&temp_path, &xisf_image, &options) {
+                    match atomic_write(&path, |tmp| {
+                        photyx_xisf::XisfWriter::write(tmp, &xisf_image, &options).map_err(|e| e.to_string())
+                    }) {
                         Ok(()) => {
-                            if let Err(e) = std::fs::rename(&temp_path, &path) {
-                                warn!("WriteCurrent: cannot replace {}: {}", path, e);
-                                let _ = std::fs::remove_file(&temp_path);
-                                errors += 1;
-                            } else {
-                                info!("WriteCurrent: updated XISF {}", path);
-                                written += 1;
-                            }
+                            info!("WriteCurrent: updated XISF {}", path);
+                            written += 1;
                         }
                         Err(e) => {
                             warn!("WriteCurrent: XISF write error {}: {}", path, e);
-                            let _ = std::fs::remove_file(&temp_path);
                             errors += 1;
                         }
                     }
                 }
                 "tif" | "tiff" => {
-                    let temp_path = format!("{}.tmp", path);
                     let buffer = match ctx.image_buffers.get(&path) {
                         Some(b) => b,
                         None => { errors += 1; continue; }
                     };
-                    match write_tiff_file(&temp_path, buffer) {
+                    match atomic_write(&path, |tmp| write_tiff_file(tmp, buffer)) {
                         Ok(()) => {
-                            if let Err(e) = std::fs::rename(&temp_path, &path) {
-                                warn!("WriteCurrent: cannot replace {}: {}", path, e);
-                                let _ = std::fs::remove_file(&temp_path);
-                                errors += 1;
-                            } else {
-                                info!("WriteCurrent: updated TIFF {}", path);
-                                written += 1;
-                            }
+                            info!("WriteCurrent: updated TIFF {}", path);
+                            written += 1;
                         }
                         Err(e) => {
                             warn!("WriteCurrent: TIFF write error {}: {}", path, e);
-                            let _ = std::fs::remove_file(&temp_path);
                             errors += 1;
                         }
                     }

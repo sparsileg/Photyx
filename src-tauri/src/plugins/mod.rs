@@ -3,6 +3,7 @@
 
 pub mod add_files;
 pub mod analyze_frames;
+pub mod atomic_write;
 pub mod auto_stretch;
 pub mod background_median;
 pub mod cache_frames;

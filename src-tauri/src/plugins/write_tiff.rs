@@ -7,12 +7,13 @@ use tracing::{info, warn};
 use tiff::encoder::{TiffEncoder, colortype};
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, ColorSpace, ImageBuffer, PixelData};
+use super::atomic_write::atomic_write;
 
 pub struct WriteTIFF;
 
 impl PhotyxPlugin for WriteTIFF {
     fn name(&self)        -> &str { "WriteTIFF" }
-    fn version(&self)     -> &str { "1.0" }
+    fn version(&self)     -> &str { "1.1.0" }
     fn description(&self) -> &str { "Writes all loaded images as TIFF files to a destination directory" }
 
     fn parameters(&self) -> Vec<ParamSpec> {
@@ -71,7 +72,7 @@ impl PhotyxPlugin for WriteTIFF {
                 continue;
             }
 
-            match write_tiff_file(&out_path, buffer) {
+            match atomic_write(&out_path, |tmp| write_tiff_file(tmp, buffer)) {
                 Ok(()) => { info!("Wrote TIFF: {}", out_path); written += 1; }
                 Err(e) => { warn!("Failed to write '{}': {}", out_path, e); errors += 1; }
             }
