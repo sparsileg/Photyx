@@ -1,0 +1,71 @@
+[
+  "ClearSession",
+
+  "AddFiles",
+  "ReadImages",
+
+  "WriteCurrent",
+  "WriteFIT",
+  "WriteFrame",
+  "WriteTIFF",
+  "WriteXISF",
+
+  "AddKeyword",
+  "CopyKeyword",
+  "DeleteKeyword",
+  "GetKeyword",
+  "ListKeywords",
+  "ModifyKeyword",
+
+  "ClearStack",
+  "CommitStretch",
+  "StackFrames",
+
+  "AnalyzeFrames",
+  "BackgroundGradient",
+  "BackgroundMedian",
+  "BackgroundStdDev",
+  "CommitAnalysis",
+  "ExportAnalysisReport",
+  "FakeProgress",
+  "ComputeEccentricity",
+  "ComputeFWHM",
+  "ContourHeatmap",
+  "CountStars",
+  "GetHistogram",
+
+  "AutoStretch",
+  "DebayerImage",
+
+  "CacheFrames",
+  "RejectCurrentFrame",
+  "SetFrame",
+
+  "Assert",
+  "CountFiles",
+  "CountMatches",
+  "Else",
+  "EndFor",
+  "EndIf",
+  "For",
+  "GetSystemPath",
+  "If",
+  "LoadFile",
+  "Log",
+  "Print",
+  "RunMacro",
+  "Set",
+
+  "CopyFile",
+  "FilterByKeyword",
+  "MoveFile",
+
+  "Clear",
+  "Help",
+
+  "ClearAnnotations",
+  "pwd",
+  "ShowAnalysisGraph",
+  "ShowAnalysisResults",
+  "Version"
+]

@@ -334,15 +334,12 @@ fn pin_mmap_threshold() {
 #[cfg(not(target_os = "linux"))]
 fn pin_mmap_threshold() {}
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    pin_mmap_threshold();
-    let _log_guard = init_logging();
-    info!("Photyx starting up");
-
-    let registry = Arc::new(PluginRegistry::new());
-
-    plugins::scripting::register_all(&registry);
+/// Registers every built-in plugin against the given registry. Extracted
+/// from run() (Issue 99) so a test can build the same real command surface
+/// without duplicating this list by hand — a hand-duplicated copy would
+/// itself become a second place that can drift.
+fn register_all_plugins(registry: &PluginRegistry) {
+    plugins::scripting::register_all(registry);
     registry.register(Arc::new(plugins::add_files::AddFiles));
     registry.register(Arc::new(plugins::analyze_frames::AnalyzeFrames));
     registry.register(Arc::new(plugins::auto_stretch::AutoStretch));
@@ -378,6 +375,16 @@ pub fn run() {
     registry.register(Arc::new(plugins::write_frame::WriteFrame));
     registry.register(Arc::new(plugins::write_tiff::WriteTIFF));
     registry.register(Arc::new(plugins::write_xisf::WriteXISF));
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    pin_mmap_threshold();
+    let _log_guard = init_logging();
+    info!("Photyx starting up");
+
+    let registry = Arc::new(PluginRegistry::new());
+    register_all_plugins(&registry);
 
     let _ = GLOBAL_REGISTRY.set(registry.clone());
 
@@ -488,3 +495,75 @@ pub fn run() {
 }
 
 // ----------------------------------------------------------------------
+
+#[cfg(test)]
+mod command_drift_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    // Embedded at compile time — no filesystem read at test time, no path
+    // fragility. Path is relative to this file (src-tauri/src/lib.rs).
+    const PCODE_COMMANDS_JSON: &str = include_str!("../../src-svelte/lib/pcode_commands.json");
+
+    /// Commands handled directly by the pcode interpreter or the frontend
+    /// console via dedicated code paths (a string match, or a distinct
+    /// AST/line type) rather than being looked up in the plugin registry or
+    /// the backend CLIENT_COMMANDS array. There is no backend "source of
+    /// truth" list to diff these against, so this set is maintained by
+    /// hand — reviewed whenever a new language construct or console-only
+    /// command is added.
+    const INTERPRETER_AND_CONSOLE_ONLY: &[&str] = &[
+        "assert", "print", "log", "set",
+        "if", "else", "endif", "for", "endfor",
+        "clear", "help",
+    ];
+
+    /// Retired commands (Technical Reference §4.2) — intentionally absent
+    /// from pcode.ts, the plugin registry, and CLIENT_COMMANDS. Listed here
+    /// so that if one is ever mistakenly reintroduced without a working
+    /// implementation, this test still doesn't silently let it through.
+    const RETIRED_COMMANDS: &[&str] = &[
+        "selectdirectory", "getimageproperty", "getsessionproperty",
+        "listfiles", "test", "cropimage",
+        "readall", "readfit", "readtiff", "readxisf",
+    ];
+
+    #[test]
+    fn pcode_commands_match_backend_surface() {
+        let raw: Vec<String> = serde_json::from_str(PCODE_COMMANDS_JSON)
+            .expect("pcode_commands.json must parse as a JSON array of strings");
+
+        let excluded: HashSet<String> = INTERPRETER_AND_CONSOLE_ONLY.iter()
+            .chain(RETIRED_COMMANDS.iter())
+            .map(|s| s.to_string())
+            .collect();
+
+        let pcode_commands: HashSet<String> = raw.into_iter()
+            .map(|s| s.to_lowercase())
+            .filter(|s| !excluded.contains(s))
+            .collect();
+
+        let registry = PluginRegistry::new();
+        register_all_plugins(&registry);
+
+        let mut backend_surface: HashSet<String> = registry.list().into_iter().collect();
+        backend_surface.extend(pcode::CLIENT_COMMANDS.iter().map(|s| s.to_string()));
+
+        let missing_from_backend: Vec<&String> =
+            pcode_commands.difference(&backend_surface).collect();
+        let missing_from_pcode: Vec<&String> =
+            backend_surface.difference(&pcode_commands).collect();
+
+        assert!(
+            missing_from_backend.is_empty() && missing_from_pcode.is_empty(),
+            "pcode.ts / backend command surface mismatch!\n\
+             In pcode.ts but not backend (registry + CLIENT_COMMANDS): {:?}\n\
+             In backend but not pcode.ts: {:?}",
+            missing_from_backend, missing_from_pcode,
+        );
+    }
+}
+
+// ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// ---------------------------------------------------------------------

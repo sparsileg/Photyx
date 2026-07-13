@@ -13,6 +13,19 @@ use crate::plugin::registry::PluginRegistry;
 use crate::plugin::PluginOutput;
 use tokenizer::{tokenize_line, PcodeLine};
 
+/// Commands intercepted by the pcode interpreter as client-only — no
+/// Rust-side effect beyond signaling the frontend via `data.client_command`.
+/// Must stay in sync with CLIENT_COMMAND_NAMES in clientCommands.ts.
+/// Promoted to module scope (Issue 99) so a test can verify pcode.ts's
+/// PCODE_COMMANDS doesn't drift from this list plus the plugin registry.
+pub(crate) const CLIENT_COMMANDS: &[&str] = &[
+    "showanalysisgraph",
+    "showanalysisresults",
+    "clearannotations",
+    "version",
+    "pwd",
+];
+
 /// A single result from executing one pcode line.
 #[derive(Debug, Clone)]
 pub struct PcodeResult {
@@ -461,15 +474,9 @@ fn execute_line(
             }
 
             // Handle client-only commands — no Rust-side effect; intercepted here
-            // so the frontend can act on them via data.client_command.
-            // Must stay in sync with CLIENT_COMMAND_NAMES in clientCommands.ts.
-            const CLIENT_COMMANDS: &[&str] = &[
-                "showanalysisgraph",
-                "showanalysisresults",
-                "clearannotations",
-                "version",
-                "pwd",
-            ];
+            // so the frontend can act on them via data.client_command. See the
+            // module-level CLIENT_COMMANDS constant above for the sync-with-
+            // clientCommands.ts note.
             if CLIENT_COMMANDS.contains(&command.to_lowercase().as_str()) {
                 info!("pcode line {}: {} -> client command", line_number, command);
                 results.push(PcodeResult {

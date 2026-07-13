@@ -17,78 +17,19 @@
 // 1. Command name registry (tab completion + syntax highlighting)
 // ---------------------------------------------------------------------------
 
-export const PCODE_COMMANDS = new Set([
-  //    Session
-  'ClearSession',
-  //    Read commands
-  'AddFiles',
-  'ReadImages',
-  //    Write commands
-  'WriteCurrent',
-  'WriteFIT',
-  'WriteFrame',
-  'WriteTIFF',
-  'WriteXISF',
-  //    Keyword commands
-  'AddKeyword',
-  'CopyKeyword',
-  'DeleteKeyword',
-  'GetKeyword',
-  'ListKeywords',
-  'ModifyKeyword',
-  //    Stacking
-  'ClearStack',
-  'CommitStretch',
-  'StackFrames',
-  //    Image analysis
-  'AnalyzeFrames',
-  'BackgroundGradient',
-  'BackgroundMedian',
-  'BackgroundStdDev',
-  'CommitAnalysis',
-  'ExportAnalysisReport',
-  'FakeProgress',
-  'ComputeEccentricity',
-  'ComputeFWHM',
-  'ContourHeatmap',
-  'CountStars',
-  'GetHistogram',
-  //    Image processing
-  'AutoStretch',
-  'DebayerImage',
-  //    Display & navigation
-  'CacheFrames',
-  'RejectCurrentFrame',
-  'SetFrame',
-  //    Scripting
-  'Assert',
-  'CountFiles',
-  'CountMatches',
-  'Else',
-  'EndFor',
-  'EndIf',
-  'For',
-  'GetSystemPath',
-  'If',
-  'LoadFile',
-  'Log',
-  'Print',
-  'RunMacro',
-  'Set',
-  //    File management
-  'CopyFile',
-  'FilterByKeyword',
-  'MoveFile',
-  //    Console built-ins
-  'Clear',
-  'Help',
-  //    Client command handlers
-  'ClearAnnotations',
-  'pwd',
-  'ShowAnalysisGraph',
-  'ShowAnalysisResults',
-  'Version',
-]);
+// ---------------------------------------------------------------------------
+// 1. Command name registry (tab completion + syntax highlighting)
+// ---------------------------------------------------------------------------
+//
+// The command list itself now lives in pcode_commands.json, not inline here —
+// that file is the single source of truth shared with a Rust-side test
+// (Issue 99) that verifies every name here actually corresponds to a real
+// backend plugin or client command. When adding a new command, add it to
+// pcode_commands.json, not this file.
+
+import pcodeCommandList from './pcode_commands.json';
+
+export const PCODE_COMMANDS = new Set(pcodeCommandList);
 
 // ---------------------------------------------------------------------------
 // 2. Argument hints (console tab completion   shows after command name)
