@@ -5,13 +5,14 @@ use tracing::info;
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::AppContext;
 use glob::glob;
-use crate::plugins::image_reader::{read_image_file, peek_fits_dimensions, peek_xisf_dimensions, peek_tiff_dimensions};
+use crate::plugins::image_reader::read_image_file;
+use crate::plugins::load_common::{check_memory_limit, finalize_session_order};
 
 pub struct AddFiles;
 
 impl PhotyxPlugin for AddFiles {
     fn name(&self)        -> &str { "AddFiles" }
-    fn version(&self)     -> &str { "1.0" }
+    fn version(&self)     -> &str { "1.1.0" }
     fn description(&self) -> &str { "Appends a list of explicit file paths to the session" }
 
     fn parameters(&self) -> Vec<ParamSpec> {
@@ -86,50 +87,11 @@ impl PhotyxPlugin for AddFiles {
         }
 
         // ── Memory estimate and limit check ───────────────────────────────────
-        // Peek the first file to get dimensions, then extrapolate across all files.
-        let first = paths.first().unwrap(); // safe — we checked is_empty above
-        let ext = std::path::Path::new(first)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
-        let estimated_bytes = match ext.as_str() {
-            "fit" | "fits" | "fts" => peek_fits_dimensions(first),
-            "xisf"                 => peek_xisf_dimensions(first),
-            "tif" | "tiff"         => peek_tiff_dimensions(first),
-            _                      => None,
-        }.map(|(w, h, c, bpp)| {
-            (w as i64) * (h as i64) * (c as i64) * (bpp as i64) * (paths.len() as i64)
-        });
-
-        if let Some(raw_bytes) = estimated_bytes {
-            // Already-loaded files sit at their actual settled size (no
-            // transient multiplier — they aren't mid-load). Only the
-            // incoming batch incurs the 2.1x peak overhead during loading
-            // and analysis. Combining the two catches a limit breach that
-            // builds up across several smaller AddFiles calls, not just
-            // one large one.
-            let already_loaded_bytes = ctx.total_memory_used() as i64;
-            let new_peak_bytes       = (raw_bytes as f64 * 2.1) as i64;
-            let projected_peak_bytes = already_loaded_bytes + new_peak_bytes;
-
-            if projected_peak_bytes > ctx.buffer_pool_bytes {
-                return Err(PluginError::new(
-                    "MEMORY_LIMIT_EXCEEDED",
-                    &format!(
-                        "Load cancelled: {} new file(s) would bring total memory to ~{:.1} GB \
-                         (~{:.1} GB already loaded + ~{:.1} GB for these files). \
-                         Preferences limit is set to {:.1} GB.",
-                        paths.len(),
-                        projected_peak_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
-                        already_loaded_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
-                        new_peak_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
-                        ctx.buffer_pool_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
-                    ),
-                ));
-            }
-        }
+        // Shared with ReadImages (Issue 91) so both load paths enforce the
+        // same buffer-pool limit the same way. Checked against the full
+        // glob-expanded path list, before the already-loaded filter below —
+        // conservative on purpose (see load_common.rs).
+        check_memory_limit(ctx, &paths)?;
 
         // Filter out files already in the session
         let paths: Vec<String> = paths.into_iter()
@@ -160,26 +122,11 @@ impl PhotyxPlugin for AddFiles {
             crate::set_progress("Loading files", (i + 1) as u32, total_to_load);
         }
 
-        // Re-sort the whole session by filename (not full path) so a
-        // rejected-then-re-added frame slots back into its original
-        // chronological position instead of landing at the end. Filenames
-        // are DTG-first, so this also keeps multi-session stacks (several
-        // ROTATOR transitions) in capture order for StackFrames' grouping
-        // logic — see Technical Reference §7.1.
-        ctx.file_list.sort_by(|a, b| {
-            let a_name = a.rsplit(['/', '\\']).next().unwrap_or(a.as_str());
-            let b_name = b.rsplit(['/', '\\']).next().unwrap_or(b.as_str());
-            a_name.cmp(b_name)
-        });
-
-        // Reset to the first frame rather than preserving whatever was
-        // current before the sort. Matches existing behavior of the
-        // interactive Add Files flow (commands.ts's addFiles() already
-        // calls displayFrame(0) after every add), and additionally makes
-        // pcode/macro-driven and crash-recovery AddFiles calls behave the
-        // same way, rather than leaving current_frame at an arbitrary
-        // leftover value.
-        ctx.current_frame = 0;
+        // Shared with ReadImages (Issue 91) so both load paths — and any
+        // mix of the two — leave the session in identical order. See
+        // load_common.rs for the full rationale (DTG-first capture order,
+        // StackFrames grouping, current_frame reset).
+        finalize_session_order(ctx);
 
         crate::set_progress("", 0, 0);
 

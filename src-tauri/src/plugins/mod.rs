@@ -20,6 +20,7 @@ pub mod fake_progress;
 pub mod filter_by_keyword;
 pub mod get_histogram;
 pub mod image_reader;
+pub mod load_common;
 pub mod keywords;
 pub mod list_keywords;
 pub mod pixel_chunking;

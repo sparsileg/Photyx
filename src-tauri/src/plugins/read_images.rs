@@ -7,12 +7,13 @@ use tracing::info;
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::AppContext;
 use crate::plugins::image_reader::read_image_file;
+use crate::plugins::load_common::{check_memory_limit, finalize_session_order};
 
 pub struct ReadImages;
 
 impl PhotyxPlugin for ReadImages {
     fn name(&self)        -> &str { "ReadImages" }
-    fn version(&self)     -> &str { "1.0" }
+    fn version(&self)     -> &str { "1.2.0" }
     fn description(&self) -> &str {
         "Loads a file or all supported images in a directory (FITS, XISF, TIFF) into the session"
     }
@@ -74,15 +75,26 @@ impl PhotyxPlugin for ReadImages {
             return Ok(PluginOutput::Message("No supported image files found.".to_string()));
         }
 
-        let mut loaded  = 0;
-        let mut skipped = 0;
-        let mut errors  = 0;
+        // Checked against the full candidate list, before the already-loaded
+        // filter below — matches AddFiles' conservative ordering (Issue 91).
+        check_memory_limit(ctx, &candidates)?;
 
-        for file_path in &candidates {
-            if existing.contains(file_path) {
-                skipped += 1;
-                continue;
-            }
+        // Pre-filter already-loaded duplicates before the loop, matching
+        // AddFiles' structure — progress below is reported against the
+        // actual loading work remaining, not the full directory listing.
+        let to_load: Vec<String> = candidates.iter()
+            .filter(|p| !existing.contains(*p))
+            .cloned()
+            .collect();
+        let skipped = candidates.len() - to_load.len();
+
+        let mut loaded = 0;
+        let mut errors = 0;
+        let total_to_load = to_load.len() as u32;
+
+        crate::set_progress("Loading files", 0, total_to_load);
+
+        for (i, file_path) in to_load.iter().enumerate() {
             match read_image_file(file_path) {
                 Ok(buffer) => {
                     info!("ReadImages: loaded {}", file_path);
@@ -95,6 +107,17 @@ impl PhotyxPlugin for ReadImages {
                     errors += 1;
                 }
             }
+            crate::set_progress("Loading files", (i + 1) as u32, total_to_load);
+        }
+
+        crate::set_progress("", 0, 0);
+
+        // Matches AddFiles' ordering behavior (Issue 91) — only re-sort and
+        // reset current_frame when at least one new path was actually
+        // attempted; an all-duplicates no-op load leaves the session
+        // untouched, same as AddFiles' early return in that case.
+        if !to_load.is_empty() {
+            finalize_session_order(ctx);
         }
 
         let msg = match (errors, skipped) {
