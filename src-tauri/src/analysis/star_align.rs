@@ -499,14 +499,17 @@ pub fn estimate_rigid_transform(
         return None;
     }
 
-    // Step 4: Least-squares refine
+    // Step 4: Least-squares refine (residual on top of the FFT pre-translation)
     let inlier_pairs: Vec<MatchedPair> = best_inliers.iter()
         .map(|&i| pairs[i])
         .collect();
 
     let refined = least_squares_affine(&inlier_pairs)?;
 
-    // Step 5: Sanity checks
+    // Step 5: Sanity checks — against the residual, not the folded-back
+    // total, since MAX_TRANSLATION_DEVIATION bounds how far the refined
+    // solve is allowed to deviate from the already-known-good FFT estimate,
+    // not the frame's total dither offset.
     let theta = refined.theta();
     if theta.abs() > MAX_ROTATION_RAD {
         return None;
@@ -522,7 +525,23 @@ pub fn estimate_rigid_transform(
         return None;
     }
 
-    Some(refined)
+    // Step 6: Fold the FFT pre-translation back in. `refined` was fit
+    // against frame coordinates already shifted by (fft_dx, fft_dy) — see
+    // Step 1 — so its tx/ty are only the residual correction on top of that
+    // shift, not a transform that correctly maps raw frame coordinates.
+    // Compose the shift back in so the returned transform is usable
+    // directly against raw (unshifted) frame pixels, matching every
+    // caller's expectation (composition with M_cross, apply_inverse during
+    // resampling).
+    let final_tx = refined.a * fft_dx - refined.b * fft_dy + refined.tx;
+    let final_ty = refined.b * fft_dx + refined.a * fft_dy + refined.ty;
+
+    Some(AffineRigid {
+        a:  refined.a,
+        b:  refined.b,
+        tx: final_tx,
+        ty: final_ty,
+    })
 }
 
 // ── 2-pair solve ──────────────────────────────────────────────────────────────

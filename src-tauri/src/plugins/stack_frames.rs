@@ -28,7 +28,8 @@
 //      with the triangle match result.
 //
 //   6. Per-frame final transform: T = M_cross · G
-//      where G is the within-group transform (triangle match against group ref).
+//      where G is the within-group transform (FFT-primed RANSAC against
+//      group ref, sanity-bounded to reject implausible rotation/translation).
 //      For master-group frames, M_cross = identity, so T = G.
 //
 //   7. Color awareness: if the master reference frame is Bayer or RGB, the
@@ -832,18 +833,16 @@ fn try_rigid_refinement(
     frame_idx:  usize,
     messages:   &mut Vec<String>,
 ) -> AffineRigid {
-    let ransac = estimate_rigid_transform(ref_stars, frm_stars, fft_dx, fft_dy, width, height);
-    match estimate_rigid_transform_triangles(ref_stars, frm_stars) {
-        Some(tri) => {
-            let theta = tri.theta();
-            info!("Frame {}: triangle match — tx={:.2} ty={:.2} θ={:.4}rad ({:.3}°)",
-                frame_idx, tri.tx, tri.ty, theta, theta.to_degrees());
-            let _ = ransac;
-            tri
+    match estimate_rigid_transform(ref_stars, frm_stars, fft_dx, fft_dy, width, height) {
+        Some(refined) => {
+            let theta = refined.theta();
+            info!("Frame {}: RANSAC match — tx={:.2} ty={:.2} θ={:.4}rad ({:.3}°)",
+                frame_idx, refined.tx, refined.ty, theta, theta.to_degrees());
+            refined
         }
         None => {
             let msg = format!(
-                "Frame {}: triangle match failed — using FFT translation only", frame_idx
+                "Frame {}: RANSAC match failed — using FFT translation only", frame_idx
             );
             info!("{}", msg);
             messages.push(msg);
