@@ -164,6 +164,21 @@ pub fn restore_database(backup_path: String, state: State<Arc<PhotoxState>>) -> 
     *db = rusqlite::Connection::open_in_memory()
         .map_err(|e| format!("Failed to release old database connection: {}", e))?;
 
+    // A second, independent connection to this same file exists at
+    // crate::GLOBAL_DB — plugins only receive &mut AppContext, not the
+    // full PhotoxState, so AnalyzeFrames/RunMacro reach the database
+    // through this instead. Missing this release is exactly what caused
+    // "Cannot remove existing file before replace" on Windows: state.db
+    // was released but this second handle stayed open the whole time,
+    // continuing to lock the file. Harmless no-op on Linux, where a file
+    // can be unlinked/renamed regardless of open handles.
+    if let Some(global_db) = crate::GLOBAL_DB.get() {
+        let mut global_conn = global_db.lock().expect("global db lock poisoned");
+        let _ = global_conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+        *global_conn = rusqlite::Connection::open_in_memory()
+            .map_err(|e| format!("Failed to release global database connection: {}", e))?;
+    }
+
     // Write atomically (temp file + rename), same helper and guarantee
     // used by the batch export writers (Issue 82) — never leaves a
     // partially-written file at the live path if interrupted.
@@ -184,11 +199,22 @@ pub fn restore_database(backup_path: String, state: State<Arc<PhotoxState>>) -> 
         dirs_next::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("Photyx")
-    ).map_err(|e| format!("Failed to reopen database after restore: {}", e))?;
+                ).map_err(|e| format!("Failed to reopen database after restore: {}", e))?;
 
     *db = new_conn;
 
-    // Reload in-memory settings from the restored DB — without this, every
+    // Reopen the global connection too, so AnalyzeFrames/RunMacro see the
+    // restored data instead of the throwaway in-memory connection above.
+    if let Some(global_db) = crate::GLOBAL_DB.get() {
+        let new_global_conn = db::open_db(
+            dirs_next::data_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("Photyx")
+        ).map_err(|e| format!("Failed to reopen global database connection after restore: {}", e))?;
+        *global_db.lock().expect("global db lock poisoned") = new_global_conn;
+    }
+
+    // Reload in-memory settings from the restored DB
     // Tauri command that reads state.settings rather than querying the DB
     // directly (get_threshold_profiles, get_active_threshold_profile_id)
     // keeps serving pre-restore values until the app is fully restarted.

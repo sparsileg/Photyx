@@ -40,9 +40,30 @@ where
     #[cfg(windows)]
     {
         if std::path::Path::new(out_path).exists() {
-            if let Err(e) = std::fs::remove_file(out_path) {
+            // Windows can hold a brief, transient lock on a just-touched file
+            // (antivirus, search indexing, backup agents) even after our own
+            // process has fully closed its handle — retry a few times with a
+            // short delay before giving up, rather than failing on the first
+            // sharing violation.
+            let mut last_err = None;
+            let mut removed = false;
+            for attempt in 0..5 {
+                match std::fs::remove_file(out_path) {
+                    Ok(()) => { removed = true; break; }
+                    Err(e) => {
+                        last_err = Some(e);
+                        if attempt < 4 {
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                        }
+                    }
+                }
+            }
+            if !removed {
                 let _ = std::fs::remove_file(&temp_path);
-                return Err(format!("Cannot remove existing file before replace: {}", e));
+                return Err(format!(
+                    "Cannot remove existing file before replace: {}",
+                    last_err.map(|e| e.to_string()).unwrap_or_default()
+                ));
             }
         }
     }
