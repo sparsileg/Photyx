@@ -35,7 +35,6 @@ export interface ThresholdProfile {
     name:                       string;
     description:                string | null;
     bg_median_reject_sigma:     number;
-    signal_weight_reject_sigma: number;
     fwhm_reject_sigma:          number;
     star_count_reject_sigma:    number;
     eccentricity_reject_abs:    number;
@@ -73,15 +72,6 @@ export const db = {
         return invoke('record_directory_visit', { path });
     },
 
-    // ── Session History ───────────────────────────────────────────────────────
-
-    openSession(directory: string, fileCount: number): Promise<number> {
-        return invoke('open_session', { directory, fileCount });
-    },
-
-    closeSession(): Promise<void> {
-        return invoke('close_session');
-    },
 
     // ── Crash Recovery ────────────────────────────────────────────────────────
 

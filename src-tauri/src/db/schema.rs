@@ -25,13 +25,23 @@ CREATE TABLE IF NOT EXISTS recent_directories (
     use_count   INTEGER NOT NULL DEFAULT 1
 );";
 
+// NOTE: this constant is used only by migrate_v1 (the version 0→1 step) and
+// must reflect the schema AS IT HISTORICALLY EXISTED at that point, not the
+// current/final schema — migrate_v2 (rename snr_reject_sigma) and migrate_v4
+// (drop bg_stddev_reject_sigma/bg_gradient_reject_sigma) both depend on these
+// original columns being created here so a genuinely fresh install chains
+// through the full migration sequence correctly instead of erroring on
+// columns that were never created. Do not "clean this up" to match the
+// final schema — that was the bug (Issue 89) that broke fresh installs.
 pub const CREATE_THRESHOLD_PROFILES: &str = "
 CREATE TABLE IF NOT EXISTS threshold_profiles (
     id                          INTEGER PRIMARY KEY AUTOINCREMENT,
     name                        TEXT NOT NULL UNIQUE,
     description                 TEXT,
     bg_median_reject_sigma      REAL NOT NULL DEFAULT 2.5,
-    signal_weight_reject_sigma  REAL NOT NULL DEFAULT 2.5,
+    snr_reject_sigma            REAL NOT NULL DEFAULT 2.5,
+    bg_stddev_reject_sigma      REAL NOT NULL DEFAULT 2.5,
+    bg_gradient_reject_sigma    REAL NOT NULL DEFAULT 2.5,
     fwhm_reject_sigma           REAL NOT NULL DEFAULT 2.5,
     star_count_reject_sigma     REAL NOT NULL DEFAULT 1.5,
     eccentricity_reject_abs     REAL NOT NULL DEFAULT 0.85,
@@ -39,6 +49,9 @@ CREATE TABLE IF NOT EXISTS threshold_profiles (
     updated_at                  INTEGER NOT NULL
 );";
 
+// NOTE: historical-only, same as CREATE_THRESHOLD_PROFILES above — created
+// by migrate_v1 for fresh-install fidelity, dropped by migrate_v5. Never
+// queried or inserted into at runtime (Issue 89). Not part of the live schema.
 pub const CREATE_ALGORITHM_SETS: &str = "
 CREATE TABLE IF NOT EXISTS algorithm_sets (
     version                         INTEGER PRIMARY KEY,
@@ -113,6 +126,10 @@ CREATE TABLE IF NOT EXISTS macro_versions (
 pub const CREATE_MACRO_VERSIONS_IDX: &str = "
 CREATE INDEX IF NOT EXISTS idx_mv_macro ON macro_versions(macro_id, saved_at DESC);";
 
+// NOTE: historical-only — created by migrate_v1 for fresh-install fidelity,
+// dropped by migrate_v5. open_session/close_session were removed entirely
+// (Issue 89); this table has no runtime reader or writer. Not part of the
+// live schema.
 pub const CREATE_SESSION_HISTORY: &str = "
 CREATE TABLE IF NOT EXISTS session_history (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,6 +140,9 @@ CREATE TABLE IF NOT EXISTS session_history (
     commands_run    INTEGER DEFAULT 0
 );";
 
+// NOTE: historical-only — created by migrate_v1 for fresh-install fidelity,
+// dropped by migrate_v5. Console history is in-memory only (consoleHistory.ts);
+// this table has no runtime reader or writer. Not part of the live schema.
 pub const CREATE_CONSOLE_HISTORY: &str = "
 CREATE TABLE IF NOT EXISTS console_history (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,16 +152,23 @@ CREATE TABLE IF NOT EXISTS console_history (
     success     INTEGER NOT NULL DEFAULT 1
 );";
 
+// NOTE: this constant is used only by migrate_v1 and must reflect the schema
+// AS IT HISTORICALLY EXISTED — active_directory is dropped by migrate_v3, so
+// it must be created here for a fresh install to chain through v3 correctly.
+// Same rationale as CREATE_THRESHOLD_PROFILES above; do not "clean this up"
+// to match the current live schema.
 pub const CREATE_CRASH_RECOVERY: &str = "
 CREATE TABLE IF NOT EXISTS crash_recovery (
     id                  INTEGER PRIMARY KEY CHECK (id = 1),
     file_list           TEXT,
+    active_directory    TEXT,
     current_frame_index INTEGER,
     autostretch_enabled INTEGER,
     zoom_level          TEXT,
     active_panel        TEXT,
     written_at          INTEGER NOT NULL
 );";
+
 
 pub const CREATE_CRASH_RECOVERY_SEED: &str = "
 INSERT OR IGNORE INTO crash_recovery (id, written_at) VALUES (1, 0);";

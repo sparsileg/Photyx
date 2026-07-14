@@ -10,7 +10,10 @@
   import { readTextFile } from '@tauri-apps/plugin-fs';
   import { quickLaunch } from '../stores/quickLaunch';
   import { addFiles, closeSession, applyAutoStretch, loadFile } from '../commands';
+  import { settings } from '../stores/settings';
+  import { thresholdProfiles } from '../stores/thresholdProfiles';
   import { ui } from '../stores/ui';
+  import { DEFAULT_FONT_SIZE } from '../settings/constants';
 
   let openMenu = $state<string | null>(null);
 
@@ -34,7 +37,7 @@
     case 'backup-database':     backupDatabase(); break;
     case 'close-session':       closeSession(); break;
     case 'contour-plot':        runContourHeatmap(); break;
-    case 'exit':                db.closeSession().catch(() => {}).finally(() => getCurrentWindow().close()); break;
+    case 'exit':                getCurrentWindow().close(); break;
     case 'export-analysis-results': exportSessionJson(); break;
     case 'import-analysis-results': importSessionJson(); break;
     case 'keywords':            ui.togglePanel('keywords'); break;
@@ -172,8 +175,17 @@
       await new Promise(resolve => setTimeout(resolve, 200));
       const prefs = await db.getAllPreferences();
       ui.hydrateFromDb(prefs);
+      settings.hydrate(prefs);
       const buttons = await db.getQuickLaunchButtons();
       quickLaunch.hydrate(buttons);
+      await thresholdProfiles.hydrate();
+      // ui_font_size is applied as a direct DOM write, not through the
+      // reactive store system (same as +page.svelte's onMount) — without
+      // re-running this here, the restored value shows correctly in the
+      // Preferences dialog but the actual rendered text size doesn't
+      // change until something else happens to trigger it.
+      const fontSize = parseFloat(prefs['ui_font_size'] ?? String(DEFAULT_FONT_SIZE)) || DEFAULT_FONT_SIZE;
+      document.documentElement.style.fontSize = `${fontSize}px`;
       notifications.success('Database restored successfully.');
     } catch (e) {
       notifications.error(`Restore failed: ${e}`);

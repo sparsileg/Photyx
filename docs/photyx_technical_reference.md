@@ -1020,7 +1020,13 @@ directly.
 
 ### 8.2 Database Schema
 
-All tables below are created via `IF NOT EXISTS` in `src-tauri/src/db/schema.rs`.
+All tables below are created via IF NOT EXISTS in src-tauri/src/db/schema.rs
+and reflect the live, current schema (as of migration v5). schema.rs also
+contains four additional CREATE TABLE constants (algorithm_sets,
+frame_analysis_results, session_history, console_history) used only by
+migrate_v1 for fresh-install historical fidelity — those tables are created
+and then immediately dropped again by migrate_v5 for a from-scratch
+install, and are not part of the live schema. See the note below for why.
 
 ```sql
 CREATE TABLE IF NOT EXISTS preferences (
@@ -1049,57 +1055,12 @@ CREATE TABLE IF NOT EXISTS threshold_profiles (
     name                        TEXT NOT NULL UNIQUE,
     description                 TEXT,
     bg_median_reject_sigma      REAL NOT NULL DEFAULT 2.5,
-    signal_weight_reject_sigma  REAL NOT NULL DEFAULT 2.5,
     fwhm_reject_sigma           REAL NOT NULL DEFAULT 2.5,
     star_count_reject_sigma     REAL NOT NULL DEFAULT 1.5,
     eccentricity_reject_abs     REAL NOT NULL DEFAULT 0.85,
     created_at                  INTEGER NOT NULL,
     updated_at                  INTEGER NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS algorithm_sets (
-    version                         INTEGER PRIMARY KEY,
-    bg_algorithm_version            TEXT NOT NULL,
-    snr_algorithm_version           TEXT NOT NULL,
-    fwhm_algorithm_version          TEXT NOT NULL,
-    eccentricity_algorithm_version  TEXT NOT NULL,
-    star_count_algorithm_version    TEXT NOT NULL,
-    released_at                     INTEGER NOT NULL,
-    notes                           TEXT
-);
-
-CREATE TABLE IF NOT EXISTS frame_analysis_results (
-    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_path               TEXT NOT NULL,
-    algorithm_set_version   INTEGER NOT NULL REFERENCES algorithm_sets(version),
-    threshold_profile_id    INTEGER REFERENCES threshold_profiles(id),
-    equipment_profile_name  TEXT,
-    analyzed_at             INTEGER NOT NULL,
-    bg_median               REAL,
-    bg_stddev               REAL,
-    bg_gradient             REAL,
-    snr_estimate            REAL,
-    fwhm_median_px          REAL,
-    fwhm_median_arcsec      REAL,
-    eccentricity            REAL,
-    star_count              INTEGER,
-    session_bg_median_mean  REAL,
-    session_bg_median_sd    REAL,
-    session_fwhm_mean       REAL,
-    session_fwhm_sd         REAL,
-    session_ecc_mean        REAL,
-    session_ecc_sd          REAL,
-    session_snr_mean        REAL,
-    session_snr_sd          REAL,
-    session_stars_mean      REAL,
-    session_stars_sd        REAL,
-    pxflag                  TEXT NOT NULL DEFAULT 'PASS',
-    triggered_by            TEXT,
-    user_override           INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(file_path, algorithm_set_version)
-);
-CREATE INDEX IF NOT EXISTS idx_far_path ON frame_analysis_results(file_path);
-CREATE INDEX IF NOT EXISTS idx_far_version ON frame_analysis_results(algorithm_set_version);
 
 CREATE TABLE IF NOT EXISTS macros (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1121,23 +1082,6 @@ CREATE TABLE IF NOT EXISTS macro_versions (
 );
 CREATE INDEX IF NOT EXISTS idx_mv_macro ON macro_versions(macro_id, saved_at DESC);
 
-CREATE TABLE IF NOT EXISTS session_history (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    directory       TEXT NOT NULL,
-    opened_at       INTEGER NOT NULL,
-    closed_at       INTEGER,
-    file_count      INTEGER,
-    commands_run    INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS console_history (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    executed_at INTEGER NOT NULL,
-    command     TEXT NOT NULL,
-    output      TEXT,
-    success     INTEGER NOT NULL DEFAULT 1
-);
-
 CREATE TABLE IF NOT EXISTS crash_recovery (
     id                  INTEGER PRIMARY KEY CHECK (id = 1),
     file_list           TEXT,
@@ -1150,20 +1094,35 @@ CREATE TABLE IF NOT EXISTS crash_recovery (
 INSERT OR IGNORE INTO crash_recovery (id, written_at) VALUES (1, 0);
 ```
 
-**Note on `frame_analysis_results`:** `bg_stddev`, `bg_gradient`, and
-`snr_estimate` are stored but do not drive classification — Background
-Std Dev and Background Gradient were dropped as rejection metrics
-(highly correlated with Background Median), and SNR is retained as a
-diagnostic value only. The corresponding pcode commands
-(`BackgroundStdDev`, `BackgroundGradient`) remain as deprecated stubs
-for script compatibility.
+**Note on Background Std Dev, Background Gradient, and SNR:** these three
+values are still computed by `AnalyzeFrames` per frame but do not drive
+classification — Background Std Dev and Background Gradient were dropped as
+rejection metrics (highly correlated with Background Median), and SNR is
+retained as a diagnostic value only. They live only in `ctx.analysis_results`
+(in-memory) and the JSON export — no database table persists them.
+`frame_analysis_results`, which was designed to do exactly that (algorithm-
+versioned, keyed by `(file_path, algorithm_set_version)`), was never wired
+up with a reader or writer and was removed — see the note below. The
+corresponding pcode commands (`BackgroundStdDev`, `BackgroundGradient`)
+remain as deprecated stubs for script compatibility.
 
-**Note on orphaned columns:** earlier versions of `threshold_profiles`
-included `bg_stddev_reject_sigma` and `bg_gradient_reject_sigma`. They
-are absent from the canonical schema above, so any fresh install won't
-have them — but since `CREATE TABLE IF NOT EXISTS` never alters an
-existing table, a database created before this cleanup may still carry
-those two unused columns. Rust code ignores them either way.
+**Note on removed tables and columns (Issue 89):** `algorithm_sets`,
+`frame_analysis_results` (plus its two indexes), `session_history`, and
+`console_history` were created with real design intent — algorithm-
+versioned analysis-result caching to skip redundant re-analysis,
+a session work-log, and persistent console history across restarts,
+respectively — but none was ever given a runtime reader or writer, and all
+four were dropped via migration v5. `threshold_profiles.signal_weight_reject_sigma`
+was dropped in the same migration — the last of three dead columns left
+over from the Signal Weight metric's removal; the other two,
+`bg_stddev_reject_sigma` and `bg_gradient_reject_sigma`, were dropped
+earlier in migration v4. All migrations are now historically accurate as of
+this cleanup — `migrate_v1` correctly reflects the schema as it existed at
+that point in time, so a genuinely fresh install chains through the full
+migration sequence correctly instead of erroring on columns/tables the
+current canonical schema no longer creates (a real bug this cleanup found
+and fixed, previously undetectable since no fresh install had been tested
+against the schema in its pre-cleanup state).
 
 **Note on threshold default consistency — confirmed via
 `defaults.rs`:** `DEFAULT_STAR_COUNT_SIGMA = 1.5` in

@@ -51,16 +51,6 @@ fn seed_defaults(conn: &Connection) -> Result<()> {
         )?;
     }
 
-    // Algorithm set version 1
-    conn.execute(
-        "INSERT OR IGNORE INTO algorithm_sets
-            (version, bg_algorithm_version, snr_algorithm_version,
-             fwhm_algorithm_version, eccentricity_algorithm_version,
-             star_count_algorithm_version, released_at, notes)
-         VALUES (1, '1.0', '1.0', '1.0', '1.0', '1.0', ?1, ?2)",
-        rusqlite::params![now, "Initial algorithm set — Phase 8 baselines"],
-    )?;
-
     Ok(())
 }
 

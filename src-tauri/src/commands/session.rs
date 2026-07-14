@@ -50,40 +50,6 @@ pub fn debug_buffer_info(state: State<Arc<PhotoxState>>) -> serde_json::Value {
     })
 }
 
-#[tauri::command]
-pub fn open_session(
-    directory: String,
-    file_count: usize,
-    state: State<Arc<PhotoxState>>,
-) -> Result<i64, String> {
-    let db  = state.db.lock().expect("db lock poisoned");
-    let now = db::now_unix();
-    db.execute(
-        "INSERT INTO session_history (directory, opened_at, file_count) VALUES (?1, ?2, ?3)",
-        rusqlite::params![directory, now, file_count as i64],
-    ).map_err(|e| e.to_string())?;
-    let id = db.last_insert_rowid();
-    let mut ctx = state.context.lock().expect("context lock poisoned");
-    ctx.current_session_id = Some(id);
-    Ok(id)
-}
-
-#[tauri::command]
-pub fn close_session(state: State<Arc<PhotoxState>>) -> Result<(), String> {
-    let db  = state.db.lock().expect("db lock poisoned");
-    let now = db::now_unix();
-    db.execute(
-        "UPDATE session_history SET closed_at = ?1 WHERE closed_at IS NULL",
-        rusqlite::params![now],
-    ).map_err(|e| e.to_string())?;
-
-    // Reset imported session flag so a fresh live session can begin
-    let mut ctx = state.context.lock().expect("context lock poisoned");
-    ctx.is_imported_session = false;
-
-    Ok(())
-}
-
 pub fn do_write_crash_recovery(state: &PhotoxState) -> Result<(), String> {
     let ctx = state.context.lock().expect("context lock poisoned");
     let db  = state.db.lock().expect("db lock poisoned");

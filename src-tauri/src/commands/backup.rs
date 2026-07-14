@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use tauri::State;
 use crate::PhotoxState;
 use crate::db;
+use crate::plugins::atomic_write::atomic_write;
 
 #[tauri::command]
 pub fn backup_database(state: State<Arc<PhotoxState>>) -> Result<String, String> {
@@ -152,17 +153,33 @@ pub fn restore_database(backup_path: String, state: State<Arc<PhotoxState>>) -> 
     // Acquire DB lock for the entire restore operation
     let mut db = state.db.lock().expect("db lock poisoned");
 
-    // Checkpoint WAL before replacing the file
+    // Checkpoint WAL on the OLD connection, then fully close it — by
+    // swapping in a throwaway in-memory connection, which drops the real
+    // one — before touching anything on disk. The previous version wrote
+    // over the live file and deleted its WAL/SHM sidecars while the old
+    // connection was still open, leaving the on-disk file in a state the
+    // still-open connection never expected — this produced "database disk
+    // image is malformed" on the very next open.
     let _ = db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+    *db = rusqlite::Connection::open_in_memory()
+        .map_err(|e| format!("Failed to release old database connection: {}", e))?;
 
-    std::fs::write(&db_path, &db_bytes)
-        .map_err(|e| format!("Restore failed: {}", e))?;
+    // Write atomically (temp file + rename), same helper and guarantee
+    // used by the batch export writers (Issue 82) — never leaves a
+    // partially-written file at the live path if interrupted.
+    let db_path_str = db_path.to_str()
+        .ok_or_else(|| "Database path is not valid UTF-8".to_string())?;
+    atomic_write(db_path_str, |tmp| {
+        std::fs::write(tmp, &db_bytes)
+            .map_err(|e| format!("Failed to write restored database: {}", e))
+    })?;
 
-    // Remove WAL and SHM
+    // Remove WAL and SHM — safe now, since no connection (old or new) is
+    // open against this path
     let _ = std::fs::remove_file(db_path.with_extension("db-wal"));
     let _ = std::fs::remove_file(db_path.with_extension("db-shm"));
 
-    // Reopen the connection in-place
+    // Reopen the real connection — runs migrations automatically via open_db()
     let new_conn = db::open_db(
         dirs_next::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
@@ -171,7 +188,26 @@ pub fn restore_database(backup_path: String, state: State<Arc<PhotoxState>>) -> 
 
     *db = new_conn;
 
-    tracing::info!("Database restored from {:?} and connection reopened", src);
+    // Reload in-memory settings from the restored DB — without this, every
+    // Tauri command that reads state.settings rather than querying the DB
+    // directly (get_threshold_profiles, get_active_threshold_profile_id)
+    // keeps serving pre-restore values until the app is fully restarted.
+    {
+        let mut settings = state.settings.lock().expect("settings lock poisoned");
+        *settings = crate::settings::AppSettings::new();
+        settings.load_from_db(&db);
+        settings.load_threshold_profiles(&db);
+
+        // Re-sync AppContext's settings-mirrored fields (buffer pool limit,
+        // autostretch defaults, analysis thresholds) so restored values take
+        // effect immediately for actual processing, not just for display —
+        // same call set_preference already makes after any single preference
+        // change.
+        let mut ctx = state.context.lock().expect("context lock poisoned");
+        ctx.sync_from_settings(&settings);
+    }
+
+    tracing::info!("Database restored from {:?}, connection reopened, settings reloaded", src);
     Ok(())
 }
 

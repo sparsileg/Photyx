@@ -139,8 +139,6 @@
   function dismissRecovery() {
     showRecoveryOffer = false;
     pendingRecovery = null;
-    // Mark the open session as closed so it doesn't trigger again
-    db.closeSession().catch(() => {});
   }
 
   async function syncSessionState() {

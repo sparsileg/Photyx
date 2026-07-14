@@ -6,7 +6,7 @@
 use rusqlite::{Connection, Result};
 use crate::db::schema;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 4;
+pub const CURRENT_SCHEMA_VERSION: u32 = 5;
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     let version = get_version(conn)?;
     tracing::info!("DB schema version on open: {}", version);
@@ -15,6 +15,9 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
         migrate_v2,  // version 1 → 2: rename snr_reject_sigma → signal_weight_reject_sigma
         migrate_v3,  // version 2 → 3: drop active_directory from crash_recovery
         migrate_v4,  // version 3 → 4: drop bg_stddev_reject_sigma and bg_gradient_reject_sigma
+        migrate_v5,  // version 4 → 5: drop unused tables (session_history, algorithm_sets,
+                     //                frame_analysis_results, console_history) and the dead
+                     //                signal_weight_reject_sigma column (Issue 89)
     ];
 
     for (i, migration) in migrations.iter().enumerate() {
@@ -42,6 +45,25 @@ fn migrate_v4(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "ALTER TABLE threshold_profiles DROP COLUMN bg_stddev_reject_sigma;
          ALTER TABLE threshold_profiles DROP COLUMN bg_gradient_reject_sigma;"
+    )
+}
+
+// Drops four tables that were created but never given a runtime reader or
+// writer (Issue 89), and the signal_weight_reject_sigma column, dead since
+// the Signal Weight metric was removed from classification. Child tables
+// (referencing others via foreign key) are dropped before their parents.
+// IF EXISTS on the table drops handles both an existing database (which has
+// all four, created by the historical migrate_v1) and a from-here-on fresh
+// install — the fixed migrate_v1 fidelity above means signal_weight_reject_sigma
+// will always exist by this point in either case, so its DROP COLUMN does not
+// need the same IF EXISTS guard.
+fn migrate_v5(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS frame_analysis_results;
+         DROP TABLE IF EXISTS algorithm_sets;
+         DROP TABLE IF EXISTS session_history;
+         DROP TABLE IF EXISTS console_history;
+         ALTER TABLE threshold_profiles DROP COLUMN signal_weight_reject_sigma;"
     )
 }
 
