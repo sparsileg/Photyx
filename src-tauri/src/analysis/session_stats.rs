@@ -39,54 +39,6 @@ impl Default for AnalysisThresholds {
     }
 }
 
-// ── Filter-adjusted weights ───────────────────────────────────────────────────
-
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct MetricWeights {
-    pub background_median:   f32,
-    pub background_stddev:   f32,
-    pub background_gradient: f32,
-    pub signal_weight:       f32,
-    pub fwhm:                f32,
-    pub eccentricity:        f32,
-    pub star_count:          f32,
-}
-
-#[allow(dead_code)]
-impl MetricWeights {
-    pub fn broadband() -> Self {
-        Self {
-            fwhm:                5.0,
-            signal_weight:       4.0,
-            eccentricity:        3.0,
-            background_stddev:   2.0,
-            background_gradient: 2.0,
-            star_count:          2.0,
-            background_median:   1.0,
-        }
-    }
-
-    pub fn narrowband() -> Self {
-        Self {
-            fwhm:                5.0,
-            signal_weight:       4.0,
-            eccentricity:        3.0,
-            background_stddev:   2.0,
-            background_gradient: 2.0,
-            star_count:          0.0,
-            background_median:   1.0,
-        }
-    }
-
-    pub fn for_filter(filter: Option<&str>) -> Self {
-        match filter {
-            Some(f) if f.to_lowercase().contains("duo") => Self::narrowband(),
-            _ => Self::broadband(),
-        }
-    }
-}
-
 // ── Session statistics ────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Default)]
@@ -538,25 +490,6 @@ mod tests {
         let (flag, triggered) = classify_frame(&bad, &stats, &thresholds);
         assert_eq!(flag, PxFlag::Reject);
         assert!(triggered.contains(&"FWHM".to_string()));
-    }
-
-    #[test]
-    fn test_weights_narrowband_zeroes_star_count() {
-        let w = MetricWeights::narrowband();
-        assert_eq!(w.star_count, 0.0);
-        assert_eq!(w.fwhm, 5.0);
-    }
-
-    #[test]
-    fn test_filter_selection() {
-        let w_duo       = MetricWeights::for_filter(Some("duo"));
-        let w_ircut     = MetricWeights::for_filter(Some("ircut"));
-        let w_none      = MetricWeights::for_filter(None);
-        let w_duo_upper = MetricWeights::for_filter(Some("DUO"));
-        assert_eq!(w_duo.star_count,       0.0);
-        assert_eq!(w_ircut.star_count,     2.0);
-        assert_eq!(w_none.star_count,      2.0);
-        assert_eq!(w_duo_upper.star_count, 0.0);
     }
 
     #[test]

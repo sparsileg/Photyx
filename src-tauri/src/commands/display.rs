@@ -27,7 +27,7 @@ pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, Strin
         .map(|kw| kw.value == "HEATMAP")
         .unwrap_or(false);
 
-    tracing::info!(
+    tracing::debug!(
         "get_current_frame: src={}x{} channels={} color_space={:?} is_rgb={}",
         src_w, src_h, channels, buffer.color_space, is_rgb
     );
@@ -638,9 +638,11 @@ pub fn get_autostretch_stack_frame(
     }))
 }
 
-/// Temporary diagnostic command — returns the current stack result as a
-/// display-resolution JPEG data URL with auto-scaling to the pixel range.
-/// Used to validate Phase A stacking output before Phase B display wiring.
+/// Returns the current stack result as a display-resolution JPEG data URL,
+/// linearly auto-scaled to the buffer's actual min/max pixel range (as
+/// opposed to get_autostretch_stack_frame's STF stretch). Used by
+/// StackingWorkspace.svelte for a raw, unstretched preview of the stack
+/// result.
 #[tauri::command]
 pub fn get_stack_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {
     let ctx = state.context.lock().expect("context lock poisoned");

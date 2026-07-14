@@ -356,7 +356,6 @@ fn register_all_plugins(registry: &PluginRegistry) {
     registry.register(Arc::new(plugins::contour_heatmap::ContourHeatmap));
     registry.register(Arc::new(plugins::debayer_image::DebayerImage));
     registry.register(Arc::new(plugins::export_analysis_report::ExportAnalysisReport));
-    registry.register(Arc::new(plugins::fake_progress::FakeProgress));
     registry.register(Arc::new(plugins::filter_by_keyword::FilterByKeyword));
     registry.register(Arc::new(plugins::get_histogram::GetHistogram));
     registry.register(Arc::new(plugins::keywords::AddKeyword));

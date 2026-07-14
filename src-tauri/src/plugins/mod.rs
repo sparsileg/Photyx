@@ -16,7 +16,6 @@ pub mod commit_stretch;
 pub mod contour_heatmap;
 pub mod debayer_image;
 pub mod export_analysis_report;
-pub mod fake_progress;
 pub mod filter_by_keyword;
 pub mod get_histogram;
 pub mod image_reader;

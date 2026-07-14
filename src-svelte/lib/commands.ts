@@ -130,7 +130,6 @@ async function addFilesFromPaths(paths: string[]) {
 
 /** Open a multi-file picker and append selected files to the session */
 export async function addFiles() {
-  console.log('addFiles: called');
   let selected;
   try {
     selected = await open({
@@ -250,7 +249,6 @@ export async function applyAutoStretch(shadowClip?: number, targetBackground?: n
 
 /** Set current frame and refresh viewer with raw (unstretched) pixels */
 export async function displayFrame(index: number) {
-  console.trace('displayFrame called with index:', index);
   try {
     ui.clearAnnotations();
 

@@ -1398,8 +1398,9 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 | `get_active_threshold_profile_id`   | Returns the active threshold profile id                                                                             |
 | `get_all_preferences`               | Returns all preferences as a key/value map; called at startup to hydrate the frontend                              |
 | `get_analysis_results`              | Reclassifies frames (skipped for imported sessions); returns frames, session stats, outliers, `is_imported` (§6.8) |
-| `get_autostretch_frame`             | Computes Auto-STF stretch on the current frame, returns JPEG data URL; does not cache                              |
-| `get_blink_cache_status`            | Returns blink cache build status: idle / building / ready                                                          |
+| `get_autostretch_frame`             | Computes Auto-STF stretch on the current frame, returns JPEG data URL; does not cache                                |
+| `get_autostretch_stack_frame`       | Computes Auto-STF stretch on the current stack result, returns JPEG data URL — the Phase B display path for StackFrames output |
+| `get_blink_cache_status`            | Returns blink cache build status: idle / building / ready                                                            |
 | `get_blink_frame`                   | Returns a blink frame as JPEG data URL from the blink cache (by index + resolution)                                |
 | `get_current_frame`                 | Returns the current image as a raw (unstretched) JPEG data URL, rendered on the fly                                |
 | `get_frame_flags`                   | Returns PXFLAG values for all loaded frames (used by the blink overlay)                                            |
@@ -1412,8 +1413,9 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 | `get_pixel`                         | Returns raw pixel value(s) at source coordinates from the raw image buffer                                        |
 | `get_progress`                      | Returns the current `[label, current, total]` progress tuple; polled every 500ms (§2.7)                            |
 | `get_quick_launch_buttons`          | Returns the ordered list of Quick Launch button assignments                                                        |
-| `get_session`                       | Returns current session state (file list, current frame) — no active-directory field                              |
-| `get_star_positions`                | Re-runs star detection on the current frame; returns per-star `{cx, cy, fwhm, r}` for the annotation overlay      |
+| `get_session`                       | Returns current session state (file list, current frame) — no active-directory field                                |
+| `get_stack_frame`                   | Returns the current stack result as a display-resolution JPEG data URL, linearly auto-scaled to the buffer's actual min/max pixel range (as opposed to get_autostretch_stack_frame's STF stretch); used by StackingWorkspace.svelte for a raw, unstretched preview |
+| `get_star_positions`                | Re-runs star detection on the current frame; returns per-star `{cx, cy, fwhm, r}` for the annotation overlay         |
 | `get_threshold_profiles`            | Returns all threshold profiles from `AppSettings`                                                                  |
 | `get_variable`                      | Returns a pcode variable value from `ctx.variables` by name                                                        |
 | `increment_macro_run_count`         | Updates `run_count` and `last_run_at` for a macro after successful execution                                       |

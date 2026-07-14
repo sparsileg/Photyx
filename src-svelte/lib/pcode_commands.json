@@ -27,7 +27,6 @@
   "BackgroundStdDev",
   "CommitAnalysis",
   "ExportAnalysisReport",
-  "FakeProgress",
   "ComputeEccentricity",
   "ComputeFWHM",
   "ContourHeatmap",
