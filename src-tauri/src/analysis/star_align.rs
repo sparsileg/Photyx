@@ -370,14 +370,19 @@ pub fn estimate_rigid_transform_triangles(
         return None;
     }
 
-    // Use the winning voted transform directly — least-squares refinement
-    // is numerically unstable with star centroids far from the origin.
-    let theta = best_xform.theta();
+    // Refine over the full inlier set (same least_squares_affine already
+    // used by RANSAC's estimate_rigid_transform on comparably-shaped pairs).
+    // Falls back to the raw winning-bin transform only if refinement
+    // itself fails outright — should not normally happen given the inlier
+    // count has already cleared TRI_MIN_INLIERS.
+    let refined = least_squares_affine(&inlier_pairs).unwrap_or_else(|| best_xform.clone());
+
+    let theta = refined.theta();
     info!("tri_align: result — tx={:.2} ty={:.2} θ={:.4}rad ({:.3}°) inliers={}",
-        best_xform.tx, best_xform.ty, theta, theta.to_degrees(),
+        refined.tx, refined.ty, theta, theta.to_degrees(),
         inlier_pairs.len());
 
-    Some(best_xform.clone())
+    Some(refined)
 }
 
 /// Collect matched star pairs that are inliers under a given transform.
@@ -582,24 +587,43 @@ fn least_squares_affine(pairs: &[MatchedPair]) -> Option<AffineRigid> {
     if n < 2 {
         return None;
     }
+    let n_f = n as f64;
+
+    // Center both point sets on their centroids before solving for
+    // rotation. The previous uncentered formulation implicitly assumed
+    // tx = ty = 0 while solving for (a, b) — a valid approximation only
+    // when the true translation is small relative to the coordinate
+    // magnitudes (true for RANSAC's FFT-pre-shifted residual fits, false
+    // for triangle matching's raw, unshifted star coordinates). Centering
+    // makes the fit exact regardless of translation size, and the
+    // translation is then recovered exactly from the centroids.
+    let mut sum_fx = 0.0f64;
+    let mut sum_fy = 0.0f64;
+    let mut sum_rx = 0.0f64;
+    let mut sum_ry = 0.0f64;
+    for &(rx, ry, fx, fy) in pairs {
+        sum_fx += fx as f64;
+        sum_fy += fy as f64;
+        sum_rx += rx as f64;
+        sum_ry += ry as f64;
+    }
+    let fx_mean = sum_fx / n_f;
+    let fy_mean = sum_fy / n_f;
+    let rx_mean = sum_rx / n_f;
+    let ry_mean = sum_ry / n_f;
 
     let mut sum_ff    = 0.0f64;
     let mut sum_rhs_a = 0.0f64;
     let mut sum_rhs_b = 0.0f64;
-    let mut sum_fx    = 0.0f64;
-    let mut sum_fy    = 0.0f64;
-    let mut sum_rx    = 0.0f64;
-    let mut sum_ry    = 0.0f64;
 
     for &(rx, ry, fx, fy) in pairs {
-        let (rx, ry, fx, fy) = (rx as f64, ry as f64, fx as f64, fy as f64);
-        sum_ff    += fx * fx + fy * fy;
-        sum_rhs_a += fx * rx + fy * ry;
-        sum_rhs_b += fx * ry - fy * rx;
-        sum_fx    += fx;
-        sum_fy    += fy;
-        sum_rx    += rx;
-        sum_ry    += ry;
+        let fxc = fx as f64 - fx_mean;
+        let fyc = fy as f64 - fy_mean;
+        let rxc = rx as f64 - rx_mean;
+        let ryc = ry as f64 - ry_mean;
+        sum_ff    += fxc * fxc + fyc * fyc;
+        sum_rhs_a += fxc * rxc + fyc * ryc;
+        sum_rhs_b += fxc * ryc - fyc * rxc;
     }
 
     if sum_ff.abs() < 1e-10 {
@@ -609,9 +633,9 @@ fn least_squares_affine(pairs: &[MatchedPair]) -> Option<AffineRigid> {
     let a = sum_rhs_a / sum_ff;
     let b = sum_rhs_b / sum_ff;
 
-    let n_f = n as f64;
-    let tx = (sum_rx - a * sum_fx + b * sum_fy) / n_f;
-    let ty = (sum_ry - b * sum_fx - a * sum_fy) / n_f;
+    // Translation recovered from the centroids: ref_mean = R * frame_mean + t
+    let tx = rx_mean - (a * fx_mean - b * fy_mean);
+    let ty = ry_mean - (b * fx_mean + a * fy_mean);
 
     Some(AffineRigid {
         a:  a  as f32,
