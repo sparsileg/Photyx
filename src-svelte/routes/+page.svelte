@@ -36,9 +36,12 @@
 
   // Load theme stylesheet dynamically
   let themeLink: HTMLLinkElement | null = null;
+  let lastTheme: string | null = null;
 
   $effect(() => {
     const theme = $ui.theme;
+    if (theme === lastTheme) return;
+    lastTheme = theme;
     if (themeLink) themeLink.remove();
     themeLink = document.createElement('link');
     themeLink.rel = 'stylesheet';
