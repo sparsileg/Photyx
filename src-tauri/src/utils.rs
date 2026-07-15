@@ -148,4 +148,15 @@ pub fn get_log_dir() -> std::path::PathBuf {
     }
 }
 
+/// Returns the Photyx application data directory (where `photyx.db` lives).
+/// Mirrors the derivation previously duplicated three times in
+/// commands/backup.rs — that duplication is now consolidated here.
+pub fn get_db_dir() -> std::path::PathBuf {
+    dirs_next::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("Photyx")
+}
+
+// ----------------------------------------------------------------------
+
 // ----------------------------------------------------------------------

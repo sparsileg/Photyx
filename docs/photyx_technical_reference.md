@@ -545,71 +545,15 @@ only.
 
 ### 4.1 Command Dictionary
 
-| Command              | Category         | Description                                                                                                                | Key Arguments                                           |
-| ---------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| AddFiles              | Session           | Appends explicit file paths to the session; skips duplicates; checks memory limit before loading                              | paths                                                       |
-| AddKeyword            | Keyword           | Adds or replaces a keyword on loaded images                                                                                    | name, value, [comment], [scope=all\|current]                |
-| AnalyzeFrames         | Frame Analysis    | Computes five quality metrics for all loaded frames, classifies each as PASS or REJECT                                        | [profile]                                                    |
-| Assert                | Scripting         | Halts execution with an error if expression is false; silent on pass in both Trace and No Trace modes                          | expression                                                   |
-| AutoStretch           | Processing        | Applies Auto-STF stretch to current frame (display only — raw buffer unchanged)                                                | [shadowClip], [targetBackground]                             |
-| CacheFrames           | Blink & View      | Pre-decodes and caches all frames for blinking at both resolutions                                                             | —                                                            |
-| ClearAnnotations      | Display           | Removes all star and analysis overlay annotations from the viewer                                                              | —                                                            |
-| ClearSession          | Session           | Clears all loaded images and resets session state                                                                              | —                                                            |
-| ClearStack            | Stacking          | Discards the transient stack result and per-frame contribution data                                                            | —                                                            |
-| CommitAnalysis        | Frame Analysis    | Moves all REJECT frames to a rejected/ subfolder within each frame's source directory and removes them from the session; pass frames remain loaded | [append]                                                     |
-| CommitStretch         | Stacking          | Permanently applies Auto-STF stretch to the stack result pixel buffer; after commit the buffer holds non-linear data           | [shadow_clip], [target_bg]                                   |
-| ComputeEccentricity   | Analysis          | Calculates eccentricity for detected stars on current frame                                                                    | —                                                            |
-| ComputeFWHM           | Analysis          | Calculates FWHM for detected stars; displays per-star circle annotations on viewer overlay                                     | —                                                            |
-| ContourHeatmap        | Analysis          | Generates spatial FWHM heatmap for current frame; writes XISF to source file's directory; stores output path in `$NEW_FILE`    | [palette], [contour_levels], [threshold], [saturation]       |
-| CopyFile              | File Management   | Copies a file to a destination directory; defaults to current frame if source= not specified; destination created automatically; stores path in `$NEW_FILE` | [source], destination                                        |
-| CopyKeyword           | Keyword           | Copies a keyword value to a new keyword name                                                                                   | from, to                                                     |
-| CountFiles            | Scripting         | Stores number of files in current list in `$filecount`                                                                        | —                                                            |
-| CountStars            | Analysis          | Counts detected stars in current frame                                                                                         | —                                                            |
-| DebayerImage          | Processing        | Debayers a Bayer CFA image on demand; pattern read from BAYERPAT keyword if present                                            | [pattern=RGGB\|BGGR\|GRBG\|GBRG], [method=bilinear]          |
-| DeleteKeyword         | Keyword           | Removes a keyword from loaded images                                                                                           | name, [scope=all\|current]                                   |
-| ExportAnalysisReport  | Frame Analysis    | Exports the current analysis results as a Photyx session JSON file; if path is omitted, derives filename from the first frame and writes to the system Downloads folder | [path]                                                       |
-| FilterByKeyword       | File Management   | Filters the active file list by keyword value                                                                                  | name, value                                                  |
-| GetHistogram          | Processing        | Computes histogram statistics for current frame (median, std dev, clipping %)                                                  | —                                                            |
-| GetKeyword            | Interrogation     | Retrieves a keyword value; auto-stores in `$` (uppercase) — e.g. `GetKeyword name=FILTER` stores result in `$FILTER`      | name                                                         |
-| ListKeywords          | Keyword           | Lists all keywords for the current image                                                                                       | —                                                            |
-| LoadFile              | File Management   | Loads a single image file for display without adding it to the session; stores path in `$LOAD_FILE_PATH`                       | path                                                         |
-| Log                   | Scripting         | Writes collected macro output since last Log call to a file                                                                    | path, [append]                                               |
-| ModifyKeyword         | Keyword           | Changes the value of an existing keyword                                                                                       | name, value, [comment], [scope=all\|current]                 |
-| MoveFile              | File Management   | Moves a file to a destination directory; defaults to current frame if source= not specified; stores path in `$NEW_FILE`        | [source], destination                                        |
-| Print                 | Scripting         | Outputs a message to the pcode console; accepts bare expressions — `Print $x + 1` and `Print "hello"` are both valid           | message (positional or bare expression)                      |
-| ReadImages            | Session           | Reads a single image or all supported files in a directory                                                                     | path                                                          |
-| RejectCurrentFrame    | Session           | Moves a single frame to a rejected/ subfolder within its own source directory, removing it from the session and all caches; defaults to the current frame | [index], [append]                                            |
-| RunMacro              | Scripting         | Executes a saved macro by name from the database                                                                               | name                                                          |
-| Set                   | Scripting         | Assigns a value to a variable; string literals on the RHS must use double quotes                                               | varname = value                                              |
-| SetFrame              | Navigation        | Sets the current active frame by index (0-based)                                                                               | index                                                         |
-| ShowAnalysisGraph     | Display           | Opens the Analysis Graph view in the viewer region                                                                             | —                                                            |
-| ShowAnalysisResults   | Display           | Opens the Analysis Results table view in the viewer region                                                                     | —                                                            |
-| StackFrames           | Stacking          | Stacks all session frames using FFT alignment and sigma-clipped mean combination; result stored as transient stack buffer      | [calibration_dir]                                             |
-| WriteCurrent          | I/O               | Writes all buffered images back to their source paths in their original format (atomic temp-rename)                            | —                                                            |
-| WriteFIT              | I/O               | Writes all buffered images as FITS files (atomic temp-rename)                                                                  | destination, [overwrite]                                     |
-| WriteFrame            | I/O               | Writes the currently active frame only back to its source format (atomic temp-rename)                                          | —                                                            |
-| WriteTIFF             | I/O               | Writes all buffered images as TIFF files with AstroTIFF keyword embedding (atomic temp-rename)                                 | destination, [overwrite]                                     |
-| WriteXISF             | I/O               | Writes all buffered images as XISF files; use stack=true to export the transient stack result instead                          | destination, [overwrite], [compress=true\|false], [stack=true\|false] |
-| pwd                   | Console           | Prints the unique source directories of all files currently loaded in the session (client-side only)                           | —                                                            |
+Command syntax, arguments, and examples for every pcode command are
+documented in the pcode Guide's Command Reference section
+(`Photyx_pcode_guide.md`) — that document is the single source of
+truth and is not duplicated here. The guide groups commands by
+category (Session, Write/Export, Keywords, Analysis, Stacking, Display
+& Navigation, Scripting Utilities) in its Table of Contents.
 
-### 4.2 Retired Commands
 
-No longer available; listed so old scripts and macros can be diagnosed:
-
-| Retired Command     | Replacement | Notes                                                                   |
-| ---------------------- | ------------- | ---------------------------------------------------------------------------- |
-| SelectDirectory       | AddFiles      | Directory as a first-class entity is replaced by explicit file paths          |
-| GetImageProperty      | (removed)     | Not implemented; interrogation via GetKeyword and CountFiles instead          |
-| GetSessionProperty    | (removed)     | Not implemented; interrogation via GetKeyword and CountFiles instead          |
-| ListFiles             | (removed)     | Not implemented                                                               |
-| Test                  | (removed)     | Not implemented                                                               |
-| CropImage             | (removed)     | Not implemented in this release                                               |
-| ReadAll               | AddFiles      | Use AddFiles with explicit paths; ClearSession first if starting fresh        |
-| ReadFIT               | AddFiles      | Format filtering is now the user's responsibility at selection time           |
-| ReadTIFF              | AddFiles      | Format filtering is now the user's responsibility at selection time           |
-| ReadXISF              | AddFiles      | Format filtering is now the user's responsibility at selection time           |
-
-### 4.3 Notes on Specific Entries
+### 4.2 Notes on Specific Entries
 
 - **Keyword scope:** `AddKeyword`, `DeleteKeyword`, and
   `ModifyKeyword` accept `scope=all` (default, applies to all loaded
@@ -627,12 +571,11 @@ No longer available; listed so old scripts and macros can be diagnosed:
 `GetKeyword` is the only interrogation mechanism in pcode. Earlier
 documentation described a broader property/test system
 (`GetImageProperty`, `GetSessionProperty`, a `Test` boolean-expression
-command) — none of that was ever implemented; see §4.2, Retired
-Commands.
+command) — none of that was ever implemented.
 
-`pwd` (§4.1, Console category) also surfaces current state — the
-session's unique source directories — but prints directly to console
-output rather than storing into a variable, so it isn't an
+`pwd` (see the pcode Guide's Console Built-ins) also surfaces current
+state — the session's unique source directories — but prints directly
+to console output rather than storing into a variable, so it isn't an
 interrogation property in the same sense as `GetKeyword`.
 
 ### 5.1 GetKeyword
@@ -1401,61 +1344,12 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 
 ## 11. Plugin Reference
 
-All plugins listed here are built-in native Rust, fully implemented
-and shipped. The plugin framework supports WASM user plugins via
-Wasmtime (§2.4), but none ship by default. Not every pcode command is
-a plugin — `Set` and `pwd` are handled directly by the interpreter
-rather than registered in the plugin registry. Descriptions for each
-are in §4's command dictionary; this table exists to confirm current
-implementation status and group plugins by category.
-
-| Plugin | Category |
-| ------------------------ | ------------------- |
-| AddFiles | Session |
-| AddKeyword | Keyword |
-| AnalyzeFrames | Frame Analysis |
-| Assert | Scripting |
-| AutoStretch | Processing |
-| CacheFrames | Blink & View |
-| ClearAnnotations | Display |
-| ClearSession | Session |
-| ClearStack | Stacking |
-| CommitAnalysis | Frame Analysis |
-| CommitStretch | Stacking |
-| ComputeEccentricity | Analysis |
-| ComputeFWHM | Analysis |
-| ContourHeatmap | Analysis |
-| CopyFile | File Management |
-| CopyKeyword | Keyword |
-| CountFiles | Scripting |
-| CountStars | Analysis |
-| DebayerImage | Processing |
-| DeleteKeyword | Keyword |
-| ExportAnalysisReport | Frame Analysis |
-| FilterByKeyword | File Management |
-| GetHistogram | Processing |
-| GetKeyword | Interrogation |
-| ListKeywords | Keyword |
-| LoadFile | File Management |
-| ModifyKeyword | Keyword |
-| MoveFile | File Management |
-| ReadImages | Session |
-| RejectCurrentFrame | Session |
-| RunMacro | Scripting |
-| SetFrame | Navigation |
-| ShowAnalysisGraph | Display |
-| ShowAnalysisResults | Display |
-| StackFrames | Stacking |
-| WriteCurrent | I/O Writer |
-| WriteFIT | I/O Writer |
-| WriteFrame | I/O Writer |
-| WriteTIFF | I/O Writer |
-| WriteXISF | I/O Writer |
-
-Not currently implemented as plugins, despite appearing in earlier
-planning documents: `CropImage`, `GetImageProperty`,
-`GetSessionProperty`, `ListFiles`, `Test` (see §4.2, Retired
-Commands).
+All plugins are built-in native Rust, fully implemented and shipped.
+The plugin framework supports WASM user plugins via Wasmtime (§2.4),
+but none ship by default. Not every pcode command is a plugin — `Set`
+and `pwd` are handled directly by the interpreter rather than
+registered in the plugin registry. Command syntax and category
+grouping live in the pcode Guide (see §4.1).
 
 ---
 

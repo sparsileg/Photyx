@@ -415,7 +415,7 @@ impl PhotyxPlugin for GetSystemPath {
                 name:        "name".to_string(),
                 param_type:  ParamType::String,
                 required:    true,
-                description: "System path to retrieve: downloads, documents, desktop, or temp".to_string(),
+                description: "System path to retrieve: downloads, documents, desktop, temp, home, log, or db".to_string(),
                 default:     None,
             },
         ]
@@ -432,9 +432,17 @@ impl PhotyxPlugin for GetSystemPath {
             "documents" => dirs_next::document_dir(),
             "desktop"   => dirs_next::desktop_dir(),
             "temp"      => Some(std::env::temp_dir()),
+            "home"      => dirs_next::home_dir(),
+            // Respects a configured log_dir override; falls back to the
+            // OS-default Photyx log directory otherwise — same logic
+            // list_log_files() uses (commands/logging.rs). Issue 112.
+            "log"       => Some(ctx.log_dir.clone().map(std::path::PathBuf::from).unwrap_or_else(crate::utils::get_log_dir)),
+            // Directory containing photyx.db, not the file itself — every
+            // other GetSystemPath result is a directory. Issue 112.
+            "db"        => Some(crate::utils::get_db_dir()),
             _ => return Err(PluginError::new(
                 "UNKNOWN_PATH",
-                &format!("GetSystemPath: unknown path name '{}'. Use: downloads, documents, desktop, temp", name),
+                &format!("GetSystemPath: unknown path name '{}'. Use: downloads, documents, desktop, temp, home, log, db", name),
             )),
         };
 

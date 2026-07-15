@@ -80,7 +80,7 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   for:                 '<var> = N To M  |  <var> in "<glob>"',
   gethistogram:        '',
   getkeyword:          'name=  [default=]',
-  getsystempath:       'name=[downloads|documents|desktop|temp]',
+  getsystempath:       'name=[downloads|documents|desktop|temp|home|log|db]',
   help:                '',
   if:                  '',
   listkeywords:        '',
@@ -665,13 +665,13 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   getsystempath: {
     name:        'GetSystemPath',
-    description: 'Retrieves a well-known system directory path and stores it in a variable named after the requested path. Supported names: downloads, documents, desktop, temp.',
-    syntax:      'GetSystemPath name=<downloads|documents|desktop|temp>',
+    description: 'Retrieves a well-known system directory path and stores it in a variable named after the requested path. Supported names: downloads, documents, desktop, temp, home, log, db.',
+    syntax:      'GetSystemPath name=<downloads|documents|desktop|temp|home|log|db>',
     arguments: [
-      { name: 'name', type: 'string', required: true, description: 'System path to retrieve: downloads, documents, desktop, or temp. The result is stored in $<name> (e.g. name=downloads stores in $downloads).' },
+      { name: 'name', type: 'string', required: true, description: 'System path to retrieve: downloads, documents, desktop, temp, home, log, or db. The result is stored in $<n> (e.g. name=downloads stores in $downloads). log respects a configured log-directory override if one is set, otherwise the OS-default Photyx log directory. db is the directory containing photyx.db, not the file itself.' },
     ],
-    output:  'Stores the resolved path in $<name>, normalized to forward slashes.',
-    example: 'GetSystemPath name=downloads\nPrint $downloads\nExportAnalysisReport path="$downloads/M82-Project-Analysis.json"\n\nGetSystemPath name=temp\nPrint $temp',
+    output:  'Stores the resolved path in $<n>, normalized to forward slashes.',
+    example: 'GetSystemPath name=downloads\nPrint $downloads\nExportAnalysisReport path="$downloads/M82-Project-Analysis.json"\n\nGetSystemPath name=temp\nPrint $temp\n\nGetSystemPath name=home\nPrint $home\n\nGetSystemPath name=log\nPrint $log\n\nGetSystemPath name=db\nPrint $db',
   },
 
   runmacro: {

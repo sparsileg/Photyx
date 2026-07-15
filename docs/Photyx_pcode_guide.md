@@ -1227,17 +1227,26 @@ EndIf
 Retrieves a well-known system directory path and stores it in a variable named after the requested path.
 
 ```
-GetSystemPath name=<downloads|documents|desktop|temp>
+GetSystemPath name=<downloads|documents|desktop|temp|home|log|db>
 ```
 
-| Argument | Required | Description                                                                                        |
-| -------- | -------- | --------------------------------------------------------------------------------------------------- |
-| `name`   | Yes      | System path to retrieve: `downloads`, `documents`, `desktop`, or `temp`. Result stored in `$<name>`. |
+| Argument | Required | Description                                                                                                    |
+| -------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `name`   | Yes      | System path to retrieve: `downloads`, `documents`, `desktop`, `temp`, `home`, `log`, or `db`. Result stored in `$<name>`. `log` respects a configured log-directory override if one is set, otherwise the OS-default Photyx log directory. `db` is the directory containing `photyx.db`, not the file itself. |
 
 ```
 GetSystemPath name=downloads
 Print $downloads
 ExportAnalysisReport path="$downloads/M82-Project-Analysis.json"
+
+GetSystemPath name=home
+Print $home
+
+GetSystemPath name=log
+Print $log
+
+GetSystemPath name=db
+Print $db
 ```
 
 ---

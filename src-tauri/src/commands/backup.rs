@@ -10,16 +10,15 @@ use crate::plugins::atomic_write::atomic_write;
 
 #[tauri::command]
 pub fn backup_database(state: State<Arc<PhotoxState>>) -> Result<String, String> {
-    // Get backup directory from preferences, fall back to default
+    // Get backup directory from preferences, fall back to default.
+    // resolve_path() expands a leading "~" to the home directory (Issue 112) —
+    // previously this used the raw preference value unresolved.
     let backup_dir: PathBuf = {
         let dir = state.settings.lock().expect("settings lock poisoned").backup_directory.clone();
         if !dir.is_empty() {
-            PathBuf::from(dir)
+            PathBuf::from(crate::utils::resolve_path(&dir, None))
         } else {
-            dirs_next::data_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join("Photyx")
-                .join("backups")
+            crate::utils::get_db_dir().join("backups")
         }
     };
 
@@ -131,10 +130,7 @@ pub fn restore_database(backup_path: String, state: State<Arc<PhotoxState>>) -> 
         return Err(format!("Backup file not found: {}", backup_path));
     }
 
-    let db_path = dirs_next::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("Photyx")
-        .join("photyx.db");
+    let db_path = crate::utils::get_db_dir().join("photyx.db");
 
     // Extract photyx.db from the zip
     let db_bytes = {
@@ -195,22 +191,16 @@ pub fn restore_database(backup_path: String, state: State<Arc<PhotoxState>>) -> 
     let _ = std::fs::remove_file(db_path.with_extension("db-shm"));
 
     // Reopen the real connection — runs migrations automatically via open_db()
-    let new_conn = db::open_db(
-        dirs_next::data_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("Photyx")
-                ).map_err(|e| format!("Failed to reopen database after restore: {}", e))?;
+    let new_conn = db::open_db(crate::utils::get_db_dir())
+        .map_err(|e| format!("Failed to reopen database after restore: {}", e))?;
 
     *db = new_conn;
 
     // Reopen the global connection too, so AnalyzeFrames/RunMacro see the
     // restored data instead of the throwaway in-memory connection above.
     if let Some(global_db) = crate::GLOBAL_DB.get() {
-        let new_global_conn = db::open_db(
-            dirs_next::data_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join("Photyx")
-        ).map_err(|e| format!("Failed to reopen global database connection after restore: {}", e))?;
+        let new_global_conn = db::open_db(crate::utils::get_db_dir())
+            .map_err(|e| format!("Failed to reopen global database connection after restore: {}", e))?;
         *global_db.lock().expect("global db lock poisoned") = new_global_conn;
     }
 
