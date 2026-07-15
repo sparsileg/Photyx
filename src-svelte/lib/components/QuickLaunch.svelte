@@ -135,7 +135,7 @@
 {#if contextMenu}
   <div
     class="ql-context-menu"
-    style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
+    style="--ql-menu-x: {contextMenu.x}px; --ql-menu-y: {contextMenu.y}px;"
     onclick={(e) => e.stopPropagation()}
   >
     <div class="ql-context-item ql-context-remove" onclick={removeEntry}>Remove from Quick Launch</div>

@@ -139,6 +139,8 @@
 
 .ql-context-menu {
     position: fixed;
+    left: var(--ql-menu-x);
+    top: var(--ql-menu-y);
     z-index: 1000;
     background: var(--card-bg);
     border: 1px solid var(--border-color);

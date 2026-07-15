@@ -157,3 +157,15 @@
     white-space: nowrap;
     letter-spacing: 0.05em;
 }
+
+/* ── Stats bar ───────────────────────────────────────────────────────────── */
+
+.sw-stats-bar {
+    padding: 3px 12px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 11px;
+    color: var(--primary-color);
+    font-family: monospace;
+    flex-shrink: 0;
+}

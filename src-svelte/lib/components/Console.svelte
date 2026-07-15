@@ -326,7 +326,7 @@
     }
     if (cmd === 'stackframes' && data?.stack_available) {
       notifications.success('Stack complete — opening result 🔭');
-      ui.showView('stackResult');
+      ui.showView('stackingWorkspace');
     }
     if (cmd === 'clearstack') {
       ui.showView(null);

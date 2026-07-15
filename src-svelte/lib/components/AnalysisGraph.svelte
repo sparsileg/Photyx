@@ -6,6 +6,7 @@
   import { save } from '@tauri-apps/plugin-dialog';
   import { writeFile } from '@tauri-apps/plugin-fs';
   import { writeImage } from '@tauri-apps/plugin-clipboard-manager';
+  import { Image } from '@tauri-apps/api/image';
   import { ui } from '../stores/ui';
   import { notifications } from '../stores/notifications';
   import { displayFrame, commitAnalysis } from '../commands';
@@ -146,7 +147,8 @@
       if (!ctx2d) throw new Error('Could not get canvas context');
       const { width, height } = canvas;
       const imageData = ctx2d.getImageData(0, 0, width, height);
-      await writeImage({ rgba: Array.from(imageData.data), width, height });
+      const image = await Image.new(Array.from(imageData.data), width, height);
+      await writeImage(image);
       notifications.success('Graph copied to clipboard.');
     } catch (e) {
       notifications.error(`Copy failed: ${e}`);

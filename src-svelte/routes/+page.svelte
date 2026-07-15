@@ -21,8 +21,9 @@
   import Toolbar from '../lib/components/Toolbar.svelte';
   import Viewer from '../lib/components/Viewer.svelte';
   import type { HelpEntry } from '../lib/pcode';
-  import { VIEWS } from '../lib/stores/ui.ts';
+  import { VIEWS } from '../lib/stores/ui';
   import { db } from '../lib/db';
+  import '../lib/types/svelte-elements';
   import { invoke } from '@tauri-apps/api/core';
   import { DEFAULT_FONT_SIZE } from '../lib/settings/constants';
   import { onMount } from 'svelte';

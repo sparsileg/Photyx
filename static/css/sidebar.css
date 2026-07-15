@@ -149,6 +149,10 @@
 
 /* ── Keyword editor panel ───────────────────────────────────────────────── */
 
+.kw-panel-body {
+    padding: 0;
+}
+
 .kw-empty {
     padding: 12px 8px;
     font-size: 0.69rem;
@@ -571,4 +575,10 @@
     font-size: 0.63rem;
     color: var(--text-secondary);
     margin-top: 2px;
+}
+
+.plugin-empty {
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 8px;
 }

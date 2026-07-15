@@ -15,6 +15,18 @@
   import { ui } from '../stores/ui';
   import { DEFAULT_FONT_SIZE } from '../settings/constants';
 
+  interface MenuItem {
+    sep?:      boolean;
+    label?:    string;
+    action?:   string;
+    shortcut?: string;
+  }
+
+  interface MenuDef {
+    name:  string;
+    items: MenuItem[];
+  }
+
   let openMenu = $state<string | null>(null);
 
   function toggle(name: string) {
@@ -326,12 +338,9 @@
       notifications.error(`Import failed: ${e}`);
     }
   }
-</script>
 
-<svelte:window onclick={close} />
-
-<div id="menu-bar">
-  {#each [
+  // ── Menu definitions ──────────────────────────────────────────────────────
+  const MENUS: MenuDef[] = [
     { name: 'File', items: [
       { label: 'Load Single Image ', action: 'load-single-image' },
       { sep: true },
@@ -374,7 +383,13 @@
       { label: 'About Photyx',  action: 'about' },
       { label: 'Documentation', action: 'documentation' },
     ]},
-  ] as menu}
+  ];
+</script>
+
+<svelte:window onclick={close} />
+
+<div id="menu-bar">
+  {#each MENUS as menu}
     <div
       class="menu-item"
       class:open={openMenu === menu.name}

@@ -222,7 +222,7 @@
   <div class="kw-actions">
     <button class="kw-btn" onclick={startAddRow} disabled={addingRow}>+ Add</button>
     <button class="kw-btn" onclick={startDelete} disabled={!selectedKw}>− Delete</button>
-    <button class="kw-btn" onclick={reload}>⟳ Reload</button>
+    <button class="kw-btn" onclick={() => reload()}>⟳ Reload</button>
     <button class="kw-btn kw-btn-write" onclick={writeChanges} disabled={saving}>
       {saving ? '◌ Writing…' : '💾 Write Changes'}
     </button>
@@ -236,7 +236,7 @@
     </div>
   {/if}
 
-  <div class="panel-body" style="padding: 0;">
+  <div class="panel-body kw-panel-body">
     <table class="keyword-table">
       <thead>
         <tr>

@@ -5,7 +5,7 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import { ui } from '../stores/ui';
   import { notifications } from '../stores/notifications';
-  import { consolePipe } from '../stores/consoleHistory';
+  import { pipeToConsole } from '../stores/consoleHistory';
   import { jobResult, jobOwner, progress } from '../stores/progress';
 
   // ── State ─────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@
         script: `CommitStretch shadow_clip=${shadowClip} target_bg=${targetBg}`
       });
       notifications.success('Stretch committed');
-      consolePipe.update(q => [...q, { text: 'Stretch committed.', type: 'output' as const }]);
+      pipeToConsole('Stretch committed.', 'output');
     } catch (e) {
       notifications.error(`CommitStretch failed: ${e}`);
     }
@@ -138,7 +138,7 @@
     } else {
       for (const r of result.results) {
         if (r.message) {
-          consolePipe.update(q => [...q, { text: r.message!, type: 'output' as const }]);
+          pipeToConsole(r.message!, 'output');
         }
       }
       notifications.success('Stacking complete');
@@ -182,10 +182,7 @@
         script: `WriteXISF destination="${destDir}" stack=true`
       });
       notifications.success('Stack exported to XISF');
-      consolePipe.update(q => [...q, {
-        text: `Stack exported to ${destDir}`,
-        type: 'output' as const
-      }]);
+      pipeToConsole(`Stack exported to ${destDir}`, 'output');
     } catch (e) {
       notifications.error(`Export failed: ${e}`);
     } finally {
@@ -207,7 +204,6 @@
       if (dataUrl) {
         phase     = 'stacked';
         imageUrl  = dataUrl;
-        imageMode = 'linear';
         await loadSummary();
       }
     } catch {
@@ -255,7 +251,7 @@
 
   <!-- Stats bar -->
   {#if stackStats}
-    <div style="padding: 3px 12px; background: var(--card-bg); border-bottom: 1px solid var(--border-color); font-size: 11px; color: var(--primary-color); font-family: monospace; flex-shrink: 0;">
+    <div class="sw-stats-bar">
       {stackStats}
     </div>
   {/if}

@@ -87,12 +87,12 @@
         storeVal = s.buffer_pool_memory_limit;
       } else if (field.type === 'integer') {
         draftVal = Math.round(Number(draftVal));
-        storeVal = (s as Record<string, number | string>)[field.key];
+        storeVal = (s as unknown as Record<string, number | string>)[field.key];
       } else if (field.type === 'float') {
         draftVal = Number(draftVal);
-        storeVal = (s as Record<string, number | string>)[field.key];
+        storeVal = (s as unknown as Record<string, number | string>)[field.key];
       } else {
-        storeVal = (s as Record<string, number | string>)[field.key];
+        storeVal = (s as unknown as Record<string, number | string>)[field.key];
       }
 
       if (draftVal !== storeVal) {

@@ -546,7 +546,7 @@
           </div>
         </div>
         {#if pixelRA !== null}
-          <div class="pt-row" style="margin-top:4px;">
+          <div class="pt-row pt-row-spaced">
             <div class="pt-field">
               <span class="pt-label">RA</span>
               <span class="pt-value">{pixelRA}</span>
@@ -557,10 +557,10 @@
             </div>
           </div>
         {:else if $currentImage}
-          <div class="pt-row" style="margin-top:4px;">
+          <div class="pt-row pt-row-spaced">
             <div class="pt-field">
               <span class="pt-label">RA / Dec</span>
-              <span class="pt-value" style="color:var(--text-secondary)">no WCS</span>
+              <span class="pt-value pt-value-muted">no WCS</span>
             </div>
           </div>
         {/if}
@@ -599,12 +599,12 @@
               <span class="meta-val">{decToHMS(ra)} &nbsp; {decToDMS(dec)}</span>
             </span>
           {:else}
-            <span class="meta-pill"><span class="meta-key">Image Center</span><span class="meta-val" style="color:var(--text-secondary)">not available</span></span>
+            <span class="meta-pill"><span class="meta-key">Image Center</span><span class="meta-val meta-val-muted">not available</span></span>
           {/if}
         </div>
         </div>
       {:else}
-        <p style="font-size:11px;color:var(--text-secondary);padding:8px;">No image loaded.</p>
+        <p class="info-empty">No image loaded.</p>
       {/if}
     </div>
 

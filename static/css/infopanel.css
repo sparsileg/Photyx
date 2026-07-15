@@ -85,6 +85,14 @@
     font-weight: 600;
 }
 
+.pt-value-muted {
+    color: var(--text-secondary);
+}
+
+.pt-row-spaced {
+    margin-top: 4px;
+}
+
 /* ── Image metadata ─────────────────────────────────────────────────────── */
 
 .meta-key {
@@ -101,6 +109,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.meta-val-muted {
+    color: var(--text-secondary);
+}
+
+.info-empty {
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding: 8px;
 }
 
 /* ── Mini histogram ─────────────────────────────────────────────────────── */

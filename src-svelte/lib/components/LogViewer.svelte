@@ -203,9 +203,9 @@
             <tbody>
               {#each files as f}
                 <tr
+                  class="lv-picker-row"
                   class:lv-picker-selected={selectedFile?.path === f.path}
                   onclick={() => selectFile(f)}
-                  style="cursor: pointer"
                   >
                   <td class="kw-name">{f.filename}</td>
                   <td class="kw-value">{formatModified(f.modified_secs)}</td>
@@ -255,8 +255,8 @@
           <table class="kw-table">
             <thead>
               <tr>
-                <th style="width:220px">Timestamp</th>
-                <th style="width:48px">Level</th>
+                <th class="lv-col-timestamp">Timestamp</th>
+                <th class="lv-col-level">Level</th>
                 <th>Message</th>
               </tr>
             </thead>

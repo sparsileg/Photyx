@@ -129,6 +129,32 @@ attribute driven by state, not from inline style manipulation:
 panel.classList.toggle('wide', activePanelId === 'someWidePanel');
 ```
 
+**Exception — genuinely dynamic per-instance values:** a value that's
+runtime-computed and unique per element (a context menu's click
+position, a user-adjustable font size) doesn't fit a class toggle,
+since it isn't one of a fixed set of states. For these, set CSS custom
+properties inline and reference them from the stylesheet, rather than
+writing raw property values into `style=`:
+
+```html
+
+
+  Delete
+
+
+
+```
+
+```css
+.context-menu { left: var(--menu-x); top: var(--menu-y); }
+```
+
+This keeps the *value* dynamic while keeping every other visual
+property (background, border, shadow, radius) in the stylesheet where
+it belongs — the inline `style=` attribute only ever carries
+custom-property assignments, never literal CSS properties like `color`
+or `padding`.
+
 ## 7. Inline Confirmation Bar
 
 Never use native dialogs (`window.confirm`, `window.prompt`, OS alert

@@ -31,9 +31,9 @@
   </div>
   <div class="panel-body">
     {#if loading}
-      <p style="font-size:11px;color:var(--text-secondary);padding:8px;">Loading plugins…</p>
+      <p class="plugin-empty">Loading plugins…</p>
     {:else if plugins.length === 0}
-      <p style="font-size:11px;color:var(--text-secondary);padding:8px;">No plugins found.</p>
+      <p class="plugin-empty">No plugins found.</p>
     {:else}
       {#each plugins as plugin}
         <div class="plugin-item">
