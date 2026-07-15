@@ -5,6 +5,7 @@
   import { ui } from '../stores/ui';
   import { session, currentImage } from '../stores/session';
   import { applyAutoStretch } from '../commands';
+  import { DISPLAY_MAX_WIDTH_PX } from '../settings/constants';
 
   const { onMousePixel }: {
     onMousePixel: (px: { x: number; y: number } | null) => void;
@@ -620,12 +621,11 @@
   let needsFullRes = $derived((() => {
     const img = $session.loadedImages[$session.fileList[$session.currentFrame]];
     if (!img) return false;
-    const DISPLAY_CACHE_WIDTH = 1200;
     if ($ui.zoomLevel === 'fit') {
-      return viewerWidth > DISPLAY_CACHE_WIDTH;
+      return viewerWidth > DISPLAY_MAX_WIDTH_PX;
     }
     const factor = ZOOM_FACTORS[$ui.zoomLevel] ?? 1;
-    return factor * img.width > DISPLAY_CACHE_WIDTH;
+    return factor * img.width > DISPLAY_MAX_WIDTH_PX;
   })());
 
   // ── Blink resolution auto-selection (issue #73) ───────────────────────────

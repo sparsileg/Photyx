@@ -3,6 +3,7 @@
 // (MacroLibrary, QuickLaunch, etc.) to execute frontend actions from pcode results.
 
 import { get } from 'svelte/store';
+import { getVersion } from '@tauri-apps/api/app';
 import { ui } from './stores/ui';
 import { session } from './stores/session';
 import { pipeToConsole } from './stores/consoleHistory';
@@ -33,7 +34,11 @@ function pwdCommand(): void {
 
 /// Executes a client-only command by name (case-insensitive).
 /// Called from Console.svelte (interactive) and any run_script caller (macro, Quick Launch).
-export function handleClientCommand(cc: string): void {
+/// Async because the 'version' case now reads the real app version via
+/// Tauri's getVersion() (Issue 87) rather than a hardcoded string; callers
+/// that don't need to wait for it (e.g. simple UI-toggle commands) can
+/// still call this without awaiting.
+export async function handleClientCommand(cc: string): Promise<void> {
   switch (cc.toLowerCase()) {
     case 'showanalysisgraph':
       ui.showView('analysisGraph');
@@ -45,7 +50,7 @@ export function handleClientCommand(cc: string): void {
       ui.clearAnnotations();
       break;
     case 'version':
-      pipeToConsole('Photyx 1.0.0-dev  |  pcode v1.0  |  Tauri + Svelte + Rust', 'output');
+      pipeToConsole(`Photyx ${await getVersion()}  |  pcode v1.0  |  Tauri + Svelte + Rust`, 'output');
       break;
     case 'pwd':
       pwdCommand();
@@ -53,4 +58,6 @@ export function handleClientCommand(cc: string): void {
   }
 }
 
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------

@@ -3,6 +3,7 @@
 
 import { writable } from 'svelte/store';
 import { db } from '../db';
+import { SHADOW_CLIP_DEFAULT, TARGET_BG_DEFAULT } from '../settings/constants';
 
 export type Theme = 'dark' | 'light' | 'matrix';
 export type ZoomLevel = 'fit' | '25' | '50' | '100' | '200';
@@ -80,10 +81,10 @@ const initial: UIState = {
   macroEditorFile:     null,
   preferencesOpen:     false,
   quickLaunchVisible:  true,
-  shadowClip:          -2.8,
+  shadowClip:          SHADOW_CLIP_DEFAULT,
   stackImageUrl:       null,
   stretchMode:         'linear',
-  targetBg:            0.15,
+  targetBg:            TARGET_BG_DEFAULT,
   theme:               'matrix',   // overwritten by hydrateFromDb()
   viewerClearToken:    0,
   zoomLevel:           'fit',

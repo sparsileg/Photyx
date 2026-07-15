@@ -11,6 +11,7 @@ use rayon::prelude::*;
 
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::AppContext;
+use crate::settings::defaults::{THUMBNAIL_JPEG_QUALITY, BLINK_WIDTH_12, BLINK_WIDTH_25};
 
 pub struct CacheFrames;
 
@@ -35,9 +36,9 @@ impl PhotyxPlugin for CacheFrames {
         let resolution = args.get("resolution").map(|s| s.as_str()).unwrap_or("both");
 
         let resolutions: &[(&str, usize)] = match resolution {
-            "12"   => &[("12", 376)],
-            "25"   => &[("25", 752)],
-            _      => &[("12", 376), ("25", 752)], // "both" — default
+            "12"   => &[("12", BLINK_WIDTH_12 as usize)],
+            "25"   => &[("25", BLINK_WIDTH_25 as usize)],
+            _      => &[("12", BLINK_WIDTH_12 as usize), ("25", BLINK_WIDTH_25 as usize)], // "both" — default
         };
 
         if ctx.file_list.is_empty() {
@@ -105,9 +106,8 @@ impl PhotyxPlugin for CacheFrames {
                 let img = RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
                 let mut buf = Cursor::new(Vec::new());
 
-                // Use JPEG with quality 75
                 use image::codecs::jpeg::JpegEncoder;
-                let mut encoder = JpegEncoder::new_with_quality(&mut buf, 75);
+                let mut encoder = JpegEncoder::new_with_quality(&mut buf, THUMBNAIL_JPEG_QUALITY);
                 encoder.encode_image(&img).ok()?;
 
                 info!("CacheFrames: cached {} ({}×{})", frame.path, disp_w, disp_h);

@@ -13,10 +13,13 @@ use std::io::Cursor;
 
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::{AppContext, ColorSpace, PixelData};
+use crate::settings::defaults::{DEFAULT_AUTOSTRETCH_SHADOW_CLIP, DEFAULT_AUTOSTRETCH_TARGET_BG, DISPLAY_MAX_WIDTH_PX};
 
 // ── AutoStretch defaults ──────────────────────────────────────────────────
-const DEFAULT_SHADOW_CLIP:       f32 = -2.8;
-const DEFAULT_TARGET_BACKGROUND: f32 = 0.15;
+// Cast from defaults.rs's f64 (shared with the settings/DB layer) to this
+// module's f32 (pixel-math precision) — single source of truth either way.
+const DEFAULT_SHADOW_CLIP:       f32 = DEFAULT_AUTOSTRETCH_SHADOW_CLIP as f32;
+const DEFAULT_TARGET_BACKGROUND: f32 = DEFAULT_AUTOSTRETCH_TARGET_BG as f32;
 
 pub struct AutoStretch;
 
@@ -110,7 +113,7 @@ pub fn compute_autostretch_jpeg_from_buffer(
     );
 
     // ── Downsample to display resolution ─────────────────────────────────────
-    const MAX_DISPLAY_W: usize = 1200;
+    const MAX_DISPLAY_W: usize = DISPLAY_MAX_WIDTH_PX as usize;
     let (disp_w, disp_h, step) = if src_w > MAX_DISPLAY_W {
         let step = (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W;
         (src_w / step, src_h / step, step)

@@ -8,6 +8,7 @@ import { session } from './stores/session';
 import { ui } from './stores/ui';
 import { analysisToggles } from './stores/analysisToggles';
 import { pipeToConsole } from './stores/consoleHistory';
+import { REJECT_FILE_SUFFIX } from './settings/constants';
 
 /** Runs AnalyzeFrames with an explicit profile (Issue 101) — used by the
  *  Analyze Frames profile-selection popup so a menu-triggered run is
@@ -81,7 +82,7 @@ export async function commitAnalysis(isImported: boolean) {
 
   notifications.running('Committing results…');
   try {
-    const msg = await invoke<string>('commit_analysis_results', { append: '.reject' });
+    const msg = await invoke<string>('commit_analysis_results', { append: `.${REJECT_FILE_SUFFIX}` });
     notifications.success(msg);
     await syncSession();
     ui.showView(null);

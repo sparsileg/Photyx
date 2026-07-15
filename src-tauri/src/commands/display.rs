@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tauri::{Manager, State};
 use crate::PhotoxState;
 use image::codecs::jpeg::JpegEncoder;
-use crate::settings::defaults::{DETAIL_JPEG_QUALITY, THUMBNAIL_JPEG_QUALITY};
+use crate::settings::defaults::{DETAIL_JPEG_QUALITY, THUMBNAIL_JPEG_QUALITY, DISPLAY_MAX_WIDTH_PX, BLINK_WIDTH_12, BLINK_WIDTH_25};
 
 #[tauri::command]
 pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {
@@ -32,7 +32,7 @@ pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, Strin
         src_w, src_h, channels, buffer.color_space, is_rgb
     );
 
-    const MAX_DISPLAY_W: usize = 1200;
+    const MAX_DISPLAY_W: usize = DISPLAY_MAX_WIDTH_PX as usize;
     let step = if src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
     let disp_w = src_w / step;
     let disp_h = src_h / step;
@@ -166,8 +166,7 @@ pub fn start_background_cache(
             (ctx.file_list.clone(), crate::plugins::pixel_chunking::chunk_size(&ctx))
         };
 
-        const MAX_DISPLAY_W: usize = 1200;
-
+        const MAX_DISPLAY_W: usize = DISPLAY_MAX_WIDTH_PX as usize;
         let mut display_results: Vec<(String, Vec<u8>)> = Vec::with_capacity(file_list.len());
 
         for path_chunk in file_list.chunks(chunk_len) {
@@ -261,7 +260,7 @@ pub fn start_background_cache(
 
         // Thumbnails are derived from the (much smaller) display-res JPEGs —
         // no raw pixel data is held past this point.
-        for &(res_name, target_w) in &[("12", 376u32), ("25", 752u32)] {
+        for &(res_name, target_w) in &[("12", BLINK_WIDTH_12), ("25", BLINK_WIDTH_25)] {
             let results: Vec<(String, Vec<u8>)> = display_results.par_iter().filter_map(|(path, jpeg_bytes)| {
                 let img = image::load_from_memory(jpeg_bytes).ok()?;
                 let src_w = img.width();
@@ -470,7 +469,7 @@ pub fn get_full_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> 
             .ok_or_else(|| "Failed to create full-res image".to_string())?;
         let mut buf = std::io::Cursor::new(Vec::new());
         use image::codecs::jpeg::JpegEncoder;
-        JpegEncoder::new_with_quality(&mut buf, 90)
+        JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY)
             .encode_image(&img)
             .map_err(|e| e.to_string())?;
         buf.into_inner()
@@ -554,7 +553,7 @@ pub fn load_file(path: String, state: State<Arc<PhotoxState>>) -> Result<String,
         None => return Err("No pixel data in file".to_string()),
     };
 
-const MAX_DISPLAY_W: usize = 1200;
+    const MAX_DISPLAY_W: usize = DISPLAY_MAX_WIDTH_PX as usize;
     let step = if width > MAX_DISPLAY_W { (width + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
     let disp_w = width / step;
     let disp_h = height / step;
@@ -659,7 +658,7 @@ pub fn get_stack_frame(state: State<Arc<PhotoxState>>) -> Result<String, String>
     let src_w = buffer.width  as usize;
     let src_h = buffer.height as usize;
 
-    const MAX_DISPLAY_W: usize = 1200;
+    const MAX_DISPLAY_W: usize = DISPLAY_MAX_WIDTH_PX as usize;
     let step   = if src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
     let disp_w = src_w / step;
     let disp_h = src_h / step;
@@ -705,7 +704,7 @@ pub fn get_stack_frame(state: State<Arc<PhotoxState>>) -> Result<String, String>
     let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
         .ok_or_else(|| "Failed to create stack preview image".to_string())?;
     let mut buf = std::io::Cursor::new(Vec::new());
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 90)
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY)
         .encode_image(&img)
         .map_err(|e| e.to_string())?;
     use base64::Engine as _;

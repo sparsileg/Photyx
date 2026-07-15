@@ -47,6 +47,20 @@ export const TARGET_BG_DEFAULT = 0.15;
 export const TARGET_BG_MIN = 0.01;
 export const TARGET_BG_MAX = 0.50;
 
+// ── Session / Analysis ──────────────────────────────────────────────────────
+// Mirrors REJECT_FILE_SUFFIX in src-tauri/src/constants.rs.
+
+export const REJECT_FILE_SUFFIX = 'reject';
+
+// ── Display ──────────────────────────────────────────────────────────────────
+// Mirrors DISPLAY_MAX_WIDTH_PX in src-tauri/src/settings/defaults.rs — the
+// display-resolution cache's box-filter downsample ceiling. The frontend
+// needs this value to know when the cache is too small for the current
+// viewport/zoom and a full-resolution frame must be requested instead
+// (Viewer.svelte's needsFullRes). Issue 87.
+
+export const DISPLAY_MAX_WIDTH_PX = 1200;
+
 // ── Field metadata — used by Preferences dialog for labels and helper text ────
 
 export interface PrefFieldMeta {

@@ -65,6 +65,7 @@
   import { getHelp, ARG_HINT_STRINGS, HELP_DB, extractRunningLabel } from '../pcode';
   import type { HelpEntry } from '../pcode';
   import { handleClientCommand, CLIENT_COMMAND_NAMES } from '../clientCommands';
+  import { getVersion } from '@tauri-apps/api/app';
 
   let { onhelp }: { onhelp: (entry: HelpEntry) => void } = $props();
 
@@ -226,8 +227,8 @@
       append('Expression functions: abs  basename  ceil  dirof  floor  max  min  round  sqrt  stripext', 'output');
     },
     clear: (_raw: string) => { lines = []; },
-    version: (_raw: string) => {
-      append('Photyx 1.0.0-dev  |  pcode v1.0  |  Tauri + Svelte + Rust', 'output');
+    version: async (_raw: string) => {
+      append(`Photyx ${await getVersion()}  |  pcode v1.0  |  Tauri + Svelte + Rust`, 'output');
     },
     showanalysisgraph: (_raw: string) => { ui.showView('analysisGraph'); },
     showanalysisresults: (_raw: string) => { ui.showView('analysisResults'); },
@@ -296,7 +297,7 @@
       if (cc === 'showanalysisresults') ui.showView('analysisResults');
       if (cc === 'clearannotations')    ui.clearAnnotations();
       if (cc === 'clear')               lines = [];
-      if (cc === 'version')             append('Photyx 1.0.0-dev  |  pcode v1.0  |  Tauri + Svelte + Rust', 'output');
+      if (cc === 'version')             getVersion().then(v => append(`Photyx ${v}  |  pcode v1.0  |  Tauri + Svelte + Rust`, 'output'));
       if (cc === 'pwd')                 CLIENT_COMMANDS['pwd']('');
     }
 
