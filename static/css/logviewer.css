@@ -82,6 +82,22 @@
     color: var(--text-secondary);
 }
 
+.lv-copy-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 0.63rem;
+    padding: 2px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.lv-copy-btn:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
 /* ── Log output ──────────────────────────────────────────────────────────── */
 
 .lv-output {

@@ -1,4 +1,5 @@
 <!-- LogViewer.svelte — Log file viewer modal. Spec §8.17 -->
+
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
@@ -46,6 +47,31 @@
     if (l.level === 'RAW')   return showDebug;
     return showInfo;
   }));
+
+  // ── Clipboard copy ────────────────────────────────────────────────────────
+  // Issue 110: copies the currently-visible (filtered) lines, timestamp +
+  // level + message, so the whole log can be pasted into an editor.
+  const DEFAULT_COPY_LABEL = '⎘ Copy';
+  let copyLabel = $state(DEFAULT_COPY_LABEL);
+  let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function buildLogText(): string {
+    return filtered
+      .map(l => `${l.timestamp}  ${l.level.padEnd(5)}  ${l.message}`)
+      .join('\n');
+  }
+
+  async function copyToClipboard() {
+    try {
+      await navigator.clipboard.writeText(buildLogText());
+      copyLabel = 'Copied!';
+    } catch (e) {
+      console.error('Copy failed:', e);
+      copyLabel = 'Copy failed';
+    }
+    if (copyResetTimer !== null) clearTimeout(copyResetTimer);
+    copyResetTimer = setTimeout(() => { copyLabel = DEFAULT_COPY_LABEL; }, 1500);
+  }
 
   function formatSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -143,6 +169,7 @@
 
   onDestroy(() => {
     stopTail();
+    if (copyResetTimer !== null) clearTimeout(copyResetTimer);
   });
 </script>
 
@@ -211,6 +238,7 @@
           <span>DEBUG</span>
         </label>
         <span class="lv-line-count">{filtered.length} lines</span>
+        <button class="lv-copy-btn" onclick={copyToClipboard}>{copyLabel}</button>
       </div>
 
       <!-- Log output — reuses modal-body for correct scroll behaviour -->

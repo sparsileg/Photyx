@@ -31,6 +31,35 @@
   let nextId = 2;
   let trace = $state(false);
 
+  // ── Clipboard copy ────────────────────────────────────────────────────────
+  // Copies the entire console buffer (all of `lines`, capped by
+  // console_history_size), not just what's currently scrolled into view.
+  const DEFAULT_COPY_LABEL = 'Copy';
+  let copyLabel = $state(DEFAULT_COPY_LABEL);
+  let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function linePrefix(type: ConsoleLine['type']): string {
+    if (type === 'input-echo') return '> ';
+    if (type === 'trace-echo') return '+ ';
+    return '';
+  }
+
+  function buildConsoleText(): string {
+    return lines.map(l => `${linePrefix(l.type)}${l.text}`).join('\n');
+  }
+
+  async function copyConsoleToClipboard() {
+    try {
+      await navigator.clipboard.writeText(buildConsoleText());
+      copyLabel = 'Copied!';
+    } catch (e) {
+      console.error('Copy failed:', e);
+      copyLabel = 'Copy failed';
+    }
+    if (copyResetTimer !== null) clearTimeout(copyResetTimer);
+    copyResetTimer = setTimeout(() => { copyLabel = DEFAULT_COPY_LABEL; }, 1500);
+  }
+
   import { PCODE_COMMANDS } from '../pcode';
   import { applyAutoStretch, loadFile } from '../commands';
   import { getHelp, ARG_HINT_STRINGS, HELP_DB, extractRunningLabel } from '../pcode';
@@ -414,6 +443,7 @@
     <div class="console-actions">
       <button class="console-action-btn" onclick={(e) => { e.stopPropagation(); trace = !trace; }}>{trace ? 'Trace' : 'No Trace'}</button>
       <button class="console-action-btn" onclick={(e) => { e.stopPropagation(); lines = []; }}>Clear</button>
+      <button class="console-action-btn" onclick={(e) => { e.stopPropagation(); copyConsoleToClipboard(); }}>{copyLabel}</button>
     </div>
   </div>
 
