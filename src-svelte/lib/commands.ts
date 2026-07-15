@@ -2,13 +2,74 @@
 // Wraps Tauri invoke calls for common operations
 
 import { invoke } from '@tauri-apps/api/core';
+import { get } from 'svelte/store';
 import { open } from '@tauri-apps/plugin-dialog';
 import { notifications } from './stores/notifications';
 import { session } from './stores/session';
 import { ui } from './stores/ui';
 import { analysisToggles } from './stores/analysisToggles';
 import { pipeToConsole } from './stores/consoleHistory';
+import { jobResult, jobOwner, progress, type JobResult, type ScriptResult } from './stores/progress';
 import { REJECT_FILE_SUFFIX } from './settings/constants';
+
+/** Dispatches a pcode script via run_script and resolves with the JobResult
+ *  once the backend posts it — bridging run_script's fire-and-forget contract
+ *  (accepted immediately; the real result arrives later via jobResult/jobOwner,
+ *  see stores/progress.ts) into a single awaitable call for one-shot call
+ *  sites that don't need their own progress-driven $effect (Issue 114).
+ *
+ *  Rejects immediately if another script is already running (the backend's
+ *  JOB_RUNNING guard) rather than queuing. Clears any stale/orphaned
+ *  jobResult before claiming ownership, so a leftover result from an earlier
+ *  uncollected run can never be mistaken for this one — safe to do
+ *  unconditionally since a second script can only be accepted once the
+ *  first one's owner has already consumed (or abandoned) its result.
+ *
+ *  `owner` must be distinct from 'console' and from any other concurrent
+ *  caller's owner string — Console.svelte's own $effect only reacts to
+ *  jobOwner === 'console', so any other value passes through untouched. */
+export function runScriptAndWait(script: string, owner: string): Promise<JobResult> {
+  return new Promise<JobResult>((resolve, reject) => {
+    (async () => {
+      let response: { accepted: boolean };
+      try {
+        response = await invoke<{ accepted: boolean }>('run_script', { script });
+      } catch (e) {
+        reject(e);
+        return;
+      }
+      if (!response.accepted) {
+        reject(new Error('A script is already running — try again in a moment.'));
+        return;
+      }
+
+      jobResult.set(null);
+      jobOwner.set(owner);
+      progress.set({ label: '', current: 0, total: 0 });
+
+      const unsubscribe = jobResult.subscribe((result) => {
+        if (result === null) return;
+        if (get(jobOwner) !== owner) return;
+        unsubscribe();
+        jobResult.set(null);
+        jobOwner.set(null);
+        resolve(result);
+      });
+    })();
+  });
+}
+
+/** Returns the script's last line result, or throws with its message if that
+ *  line did not succeed — the "did the backend command actually succeed"
+ *  check every runScriptAndWait caller needs before reporting success. */
+export function lastResultOrThrow(job: JobResult): ScriptResult {
+  const last = job.results.at(-1);
+  if (!last?.success) {
+    throw new Error(last?.message ?? 'Script failed');
+  }
+  return last;
+}
+
 
 /** Runs AnalyzeFrames with an explicit profile (Issue 101) — used by the
  *  Analyze Frames profile-selection popup so a menu-triggered run is

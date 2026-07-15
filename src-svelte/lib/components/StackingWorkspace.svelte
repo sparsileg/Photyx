@@ -7,6 +7,7 @@
   import { notifications } from '../stores/notifications';
   import { pipeToConsole } from '../stores/consoleHistory';
   import { jobResult, jobOwner, progress } from '../stores/progress';
+  import { runScriptAndWait, lastResultOrThrow } from '../commands';
 
   // ── State ─────────────────────────────────────────────────────────────────
 
@@ -38,7 +39,11 @@
     progress.set({ label: '', current: 0, total: 0 });
     jobOwner.set('stackingworkspace');
     try {
-      await invoke('run_script', { script: 'StackFrames' });
+      const response = await invoke<{ accepted: boolean }>('run_script', { script: 'StackFrames' });
+      if (!response.accepted) {
+        throw new Error('A script is already running — try again in a moment.');
+      }
+      // Result arrives asynchronously via the $effect below watching jobResult.
     } catch (e) {
       error = `${e}`;
       phase = 'idle';
@@ -94,9 +99,11 @@
   async function commitStretch() {
     if (!hasStack) return;
     try {
-      await invoke('run_script', {
-        script: `CommitStretch shadow_clip=${shadowClip} target_bg=${targetBg}`
-      });
+      const job = await runScriptAndWait(
+        `CommitStretch shadow_clip=${shadowClip} target_bg=${targetBg}`,
+        'stackingworkspace-commitstretch'
+      );
+      lastResultOrThrow(job);
       notifications.success('Stretch committed');
       pipeToConsole('Stretch committed.', 'output');
     } catch (e) {
@@ -178,11 +185,21 @@
     exporting = true;
     notifications.running('Exporting stack…');
     try {
-      await invoke('run_script', {
-        script: `WriteXISF destination="${destDir}" stack=true`
-      });
-      notifications.success('Stack exported to XISF');
-      pipeToConsole(`Stack exported to ${destDir}`, 'output');
+      const job = await runScriptAndWait(
+        `WriteXISF destination="${destDir}" stack=true`,
+        'stackingworkspace-exportxisf'
+      );
+      const last = lastResultOrThrow(job);
+      // WriteXISF reports an existing-file skip as a *successful* result
+      // (overwrite=false is the default) rather than an error — surface
+      // that distinctly instead of claiming the export happened.
+      if (last.message?.startsWith('Skipped')) {
+        notifications.warning(last.message);
+        pipeToConsole(last.message, 'warning');
+      } else {
+        notifications.success('Stack exported to XISF');
+        pipeToConsole(last.message ?? `Stack exported to ${destDir}`, 'output');
+      }
     } catch (e) {
       notifications.error(`Export failed: ${e}`);
     } finally {
@@ -225,7 +242,7 @@
       class="sw-btn sw-btn-primary"
       onclick={runStack}
       disabled={isStacking}
-    >
+      >
       {isStacking ? 'Stacking…' : '▶ Stack'}
     </button>
 
@@ -235,7 +252,7 @@
       class="sw-btn sw-btn-commit"
       disabled={!hasStack || stretchPending}
       onclick={commitStretch}
-    >Commit Stretch</button>
+      >Commit Stretch</button>
 
     <div class="sw-separator"></div>
 
@@ -244,7 +261,7 @@
       class="sw-btn sw-btn-primary"
       disabled={!hasStack || exporting}
       onclick={exportXisf}
-    >{exporting ? 'Exporting…' : '↓ Export XISF'}</button>
+      >{exporting ? 'Exporting…' : '↓ Export XISF'}</button>
 
     <button class="sw-btn sw-close" onclick={close}>✕ Close</button>
   </div>
@@ -256,25 +273,25 @@
     </div>
   {/if}
 
-  <!-- Image area -->
-  <div id="sw-image-wrap">
-    {#if isStacking}
-      <div class="sw-status">
-        <span>Stacking in progress…</span>
-        <span class="sw-status-hint">This may take a moment for large frame sets</span>
-      </div>
-    {:else if error}
-      <div class="sw-status sw-error">{error}</div>
-    {:else if imageUrl}
-      <img id="sw-image" src={imageUrl} alt="Stack result" />
-      {#if stackLabel}
-        <div id="sw-stack-label">{stackLabel}</div>
+<!-- Image area -->
+    <div id="sw-image-wrap">
+      {#if isStacking}
+        <div class="sw-status">
+          <span>Stacking in progress…</span>
+          <span class="sw-status-hint">This may take a moment for large frame sets</span>
+        </div>
+      {:else if error}
+        <div class="sw-status sw-error">{error}</div>
+      {:else if imageUrl}
+        <img id="sw-image" src={imageUrl} alt="Stack result" />
+        {#if stackLabel}
+          <div id="sw-stack-label">{stackLabel}</div>
+        {/if}
+      {:else}
+        <div class="sw-status">
+          <span>No stack result yet</span>
+          <span class="sw-status-hint">Click ▶ Stack to begin</span>
+        </div>
       {/if}
-    {:else}
-      <div class="sw-status">
-        <span>No stack result yet</span>
-        <span class="sw-status-hint">Click ▶ Stack to begin</span>
-      </div>
-    {/if}
-  </div>
+    </div>
 </div>

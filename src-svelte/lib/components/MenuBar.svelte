@@ -9,7 +9,7 @@
   import { open, save } from '@tauri-apps/plugin-dialog';
   import { readTextFile } from '@tauri-apps/plugin-fs';
   import { quickLaunch } from '../stores/quickLaunch';
-  import { addFiles, closeSession, applyAutoStretch, loadFile } from '../commands';
+  import { addFiles, closeSession, applyAutoStretch, loadFile, runScriptAndWait, lastResultOrThrow } from '../commands';
   import { settings } from '../stores/settings';
   import { thresholdProfiles } from '../stores/thresholdProfiles';
   import { ui } from '../stores/ui';
@@ -126,7 +126,7 @@
     let destPath: string | null;
     try {
       destPath = await save({
-        title:   'Save as FITS',
+        title:   'Save session as FITS',
         filters: [{ name: 'FITS Image', extensions: ['fit'] }],
       });
     } catch (e) {
@@ -141,18 +141,13 @@
 
     notifications.running('Saving FITS…');
     try {
-      const response = await invoke<{
-        results: Array<{ success: boolean; message: string | null }>;
-      }>('run_script', {
-        script: `WriteFIT destination="${destPath.replace(/\\/g, '/')}" overwrite=true${stackArg}`
-      });
-      const last = response.results[response.results.length - 1];
-      if (last?.success) {
-        notifications.success(`Saved: ${destPath}`);
-        pipeToConsole(`Saved FITS: ${destPath}`, 'success');
-      } else {
-        throw new Error(last?.message ?? 'WriteFIT failed');
-      }
+      const job = await runScriptAndWait(
+        `WriteFIT destination="${destPath.replace(/\\/g, '/')}" overwrite=true${stackArg}`,
+        'menubar-savefits'
+      );
+      lastResultOrThrow(job);
+      notifications.success(`Saved: ${destPath}`);
+      pipeToConsole(`Saved FITS: ${destPath}`, 'success');
     } catch (e) {
       notifications.error(`Save failed: ${e}`);
     }
@@ -272,18 +267,13 @@
 
     notifications.running('Exporting analysis report…');
     try {
-      const response = await invoke<{
-        results: Array<{ success: boolean; message: string | null }>;
-      }>('run_script', {
-        script: `ExportAnalysisReport path="${savePath.replace(/\\/g, '/')}"`
-      });
-      const last = response.results[response.results.length - 1];
-      if (last?.success) {
-        notifications.success('Session exported.');
-        pipeToConsole(last.message ?? 'Analysis report exported.', 'success');
-      } else {
-        throw new Error(last?.message ?? 'ExportAnalysisReport failed');
-      }
+      const job = await runScriptAndWait(
+        `ExportAnalysisReport path="${savePath.replace(/\\/g, '/')}"`,
+        'menubar-exportsession'
+      );
+      const last = lastResultOrThrow(job);
+      notifications.success('Session exported.');
+      pipeToConsole(last.message ?? 'Analysis report exported.', 'success');
     } catch (e) {
       notifications.error(`Export failed: ${e}`);
     }
@@ -344,7 +334,7 @@
     { name: 'File', items: [
       { label: 'Load Single Image ', action: 'load-single-image' },
       { sep: true },
-      { label: 'Save as FITS',       action: 'save-as-fits' },
+      { label: 'Save session as FITS',       action: 'save-as-fits' },
       { sep: true },
       { label: 'Exit',               action: 'exit' },
     ]},
@@ -394,7 +384,7 @@
       class="menu-item"
       class:open={openMenu === menu.name}
       onclick={(e) => { e.stopPropagation(); toggle(menu.name); }}
-    >
+      >
       {menu.name}
       {#if openMenu === menu.name}
         <div class="menu-dropdown">
@@ -405,7 +395,7 @@
               <div
                 class="menu-dropdown-item"
                 onclick={(e) => { e.stopPropagation(); action(item.action ?? ''); }}
-              >
+                >
                 {item.label}
                 {#if item.shortcut}
                   <span class="shortcut">{item.shortcut}</span>
