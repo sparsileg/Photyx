@@ -43,6 +43,15 @@ pub fn evaluate_condition(expr: &str, variables: &HashMap<String, String>) -> Re
     Ok(!t.is_empty() && t != "false" && t != "0")
 }
 
+/// Look up a variable by name, case-insensitively. All variable writes
+/// normalize their keys to uppercase (Issue 118), so a single uppercase
+/// lookup is sufficient here — the previous "try exact, then uppercase"
+/// two-step was only ever needed because write sites were inconsistent.
+/// Shared by every $var read site in the interpreter (mod.rs included).
+pub(crate) fn lookup_var<'a>(name: &str, variables: &'a HashMap<String, String>) -> Option<&'a String> {
+    variables.get(&name.to_uppercase())
+}
+
 /// Resolve one side of a comparison. Plain variable references are looked up
 /// directly so their resolved string values never hit the tokenizer.
 fn resolve_side(s: &str, variables: &HashMap<String, String>) -> Result<String, String> {
@@ -54,10 +63,12 @@ fn resolve_side(s: &str, variables: &HashMap<String, String>) -> Result<String, 
         } else {
             &s[1..]
         };
-        let val = variables.get(name)
-            .or_else(|| variables.get(&name.to_uppercase()))
+        // Issue 118: undefined variable is a hard error, not empty-string —
+        // a typo'd $name previously compared/printed as "" with no signal
+        // that anything was wrong, contradicting halt-on-error.
+        let val = lookup_var(name, variables)
             .cloned()
-            .unwrap_or_default();
+            .ok_or_else(|| format!("Undefined variable '${}'", name))?;
         return Ok(val);
     }
     // Otherwise evaluate as expression
@@ -355,11 +366,11 @@ fn parse_primary(tokens: &[Token], pos: &mut usize, variables: &HashMap<String, 
         }
         Token::Var(name) => {
             *pos += 1;
-            // Look up variable — try exact name, then uppercase
-            let val = variables.get(&name)
-                .or_else(|| variables.get(&name.to_uppercase()))
+            // Issue 118: undefined variable is a hard error, not empty-string
+            // — see resolve_side for the matching rationale.
+            let val = lookup_var(&name, variables)
                 .cloned()
-                .unwrap_or_default();
+                .ok_or_else(|| format!("Undefined variable '${}'", name))?;
             // Return as number if it parses, otherwise as string
             if let Ok(n) = val.trim().parse::<f64>() {
                 Ok(Value::Num(n))

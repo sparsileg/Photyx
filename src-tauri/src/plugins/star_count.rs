@@ -130,7 +130,9 @@ impl PhotyxPlugin for CountStarsPlugin {
             let result = ctx.analysis_result_for(&path);
             result.star_count = Some(count);
         }
-        ctx.variables.insert("starcount".to_string(), count.to_string());
+        // Uppercase key so $starcount and $STARCOUNT resolve identically —
+        // Issue 118.
+        ctx.variables.insert("STARCOUNT".to_string(), count.to_string());
 
         Ok(PluginOutput::Data(json!({
             "plugin":     "CountStars",

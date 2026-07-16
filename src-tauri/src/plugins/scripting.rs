@@ -347,7 +347,10 @@ impl PhotyxPlugin for CountFiles {
 
     fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError> {
         let count = ctx.file_list.len();
-        ctx.variables.insert("filecount".to_string(), count.to_string());
+        // Uppercase key so $filecount and $FILECOUNT resolve identically —
+        // Issue 118. The lowercase spelling in the doc/description above is
+        // unaffected: reads are case-insensitive after this change.
+        ctx.variables.insert("FILECOUNT".to_string(), count.to_string());
         Ok(PluginOutput::Value(count.to_string()))
     }
 }
@@ -391,7 +394,9 @@ impl PhotyxPlugin for CountMatches {
             )),
         };
 
-        ctx.variables.insert("matchcount".to_string(), count.to_string());
+        // Uppercase key so $matchcount and $MATCHCOUNT resolve identically
+        // — Issue 118.
+        ctx.variables.insert("MATCHCOUNT".to_string(), count.to_string());
         Ok(PluginOutput::Value(count.to_string()))
     }
 }
@@ -455,13 +460,16 @@ impl PhotyxPlugin for GetSystemPath {
             .replace('\\', "/")
             .to_string();
 
-        ctx.variables.insert(name.clone(), path_str.clone());
+        // `name` stays lowercase above for the match arms — only the
+        // storage key is uppercased, so $downloads and $DOWNLOADS both
+        // resolve. Issue 118.
+        ctx.variables.insert(name.to_uppercase(), path_str.clone());
         Ok(PluginOutput::Value(path_str))
     }
 }
 
-//    LoadFile
 
+//    LoadFile
 /// Loads a single file from disk and displays it in the viewer without
 /// adding it to the session file list.
 /// Usage: LoadFile path="D:/images/my_heatmap.xisf"

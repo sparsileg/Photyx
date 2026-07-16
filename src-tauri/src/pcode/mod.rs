@@ -331,8 +331,12 @@ fn execute_blocks(
                         }
                         for item in matched {
                             if *halted { return; }
-                            variables.insert(var.clone(), item.clone());
-                            ctx.variables.insert(var.clone(), item.clone());
+                            // Store keys uppercase so $var reads resolve
+                            // case-insensitively regardless of how the
+                            // loop variable was written — Issue 118.
+                            let var_key = var.to_uppercase();
+                            variables.insert(var_key.clone(), item.clone());
+                            ctx.variables.insert(var_key, item.clone());
                             execute_blocks(
                                 body, ctx, registry, halt_on_error,
                                 variables, results, last_log_index, halted,
@@ -407,8 +411,12 @@ fn execute_blocks(
 
                 for i in from_val..=to_val {
                     if *halted { return; }
-                    variables.insert(var.clone(), i.to_string());
-                    ctx.variables.insert(var.clone(), i.to_string());
+                    // Store keys uppercase so $var reads resolve
+                    // case-insensitively regardless of how the
+                    // loop variable was written — Issue 118.
+                    let var_key = var.to_uppercase();
+                    variables.insert(var_key.clone(), i.to_string());
+                    ctx.variables.insert(var_key, i.to_string());
                     execute_blocks(
                         body, ctx, registry, halt_on_error,
                         variables, results, last_log_index, halted,
@@ -453,8 +461,12 @@ fn execute_line(
                     return;
                 }
             };
-            variables.insert(name.clone(), resolved.clone());
-            ctx.variables.insert(name.clone(), resolved.clone());
+            // Store keys uppercase so $name reads resolve
+            // case-insensitively regardless of how Set was written —
+            // Issue 118.
+            let name_key = name.to_uppercase();
+            variables.insert(name_key.clone(), resolved.clone());
+            ctx.variables.insert(name_key, resolved.clone());
             info!("pcode: Set {} = {}", name, resolved);
             results.push(PcodeResult {
                 line_number,
@@ -536,17 +548,37 @@ fn execute_line(
             // Handle Print internally so expressions with variables evaluate correctly
             if command.to_lowercase() == "print" {
                 let raw_message = args.get("message").cloned().unwrap_or_default();
-                let evaluated = crate::pcode::expr::evaluate_expr(&raw_message, variables)
-                    .unwrap_or_else(|_| substitute_vars(&raw_message, variables));
-                results.push(PcodeResult {
-                    line_number,
-                    command:    "Print".to_string(),
-                    success:    true,
-                    message:    Some(evaluated),
-                    data:       None,
-                    trace_line: Some(format!("Print {}", raw_message)),
+                // Issue 118: previously fell back to substitute_vars (literal
+                // passthrough) on any evaluate_expr error and always reported
+                // success — this is the actual code path the interactive
+                // console exercises (run_script -> execute_line), and it was
+                // silently swallowing the undefined-variable error. Matches
+                // Assert's existing error handling directly above.
+                match crate::pcode::expr::evaluate_expr(&raw_message, variables) {
+                    Ok(evaluated) => {
+                        results.push(PcodeResult {
+                            line_number,
+                            command:    "Print".to_string(),
+                            success:    true,
+                            message:    Some(evaluated),
+                            data:       None,
+                            trace_line: Some(format!("Print {}", raw_message)),
             client_actions: vec![],
-                });
+                        });
+                    }
+                    Err(e) => {
+                        results.push(PcodeResult {
+                            line_number,
+                            command:    "Print".to_string(),
+                            success:    false,
+                            message:    Some(format!("Print expression error: {}", e)),
+                            data:       None,
+                            trace_line: None,
+            client_actions: vec![],
+                        });
+                        if halt_on_error { *halted = true; }
+                    }
+                }
                 return;
             }
 
@@ -660,8 +692,10 @@ pub(crate) fn substitute_vars(s: &str, variables: &HashMap<String, String>) -> S
                 if c == '}' { break; }
                 name.push(c);
             }
-            let val = variables.get(&name)
-                .or_else(|| variables.get(&name.to_uppercase()));
+            // Issue 118: single case-insensitive lookup via the shared
+            // helper — literal passthrough on a miss is deliberately kept
+            // (some plugins legitimately receive glob-like ${...} strings).
+            let val = expr::lookup_var(&name, variables);
             if let Some(val) = val {
                 result.push_str(val);
             } else {
@@ -677,8 +711,10 @@ pub(crate) fn substitute_vars(s: &str, variables: &HashMap<String, String>) -> S
                     break;
                 }
             }
-            let val = variables.get(&name)
-                .or_else(|| variables.get(&name.to_uppercase()));
+            // Issue 118: single case-insensitive lookup via the shared
+            // helper — literal passthrough on a miss is deliberately kept
+            // (some plugins legitimately receive glob-like $name strings).
+            let val = expr::lookup_var(&name, variables);
             if let Some(val) = val {
                 result.push_str(val);
             } else {

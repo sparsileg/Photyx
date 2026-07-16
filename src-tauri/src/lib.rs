@@ -146,9 +146,15 @@ async fn dispatch_command(
             }
             "print" => {
                 let message = args.get("message").cloned().unwrap_or_default();
-                let evaluated = crate::pcode::expr::evaluate_expr(&message, &ctx.variables)
-                    .unwrap_or_else(|_| crate::pcode::substitute_vars(&message, &ctx.variables));
-                Ok(PluginOutput::Message(evaluated))
+                // Issue 118: previously fell back to substitute_vars (literal
+                // passthrough) on any evaluate_expr error, which silently
+                // swallowed the undefined-variable error that function is
+                // now expected to raise — matching Assert's error handling
+                // just above instead.
+                match crate::pcode::expr::evaluate_expr(&message, &ctx.variables) {
+                    Ok(evaluated) => Ok(PluginOutput::Message(evaluated)),
+                    Err(e) => Err(PluginError::new("EXPR_ERROR", &format!("Print expression error: {}", e))),
+                }
             }
             _ => state.registry.dispatch(&mut ctx, &command, &args),
         }
