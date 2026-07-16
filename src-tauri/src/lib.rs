@@ -11,7 +11,6 @@ mod plugins;
 mod settings;
 mod utils;
 
-use commands::session::start_crash_recovery_timer;
 use context::AppContext;
 use plugin::registry::PluginRegistry;
 use plugin::{ArgMap, PluginError, PluginOutput};
@@ -429,7 +428,6 @@ pub fn run() {
     });
 
     tauri::Builder::default()
-        .setup(|app| { start_crash_recovery_timer(app) })
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -470,12 +468,10 @@ pub fn run() {
             commands::preferences::record_directory_visit,
             commands::preferences::save_quick_launch_buttons,
             commands::preferences::set_preference,
-            commands::session::check_crash_recovery,
             commands::session::debug_buffer_info,
             commands::session::get_keywords,
             commands::session::get_session,
             commands::session::get_variable,
-            commands::session::write_crash_recovery,
             commands::threshold_profiles::delete_threshold_profile,
             commands::threshold_profiles::get_active_threshold_profile_id,
             commands::threshold_profiles::get_threshold_profiles,

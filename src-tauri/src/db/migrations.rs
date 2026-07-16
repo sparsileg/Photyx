@@ -6,7 +6,7 @@
 use rusqlite::{Connection, Result};
 use crate::db::schema;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 5;
+pub const CURRENT_SCHEMA_VERSION: u32 = 6;
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     let version = get_version(conn)?;
     tracing::info!("DB schema version on open: {}", version);
@@ -18,6 +18,8 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
         migrate_v5,  // version 4 → 5: drop unused tables (session_history, algorithm_sets,
                      //                frame_analysis_results, console_history) and the dead
                      //                signal_weight_reject_sigma column (Issue 89)
+        migrate_v6,  // version 5 → 6: drop crash_recovery — feature removed, never used
+                     //                in production (Issue 107)
     ];
 
     for (i, migration) in migrations.iter().enumerate() {
@@ -41,10 +43,17 @@ fn set_version(conn: &Connection, version: u32) -> Result<()> {
     conn.execute_batch(&format!("PRAGMA user_version = {}", version))
 }
 
-fn migrate_v4(conn: &Connection) -> Result<()> {
+// Drops crash_recovery — the feature was live at one point (this table has
+// a real reader/writer, unlike the dead tables migrate_v5 dropped) but was
+// never actually reachable in practice: check_crash_recovery gated on an
+// open session_history row, and open_session (the only writer of such a
+// row) had no callers, so the restore offer could never fire. Confirmed
+// dead, not fixed — the feature is being removed rather than reconnected
+// (Issue 107). IF EXISTS handles both an existing database and a
+// from-here-on fresh install identically.
+fn migrate_v6(conn: &Connection) -> Result<()> {
     conn.execute_batch(
-        "ALTER TABLE threshold_profiles DROP COLUMN bg_stddev_reject_sigma;
-         ALTER TABLE threshold_profiles DROP COLUMN bg_gradient_reject_sigma;"
+        "DROP TABLE IF EXISTS crash_recovery;"
     )
 }
 
@@ -64,6 +73,13 @@ fn migrate_v5(conn: &Connection) -> Result<()> {
          DROP TABLE IF EXISTS session_history;
          DROP TABLE IF EXISTS console_history;
          ALTER TABLE threshold_profiles DROP COLUMN signal_weight_reject_sigma;"
+    )
+}
+
+fn migrate_v4(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "ALTER TABLE threshold_profiles DROP COLUMN bg_stddev_reject_sigma;
+         ALTER TABLE threshold_profiles DROP COLUMN bg_gradient_reject_sigma;"
     )
 }
 

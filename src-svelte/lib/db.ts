@@ -5,174 +5,158 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export interface QuickLaunchButton {
-    id:       number;
-    position: number;
-    label:    string;
-    script:   string;
+  id:       number;
+  position: number;
+  label:    string;
+  script:   string;
 }
 
 export interface MacroRow {
-    id:           number;
-    name:         string;
-    display_name: string;
-    script:       string;
-    tags:         string | null;
-    run_count:    number;
-    last_run_at:  number | null;
-    created_at:   number;
-    updated_at:   number;
+  id:           number;
+  name:         string;
+  display_name: string;
+  script:       string;
+  tags:         string | null;
+  run_count:    number;
+  last_run_at:  number | null;
+  created_at:   number;
+  updated_at:   number;
 }
 
 export interface MacroVersionRow {
-    id:       number;
-    macro_id: number;
-    script:   string;
-    saved_at: number;
+  id:       number;
+  macro_id: number;
+  script:   string;
+  saved_at: number;
 }
 
 export interface ThresholdProfile {
-    id:                         number;
-    name:                       string;
-    description:                string | null;
-    bg_median_reject_sigma:     number;
-    fwhm_reject_sigma:          number;
-    star_count_reject_sigma:    number;
-    eccentricity_reject_abs:    number;
+  id:                         number;
+  name:                       string;
+  description:                string | null;
+  bg_median_reject_sigma:     number;
+  fwhm_reject_sigma:          number;
+  star_count_reject_sigma:    number;
+  eccentricity_reject_abs:    number;
 }
 
 export const db = {
 
-    // ── Preferences ───────────────────────────────────────────────────────────
+  // ── Preferences ───────────────────────────────────────────────────────────
 
-    getAllPreferences(): Promise<Record<string, string>> {
-        return invoke('get_all_preferences');
-    },
+  getAllPreferences(): Promise<Record<string, string>> {
+    return invoke('get_all_preferences');
+  },
 
-    setPreference(key: string, value: string): Promise<void> {
-        return invoke('set_preference', { key, value });
-    },
+  setPreference(key: string, value: string): Promise<void> {
+    return invoke('set_preference', { key, value });
+  },
 
-    // ── Quick Launch ──────────────────────────────────────────────────────────
+  // ── Quick Launch ──────────────────────────────────────────────────────────
 
-    getQuickLaunchButtons(): Promise<QuickLaunchButton[]> {
-        return invoke('get_quick_launch_buttons');
-    },
+  getQuickLaunchButtons(): Promise<QuickLaunchButton[]> {
+    return invoke('get_quick_launch_buttons');
+  },
 
-    saveQuickLaunchButtons(buttons: { label: string; script: string }[]): Promise<void> {
-        return invoke('save_quick_launch_buttons', { buttons });
-    },
+  saveQuickLaunchButtons(buttons: { label: string; script: string }[]): Promise<void> {
+    return invoke('save_quick_launch_buttons', { buttons });
+  },
 
-    // ── Recent Directories ────────────────────────────────────────────────────
+  // ── Recent Directories ────────────────────────────────────────────────────
 
-    getRecentDirectories(): Promise<string[]> {
-        return invoke('get_recent_directories');
-    },
+  getRecentDirectories(): Promise<string[]> {
+    return invoke('get_recent_directories');
+  },
 
-    recordDirectoryVisit(path: string): Promise<void> {
-        return invoke('record_directory_visit', { path });
-    },
+  recordDirectoryVisit(path: string): Promise<void> {
+    return invoke('record_directory_visit', { path });
+  },
 
+  // ── Database Backup / Restore ─────────────────────────────────────────────
 
-    // ── Crash Recovery ────────────────────────────────────────────────────────
+  backupDatabase(): Promise<string> {
+    return invoke('backup_database');
+  },
 
-    writeCrashRecovery(): Promise<void> {
-        return invoke('write_crash_recovery');
-    },
+  restoreDatabase(backupPath: string): Promise<void> {
+    return invoke('restore_database', { backupPath });
+  },
 
-    checkCrashRecovery(): Promise<{
-        active_directory: string | null;
-        file_list: string | null;
-        current_frame_index: number | null;
-        written_at: number;
-    } | null> {
-        return invoke('check_crash_recovery');
-    },
+  // ── Macros ────────────────────────────────────────────────────────────────
 
-    // ── Database Backup / Restore ─────────────────────────────────────────────
+  getMacros(): Promise<MacroRow[]> {
+    return invoke('get_macros');
+  },
 
-    backupDatabase(): Promise<string> {
-        return invoke('backup_database');
-    },
+  saveMacro(name: string, displayName: string, script: string): Promise<number> {
+    return invoke('save_macro', { name, displayName, script });
+  },
 
-    restoreDatabase(backupPath: string): Promise<void> {
-        return invoke('restore_database', { backupPath });
-    },
+  deleteMacro(id: number): Promise<void> {
+    return invoke('delete_macro', { id });
+  },
 
-    // ── Macros ────────────────────────────────────────────────────────────────
+  renameMacro(id: number, newDisplayName: string): Promise<string> {
+    return invoke('rename_macro', { id, newDisplayName });
+  },
 
-    getMacros(): Promise<MacroRow[]> {
-        return invoke('get_macros');
-    },
+  getMacroVersions(macroId: number): Promise<MacroVersionRow[]> {
+    return invoke('get_macro_versions', { macroId });
+  },
 
-    saveMacro(name: string, displayName: string, script: string): Promise<number> {
-        return invoke('save_macro', { name, displayName, script });
-    },
+  restoreMacroVersion(versionId: number): Promise<void> {
+    return invoke('restore_macro_version', { versionId });
+  },
 
-    deleteMacro(id: number): Promise<void> {
-        return invoke('delete_macro', { id });
-    },
+  incrementMacroRunCount(id: number): Promise<void> {
+    return invoke('increment_macro_run_count', { id });
+  },
 
-    renameMacro(id: number, newDisplayName: string): Promise<string> {
-        return invoke('rename_macro', { id, newDisplayName });
-    },
+  // ── Threshold Profiles ────────────────────────────────────────────────────
 
-    getMacroVersions(macroId: number): Promise<MacroVersionRow[]> {
-        return invoke('get_macro_versions', { macroId });
-    },
+  getThresholdProfiles(): Promise<ThresholdProfile[]> {
+    return invoke('get_threshold_profiles');
+  },
 
-    restoreMacroVersion(versionId: number): Promise<void> {
-        return invoke('restore_macro_version', { versionId });
-    },
+  getActiveThresholdProfileId(): Promise<number | null> {
+    return invoke('get_active_threshold_profile_id');
+  },
 
-    incrementMacroRunCount(id: number): Promise<void> {
-        return invoke('increment_macro_run_count', { id });
-    },
+  saveThresholdProfile(profile: ThresholdProfile): Promise<ThresholdProfile> {
+    return invoke('save_threshold_profile', { profile });
+  },
 
-    // ── Threshold Profiles ────────────────────────────────────────────────────
+  deleteThresholdProfile(id: number): Promise<void> {
+    return invoke('delete_threshold_profile', { id });
+  },
 
-    getThresholdProfiles(): Promise<ThresholdProfile[]> {
-        return invoke('get_threshold_profiles');
-    },
+  setActiveThresholdProfile(id: number): Promise<void> {
+    return invoke('set_active_threshold_profile', { id });
+  },
 
-    getActiveThresholdProfileId(): Promise<number | null> {
-        return invoke('get_active_threshold_profile_id');
-    },
+  // ── Migration ─────────────────────────────────────────────────────────────
 
-    saveThresholdProfile(profile: ThresholdProfile): Promise<ThresholdProfile> {
-        return invoke('save_threshold_profile', { profile });
-    },
+  async migrateLocalStorage(): Promise<void> {
+    const prefs = await db.getAllPreferences();
+    if (prefs['localStorage_migrated'] === 'true') return;
 
-    deleteThresholdProfile(id: number): Promise<void> {
-        return invoke('delete_threshold_profile', { id });
-    },
+    const theme = localStorage.getItem('photyx-theme');
+    if (theme) await db.setPreference('theme', theme);
 
-    setActiveThresholdProfile(id: number): Promise<void> {
-        return invoke('set_active_threshold_profile', { id });
-    },
+    const ql = localStorage.getItem('photyx-quick-launch');
+    if (ql) {
+      try {
+        const entries = JSON.parse(ql);
+        const buttons = entries.map((e: { name: string; script: string }) => ({
+          label:  e.name,
+          script: e.script,
+        }));
+        await db.saveQuickLaunchButtons(buttons);
+      } catch { /* ignore malformed data */ }
+    }
 
-    // ── Migration ─────────────────────────────────────────────────────────────
-
-    async migrateLocalStorage(): Promise<void> {
-        const prefs = await db.getAllPreferences();
-        if (prefs['localStorage_migrated'] === 'true') return;
-
-        const theme = localStorage.getItem('photyx-theme');
-        if (theme) await db.setPreference('theme', theme);
-
-        const ql = localStorage.getItem('photyx-quick-launch');
-        if (ql) {
-            try {
-                const entries = JSON.parse(ql);
-                const buttons = entries.map((e: { name: string; script: string }) => ({
-                    label:  e.name,
-                    script: e.script,
-                }));
-                await db.saveQuickLaunchButtons(buttons);
-            } catch { /* ignore malformed data */ }
-        }
-
-        await db.setPreference('localStorage_migrated', 'true');
-        localStorage.removeItem('photyx-theme');
-        localStorage.removeItem('photyx-quick-launch');
-    },
+    await db.setPreference('localStorage_migrated', 'true');
+    localStorage.removeItem('photyx-theme');
+    localStorage.removeItem('photyx-quick-launch');
+  },
 };

@@ -48,12 +48,6 @@ pub const DEFAULT_AUTOSTRETCH_TARGET_BG:    f64 = 0.15;
 pub const AUTOSTRETCH_TARGET_BG_MIN:        f64 = 0.01;
 pub const AUTOSTRETCH_TARGET_BG_MAX:        f64 = 0.50;
 
-// ── Crash Recovery ────────────────────────────────────────────────────────────
-
-pub const DEFAULT_CRASH_RECOVERY_INTERVAL_SECS: i64 = 60;
-pub const CRASH_RECOVERY_INTERVAL_MIN:          i64 = 15;
-pub const CRASH_RECOVERY_INTERVAL_MAX:          i64 = 300;
-
 // ── Threshold Profiles (AnalyzeFrames defaults) ───────────────────────────────
 
 pub const DEFAULT_PROFILE_NAME:              &str = "Default";

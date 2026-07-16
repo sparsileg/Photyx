@@ -1,4 +1,4 @@
-<!-- +page.svelte — Photyx main application shell. Spec §8.1 -->
+<!-- +page.svelte   Photyx main application shell. Spec §8.1 -->
 
 <script lang="ts">
   import AboutModal from '../lib/components/AboutModal.svelte';
@@ -59,13 +59,13 @@
     blinkFilename = filename;
   }
 
-  // Mouse pixel tracking — prop callback, never touches the store
+  // Mouse pixel tracking   prop callback, never touches the store
   let mousePixel = $state<{ x: number; y: number } | null>(null);
   function onMousePixel(px: { x: number; y: number } | null) {
     mousePixel = px;
   }
 
-  // DB hydration and crash recovery — runs once on startup
+  // DB hydration   runs once on startup
   onMount(async () => {
     let prefs: Record<string, string> = {};
     try {
@@ -82,21 +82,10 @@
       console.error('DB hydration failed:', e);
     }
 
-    // Check for crash recovery candidate
-    try {
-      const recovery = await db.checkCrashRecovery();
-      if (recovery?.file_list) {
-        showRecoveryOffer = true;
-        pendingRecovery = recovery;
-      }
-    } catch (e) {
-      console.error('Crash recovery check failed:', e);
-    }
-
     // (close_session is called via File > Exit   see MenuBar.svelte)
   });
 
-  // Native OS file drag-and-drop — routes through AddFiles regardless of
+  // Native OS file drag-and-drop   routes through AddFiles regardless of
   // count or which view is currently active, same as Session > Add Files.
   onMount(() => {
     let unlisten: (() => void) | undefined;
@@ -113,37 +102,6 @@
 
     return () => { unlisten?.(); };
   });
-
-  // Crash recovery state
-  let showRecoveryOffer = $state(false);
-  let pendingRecovery = $state<{
-    file_list: string | null;
-    current_frame_index: number | null;
-    written_at: number;
-  } | null>(null);
-
-  async function acceptRecovery() {
-    if (!pendingRecovery?.file_list) return;
-    showRecoveryOffer = false;
-    try {
-      const paths = JSON.parse(pendingRecovery.file_list) as string[];
-      if (paths.length > 0) {
-        const pathsArg = paths.map(p => p.replace(/\\/g, '/')).join(',');
-        await invoke('dispatch_command', {
-          request: { command: 'AddFiles', args: { paths: pathsArg } }
-        });
-        await syncSessionState();
-      }
-    } catch (e) {
-      console.error('Session recovery failed:', e);
-    }
-    pendingRecovery = null;
-  }
-
-  function dismissRecovery() {
-    showRecoveryOffer = false;
-    pendingRecovery = null;
-  }
 
   async function syncSessionState() {
     const state = await invoke<{
@@ -192,14 +150,6 @@
   <HelpModal entry={helpEntry} onclose={() => helpEntry = null} />
 {/if}
 
-{#if showRecoveryOffer && pendingRecovery}
-  <div class="recovery-bar">
-    <span>A previous session was not closed cleanly. Restore {JSON.parse(pendingRecovery.file_list ?? '[]').length} file(s)?</span>
-    <button onclick={acceptRecovery}>Restore</button>
-    <button onclick={dismissRecovery}>Dismiss</button>
-  </div>
-{/if}
-
 <div id="app">
   {#if $ui.dragActive}
     <div id="drag-drop-overlay">Drop files to add to session</div>
@@ -219,9 +169,9 @@
       <AnalysisGraph />
     {:else if $ui.activeView === 'analysisResults'}
       <AnalysisResults />
-      {:else if $ui.activeView === 'stackingWorkspace'}
-        <StackingWorkspace />
-      {:else}
+    {:else if $ui.activeView === 'stackingWorkspace'}
+      <StackingWorkspace />
+    {:else}
       <Viewer onMousePixel={onMousePixel} />
     {/if}
     {#if !$ui.consoleExpanded}

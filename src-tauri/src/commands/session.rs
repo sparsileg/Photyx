@@ -1,9 +1,8 @@
 // commands/session.rs — Session state and crash recovery Tauri command handlers
 
 use std::sync::Arc;
-use tauri::{Manager, State};
+use tauri::State;
 use crate::PhotoxState;
-use crate::db;
 
 #[tauri::command]
 pub fn get_session(state: State<Arc<PhotoxState>>) -> serde_json::Value {
@@ -50,88 +49,6 @@ pub fn debug_buffer_info(state: State<Arc<PhotoxState>>) -> serde_json::Value {
     })
 }
 
-pub fn do_write_crash_recovery(state: &PhotoxState) -> Result<(), String> {
-    let ctx = state.context.lock().expect("context lock poisoned");
-    let db  = state.db.lock().expect("db lock poisoned");
-    let now = db::now_unix();
-    let file_list = serde_json::to_string(&ctx.file_list).unwrap_or_default();
-    let autostretch_enabled: i64 = 1;
-    db.execute(
-        "INSERT INTO crash_recovery
-             (id, file_list, current_frame_index, autostretch_enabled, written_at)
-         VALUES (1, ?1, ?2, ?3, ?4)
-         ON CONFLICT(id) DO UPDATE SET
-             file_list           = excluded.file_list,
-             current_frame_index = excluded.current_frame_index,
-             autostretch_enabled = excluded.autostretch_enabled,
-             written_at          = excluded.written_at",
-        rusqlite::params![
-            file_list,
-            ctx.current_frame as i64,
-            autostretch_enabled,
-            now,
-        ],
-    ).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn write_crash_recovery(state: State<Arc<PhotoxState>>) -> Result<(), String> {
-    do_write_crash_recovery(&state)
-}
-
-#[tauri::command]
-pub fn check_crash_recovery(state: State<Arc<PhotoxState>>) -> Result<Option<serde_json::Value>, String> {
-    let db = state.db.lock().expect("db lock poisoned");
-
-    let open_session_id: Option<i64> = db.query_row(
-        "SELECT id FROM session_history WHERE closed_at IS NULL ORDER BY opened_at DESC LIMIT 1",
-        [],
-        |row| row.get(0),
-    ).ok();
-
-    let Some(_session_id) = open_session_id else { return Ok(None); };
-
-    let now = db::now_unix();
-    let _ = db.execute(
-        "UPDATE session_history SET closed_at = ?1 WHERE closed_at IS NULL",
-        rusqlite::params![now],
-    );
-
-    let result = db.query_row(
-        "SELECT file_list, current_frame_index, written_at
-         FROM crash_recovery WHERE id = 1",
-        [],
-        |row| Ok(serde_json::json!({
-            "file_list":           row.get::<_, Option<String>>(0)?,
-            "current_frame_index": row.get::<_, Option<i64>>(1)?,
-            "written_at":          row.get::<_, i64>(2)?,
-        })),
-    ).ok();
-    Ok(result)
-}
-
-pub fn start_crash_recovery_timer(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let app_handle = app.handle().clone();
-    std::thread::spawn(move || {
-        loop {
-            std::thread::sleep(std::time::Duration::from_secs(60));
-            let state = app_handle.state::<Arc<PhotoxState>>();
-            let has_session = {
-                let ctx = state.context.lock().expect("context lock poisoned");
-                ctx.current_session_id.is_some()
-            };
-            if has_session {
-                if let Err(e) = do_write_crash_recovery(&state) {
-                    tracing::warn!("Crash recovery write failed: {}", e);
-                } else {
-                    tracing::debug!("Crash recovery state written");
-                }
-            }
-        }
-    });
-    Ok(())
-}
 
 #[tauri::command]
 pub fn get_keywords(state: State<Arc<PhotoxState>>) -> serde_json::Value {

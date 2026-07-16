@@ -66,9 +66,6 @@ pub struct AppSettings {
     pub autostretch_shadow_clip:     f64,     // persisted, user pref
     pub autostretch_target_bg:       f64,     // persisted, user pref
 
-    // ── Crash Recovery ────────────────────────────────────────────────
-    pub crash_recovery_interval_secs: i64,   // persisted, internal
-
     // ── Active threshold profile ──────────────────────────────────────
     pub active_threshold_profile_id: Option<i64>,           // persisted
     pub threshold_profiles:          Vec<ThresholdProfile>, // loaded at startup
@@ -98,7 +95,6 @@ impl AppSettings {
             rayon_thread_count:           RAYON_THREAD_COUNT_DEFAULT,
             autostretch_shadow_clip:      DEFAULT_AUTOSTRETCH_SHADOW_CLIP,
             autostretch_target_bg:        DEFAULT_AUTOSTRETCH_TARGET_BG,
-            crash_recovery_interval_secs: DEFAULT_CRASH_RECOVERY_INTERVAL_SECS,
             active_threshold_profile_id:  None,
             threshold_profiles:           Vec::new(),
             display_max_width_px:         DISPLAY_MAX_WIDTH_PX,
@@ -167,11 +163,6 @@ impl AppSettings {
                         self.autostretch_target_bg = v.clamp(AUTOSTRETCH_TARGET_BG_MIN, AUTOSTRETCH_TARGET_BG_MAX);
                     }
                 }
-                "crash_recovery_interval_secs" => {
-                    if let Ok(v) = value.parse::<i64>() {
-                        self.crash_recovery_interval_secs = v.clamp(CRASH_RECOVERY_INTERVAL_MIN, CRASH_RECOVERY_INTERVAL_MAX);
-                    }
-                }
                 "active_threshold_profile_id" => {
                     self.active_threshold_profile_id = value.parse::<i64>().ok();
                 }
@@ -238,11 +229,6 @@ impl AppSettings {
             "autostretch_target_bg"        => {
                 if let Ok(v) = value.parse::<f64>() {
                     self.autostretch_target_bg = v.clamp(AUTOSTRETCH_TARGET_BG_MIN, AUTOSTRETCH_TARGET_BG_MAX);
-                }
-            }
-            "crash_recovery_interval_secs" => {
-                if let Ok(v) = value.parse::<i64>() {
-                    self.crash_recovery_interval_secs = v.clamp(CRASH_RECOVERY_INTERVAL_MIN, CRASH_RECOVERY_INTERVAL_MAX);
                 }
             }
             "active_threshold_profile_id"  => {
@@ -333,7 +319,6 @@ impl AppSettings {
             "rayon_thread_count"           => Some(self.rayon_thread_count.to_string()),
             "autostretch_shadow_clip"      => Some(self.autostretch_shadow_clip.to_string()),
             "autostretch_target_bg"        => Some(self.autostretch_target_bg.to_string()),
-            "crash_recovery_interval_secs" => Some(self.crash_recovery_interval_secs.to_string()),
             "active_threshold_profile_id"  => self.active_threshold_profile_id.map(|v| v.to_string()),
             _ => None,
         }
