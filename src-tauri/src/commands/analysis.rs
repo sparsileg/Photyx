@@ -335,17 +335,21 @@ pub fn do_commit(ctx: &mut crate::context::AppContext, append: &str) -> Result<S
 
     // ── Step 2: move REJECT files to rejected/ subfolder ─────────────────────
     let mut move_errors: Vec<String> = Vec::new();
-    let mut moved_count = 0u32;
+    let mut moved_paths:  Vec<String> = Vec::new();
 
     for old_path in &reject_paths {
         match move_to_rejected(old_path, append) {
-            Ok(_new_path) => moved_count += 1,
+            Ok(_new_path) => moved_paths.push(old_path.clone()),
             Err(e)        => move_errors.push(e),
         }
     }
+    let moved_count = moved_paths.len() as u32;
 
-    // ── Step 3: remove rejected files from session; leave pass frames loaded ──
-    ctx.remove_rejected_files(&reject_paths);
+    // ── Step 3: remove only successfully-moved files from the session; a ──────
+    //    REJECT frame whose move failed stays loaded, on disk under its
+    //    original name, and reclassifies as unanalyzed on the next Refresh
+    //    (Issue 123 — do not feed the failures into remove_rejected_files).
+    ctx.remove_rejected_files(&moved_paths);
 
     // ── Build result message ──────────────────────────────────────────────────
     let mut msg = format!(
@@ -353,8 +357,12 @@ pub fn do_commit(ctx: &mut crate::context::AppContext, append: &str) -> Result<S
         pass_count, reject_count, moved_count
     );
     if !move_errors.is_empty() {
-        msg.push_str(&format!(" {} move error(s).", move_errors.len()));
+        msg.push_str(&format!(
+            " {} FAILED TO MOVE — these frames remain in the session and on disk under their original names:",
+            move_errors.len()
+        ));
         for e in &move_errors {
+            msg.push_str(&format!("\n  - {}", e));
             tracing::warn!("CommitResults move error: {}", e);
         }
     }

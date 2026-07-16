@@ -144,7 +144,11 @@ export async function commitAnalysis(isImported: boolean) {
   notifications.running('Committing results…');
   try {
     const msg = await invoke<string>('commit_analysis_results', { append: `.${REJECT_FILE_SUFFIX}` });
-    notifications.success(msg);
+    if (msg.includes('FAILED TO MOVE')) {
+      notifications.error(msg);
+    } else {
+      notifications.success(msg);
+    }
     await syncSession();
     ui.showView(null);
     ui.clearViewer();
