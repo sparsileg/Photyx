@@ -150,7 +150,9 @@ impl AppSettings {
                 }
                 "rayon_thread_count" => {
                     if let Ok(v) = value.parse::<i64>() {
-                        self.rayon_thread_count = v.max(RAYON_THREAD_COUNT_MIN);
+                        // -1 is a first-class sentinel ("auto: num_cpus - 1 at
+                        // runtime"), not a value to clamp away — Issue 121.
+                        self.rayon_thread_count = if v == -1 { -1 } else { v.max(RAYON_THREAD_COUNT_MIN) };
                     }
                 }
                 "autostretch_shadow_clip" => {
@@ -218,7 +220,9 @@ impl AppSettings {
             }
             "rayon_thread_count"           => {
                 if let Ok(v) = value.parse::<i64>() {
-                    self.rayon_thread_count = v.max(RAYON_THREAD_COUNT_MIN);
+                    // -1 is a first-class sentinel ("auto: num_cpus - 1 at
+                    // runtime"), not a value to clamp away — Issue 121.
+                    self.rayon_thread_count = if v == -1 { -1 } else { v.max(RAYON_THREAD_COUNT_MIN) };
                 }
             }
             "autostretch_shadow_clip"      => {

@@ -67,8 +67,13 @@ function createSettingsStore() {
           n.autostretch_target_bg = parseFloat(prefs['autostretch_target_bg']) || s.autostretch_target_bg;
         if (prefs['ui_font_size'])
           n.ui_font_size = parseFloat(prefs['ui_font_size']) || s.ui_font_size;
-        if (prefs['rayon_thread_count'])
-          n.rayon_thread_count = parseInt(prefs['rayon_thread_count'], 10) ?? s.rayon_thread_count;
+        if (prefs['rayon_thread_count']) {
+          const parsed = parseInt(prefs['rayon_thread_count'], 10);
+          // parseInt returns NaN (not null/undefined) on a corrupt/non-numeric
+          // pref row, so `?? fallback` never triggered — NaN could enter the
+          // store silently. Issue 121.
+          n.rayon_thread_count = Number.isNaN(parsed) ? s.rayon_thread_count : parsed;
+        }
         return n;
       });
     },

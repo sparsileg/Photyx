@@ -15,11 +15,27 @@
 
   let { onclose }: { onclose: () => void } = $props();
 
-  let cpuCount = $state(32);
+  // 0 = not yet loaded. Was previously a hardcoded 32 placeholder that
+  // could reach a saved value if the draft init ran (and Apply was
+  // clicked) before get_cpu_count resolved. Issue 121.
+  let cpuCount = $state(0);
+
+  // Fetched once on mount, deliberately independent of the draft-init
+  // effect below — it must never re-run draft init or clobber an
+  // in-progress edit when it resolves. Issue 121.
+  $effect(() => {
+    invoke<number>('get_cpu_count').then(n => { cpuCount = n; });
+  });
 
   // Draft copy — edited freely; nothing is written until OK or Apply.
   // buffer_pool_memory_limit is converted to GB for display.
   let draft = $state<Record<string, number | string>>({});
+
+  // True when the "Threads − 1" checkbox is checked (auto mode). The raw
+  // draft.rayon_thread_count sentinel (-1) is what's actually compared
+  // against the store and persisted — this is purely display/interaction
+  // state, not the value that gets saved. Issue 121.
+  let rayonAuto = $state(true);
 
   // Validation errors keyed by preference key
   let errors = $state<Record<string, string>>({});
@@ -36,11 +52,13 @@
       buffer_pool_memory_limit: s.buffer_pool_memory_limit / GB,
       autostretch_shadow_clip:  s.autostretch_shadow_clip,
       autostretch_target_bg:    s.autostretch_target_bg,
-      rayon_thread_count:       s.rayon_thread_count < 1
-                                  ? (cpuCount - 1 || 1)
-                                  : s.rayon_thread_count,
+      // Keep the raw store value, including -1 — do NOT resolve "auto" to
+      // a concrete number here. buildChanged() compares this directly
+      // against the store value; resolving it early made every unrelated
+      // Apply silently pin a concrete thread count. Issue 121.
+      rayon_thread_count:       s.rayon_thread_count,
     };
-    invoke<number>('get_cpu_count').then(n => { cpuCount = n; });
+    rayonAuto = s.rayon_thread_count < 0;
   });
 
   function fieldMeta(key: string): PrefFieldMeta | undefined {
@@ -48,13 +66,34 @@
   }
 
   function effectiveMax(field: PrefFieldMeta): number | undefined {
-    if (field.key === 'rayon_thread_count') return cpuCount;
+    if (field.key === 'rayon_thread_count') {
+      // 0 means cpuCount hasn't loaded yet — treat max as unknown rather
+      // than capping manual entry at a bogus 0. Issue 121.
+      return cpuCount > 0 ? cpuCount : undefined;
+    }
     return field.max;
+  }
+
+  // Checked = auto (-1, sentinel, disabled field). Unchecked = manual entry,
+  // seeded with a sensible starting value rather than leaving whatever -1
+  // or stale number was last in the draft. Issue 121.
+  function toggleRayonAuto(checked: boolean) {
+    rayonAuto = checked;
+    if (checked) {
+      draft.rayon_thread_count = -1;
+    } else {
+      draft.rayon_thread_count = Math.max(1, cpuCount - 1 || 1);
+    }
   }
 
   function validate(): boolean {
     errors = {};
     for (const field of PREF_FIELDS) {
+      // Auto mode: the field is disabled and draft.rayon_thread_count is
+      // deliberately -1 (below field.min) — not user input, skip validation
+      // entirely rather than reporting a spurious "Minimum is 1". Issue 121.
+      if (field.key === 'rayon_thread_count' && rayonAuto) continue;
+
       const raw = draft[field.key];
       if (field.type === 'integer' || field.type === 'float') {
         const v = Number(raw);
@@ -158,49 +197,82 @@
 
           {#each section.keys as key}
             {@const meta = fieldMeta(key)}
-            {#if meta}
-              <div class="pref-row" class:has-error={!!errors[key]}>
-                <label class="pref-label" for={`pref-${key}`}>{meta.label}</label>
-                <div class="pref-control">
-                  {#if meta.type === 'path'}
-                    <div class="pref-path-row">
+          {#if meta}
+            <div class="pref-row" class:has-error={!!errors[key]}>
+              <label class="pref-label" for={`pref-${key}`}>{meta.label}</label>
+              <div class="pref-control">
+                {#if meta.type === 'path'}
+                  <div class="pref-path-row">
+                    <input
+                      id={`pref-${key}`}
+                      class="pref-input pref-input-path"
+                      type="text"
+                      value={draft[key] ?? ''}
+                      oninput={(e) => draft[key] = (e.target as HTMLInputElement).value}
+                    />
+                    <button class="pref-browse-btn" onclick={browseBackupDir}>Browse…</button>
+                  </div>
+                {:else if key === 'rayon_thread_count'}
+                  <div class="pref-numeric-row">
+                    <label class="pref-checkbox-label">
                       <input
-                        id={`pref-${key}`}
-                        class="pref-input pref-input-path"
-                        type="text"
-                        value={draft[key] ?? ''}
-                        oninput={(e) => draft[key] = (e.target as HTMLInputElement).value}
+                        type="checkbox"
+                        checked={rayonAuto}
+                        onchange={(e) => toggleRayonAuto((e.target as HTMLInputElement).checked)}
                       />
-                      <button class="pref-browse-btn" onclick={browseBackupDir}>Browse…</button>
-                    </div>
-                  {:else}
-                    <div class="pref-numeric-row">
-                      <input
-                        id={`pref-${key}`}
-                        class="pref-input pref-input-numeric"
-                        type="number"
-                        step={meta.step ?? (meta.type === 'float' ? '0.01' : '1')}
-                        min={meta.min}
-                        max={effectiveMax(meta)}
-                        value={draft[key] ?? meta.default}
-                        oninput={(e) => draft[key] = (e.target as HTMLInputElement).value}
-                      />
-                      {#if meta.unit}
-                        <span class="pref-unit">{meta.unit}</span>
-                      {/if}
-                    </div>
-                  {/if}
-                  <div class="pref-helper">{meta.helper}</div>
-                  {#if errors[key]}
-                    <div class="pref-error">{errors[key]}</div>
-                  {/if}
-                </div>
+                      Threads − 1
+                    </label>
+                    <input
+                      id={`pref-${key}`}
+                      class="pref-input pref-input-numeric"
+                      type="number"
+                      step="1"
+                      min={meta.min}
+                      max={effectiveMax(meta)}
+                      disabled={rayonAuto}
+                      value={rayonAuto ? '' : (draft[key] ?? meta.default)}
+                      oninput={(e) => draft[key] = (e.target as HTMLInputElement).value}
+                    />
+                    {#if meta.unit}
+                      <span class="pref-unit">{meta.unit}</span>
+                    {/if}
+                  </div>
+                {:else}
+                  <div class="pref-numeric-row">
+                    <input
+                      id={`pref-${key}`}
+                      class="pref-input pref-input-numeric"
+                      type="number"
+                      step={meta.step ?? (meta.type === 'float' ? '0.01' : '1')}
+                      min={meta.min}
+                      max={effectiveMax(meta)}
+                      value={draft[key] ?? meta.default}
+                      oninput={(e) => draft[key] = (e.target as HTMLInputElement).value}
+                    />
+                    {#if meta.unit}
+                      <span class="pref-unit">{meta.unit}</span>
+                    {/if}
+                  </div>
+                {/if}
+                <div class="pref-helper">
+                  {#if key === 'rayon_thread_count' && rayonAuto}
+                    {cpuCount > 0
+                  ? `Auto — currently resolves to ${Math.max(1, cpuCount - 1)} thread(s) on this machine.`
+                  : 'Auto — resolving CPU count…'}
+                {:else}
+                  {meta.helper}
+                {/if}
               </div>
-            {/if}
-          {/each}
-        </div>
-      {/each}
-    </div>
+                {#if errors[key]}
+                  <div class="pref-error">{errors[key]}</div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+        {/each}
+      </div>
+    {/each}
+  </div>
 
     <div class="pref-footer">
       <button class="pref-btn pref-btn-secondary" onclick={cancel}>Cancel</button>

@@ -146,6 +146,21 @@
     gap:         6px;
 }
 
+.pref-checkbox-label {
+    display:     flex;
+    align-items: center;
+    gap:         5px;
+    font-size:   0.75rem;
+    color:       var(--text-color);
+    white-space: nowrap;
+    cursor:      pointer;
+}
+
+.pref-input:disabled {
+    opacity: 0.5;
+    cursor:  not-allowed;
+}
+
 .pref-unit {
     font-size: 0.69rem;
     color:     var(--text-secondary);
