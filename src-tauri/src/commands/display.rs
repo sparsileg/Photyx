@@ -650,20 +650,29 @@ pub fn get_stack_frame(state: State<Arc<PhotoxState>>) -> Result<String, String>
         .ok_or_else(|| "No stack result available. Run StackFrames first.".to_string())?;
 
     use crate::context::PixelData;
-    let pixels = match &buffer.pixels {
-        Some(PixelData::F32(v)) => v,
+    let pixel_data = buffer.pixels.as_ref()
+        .ok_or_else(|| "Stack result has no pixel data.".to_string())?;
+    let pixels = match pixel_data {
+        PixelData::F32(v) => v,
         _ => return Err("Stack result has unexpected pixel format.".to_string()),
     };
 
-    let src_w = buffer.width  as usize;
-    let src_h = buffer.height as usize;
+    let src_w   = buffer.width  as usize;
+    let src_h   = buffer.height as usize;
+    // Issue 113: this was previously hand-rolled with no channel awareness
+    // at all, so an RGB stack's interleaved [R,G,B,...] data was misread as
+    // mono — only the first third of the buffer was ever touched, each
+    // R/G/B triplet displayed as three separate gray pixels. Now routed
+    // through the shared, channel-aware box filter (render.rs, Issue 86)
+    // like every other downsample path in this file.
+    let is_rgb  = buffer.channels == 3 && buffer.color_space == crate::context::ColorSpace::RGB;
+    let channels = if is_rgb { 3 } else { 1 };
 
-    const MAX_DISPLAY_W: usize = DISPLAY_MAX_WIDTH_PX as usize;
-    let step   = if src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
-    let disp_w = src_w / step;
-    let disp_h = src_h / step;
-
-    // Find the actual pixel range for auto-scaling
+    // Find the actual pixel range for auto-scaling — one range shared
+    // across all channels (linked scale), so color balance isn't distorted
+    // by one channel happening to have a wider dynamic range than another.
+    // Unchanged from before: this already scanned the full raw buffer, not
+    // just the misread subset the old box-filter loop below it touched.
     let max_val = pixels.iter()
         .filter(|v| v.is_finite())
         .cloned()
@@ -674,32 +683,22 @@ pub fn get_stack_frame(state: State<Arc<PhotoxState>>) -> Result<String, String>
         .fold(f32::INFINITY, f32::min);
     let range = (max_val - min_val).max(1e-6);
 
-    let mut rgb = Vec::with_capacity(disp_w * disp_h * 3);
+    const MAX_DISPLAY_W: usize = DISPLAY_MAX_WIDTH_PX as usize;
+    let (mut planes, disp_w, disp_h) = crate::render::downsample_to_planes(
+        pixel_data, src_w, src_h, channels, MAX_DISPLAY_W,
+    );
 
-    for oy in 0..disp_h {
-        for ox in 0..disp_w {
-            let mut sum   = 0.0f32;
-            let mut count = 0u32;
-            for dy in 0..step {
-                let sy = oy * step + dy;
-                if sy >= src_h { continue; }
-                for dx in 0..step {
-                    let sx = ox * step + dx;
-                    if sx >= src_w { continue; }
-                    let val = pixels[sy * src_w + sx];
-                    if val.is_finite() { sum += val; count += 1; }
-                }
-            }
-            let scaled = if count > 0 {
-                ((sum / count as f32 - min_val) / range * 255.0).clamp(0.0, 255.0) as u8
-            } else {
-                0
-            };
-            rgb.push(scaled);
-            rgb.push(scaled);
-            rgb.push(scaled);
+    // downsample_to_planes averages raw F32 values without normalizing
+    // (unlike its U16/U8 branches, which divide by 65535/255) — apply the
+    // linear min/max scale here, on the already-correctly-channeled planes.
+    for plane in planes.iter_mut() {
+        for v in plane.iter_mut() {
+            *v = (*v - min_val) / range;
         }
     }
+
+    let pixel_count = disp_w * disp_h;
+    let rgb = crate::render::planes_to_rgb8(&planes, pixel_count);
 
     let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
         .ok_or_else(|| "Failed to create stack preview image".to_string())?;
@@ -711,6 +710,7 @@ pub fn get_stack_frame(state: State<Arc<PhotoxState>>) -> Result<String, String>
     let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
     Ok(format!("data:image/jpeg;base64,{}", b64))
 }
+
 
 
 #[tauri::command]
