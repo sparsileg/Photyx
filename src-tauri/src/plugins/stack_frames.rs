@@ -39,7 +39,7 @@
 use crate::analysis::{
     self,
     background::estimate_background,
-    debayer::{debayer_bilinear, BayerPattern},
+    debayer::{bayer_pattern_of, debayer_bilinear, BayerPattern},
     eccentricity::compute_eccentricity,
     fft_align::compute_translation,
     fwhm::compute_fwhm,
@@ -697,8 +697,7 @@ fn collect_snapshots(
         let height   = buf.height as usize;
         let channels = buf.channels as usize;
 
-        let bayer_pattern = buf.keywords.get("BAYERPAT")
-            .map(|kw| BayerPattern::from_str(&kw.value))
+        let bayer_pattern = bayer_pattern_of(&buf.keywords)
             .unwrap_or(BayerPattern::RGGB);
 
         let luma = if buf.color_space == ColorSpace::Bayer {

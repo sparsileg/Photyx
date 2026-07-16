@@ -39,9 +39,7 @@ pub fn debayer_stack(ctx: &mut AppContext) -> Result<PluginOutput, PluginError> 
         return Ok(PluginOutput::Message("Stack result is already RGB — no debayering needed.".into()));
     }
 
-    let pattern = buffer.keywords.get("BAYERPAT")
-        .or_else(|| buffer.keywords.get("BAYER_PATTERN"))
-        .map(|kw| BayerPattern::from_str(&kw.value))
+    let pattern = crate::analysis::debayer::bayer_pattern_of(&buffer.keywords)
         .unwrap_or(BayerPattern::RGGB);
 
     let width  = buffer.width  as usize;
@@ -82,10 +80,7 @@ fn debayer_current_frame(ctx: &mut AppContext) -> Result<PluginOutput, PluginErr
         return Ok(PluginOutput::Message("Frame is already RGB — no debayering needed.".into()));
     }
 
-    let pattern = buffer.keywords.get("BAYERPAT")
-        .or_else(|| buffer.keywords.get("BAYER_PATTERN"))
-        .or_else(|| buffer.keywords.get("BAYERPAT"))
-        .map(|kw| BayerPattern::from_str(&kw.value))
+    let pattern = crate::analysis::debayer::bayer_pattern_of(&buffer.keywords)
         .unwrap_or(BayerPattern::RGGB);
 
     let width  = buffer.width  as usize;

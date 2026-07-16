@@ -199,7 +199,9 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
         }
     }
 
-    let color_space = if color_space == ColorSpace::Mono && keywords.contains_key("BAYERPAT") {
+    let color_space = if color_space == ColorSpace::Mono
+        && crate::analysis::debayer::has_bayer_keyword(&keywords)
+    {
         ColorSpace::Bayer
     } else {
         color_space
@@ -361,7 +363,7 @@ pub fn read_xisf_file(path: &str) -> Result<ImageBuffer, String> {
         );
     }
 
-    if color_space == ColorSpace::Mono && keywords.contains_key("BAYERPAT") {
+    if color_space == ColorSpace::Mono && crate::analysis::debayer::has_bayer_keyword(&keywords) {
         color_space = ColorSpace::Bayer;
     }
 

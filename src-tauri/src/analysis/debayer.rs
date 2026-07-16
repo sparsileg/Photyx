@@ -1,7 +1,11 @@
 // analysis/debayer.rs — Bilinear Bayer CFA debayering
+//
 // Supports RGGB, BGGR, GRBG, GBRG patterns.
 // Input:  mono f32 slice (normalized 0.0–1.0), width, height, pattern
 // Output: interleaved RGB f32 Vec (r, g, b per pixel, same normalization)
+
+use std::collections::HashMap;
+use crate::context::KeywordEntry;
 
 /// Bayer CFA pattern — describes the color of the top-left 2×2 block.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -34,6 +38,30 @@ impl BayerPattern {
             Self::GBRG => [[1, 2], [0, 1]][row][col],
         }
     }
+}
+
+/// True if the keyword map carries either recognized Bayer pattern
+/// keyword (BAYERPAT or BAYER_PATTERN), regardless of whether its value
+/// parses to a known pattern. Used by image readers to decide whether a
+/// mono-layout buffer should be tagged ColorSpace::Bayer instead of
+/// ColorSpace::Mono. Issue 122 — the single source of truth for "does
+/// this frame carry Bayer pattern metadata," replacing three independent
+/// keyword lookups that had drifted (BAYERPAT-only vs. BAYERPAT-or-
+/// BAYER_PATTERN) across the reader, debayer, and stacking code paths.
+pub fn has_bayer_keyword(keywords: &HashMap<String, KeywordEntry>) -> bool {
+    keywords.contains_key("BAYERPAT") || keywords.contains_key("BAYER_PATTERN")
+}
+
+/// Looks up the Bayer CFA pattern from a keyword map, checking BAYERPAT
+/// then BAYER_PATTERN. Returns None if neither keyword is present —
+/// callers that need a pattern after already establishing the buffer is
+/// Bayer (e.g. via has_bayer_keyword or a prior color-space check) are
+/// responsible for their own RGGB fallback on the None case, matching
+/// existing call-site behavior. Issue 122.
+pub fn bayer_pattern_of(keywords: &HashMap<String, KeywordEntry>) -> Option<BayerPattern> {
+    keywords.get("BAYERPAT")
+        .or_else(|| keywords.get("BAYER_PATTERN"))
+        .map(|kw| BayerPattern::from_str(&kw.value))
 }
 
 /// Bilinear Bayer debayer.
