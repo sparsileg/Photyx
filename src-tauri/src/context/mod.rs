@@ -231,6 +231,22 @@ impl AppContext {
         }).sum()
     }
 
+    /// Sum of all four JPEG cache byte totals (display, full-res, blink_12,
+    /// blink_25). These are invisible to `total_memory_used()`, which only
+    /// accounts for raw pixel buffers — callers that need actual resident
+    /// memory (e.g. the buffer-pool gate in `check_memory_limit`) should add
+    /// this on top rather than relying on total_memory_used() alone.
+    /// Issue 105.
+    pub fn total_cache_bytes(&self) -> usize {
+        let cache_len_sum = |m: &HashMap<String, Vec<u8>>| -> usize {
+            m.values().map(|v| v.len()).sum()
+        };
+        cache_len_sum(&self.display_cache)
+            + cache_len_sum(&self.full_res_cache)
+            + cache_len_sum(&self.blink_cache_12)
+            + cache_len_sum(&self.blink_cache_25)
+    }
+
     /// Clear all session state — pixel buffers, caches, analysis results.
     pub fn clear_session(&mut self) {
         self.file_list.clear();
@@ -331,7 +347,7 @@ pub fn analysis_result_for(&mut self, path: &str) -> &mut crate::analysis::Analy
             .or_insert_with(|| crate::analysis::AnalysisResult::new(path))
     }
 
-    /// Discard the transient stack result and per-frame contribution data.
+/// Discard the transient stack result and per-frame contribution data.
     /// Called by ClearStack and at the start of a new StackFrames run.
     pub fn clear_stack(&mut self) {
         self.stack_result = None;
@@ -339,3 +355,39 @@ pub fn analysis_result_for(&mut self, path: &str) -> &mut crate::analysis::Analy
         self.stack_summary = None;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Issue 105 — total_cache_bytes() must sum all four JPEG caches
+    /// exactly, and must not be conflated with total_memory_used() (which
+    /// covers only raw pixel buffers and has no cache awareness).
+    #[test]
+    fn total_cache_bytes_sums_all_four_caches() {
+        let mut ctx = AppContext::new();
+
+        ctx.display_cache.insert("a.fit".to_string(), vec![0u8; 100]);
+        ctx.full_res_cache.insert("a.fit".to_string(), vec![0u8; 5_000]);
+        ctx.full_res_cache.insert("b.fit".to_string(), vec![0u8; 3_000]);
+        ctx.blink_cache_12.insert("a.fit".to_string(), vec![0u8; 50]);
+        ctx.blink_cache_25.insert("a.fit".to_string(), vec![0u8; 200]);
+
+        let expected = 100 + 5_000 + 3_000 + 50 + 200;
+        assert_eq!(ctx.total_cache_bytes(), expected);
+
+        // Raw-buffer accounting must remain untouched by cache contents —
+        // no image_buffers were inserted, so this must still read zero.
+        assert_eq!(ctx.total_memory_used(), 0);
+    }
+
+    #[test]
+    fn total_cache_bytes_is_zero_for_empty_caches() {
+        let ctx = AppContext::new();
+        assert_eq!(ctx.total_cache_bytes(), 0);
+    }
+}
+
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------

@@ -43,7 +43,10 @@ pub(crate) fn check_memory_limit(ctx: &AppContext, new_paths: &[String]) -> Resu
     });
 
     if let Some(raw_bytes) = estimated_bytes {
-        let already_loaded_bytes = ctx.total_memory_used() as i64;
+        // Includes JPEG cache bytes (display/full-res/blink) alongside raw
+        // buffers, so the gate reflects actual resident memory rather than
+        // just image_buffers. Issue 105.
+        let already_loaded_bytes = (ctx.total_memory_used() + ctx.total_cache_bytes()) as i64;
         let new_peak_bytes       = (raw_bytes as f64 * 2.1) as i64;
         let projected_peak_bytes = already_loaded_bytes + new_peak_bytes;
 

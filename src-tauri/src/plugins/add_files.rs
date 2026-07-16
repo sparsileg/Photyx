@@ -136,14 +136,24 @@ impl PhotyxPlugin for AddFiles {
         // using actual loaded buffer sizes rather than the pre-load estimate
         // above (which only ever covered the new files being added, and was
         // extrapolated from peeking a single file's dimensions).
-        let cumulative_raw_bytes = ctx.total_memory_used() as i64;
-        let cumulative_raw_mb    = cumulative_raw_bytes / (1024 * 1024);
-        let cumulative_peak_mb   = (cumulative_raw_bytes as f64 * 2.1) as i64 / (1024 * 1024);
+        //
+        // Combined with JPEG cache bytes (display/full-res/blink) into a
+        // single total so the figure shown here matches what the
+        // buffer-pool gate in check_memory_limit now actually checks
+        // against — Issue 105. Only the raw portion gets the 2.1x peak
+        // multiplier (transient overhead during loading/analysis); cache
+        // bytes are already realized memory, not a projection, so they're
+        // added to the peak figure as-is rather than multiplied.
+        let cumulative_raw_bytes   = ctx.total_memory_used() as i64;
+        let cumulative_cache_bytes = ctx.total_cache_bytes() as i64;
+        let cumulative_total_mb    = (cumulative_raw_bytes + cumulative_cache_bytes) / (1024 * 1024);
+        let cumulative_peak_mb     = ((cumulative_raw_bytes as f64 * 2.1) as i64 + cumulative_cache_bytes) / (1024 * 1024);
 
         let mut msg = format!(
-            "Loaded {} file(s) (~{} MB raw, ~{} MB peak with analysis).",
-            loaded, cumulative_raw_mb, cumulative_peak_mb
+            "Loaded {} file(s) (~{} MB total, ~{} MB peak with analysis).",
+            loaded, cumulative_total_mb, cumulative_peak_mb
         );
+
         if !glob_warnings.is_empty() {
             for w in &glob_warnings {
                 tracing::warn!("AddFiles: {}", w);
