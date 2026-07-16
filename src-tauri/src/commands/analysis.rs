@@ -134,7 +134,7 @@ pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value
 pub struct AnalysisJsonPayload {
     pub thresholds:    ThresholdPayload,
     pub session_stats: SessionStatsPayload,
-    pub outlier_paths: Vec<String>,
+    pub outliers:      Vec<String>,
     pub frames:        Vec<FramePayload>,
 }
 
@@ -213,8 +213,10 @@ pub fn load_analysis_json(
         ctx.analysis_results.insert(full_path, result);
     }
 
-    // Outlier paths are full absolute paths
-    ctx.outlier_frame_paths = payload.outlier_paths.iter()
+    // Outlier entries are basenames, matching FramePayload.filename's
+    // convention — see Issue 115. Not resolved against file_list; imported
+    // sessions never load pixels or resolve paths on disk.
+    ctx.outlier_frame_paths = payload.outliers.iter()
         .map(|f| f.replace('\\', "/"))
         .collect();
 

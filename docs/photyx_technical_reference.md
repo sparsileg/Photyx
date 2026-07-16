@@ -513,23 +513,42 @@ dropdown. "Highlight Rejected" toggle overlays a red border on REJECT
 frames during blink. Cache builds on first play; invalidated when
 resolution changes or the file list changes.
 
-### 3.16 Session JSON Export/Import
+### 3.16 Session Analysis JSON Export/Import
 
 **Export** (Session → Export Session JSON…): exports the current
 session's analysis results as a portable JSON archive. Default
-filename `_.json`, derived from the first frame's basename. Contains
-`photyx_version`, `exported_at`, `threshold_profile_name`,
-`thresholds`, `session_stats`, `outlier_paths[]`, and `frames[]` (per
-frame: full path, all raw metric values, flag, `triggered_by`,
-`rejection_category`). All filenames are stored as full absolute
-paths, to support multi-directory sessions.
+filename is derived from the first frame — `<target>_<date>_analysis.json`
+when both a target name and capture date can be parsed from it,
+`<target>_analysis.json` if only the target is found, else
+`session.json` — written to the system Downloads folder unless
+`path=` is given. Top-level fields: `photyx` (`photyx_version`,
+`exported_at`), `thresholds`, `session_stats`, `outliers[]`, and
+`frames[]` (per frame: `filename`, `fwhm`, `eccentricity`,
+`star_count`, `background_median`, `flag` — the frame's true
+PASS/REJECT classification, never collapsed to reflect reference-frame
+status — `is_reference`, `triggered_by`, `rejection_category`).
+`thresholds` reflects whatever thresholds the exported run actually
+used (`last_analysis_thresholds`), falling back to the active profile
+only if nothing has been analyzed yet in the session — not necessarily
+the profile active at the moment of export.
+
+`filename` and every `outliers[]` entry are basenames, not full paths
+— deliberate: an exported report is meant to remain a valid archival
+record after a completed project's files are moved out of their
+original session directories, and a stored absolute path would go
+stale the moment that happens.
 
 **Import** (Session → Import Session JSON…): clears the current
 session and loads analysis results from a JSON file — no images are
-loaded, display only. An IMPORTED badge appears in the Analysis
-Results toolbar and Commit Results is disabled; all other display
-functionality works normally. Opens the Analysis Results view
-automatically on import.
+loaded, display only. `ctx.file_list` is populated directly from each
+frame's `filename` (a basename, per the convention above) rather than
+a resolvable path; this is safe because an imported session never
+loads pixel data, and Commit Results is refused server-side
+(`is_imported_session`) for imported sessions regardless of UI state,
+so nothing downstream needs those entries to resolve on disk. An
+IMPORTED badge appears in the Analysis Results toolbar and Commit
+Results is disabled; all other display functionality works normally.
+Opens the Analysis Results view automatically on import.
 
 ---
 

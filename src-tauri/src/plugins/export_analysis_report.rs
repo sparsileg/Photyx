@@ -77,7 +77,8 @@ fn build_report_json(ctx: &AppContext) -> serde_json::Value {
             "eccentricity":       r.eccentricity,
             "star_count":         r.star_count,
             "background_median":  r.background_median,
-            "flag":               if r.is_reference { "REF" } else { r.flag.as_ref().map(|f| f.as_str()).unwrap_or("PASS") },
+            "flag":               r.flag.as_ref().map(|f| f.as_str()).unwrap_or("PASS"),
+            "is_reference":       r.is_reference,
             "triggered_by":       r.triggered_by,
             "rejection_category": r.rejection_category,
         }))
@@ -87,6 +88,7 @@ fn build_report_json(ctx: &AppContext) -> serde_json::Value {
         .map(|p| p.rsplit(['/', '\\']).next().unwrap_or(p.as_str()).to_string())
         .collect();
 
+    let zero_stats = || serde_json::json!({ "mean": 0.0_f32, "stddev": 0.0_f32 });
     let session_stats = match &ctx.last_session_stats {
         Some(s) => serde_json::json!({
             "background_median": { "mean": s.background_median.mean, "stddev": s.background_median.stddev },
@@ -94,11 +96,26 @@ fn build_report_json(ctx: &AppContext) -> serde_json::Value {
             "eccentricity":      { "mean": s.eccentricity.mean,      "stddev": s.eccentricity.stddev },
             "star_count":        { "mean": s.star_count.mean,        "stddev": s.star_count.stddev },
         }),
-        None => serde_json::json!({}),
+        // AnalysisJsonPayload's SessionStatsPayload requires all four metric
+        // blocks — keep the shape import-valid even in the rare case
+        // analysis_results is populated without a session-stats run behind
+        // it, rather than emitting a bare "{}" that fails re-import.
+        None => serde_json::json!({
+            "background_median": zero_stats(),
+            "fwhm":               zero_stats(),
+            "eccentricity":       zero_stats(),
+            "star_count":         zero_stats(),
+        }),
     };
 
+    // Use the thresholds actually applied by the run being exported, not
+    // whatever profile happens to be active right now — these can differ
+    // whenever AnalyzeFrames ran with an explicit profile= (including via
+    // the Analyze Frames menu picker) and the active profile changed
+    // afterward, before Export was clicked. Falls back to the active
+    // profile only if nothing has been analyzed yet in this session.
     let thresholds = {
-        let t = &ctx.analysis_thresholds;
+        let t = ctx.last_analysis_thresholds.as_ref().unwrap_or(&ctx.analysis_thresholds);
         serde_json::json!({
             "bg_median_reject_sigma":     t.background_median.reject,
             "fwhm_reject_sigma":          t.fwhm.reject,
@@ -107,17 +124,19 @@ fn build_report_json(ctx: &AppContext) -> serde_json::Value {
         })
     };
 
+    // Top-level shape matches AnalysisJsonPayload exactly (thresholds,
+    // session_stats, outliers, frames) so a file this plugin writes can be
+    // fed straight back into load_analysis_json — see Issue 115.
+    // "photyx" is extra metadata; unknown fields are ignored on import.
     serde_json::json!({
         "photyx": {
             "photyx_version": "1.0.0",
             "exported_at":    chrono::Utc::now().to_rfc3339(),
         },
-        "statistics": {
-            "session_stats": session_stats,
-            "thresholds":    thresholds,
-        },
-        "frames":   frames,
-        "outliers": outliers,
+        "thresholds":    thresholds,
+        "session_stats": session_stats,
+        "outliers":      outliers,
+        "frames":        frames,
     })
 }
 
@@ -155,7 +174,172 @@ fn derive_filename(ctx: &AppContext) -> String {
             _                  => {}
         }
     }
-    "session.json".to_string()
+"session.json".to_string()
 }
 
+// ── Round-trip test ─────────────────────────────────────────────────────────
+// Guards Issue 115: asserts that whatever build_report_json emits actually
+// deserializes as AnalysisJsonPayload (commands/analysis.rs), and that the
+// values that matter — flag, is_reference, outliers, and thresholds sourced
+// from the run that was actually exported — survive the round trip intact.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analysis::{AnalysisResult, PxFlag};
+    use crate::analysis::session_stats::{
+        AnalysisThresholds, MetricThresholds, SessionStats, MetricStats,
+    };
+    use crate::commands::analysis::AnalysisJsonPayload;
+
+    fn sample_context() -> AppContext {
+        let mut ctx = AppContext::default();
+
+        ctx.file_list = vec![
+            "/data/M31/lights/frame001.fit".to_string(),
+            "/data/M31/lights/frame002.fit".to_string(),
+            "/data/M31/lights/frame003.fit".to_string(),
+        ];
+
+        ctx.analysis_results.insert("/data/M31/lights/frame001.fit".to_string(), AnalysisResult {
+            filename:           "frame001.fit".to_string(),
+            background_median:  Some(120.5),
+            fwhm:                Some(2.8),
+            eccentricity:        Some(0.15),
+            star_count:          Some(340),
+            flag:                Some(PxFlag::Pass),
+            triggered_by:        vec![],
+            rejection_category:  None,
+            is_reference:        true,
+        });
+        ctx.analysis_results.insert("/data/M31/lights/frame002.fit".to_string(), AnalysisResult {
+            filename:           "frame002.fit".to_string(),
+            background_median:  Some(340.2),
+            fwhm:                Some(5.1),
+            eccentricity:        Some(0.42),
+            star_count:          Some(90),
+            flag:                Some(PxFlag::Reject),
+            triggered_by:        vec!["fwhm".to_string(), "background_median".to_string()],
+            rejection_category:  Some("OB".to_string()),
+            is_reference:        false,
+        });
+        ctx.analysis_results.insert("/data/M31/lights/frame003.fit".to_string(), AnalysisResult {
+            filename:           "frame003.fit".to_string(),
+            background_median:  Some(118.9),
+            fwhm:                Some(2.9),
+            eccentricity:        Some(0.18),
+            star_count:          Some(310),
+            flag:                Some(PxFlag::Pass),
+            triggered_by:        vec![],
+            rejection_category:  None,
+            is_reference:        false,
+        });
+
+        ctx.outlier_frame_paths =
+            std::collections::HashSet::from(["/data/M31/lights/frame002.fit".to_string()]);
+
+        ctx.last_session_stats = Some(SessionStats {
+            background_median: MetricStats { mean: 190.0, stddev: 45.0 },
+            fwhm:               MetricStats { mean: 3.2,   stddev: 0.6 },
+            eccentricity:       MetricStats { mean: 0.22,  stddev: 0.08 },
+            star_count:         MetricStats { mean: 250.0, stddev: 60.0 },
+        });
+
+        // Active profile deliberately differs from the run's actual
+        // thresholds, so this test fails loudly if export ever regresses
+        // to reading the wrong source.
+        ctx.analysis_thresholds = AnalysisThresholds {
+            background_median: MetricThresholds { reject: 9.9 },
+            fwhm:               MetricThresholds { reject: 9.9 },
+            star_count:         MetricThresholds { reject: 9.9 },
+            eccentricity:       MetricThresholds { reject: 9.9 },
+        };
+        ctx.last_analysis_thresholds = Some(AnalysisThresholds {
+            background_median: MetricThresholds { reject: 2.5 },
+            fwhm:               MetricThresholds { reject: 2.5 },
+            star_count:         MetricThresholds { reject: 1.75 },
+            eccentricity:       MetricThresholds { reject: 0.85 },
+        });
+
+        ctx
+    }
+
+    #[test]
+    fn export_round_trips_through_import_payload() {
+        let ctx = sample_context();
+
+        let json = build_report_json(&ctx);
+        let json_str = serde_json::to_string(&json).expect("serialize");
+
+        let payload: AnalysisJsonPayload = serde_json::from_str(&json_str)
+            .expect("exported JSON must deserialize as AnalysisJsonPayload — Issue 115");
+
+        assert_eq!(payload.frames.len(), 3, "all three frames must survive export");
+
+        let by_name = |name: &str| payload.frames.iter()
+            .find(|f| f.filename == name)
+            .unwrap_or_else(|| panic!("frame {} missing from exported payload", name));
+
+        let f1 = by_name("frame001.fit");
+        assert_eq!(f1.flag, "PASS");
+        assert!(f1.is_reference, "reference frame must round-trip as is_reference=true");
+
+        let f2 = by_name("frame002.fit");
+        assert_eq!(f2.flag, "REJECT", "a REJECT frame must keep its true flag, not collapse to REF");
+        assert_eq!(f2.rejection_category.as_deref(), Some("OB"));
+        assert!(!f2.is_reference);
+
+        let f3 = by_name("frame003.fit");
+        assert_eq!(f3.flag, "PASS");
+        assert!(!f3.is_reference);
+
+        assert_eq!(
+            payload.outliers,
+            vec!["frame002.fit".to_string()],
+            "outliers must survive as basenames, matching frame filenames' convention"
+        );
+
+        // Thresholds must come from last_analysis_thresholds (the run that
+        // was actually exported), not the active profile.
+        assert_eq!(payload.thresholds.fwhm_reject_sigma, 2.5);
+        assert_eq!(payload.thresholds.star_count_reject_sigma, 1.75);
+        assert_ne!(
+            payload.thresholds.fwhm_reject_sigma, 9.9,
+            "export must not fall back to the active profile when a run has actually happened"
+        );
+
+        assert_eq!(payload.session_stats.fwhm.mean, 3.2);
+        assert_eq!(payload.session_stats.star_count.stddev, 60.0);
+    }
+
+    #[test]
+    fn export_falls_back_to_active_profile_when_nothing_analyzed_yet() {
+        let mut ctx = AppContext::default();
+        ctx.analysis_thresholds = AnalysisThresholds {
+            background_median: MetricThresholds { reject: 3.0 },
+            fwhm:               MetricThresholds { reject: 3.0 },
+            star_count:         MetricThresholds { reject: 1.5 },
+            eccentricity:       MetricThresholds { reject: 0.9 },
+        };
+        // last_analysis_thresholds intentionally left None — nothing has
+        // been analyzed in this context.
+
+        // build_report_json itself doesn't gate on analysis_results being
+        // non-empty (that check lives in execute()) — call it directly to
+        // test the threshold fallback and session_stats shape in isolation.
+        let json = build_report_json(&ctx);
+        let payload: AnalysisJsonPayload = serde_json::from_value(json)
+            .expect("empty-session export must still deserialize");
+
+        assert_eq!(payload.thresholds.fwhm_reject_sigma, 3.0);
+        assert_eq!(payload.thresholds.star_count_reject_sigma, 1.5);
+
+        // session_stats must be shape-valid (zeroed, not "{}") even with no
+        // last_session_stats set.
+        assert_eq!(payload.session_stats.fwhm.mean, 0.0);
+    }
+}
+
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
