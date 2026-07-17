@@ -10,6 +10,7 @@ pub enum ExclusionReason {
     FilterMismatch,
     AlignmentFailed,
     BufferUnavailable,
+    CrossGroupFailed,
 }
 
 impl ExclusionReason {
@@ -18,6 +19,7 @@ impl ExclusionReason {
             ExclusionReason::FilterMismatch    => "filter_mismatch",
             ExclusionReason::AlignmentFailed   => "alignment_failed",
             ExclusionReason::BufferUnavailable => "buffer_unavailable",
+            ExclusionReason::CrossGroupFailed  => "cross_group_failed",
         }
     }
 }
@@ -101,6 +103,11 @@ pub struct StackSummary {
     /// (e.g. removed from the session between registration and accumulation)
     pub buffer_excluded: usize,
 
+    /// Frames excluded because their group's cross-group solve (M_cross) was
+    /// rejected — failed FFT, too few/poor residuals on verification, or an
+    /// implausible triangle-match rotation (Issue 128)
+    pub cross_group_excluded: usize,
+
     /// Frames successfully stacked
     pub stacked_frames: usize,
 
@@ -138,6 +145,9 @@ impl StackSummary {
         let buffer_excluded = contributions.iter()
             .filter(|c| c.exclusion_reason == Some(ExclusionReason::BufferUnavailable))
             .count();
+        let cross_group_excluded = contributions.iter()
+            .filter(|c| c.exclusion_reason == Some(ExclusionReason::CrossGroupFailed))
+            .count();
         let stacked_frames = contributions.iter().filter(|c| c.included).count();
 
         let snr_improvement = (stacked_frames as f32).sqrt();
@@ -160,6 +170,7 @@ impl StackSummary {
             filter_excluded,
             alignment_excluded,
             buffer_excluded,
+            cross_group_excluded,
             stacked_frames,
             snr_improvement,
             alignment_success_rate,

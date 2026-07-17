@@ -77,3 +77,19 @@ pub const THUMBNAIL_JPEG_QUALITY:      u8   = 75;    // blink caches (12.5% / 25
 pub const BLINK_WIDTH_12:              u32  = 376;   // blink thumbnail width, 12.5% resolution
 pub const BLINK_WIDTH_25:              u32  = 752;   // blink thumbnail width, 25% resolution
 pub const ALGORITHM_SET_VERSION:       i64  = 1;     // bump when any analysis algorithm changes
+
+// ── Stacking (StackFrames) ─────────────────────────────────────────────────
+// Non-persisted algorithm thresholds — Issue 127 (reference candidacy gate).
+
+// ── Stacking (StackFrames) ─────────────────────────────────────────────────
+// Non-persisted algorithm thresholds — Issue 127 (reference candidacy gate),
+// Issue 128 (cross-group M_cross validation).
+
+pub const CROSS_GROUP_MAX_RESIDUAL_PX:    f32   = 2.0;  // max mean verification residual (px) before rejecting M_cross
+pub const CROSS_GROUP_MIN_MATCHED:        usize = 10;   // min matched stars on M_cross verification before rejecting
+pub const CROSS_GROUP_THETA_TOLERANCE_DEG: f32  = 10.0; // max |triangle-match residual rotation| (degrees) before rejecting
+pub const REF_MIN_STAR_FRACTION:          f64   = 0.5;  // min star count as a fraction of group median to be reference-eligible
+
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------

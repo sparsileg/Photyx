@@ -50,6 +50,10 @@ use crate::analysis::{
 };
 use crate::context::{AppContext, BitDepth, ColorSpace, ImageBuffer, PixelData};
 use crate::plugin::{ArgMap, ParamSpec, PhotyxPlugin, PluginError, PluginOutput};
+use crate::settings::defaults::{
+    CROSS_GROUP_MAX_RESIDUAL_PX, CROSS_GROUP_MIN_MATCHED, CROSS_GROUP_THETA_TOLERANCE_DEG,
+    REF_MIN_STAR_FRACTION,
+};
 use chrono::Utc;
 use rayon::prelude::*;
 use tracing::info;
@@ -126,14 +130,20 @@ impl PhotyxPlugin for StackFrames {
         let n_groups = snapshots.iter().map(|s| s.group).max().unwrap_or(0) + 1;
         info!("StackFrames: identified {} rotational group(s)", n_groups);
 
-        let group_refs: Vec<usize> = (0..n_groups)
-            .map(|g| select_reference_in_group(&snapshots, g))
-            .collect();
+        let mut group_refs: Vec<usize> = Vec::with_capacity(n_groups);
+        for g in 0..n_groups {
+            let (ridx, warning) = select_reference_in_group(&snapshots, g);
+            if let Some(msg) = warning {
+                info!("StackFrames: {}", msg);
+                messages.push(msg);
+            }
+            group_refs.push(ridx);
+        }
 
         for (g, &ridx) in group_refs.iter().enumerate() {
             let count = snapshots.iter().filter(|s| s.group == g).count();
             info!("  Group {}: {} frames, reference = frame {} ({})",
-                g, count, snapshots[ridx].index, short_name(&snapshots[ridx].path));
+                  g, count, snapshots[ridx].index, short_name(&snapshots[ridx].path));
         }
 
         let master_group   = (0..n_groups)
@@ -142,13 +152,13 @@ impl PhotyxPlugin for StackFrames {
         let master_ref_idx = group_refs[master_group];
 
         info!("StackFrames: master group = {} (reference frame {})",
-            master_group, snapshots[master_ref_idx].index);
+              master_group, snapshots[master_ref_idx].index);
 
         let ref_filter      = snapshots[master_ref_idx].filter.clone();
         let ref_color_space = snapshots[master_ref_idx].color_space.clone();
 
         let is_color   = ref_color_space == ColorSpace::Bayer
-                      || ref_color_space == ColorSpace::RGB;
+            || ref_color_space == ColorSpace::RGB;
         let n_channels = if is_color { 3 } else { 1 };
 
         info!("StackFrames: output mode = {}", if is_color { "RGB (color)" } else { "Mono (grayscale)" });
@@ -163,6 +173,14 @@ impl PhotyxPlugin for StackFrames {
 
         //  ── Solve M_cross for each non-master group ───────────────────────────
         let mut m_cross: Vec<AffineRigid> = (0..n_groups).map(|_| AffineRigid::identity()).collect();
+
+        // Issue 128: a group whose cross-group solve is rejected (FFT
+        // failure, poor verification residual, or implausible triangle-match
+        // rotation) is excluded here and actually honored in the Pass 1 loop
+        // below — previously the FFT-failure message claimed exclusion but
+        // nothing enforced it (m_cross[g] silently stayed identity and the
+        // group's frames stacked unflipped and misaligned).
+        let mut group_excluded: Vec<bool> = vec![false; n_groups];
 
         for g in 0..n_groups {
             if g == master_group { continue; }
@@ -181,12 +199,13 @@ impl PhotyxPlugin for StackFrames {
                     );
                     info!("{}", msg);
                     messages.push(msg);
+                    group_excluded[g] = true;
                     continue;
                 }
             };
 
             info!("StackFrames: cross-group {} FFT vs master ref dx={:.2} dy={:.2}",
-                g, fft_t.dx, fft_t.dy);
+                  g, fft_t.dx, fft_t.dy);
 
             let flipped_stars = detect_stars(&flipped_luma, width, height, &det_config);
 
@@ -201,7 +220,7 @@ impl PhotyxPlugin for StackFrames {
                 Some(r) => {
                     let theta = r.theta();
                     info!("StackFrames: cross-group {} triangle match — tx={:.2} ty={:.2} θ={:.4}rad ({:.3}°)",
-                        g, r.tx, r.ty, theta, theta.to_degrees());
+                          g, r.tx, r.ty, theta, theta.to_degrees());
                     r
                 }
                 None => {
@@ -216,8 +235,10 @@ impl PhotyxPlugin for StackFrames {
             m_cross[g] = compose(&post_flip, &flip);
 
             info!("StackFrames: M_cross[{}] = a={:.4} b={:.4} tx={:.2} ty={:.2}",
-                g, m_cross[g].a, m_cross[g].b, m_cross[g].tx, m_cross[g].ty);
+                  g, m_cross[g].a, m_cross[g].b, m_cross[g].tx, m_cross[g].ty);
 
+            let mut residual_count = 0usize;
+            let mut residual_mean  = 0.0f32;
             {
                 let mut residuals: Vec<f32> = Vec::new();
                 for gs in &gref_snap.stars {
@@ -235,8 +256,55 @@ impl PhotyxPlugin for StackFrames {
                     let mean = residuals.iter().sum::<f32>() / residuals.len() as f32;
                     let max  = residuals.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
                     info!("StackFrames: M_cross[{}] verification — {} stars matched, mean residual={:.2}px, max={:.2}px",
-                        g, residuals.len(), mean, max);
+                          g, residuals.len(), mean, max);
+                    residual_count = residuals.len();
+                    residual_mean  = mean;
                 }
+            }
+
+            // ── Issue 128: turn verification into a real gate ──────────────────
+            // A garbage cross-group solve was previously logged (loudly) and
+            // then stacked anyway. Two independent checks:
+            //   1. Verification quality — too few matched stars, or a mean
+            //      residual far above what a real solve produces (healthy
+            //      sessions run 0.28–0.47px; the 20260615 failure ran 6.50px).
+            //   2. Physical plausibility of the triangle match's own rotation
+            //      (post_flip, BEFORE the explicit 180° pre-rotation composed
+            //      into m_cross) — this represents minor camera/rotator drift
+            //      between the pre- and post-flip halves of a session and
+            //      should be small. The 20260615 failure measured -46.8° here
+            //      against a healthy-session baseline of -0.4°: the triangle
+            //      matcher had locked onto spurious correspondences from a
+            //      cloud-obscured group reference, not a real flip-plus-drift.
+            let mut exclude_reason: Option<String> = None;
+
+            if residual_count < CROSS_GROUP_MIN_MATCHED || residual_mean > CROSS_GROUP_MAX_RESIDUAL_PX {
+                exclude_reason = Some(format!(
+                    "verification matched {} stars (min {}), mean residual {:.2}px (max allowed {:.2}px)",
+                    residual_count, CROSS_GROUP_MIN_MATCHED, residual_mean, CROSS_GROUP_MAX_RESIDUAL_PX
+                ));
+            }
+
+            if exclude_reason.is_none() {
+                let post_flip_theta_deg = post_flip.theta().to_degrees().abs();
+                if post_flip_theta_deg > CROSS_GROUP_THETA_TOLERANCE_DEG {
+                    exclude_reason = Some(format!(
+                        "triangle-match residual rotation {:.1}\u{00b0} exceeds the {:.0}\u{00b0} tolerance \
+                         for drift between the pre- and post-flip halves of the session",
+                        post_flip_theta_deg, CROSS_GROUP_THETA_TOLERANCE_DEG
+                    ));
+                }
+            }
+
+            if let Some(reason) = exclude_reason {
+                let frame_count = snapshots.iter().filter(|s| s.group == g).count();
+                let msg = format!(
+                    "StackFrames: cross-group {} solve rejected ({}) \u{2014} {} frame(s) from this group excluded",
+                    g, reason, frame_count
+                );
+                info!("{}", msg);
+                messages.push(msg);
+                group_excluded[g] = true;
             }
         }
 
@@ -265,6 +333,13 @@ impl PhotyxPlugin for StackFrames {
             contrib.fwhm             = snap.fwhm;
             contrib.eccentricity     = snap.eccentricity;
             contrib.meridian_flipped = snap.group != master_group;
+
+            // Issue 128: this frame's group failed cross-group validation —
+            // exclude before any pixel loading or alignment work.
+            if group_excluded[snap.group] {
+                cross_group_failed(snap.index, &mut messages, &mut contrib, &mut contributions);
+                continue;
+            }
 
             // Filter validation
             if let (Some(ref rf), Some(ref sf)) = (&ref_filter, &snap.filter) {
@@ -325,7 +400,7 @@ impl PhotyxPlugin for StackFrames {
                         contrib.fft_translation     = Some((t.dx, t.dy));
                         contrib.alignment_validated = Some(true);
                         info!("Frame {}: RANSAC input   {} ref stars, {} frame stars, fft=({:.2},{:.2})",
-                            snap.index, g_ref_stars.len(), snap.stars.len(), t.dx, t.dy);
+                              snap.index, g_ref_stars.len(), snap.stars.len(), t.dx, t.dy);
                         let xform = try_rigid_refinement(
                             g_ref_stars, &snap.stars,
                             t.dx, t.dy, width, height,
@@ -335,7 +410,7 @@ impl PhotyxPlugin for StackFrames {
                     }
                     None => {
                         alignment_failed(snap.index, "FFT returned no result",
-                            &mut messages, &mut contrib, &mut contributions);
+                                         &mut messages, &mut contrib, &mut contributions);
                         continue;
                     }
                 }
@@ -823,17 +898,69 @@ fn assign_groups(snapshots: &mut Vec<FrameSnapshot>) {
 
 //  ── Reference frame selection ─────────────────────────────────────────────────
 
-fn select_reference_in_group(snapshots: &[FrameSnapshot], group: usize) -> usize {
-    snapshots.iter()
+/// Selects the best-quality frame within a group to serve as its reference,
+/// restricted to candidates whose star count is at least REF_MIN_STAR_FRACTION
+/// of the group's own median star count (Issue 127). Prevents a cloud-obscured
+/// frame — which can measure deceptively tight FWHM because only the
+/// brightest stars punch through the murk — from winning reference selection
+/// on FWHM/eccentricity alone despite having a fraction of the real star
+/// population. The gate is per-group, not session-wide, since pre-flip and
+/// post-flip populations legitimately differ in size.
+///
+/// Returns the chosen index plus an optional warning message (for the caller
+/// to log/surface) when no frame in the group passed the gate and selection
+/// fell back to the ungated best-by-quality-score frame.
+fn select_reference_in_group(snapshots: &[FrameSnapshot], group: usize) -> (usize, Option<String>) {
+    let member_indices: Vec<usize> = snapshots.iter()
         .enumerate()
         .filter(|(_, s)| s.group == group)
-        .max_by(|(_, a), (_, b)| {
-            let score_a = quality_score(a);
-            let score_b = quality_score(b);
-            score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
-        })
         .map(|(i, _)| i)
-        .unwrap_or(0)
+        .collect();
+
+    if member_indices.is_empty() {
+        return (0, None);
+    }
+
+    let mut star_counts: Vec<usize> = member_indices.iter()
+        .map(|&i| snapshots[i].stars.len())
+        .collect();
+    star_counts.sort_unstable();
+    let median_stars = star_counts[star_counts.len() / 2] as f32;
+    let min_stars     = median_stars * REF_MIN_STAR_FRACTION as f32;
+
+    let candidate_indices: Vec<usize> = member_indices.iter()
+        .cloned()
+        .filter(|&i| snapshots[i].stars.len() as f32 >= min_stars)
+        .collect();
+    let passed = candidate_indices.len();
+
+    let (pool, warning): (Vec<usize>, Option<String>) = if candidate_indices.is_empty() {
+        let msg = format!(
+            "Group {}: reference candidacy gate found no frame with star count \u{2265} {:.0} \
+             (median {:.0} \u{00d7} {:.2}) \u{2014} falling back to best-available by quality score \
+             across all {} frames",
+            group, min_stars, median_stars, REF_MIN_STAR_FRACTION, member_indices.len()
+        );
+        (member_indices.clone(), Some(msg))
+    } else {
+        (candidate_indices, None)
+    };
+
+    info!(
+        "StackFrames: Group {} reference candidacy — {}/{} frames passed median star-count gate \
+         (median={:.0}, min={:.0})",
+        group, passed, member_indices.len(), median_stars, min_stars
+    );
+
+    let chosen = pool.iter()
+        .cloned()
+        .max_by(|&a, &b| {
+            quality_score(&snapshots[a]).partial_cmp(&quality_score(&snapshots[b]))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap_or(member_indices[0]);
+
+    (chosen, warning)
 }
 
 fn quality_score(snap: &FrameSnapshot) -> f32 {
@@ -894,7 +1021,7 @@ fn try_rigid_refinement(
         Some(refined) => {
             let theta = refined.theta();
             info!("Frame {}: RANSAC match — tx={:.2} ty={:.2} θ={:.4}rad ({:.3}°)",
-                frame_idx, refined.tx, refined.ty, theta, theta.to_degrees());
+                  frame_idx, refined.tx, refined.ty, theta, theta.to_degrees());
             refined
         }
         None => {
@@ -934,6 +1061,23 @@ fn buffer_unavailable(
     info!("{}", msg);
     messages.push(msg);
     contrib.exclusion_reason = Some(ExclusionReason::BufferUnavailable);
+    contributions.push(contrib.clone());
+}
+
+fn cross_group_failed(
+    frame_idx:     usize,
+    messages:      &mut Vec<String>,
+    contrib:       &mut FrameContribution,
+    contributions: &mut Vec<FrameContribution>,
+) {
+    // Reason detail already logged once at the group level when the solve
+    // was rejected — kept terse here to avoid repeating it per frame.
+    let msg = format!(
+        "Frame {}: excluded \u{2014} this frame's group failed cross-group validation", frame_idx
+    );
+    info!("{}", msg);
+    messages.push(msg);
+    contrib.exclusion_reason = Some(ExclusionReason::CrossGroupFailed);
     contributions.push(contrib.clone());
 }
 
