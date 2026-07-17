@@ -306,8 +306,20 @@ pub fn move_to_rejected(old_path: &str, suffix: &str) -> Result<String, String> 
 /// Shared commit implementation called by both the Tauri command and the
 /// CommitAnalysis pcode plugin.
 pub fn do_commit(ctx: &mut crate::context::AppContext, append: &str) -> Result<String, String> {
-    // ── Step 1: collect reject paths ─────────────────────────────────────────
-    if ctx.analysis_results.is_empty() {
+    // ── Step 1: collect reject paths ──────────────────────────────────────────
+    // Issue 117: a non-empty analysis_results is not sufficient evidence a
+    // real (scope=all) analysis ran — AnalyzeFrames scope=current now
+    // correctly keys its single-frame entry by session path (previously it
+    // was keyed by basename and never matched file_list at all), so a
+    // non-empty check alone would let a single-frame scope=current result
+    // pass this guard and "commit" 0 real classifications silently. Require
+    // every file_list path to have an entry instead — true for a genuine
+    // scope=all run (which populates one entry per file) or an equivalent
+    // per-frame scope=current loop covering the whole session, false for a
+    // partial scope=current spot-check.
+    let fully_analyzed = !ctx.file_list.is_empty()
+        && ctx.file_list.iter().all(|p| ctx.analysis_results.contains_key(p));
+    if !fully_analyzed {
         return Err("No analysis results to commit. Run AnalyzeFrames first.".to_string());
     }
     if ctx.is_imported_session {

@@ -16,10 +16,11 @@ use serde_json::json;
 // ── Shared pixel preparation ──────────────────────────────────────────────────
 
 struct PreparedImage {
-    luma:   Vec<f32>,
-    width:  usize,
-    height: usize,
-    path:   String,
+    luma:         Vec<f32>,
+    width:        usize,
+    height:       usize,
+    path:         String,
+    session_path: String,
 }
 
 fn prepare_current_image(ctx: &AppContext) -> Result<PreparedImage, PluginError> {
@@ -38,11 +39,22 @@ fn prepare_current_image(ctx: &AppContext) -> Result<PreparedImage, PluginError>
 
     let luma = analysis::extract_luminance(&normalized, width, height, channels);
 
+    // Issue 117: analysis_results must be keyed by the session path
+    // (matching execute_all's snap.path and file_list entries), not
+    // img.filename — image_reader sets filename to the basename only,
+    // which never matches a file_list entry and left ghost, unremovable
+    // analysis_results entries. `path` remains the basename, used only
+    // for display in each plugin variant's response/message.
+    let session_path = ctx.file_list.get(ctx.current_frame).cloned().ok_or_else(|| {
+        PluginError::new("NO_IMAGE", "No current frame in session.")
+    })?;
+
     Ok(PreparedImage {
         luma,
         width,
         height,
         path: img.filename.clone(),
+        session_path,
     })
 }
 
@@ -87,7 +99,7 @@ fn run_and_store(
     );
 
     {
-        let result = ctx.analysis_result_for(&prepped.path);
+        let result = ctx.analysis_result_for(&prepped.session_path);
         result.background_median = Some(metrics.median);
     }
 

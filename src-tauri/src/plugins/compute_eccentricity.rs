@@ -81,6 +81,15 @@ impl PhotyxPlugin for ComputeEccentricity {
         let width      = img.width  as usize;
         let height     = img.height as usize;
         let path       = img.filename.clone();
+        // Issue 117: analysis_results must be keyed by the session path
+        // (matching execute_all's snap.path and file_list entries), not
+        // img.filename — image_reader sets filename to the basename only,
+        // which never matches a file_list entry and left ghost,
+        // unremovable analysis_results entries. `path` above is kept as
+        // the basename for display in the response/console message below.
+        let session_path = ctx.file_list.get(ctx.current_frame).cloned().ok_or_else(|| {
+            PluginError::new("NO_IMAGE", "No current frame in session.")
+        })?;
 
         let luma = analysis::extract_luminance(&normalized, width, height, channels);
 
@@ -101,7 +110,7 @@ impl PhotyxPlugin for ComputeEccentricity {
 
         // ── Store result ──────────────────────────────────────────────────────
         {
-            let ar = ctx.analysis_result_for(&path);
+            let ar = ctx.analysis_result_for(&session_path);
             ar.eccentricity = Some(result.eccentricity);
             ar.star_count   = Some(result.star_count as u32);
         }

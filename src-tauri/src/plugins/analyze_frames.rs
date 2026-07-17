@@ -153,13 +153,24 @@ fn execute_current(
         PluginError::new("NO_IMAGE", "No image loaded.")
     })?;
 
-    let result      = compute_metrics_for_image(img, det_config)?;
-    let path        = result.filename.clone();
+    // Issue 117: analysis_results must be keyed by the session path
+    // (matching execute_all's snap.path and file_list entries), not
+    // img.filename — image_reader sets filename to the basename only,
+    // which never matches a file_list entry and left ghost, unremovable
+    // analysis_results entries. display_name (basename) is kept for the
+    // response/console message below; AnalysisResult.filename itself now
+    // also stores session_path, matching execute_all's convention.
+    let display_name = img.filename.clone();
+    let session_path  = ctx.file_list.get(ctx.current_frame).cloned().ok_or_else(|| {
+        PluginError::new("NO_IMAGE", "No current frame in session.")
+    })?;
+
+    let result      = compute_metrics_for_image(img, det_config, &session_path)?;
     let plate_scale = derive_plate_scale(&img.keywords);
 
     let _ = img;
 
-    *ctx.analysis_result_for(&path) = result.clone();
+    *ctx.analysis_result_for(&session_path) = result.clone();
 
     let fwhm_str = match (result.fwhm, plate_scale) {
         (Some(px), Some(ps)) => format!("{:.2}px / {:.2}\"", px, px * ps),
@@ -181,7 +192,7 @@ fn execute_current(
     Ok(PluginOutput::Data(json!({
         "plugin":           "AnalyzeFrames",
         "scope":            "current",
-        "filename":         path,
+        "filename":         display_name,
         "background_median": result.background_median,
         "fwhm_pixels":      result.fwhm,
         "eccentricity":     result.eccentricity,
@@ -394,8 +405,9 @@ fn execute_all(
 // ── Metric computation for a single image ────────────────────────────────────
 
 fn compute_metrics_for_image(
-    img:        &ImageBuffer,
-    det_config: &StarDetectionConfig,
+    img:          &ImageBuffer,
+    det_config:   &StarDetectionConfig,
+    session_path: &str,
 ) -> Result<AnalysisResult, PluginError> {
     let pixels = img.pixels.as_ref().ok_or_else(|| {
         PluginError::new("NO_PIXELS", "Image buffer contains no pixel data.")
@@ -414,7 +426,9 @@ fn compute_metrics_for_image(
     let ecc_result  = compute_eccentricity(&stars);
 
     Ok(AnalysisResult {
-        filename:          img.filename.clone(),
+        // Issue 117: session path, not img.filename (basename) — matches
+        // execute_all's AnalysisResult.filename = snap.path convention.
+        filename:          session_path.to_string(),
         background_median: Some(bg.median),
         fwhm:              fwhm_result.as_ref().map(|r| r.fwhm_pixels),
         eccentricity:      ecc_result.as_ref().map(|r| r.eccentricity),
