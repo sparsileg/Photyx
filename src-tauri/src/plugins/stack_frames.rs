@@ -594,6 +594,64 @@ impl PhotyxPlugin for StackFrames {
 
         let stack_pixels = normalize_output(&raw_pixels, is_color, n_pixels);
 
+        //  ── Crop to common-overlap region (Issue 111, Option 3) ───────────────
+        // Every included frame's final transform is already known. Compute
+        // the axis-aligned region free of clamp-fabricated data for each one
+        // and intersect across all frames that actually made it into the
+        // final average (contributions[i].included, post-Pass-2) — a frame
+        // excluded before Pass 2 (e.g. buffer vanished) must not constrain
+        // the crop, since its data never entered sum_buf.
+        let crop = cached_transforms.iter()
+            .enumerate()
+            .filter_map(|(i, xform)| {
+                if contributions.get(i).map(|c| c.included).unwrap_or(false) {
+                    xform.as_ref().map(|x| (i, x))
+                } else {
+                    None
+                }
+            })
+            .map(|(i, xform)| {
+                let bounds = valid_output_bounds(width, height, xform);
+                // TEMPORARY DIAGNOSTIC (Issue 111) — remove once the zero-area
+                // collapse on rotated transforms is understood and fixed.
+                info!(
+                    "StackFrames: valid_output_bounds frame {} \u{2014} a={:.4} b={:.4} (\u{03b8}={:.4}rad) tx={:.2} ty={:.2} \u{2192} bounds=({}, {}, {}, {})",
+                    snapshots[i].index, xform.a, xform.b, xform.theta(), xform.tx, xform.ty,
+                    bounds.0, bounds.1, bounds.2, bounds.3
+                );
+                bounds
+            })
+            .fold((0usize, 0usize, width, height), |(ax0, ay0, ax1, ay1), (bx0, by0, bx1, by1)| {
+                (ax0.max(bx0), ay0.max(by0), ax1.min(bx1), ay1.min(by1))
+            });
+
+        let (crop_x0, crop_y0, crop_x1, crop_y1) = crop;
+        let cropped_w = crop_x1.saturating_sub(crop_x0);
+        let cropped_h = crop_y1.saturating_sub(crop_y0);
+
+        let (final_pixels, final_w, final_h) = if cropped_w > 0 && cropped_h > 0
+            && (cropped_w < width || cropped_h < height)
+        {
+            let msg = format!(
+                "StackFrames: cropped to common-overlap region {}\u{00d7}{} \u{2192} {}\u{00d7}{} (origin {},{})",
+                width, height, cropped_w, cropped_h, crop_x0, crop_y0
+            );
+            info!("{}", msg);
+            messages.push(msg);
+            (
+                crop_buffer(&stack_pixels, width, n_channels, crop_x0, crop_y0, cropped_w, cropped_h),
+                cropped_w,
+                cropped_h,
+            )
+        } else {
+            if cropped_w == 0 || cropped_h == 0 {
+                let msg = "StackFrames: common-overlap crop degenerated to zero area \u{2014} using full uncropped canvas instead".to_string();
+                info!("{}", msg);
+                messages.push(msg);
+            }
+            (stack_pixels, width, height)
+        };
+
         let completed_at      = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let timestamp_display = Utc::now().format("%Y-%m-%d %H:%M").to_string();
 
@@ -607,14 +665,14 @@ impl PhotyxPlugin for StackFrames {
 
         let stack_buf = ImageBuffer {
             filename:      stack_label.clone(),
-            width:         width  as u32,
-            height:        height as u32,
-            display_width: width  as u32,
+            width:         final_w  as u32,
+            height:        final_h as u32,
+            display_width: final_w  as u32,
             bit_depth:     BitDepth::F32,
             color_space:   output_color_space,
             channels:      output_channels,
-            keywords:      build_stack_keywords(width, height, &ctx.stack_summary),
-            pixels:        Some(PixelData::F32(stack_pixels)),
+            keywords:      build_stack_keywords(final_w, final_h, &ctx.stack_summary),
+            pixels:        Some(PixelData::F32(final_pixels)),
         };
 
         ctx.stack_result = Some(stack_buf);
@@ -1031,6 +1089,136 @@ fn bilinear_rgb(
     let top    = p00 * (1.0 - fx) + p10 * fx;
     let bottom = p01 * (1.0 - fx) + p11 * fx;
     top * (1.0 - fy) + bottom * fy
+}
+
+//  ── Common-overlap crop (Issue 111, Option 3) ────────────────────────────────
+// For a single frame's transform, determines the axis-aligned output region
+// where every pixel's bilinear footprint lies entirely inside the source
+// frame — i.e. free of clamp-fabricated edge data. Uses the exact same
+// apply_inverse math the real resampler uses, evaluated directly per frame
+// rather than inferred from an accumulated coverage count (the approach an
+// earlier attempt at this feature used, which failed because a clamping
+// resampler makes every pixel look fully covered regardless of frame shift).
+
+/// Returns (x_min, y_min, x_max_exclusive, y_max_exclusive) — the largest
+/// axis-aligned rectangle, found by scanning inward from each canvas edge,
+/// within which this frame's resample has no fabricated (clamped) data.
+fn valid_output_bounds(width: usize, height: usize, xform: &AffineRigid) -> (usize, usize, usize, usize) {
+    let w = width  as i32;
+    let h = height as i32;
+
+    // Point-membership test for the valid region V = T(source_rect) — true
+    // iff this OUTPUT pixel's bilinear footprint is entirely inside the
+    // source frame (no clamp-fabricated data). Weight-aware: a corner only
+    // needs to be in-bounds if its interpolation weight is nonzero.
+    let is_valid = |ox: usize, oy: usize| -> bool {
+        let (src_x, src_y) = xform.apply_inverse(ox as f32, oy as f32);
+        let x0f = src_x.floor() as i32;
+        let y0f = src_y.floor() as i32;
+        let fx = src_x - x0f as f32;
+        let fy = src_y - y0f as f32;
+        let x0_ok = x0f >= 0 && x0f < w;
+        let x1_ok = fx <= 0.0 || (x0f + 1 < w);
+        let y0_ok = y0f >= 0 && y0f < h;
+        let y1_ok = fy <= 0.0 || (y0f + 1 < h);
+        x0_ok && x1_ok && y0_ok && y1_ok
+    };
+
+    // V is convex — T is a rigid rotation+translation, so it maps the
+    // convex source rectangle to a convex (merely rotated) rectangle in
+    // output space. For two convex shapes, an axis-aligned candidate
+    // rectangle lies entirely inside V iff all four of its corners do —
+    // so a candidate can be checked in O(1), not O(pixels). This
+    // replaces an earlier full-row/column scan, which was only correct
+    // when the invalid region was a pure horizontal or vertical band —
+    // never true once translation has both x and y components, which is
+    // why every non-identity frame previously collapsed to zero area.
+    let corners_valid = |x0: usize, y0: usize, x1: usize, y1: usize| -> bool {
+        if x1 <= x0 || y1 <= y0 { return false; }
+        is_valid(x0, y0) && is_valid(x1 - 1, y0) && is_valid(x0, y1 - 1) && is_valid(x1 - 1, y1 - 1)
+    };
+
+    // The valid region is, to sub-pixel accuracy, the FORWARD image of
+    // the source rectangle under the transform — a parallelogram, since
+    // the transform is affine. So instead of searching for it, compute
+    // it: map the four source corners into output space and take the
+    // inner axis-aligned box (per axis, the two middle values of the
+    // four sorted corner coordinates). For the near-axis-aligned
+    // transforms here (true rotation ≤ ~0.5°; the 180° flip merely
+    // relabels which corner is which), this box is inscribed in the
+    // parallelogram, and the rotation cross-term is captured exactly by
+    // the corner positions. This replaces a seed-and-expand search whose
+    // greedy per-edge expansion found inclusion-maximal but badly
+    // sub-optimal rectangles: one edge would grab a pixel that was only
+    // valid near the seed row/column, permanently blocking the
+    // perpendicular axis from expanding past where the rotation
+    // cross-term invalidated that pixel (e.g. 1 column of width traded
+    // for ~1100 rows of height).
+    let src_max_x = width  as f32 - 1.0;
+    let src_max_y = height as f32 - 1.0;
+    let corners = [
+        xform.apply_forward(0.0,       0.0),
+        xform.apply_forward(src_max_x, 0.0),
+        xform.apply_forward(0.0,       src_max_y),
+        xform.apply_forward(src_max_x, src_max_y),
+    ];
+    let mut xs: Vec<f32> = corners.iter().map(|c| c.0).collect();
+    let mut ys: Vec<f32> = corners.iter().map(|c| c.1).collect();
+    xs.sort_by(|p, q| p.partial_cmp(q).unwrap_or(std::cmp::Ordering::Equal));
+    ys.sort_by(|p, q| p.partial_cmp(q).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Inner box from the two middle coordinates per axis, rounded
+    // inward and clamped to the canvas. x1/y1 are exclusive bounds.
+    let mut x0 = xs[1].ceil().max(0.0) as usize;
+    let mut y0 = ys[1].ceil().max(0.0) as usize;
+    let mut x1 = (xs[2].floor() + 1.0).clamp(0.0, width  as f32) as usize;
+    let mut y1 = (ys[2].floor() + 1.0).clamp(0.0, height as f32) as usize;
+
+    // Boundary rounding and the bilinear-footprint edge cases can leave
+    // the analytic box off by a pixel — verify against the exact
+    // pixel-level predicate and nudge inward a few times if needed. If
+    // it still fails, fall through with the degenerate-checking
+    // self-check below reporting (0,0,0,0).
+    for _ in 0..4 {
+        if x1 <= x0 || y1 <= y0 { break; }
+        if corners_valid(x0, y0, x1, y1) { break; }
+        x0 += 1;
+        y0 += 1;
+        x1 = x1.saturating_sub(1);
+        y1 = y1.saturating_sub(1);
+    }
+
+
+    // Final self-check: don't trust the search implicitly. If the
+    // converged rectangle somehow fails its own containment test,
+    // report degenerate rather than a silently-wrong crop.
+    if corners_valid(x0, y0, x1, y1) {
+        (x0, y0, x1, y1)
+    } else {
+        (0, 0, 0, 0)
+    }
+}
+
+/// Crops a row-major pixel buffer (mono or interleaved-channel) to the
+/// given rectangle within a `src_w`-wide source buffer.
+fn crop_buffer(
+    src:      &[f32],
+    src_w:    usize,
+    channels: usize,
+    x0:       usize,
+    y0:       usize,
+    crop_w:   usize,
+    crop_h:   usize,
+) -> Vec<f32> {
+    let mut out = vec![0.0f32; crop_w * crop_h * channels];
+    for row in 0..crop_h {
+        let src_start = ((y0 + row) * src_w + x0) * channels;
+        let dst_start = row * crop_w * channels;
+        let row_len   = crop_w * channels;
+        out[dst_start..dst_start + row_len]
+            .copy_from_slice(&src[src_start..src_start + row_len]);
+    }
+    out
 }
 
 //  ── Helpers ───────────────────────────────────────────────────────────────────
