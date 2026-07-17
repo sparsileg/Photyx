@@ -109,6 +109,10 @@ impl PhotyxPlugin for StackFrames {
         if ctx.file_list.is_empty() {
             return Err(PluginError::new("NO_FILES", "No files loaded."));
         }
+        // Issue 120: guarantees set_progress("", 0, 0) runs on every exit
+        // path — Ok, Err, or panic unwind — instead of only immediately
+        // before the final Ok. Held for the rest of execute().
+        let _progress_guard = crate::ProgressClearGuard;
         ctx.clear_stack();
         crate::set_progress("Stacking analysis", 0, 0);
 
@@ -775,8 +779,6 @@ impl PhotyxPlugin for StackFrames {
 
         let full_message = messages.join("\n");
         info!("StackFrames: {}", full_message);
-
-        crate::set_progress("", 0, 0);
 
         Ok(PluginOutput::Data(serde_json::json!({
             "plugin":          "StackFrames",

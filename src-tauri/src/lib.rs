@@ -48,6 +48,27 @@ pub fn set_progress(label: &str, current: u32, total: u32) {
     PROGRESS_TOTAL.store(total, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// RAII guard that clears progress (`set_progress("", 0, 0)`) when dropped —
+/// on a normal return, an early `Err` return, or a panic unwind alike
+/// (Issue 120). Long-running plugins that report progress should hold one
+/// for the duration of `execute()` instead of clearing progress by hand
+/// before each exit point, which is easy to miss on a new error path added
+/// later.
+///
+/// Does not clear progress belonging to a different concurrent operation —
+/// currently impossible to collide, since JOB_RUNNING serializes scripts and
+/// dispatch_command holds the context lock for the duration of a single
+/// plugin's execute(), so only one plugin can be reporting progress at a
+/// time. If that ever changes, this guard would need to become aware of
+/// which operation "owns" the current progress state before clearing it.
+pub struct ProgressClearGuard;
+
+impl Drop for ProgressClearGuard {
+    fn drop(&mut self) {
+        set_progress("", 0, 0);
+    }
+}
+
 // ── Script result types ───────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Clone)]

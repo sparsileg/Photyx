@@ -107,12 +107,33 @@ impl PhotyxPlugin for AnalyzeFrames {
             let thresholds = load_thresholds_by_name(profile_name)?;
             let saved = ctx.analysis_thresholds.clone();
             ctx.analysis_thresholds = thresholds;
-            let result = match scope.to_lowercase().as_str() {
-                "current" => execute_current(ctx, &det_config),
-                _         => execute_all(ctx, &det_config),
-            };
+
+            // Issue 120: restore the saved thresholds unconditionally,
+            // including if execute_current/execute_all panics. A plain
+            // match+restore already covered the Ok/Err cases; only a panic
+            // unwinding straight through this block could skip the restore
+            // and leave the temporary profile active in ctx indefinitely.
+            // catch_unwind here converts that panic into a normal
+            // PluginError instead of relying on the registry's dispatch-
+            // level catch_unwind, which restores nothing plugin-specific.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                match scope.to_lowercase().as_str() {
+                    "current" => execute_current(ctx, &det_config),
+                    _         => execute_all(ctx, &det_config),
+                }
+            }));
             ctx.analysis_thresholds = saved;
-            return result;
+
+            return match result {
+                Ok(r) => r,
+                Err(payload) => {
+                    let msg = payload.downcast_ref::<&str>()
+                        .map(|s| s.to_string())
+                        .or_else(|| payload.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "AnalyzeFrames panicked during profile=-scoped execution".to_string());
+                    Err(PluginError::new("PANIC", &msg))
+                }
+            };
         }
 
         match scope.to_lowercase().as_str() {
