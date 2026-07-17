@@ -633,10 +633,10 @@ impl PhotyxPlugin for StackFrames {
             && (cropped_w < width || cropped_h < height)
         {
             let msg = format!(
-                "StackFrames: cropped to common-overlap region {}\u{00d7}{} \u{2192} {}\u{00d7}{} (origin {},{})",
+                "cropped to common-overlap region {}\u{00d7}{} \u{2192} {}\u{00d7}{} (origin {},{})",
                 width, height, cropped_w, cropped_h, crop_x0, crop_y0
             );
-            info!("{}", msg);
+            info!("StackFrames: {}", msg);
             messages.push(msg);
             (
                 crop_buffer(&stack_pixels, width, n_channels, crop_x0, crop_y0, cropped_w, cropped_h),
@@ -645,8 +645,8 @@ impl PhotyxPlugin for StackFrames {
             )
         } else {
             if cropped_w == 0 || cropped_h == 0 {
-                let msg = "StackFrames: common-overlap crop degenerated to zero area \u{2014} using full uncropped canvas instead".to_string();
-                info!("{}", msg);
+                let msg = "common-overlap crop degenerated to zero area \u{2014} using full uncropped canvas instead".to_string();
+                info!("StackFrames: {}", msg);
                 messages.push(msg);
             }
             (stack_pixels, width, height)
