@@ -123,6 +123,16 @@ fn parse_blocks(lines: &[(usize, PcodeLine)]) -> Result<Vec<Block>, String> {
                     }
                 }
 
+                // Issue 119: loop above exits either via EndIf (depth
+                // reaches 0, breaks) or by exhausting the script with
+                // depth still > 0 — previously both were treated as
+                // success, silently running the entire remainder of the
+                // script as the then-branch. Mirrors the existing orphan
+                // EndIf error path below for symmetry.
+                if depth != 0 {
+                    return Err(format!("Line {}: If without matching EndIf", line_number));
+                }
+
                 blocks.push(Block::If {
                     line_number,
                     expr,
@@ -156,6 +166,14 @@ fn parse_blocks(lines: &[(usize, PcodeLine)]) -> Result<Vec<Block>, String> {
                             i += 1;
                         }
                     }
+                }
+
+                // Issue 119: same unterminated-block gap as If/EndIf above
+                // — loop exhaustion with depth still > 0 previously
+                // silently ran the entire remainder of the script as the
+                // loop body.
+                if depth != 0 {
+                    return Err(format!("Line {}: For without matching EndFor", line_number));
                 }
 
                 blocks.push(Block::For {
@@ -192,6 +210,12 @@ fn parse_blocks(lines: &[(usize, PcodeLine)]) -> Result<Vec<Block>, String> {
                             i += 1;
                         }
                     }
+                }
+
+                // Issue 119: same unterminated-block gap as If/EndIf and
+                // For/EndFor above.
+                if depth != 0 {
+                    return Err(format!("Line {}: ForIn without matching EndFor", line_number));
                 }
 
                 blocks.push(Block::ForIn {
@@ -301,7 +325,7 @@ fn execute_blocks(
                             message:    Some(format!("If: invalid condition '{}': {}", expr, e)),
                             data:       None,
                             trace_line: None,
-            client_actions: vec![],
+                            client_actions: vec![],
                         });
                         if halt_on_error { *halted = true; }
                     }
@@ -384,7 +408,7 @@ fn execute_blocks(
                             message:    Some(format!("For: cannot parse 'from' value '{}': {}", from, msg)),
                             data:       None,
                             trace_line: None,
-            client_actions: vec![],
+                            client_actions: vec![],
                         });
                         if halt_on_error { *halted = true; }
                         continue 'blocks;
@@ -400,7 +424,7 @@ fn execute_blocks(
                             message:    Some(format!("For: cannot parse 'to' value '{}': {}", to, msg)),
                             data:       None,
                             trace_line: None,
-            client_actions: vec![],
+                            client_actions: vec![],
                         });
                         if halt_on_error { *halted = true; }
                         continue 'blocks;
@@ -455,7 +479,7 @@ fn execute_line(
                         message:    Some(format!("Expression error: {}", e)),
                         data:       None,
                         trace_line: None,
-            client_actions: vec![],
+                        client_actions: vec![],
                     });
                     if halt_on_error { *halted = true; }
                     return;
@@ -475,7 +499,7 @@ fn execute_line(
                 message:    Some(format!("{} = {}", name, resolved)),
                 data:       None,
                 trace_line: Some(format!("Set {} = {}", name, resolved)),
-            client_actions: vec![],
+                client_actions: vec![],
             });
         }
 
@@ -498,7 +522,7 @@ fn execute_line(
                     message:    None,
                     data:       Some(serde_json::json!({ "client_command": command.to_lowercase() })),
                     trace_line: Some(command.clone()),
-            client_actions: vec![],
+                    client_actions: vec![],
                 });
                 return;
             }
@@ -515,7 +539,7 @@ fn execute_line(
                             message:    None,
                             data:       None,
                             trace_line: Some(format!("Assert {}", raw_expr)),
-            client_actions: vec![],
+                            client_actions: vec![],
                         });
                     }
                     Ok(false) => {
@@ -526,7 +550,7 @@ fn execute_line(
                             message:    Some(format!("Assertion failed: {}", raw_expr)),
                             data:       None,
                             trace_line: None,
-            client_actions: vec![],
+                            client_actions: vec![],
                         });
                         if halt_on_error { *halted = true; }
                     }
@@ -538,7 +562,7 @@ fn execute_line(
                             message:    Some(format!("Assert expression error: {}", e)),
                             data:       None,
                             trace_line: None,
-            client_actions: vec![],
+                            client_actions: vec![],
                         });
                         if halt_on_error { *halted = true; }
                     }
@@ -563,7 +587,7 @@ fn execute_line(
                             message:    Some(evaluated),
                             data:       None,
                             trace_line: Some(format!("Print {}", raw_message)),
-            client_actions: vec![],
+                            client_actions: vec![],
                         });
                     }
                     Err(e) => {
@@ -574,7 +598,7 @@ fn execute_line(
                             message:    Some(format!("Print expression error: {}", e)),
                             data:       None,
                             trace_line: None,
-            client_actions: vec![],
+                            client_actions: vec![],
                         });
                         if halt_on_error { *halted = true; }
                     }
@@ -595,43 +619,43 @@ fn execute_line(
                     message:    Some(result.unwrap_or_else(|e| e)),
                     data:       None,
                     trace_line: None,
-            client_actions: vec![],
+                    client_actions: vec![],
                 });
                 return;
             }
 
             match registry.dispatch(ctx, command, &resolved_args) {
-                        Ok(output) => {
-                            // Sync any variables the plugin wrote to ctx.variables
-                            for (k, v) in &ctx.variables {
-                                variables.insert(k.clone(), v.clone());
+                Ok(output) => {
+                    // Sync any variables the plugin wrote to ctx.variables
+                    for (k, v) in &ctx.variables {
+                        variables.insert(k.clone(), v.clone());
+                    }
+                    let (msg, data, plugin_actions) = match output {
+                        PluginOutput::Success      => (None, None, vec![]),
+                        PluginOutput::Message(m)   => (Some(m), None, vec![]),
+                        PluginOutput::Value(v)     => {
+                            if let Some(varname) = resolved_args.get("name")
+                                .or_else(|| resolved_args.get("varname"))
+                            {
+                                let key = varname.to_uppercase();
+                                variables.insert(key.clone(), v.clone());
+                                ctx.variables.insert(key, v.clone());
                             }
-                            let (msg, data, plugin_actions) = match output {
-                                PluginOutput::Success      => (None, None, vec![]),
-                                PluginOutput::Message(m)   => (Some(m), None, vec![]),
-                                PluginOutput::Value(v)     => {
-                                    if let Some(varname) = resolved_args.get("name")
-                                        .or_else(|| resolved_args.get("varname"))
-                                    {
-                                        let key = varname.to_uppercase();
-                                        variables.insert(key.clone(), v.clone());
-                                        ctx.variables.insert(key, v.clone());
-                                    }
-                                    (Some(v), None, vec![])
-                                }
-                                PluginOutput::Values(vs)   => (Some(vs.join("\n")), None, vec![]),
-                                PluginOutput::Data(d)       => {
-                                    let msg = d.get("message")
-                                        .and_then(|m| m.as_str())
-                                        .unwrap_or("Done")
-                                        .to_string();
-                                    let actions: Vec<String> = d.get("client_action")
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| vec![s.to_string()])
-                                        .unwrap_or_default();
-                                    (Some(msg), Some(d), actions)
-                                }
-                            };
+                            (Some(v), None, vec![])
+                        }
+                        PluginOutput::Values(vs)   => (Some(vs.join("\n")), None, vec![]),
+                        PluginOutput::Data(d)       => {
+                            let msg = d.get("message")
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("Done")
+                                .to_string();
+                            let actions: Vec<String> = d.get("client_action")
+                                .and_then(|v| v.as_str())
+                                .map(|s| vec![s.to_string()])
+                                .unwrap_or_default();
+                            (Some(msg), Some(d), actions)
+                        }
+                    };
                     info!("pcode line {}: {} -> OK", line_number, command);
                     results.push(PcodeResult {
                         line_number,
@@ -658,7 +682,7 @@ fn execute_line(
                         message:    Some(e.message.clone()),
                         data:       None,
                         trace_line: None,
-            client_actions: vec![],
+                        client_actions: vec![],
                     });
                     if halt_on_error {
                         *halted = true;
@@ -773,8 +797,104 @@ fn handle_log(
             .map_err(|e| format!("Log: write error: {}", e))?;
     }
 
-    let count = results.len();
+let count = results.len();
     Ok(format!("Log written to '{}' ({} entries)", resolved_path, count))
+}
+
+#[cfg(test)]
+mod block_parsing_tests {
+    use super::*;
+
+    // Issue 119: lock in existing valid-nesting behavior before trusting
+    // the new unterminated-block error paths, plus cover the new paths
+    // themselves.
+
+    fn tokenize_script(src: &str) -> Vec<(usize, PcodeLine)> {
+        src.lines()
+            .enumerate()
+            .map(|(i, line)| (i + 1, tokenize_line(line)))
+            .collect()
+    }
+
+    #[test]
+    fn nested_if_in_for_parses_ok() {
+        let script = "\
+For i = 1 To 3
+  If $i > 1
+    Print $i
+  EndIf
+EndFor";
+        let result = parse_blocks(&tokenize_script(script));
+        assert!(result.is_ok(), "expected valid nested If-in-For to parse, got {:?}", result);
+    }
+
+    #[test]
+    fn nested_for_in_if_parses_ok() {
+        let script = "\
+If $x > 0
+  For i = 1 To 3
+    Print $i
+  EndFor
+EndIf";
+        let result = parse_blocks(&tokenize_script(script));
+        assert!(result.is_ok(), "expected valid nested For-in-If to parse, got {:?}", result);
+    }
+
+    #[test]
+    fn missing_endif_reports_opening_line() {
+        let script = "\
+Print \"before\"
+If $x > 0
+  Print \"inside\"
+Print \"after\"";
+        let result = parse_blocks(&tokenize_script(script));
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("Line 2"), "expected error naming line 2 (the If), got: {}", msg);
+        assert!(msg.contains("EndIf"), "expected error to mention EndIf, got: {}", msg);
+    }
+
+    #[test]
+    fn missing_endfor_numeric_reports_opening_line() {
+        let script = "\
+Print \"before\"
+For i = 1 To 3
+  Print $i";
+        let result = parse_blocks(&tokenize_script(script));
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("Line 2"), "expected error naming line 2 (the For), got: {}", msg);
+        assert!(msg.contains("EndFor"), "expected error to mention EndFor, got: {}", msg);
+    }
+
+    #[test]
+    fn missing_endfor_forin_reports_opening_line() {
+        let script = "\
+Print \"before\"
+for f in \"*.fit\"
+  Print $f";
+        let result = parse_blocks(&tokenize_script(script));
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("Line 2"), "expected error naming line 2 (the ForIn), got: {}", msg);
+        assert!(msg.contains("EndFor"), "expected error to mention EndFor, got: {}", msg);
+    }
+
+    #[test]
+    fn nested_missing_inner_endif_reports_inner_line_not_outer() {
+        // A missing EndIf nested inside a properly-closed For should name
+        // the If's own line (2), not the For's (1) — confirms line numbers
+        // survive the then_lines/body_lines recursion untouched.
+        let script = "\
+For i = 1 To 3
+  If $i > 1
+    Print $i
+EndFor";
+        let result = parse_blocks(&tokenize_script(script));
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("Line 2"), "expected error naming line 2 (the inner If), got: {}", msg);
+    }
 }
 
 // ----------------------------------------------------------------------
