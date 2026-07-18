@@ -115,19 +115,39 @@ pub fn tokenize_line(line: &str) -> PcodeLine {
     PcodeLine::Command { command, args }
 }
 
-/// Find `needle` as a whole word in `haystack`. Returns byte position or None.
+/// Find `needle` as a whole word in `haystack`, case-insensitively.
+/// Returns a byte offset valid in the ORIGINAL `haystack` (never a
+/// lowercased copy), or None. `needle` must be pure ASCII.
+///
+/// Issue 119: previously computed the match position on
+/// haystack.to_lowercase() and returned that offset directly, but callers
+/// (the "for"/"in"/"to" tokenizer branches) sliced the *original*
+/// haystack at that offset. to_lowercase() can change UTF-8 byte length
+/// for some non-ASCII characters (e.g. Turkish dotted İ), which could
+/// shift the returned offset past a char boundary in the original string
+/// and panic when a caller sliced it — the same class of bug fixed in
+/// stripext() elsewhere in this issue. Also fixes the separate
+/// whitespace-separator gap: only a literal space (0x20) was previously
+/// accepted as a word boundary, so a tab between "for x" and 'in
+/// "pattern"' failed to match the ForIn form.
 fn find_word(haystack: &str, needle: &str) -> Option<usize> {
-    let lower = haystack.to_lowercase();
-    let mut start = 0;
-    while let Some(pos) = lower[start..].find(needle) {
-        let abs_pos  = start + pos;
-        let before_ok = abs_pos == 0 || lower.as_bytes()[abs_pos - 1] == b' ';
-        let after_pos = abs_pos + needle.len();
-        let after_ok  = after_pos >= lower.len() || lower.as_bytes()[after_pos] == b' ';
-        if before_ok && after_ok {
-            return Some(abs_pos);
+    debug_assert!(needle.is_ascii(), "find_word needle must be ASCII");
+    let needle_len = needle.len();
+    let is_sep = |c: Option<char>| c.map(|c| c.is_whitespace()).unwrap_or(true);
+
+    for (i, _) in haystack.char_indices() {
+        let end = i + needle_len;
+        if end > haystack.len() || !haystack.is_char_boundary(end) {
+            continue;
         }
-        start = abs_pos + 1;
+        if !haystack[i..end].eq_ignore_ascii_case(needle) {
+            continue;
+        }
+        let before_ok = is_sep(haystack[..i].chars().next_back());
+        let after_ok  = is_sep(haystack[end..].chars().next());
+        if before_ok && after_ok {
+            return Some(i);
+        }
     }
     None
 }
@@ -179,8 +199,86 @@ pub fn parse_args(rest: &str) -> std::collections::HashMap<String, String> {
         args.insert(key.to_lowercase(), value);
     }
 
-    args
+args
 }
 
+#[cfg(test)]
+mod find_word_tests {
+    use super::*;
+
+    #[test]
+    fn tab_separator_matches_forin() {
+        // Issue 119 acceptance criterion: tab between "in" and the quoted
+        // pattern must still parse as ForIn, not fall through to Command.
+        let line = "for f in\t\"*.fit\"";
+        let parsed = tokenize_line(line);
+        match parsed {
+            PcodeLine::ForIn { var, pattern } => {
+                assert_eq!(var, "f");
+                assert_eq!(pattern, "*.fit");
+            }
+            other => panic!("expected ForIn, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn tab_before_in_also_matches() {
+        let line = "for f\tin \"*.fit\"";
+        let parsed = tokenize_line(line);
+        assert!(matches!(parsed, PcodeLine::ForIn { .. }), "expected ForIn, got {:?}", parsed);
+    }
+
+    #[test]
+    fn space_separator_still_matches() {
+        // Regression guard: ordinary space-separated form must keep working.
+        let line = "for f in \"*.fit\"";
+        let parsed = tokenize_line(line);
+        match parsed {
+            PcodeLine::ForIn { var, pattern } => {
+                assert_eq!(var, "f");
+                assert_eq!(pattern, "*.fit");
+            }
+            other => panic!("expected ForIn, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn substring_match_is_not_a_whole_word() {
+        // "in" inside "print" or similar must not be treated as the ForIn
+        // keyword — before/after must both be whitespace (or string edge).
+        assert_eq!(find_word("printer", "in"), None);
+    }
+
+    #[test]
+    fn non_ascii_haystack_does_not_panic() {
+        // Issue 119: the offset-safety half of this fix — a non-ASCII
+        // path/pattern (Turkish dotted İ) anywhere in the haystack must
+        // never cause a mid-codepoint slice panic, whether or not "in" is
+        // found.
+        let line = "for f in \"/data/İstanbul-M31/*.fit\"";
+        let parsed = tokenize_line(line);
+        match parsed {
+            PcodeLine::ForIn { var, pattern } => {
+                assert_eq!(var, "f");
+                assert_eq!(pattern, "/data/İstanbul-M31/*.fit");
+            }
+            other => panic!("expected ForIn, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn numeric_for_with_tab_around_to_still_matches() {
+        let line = "for i = 1\tTo\t5";
+        let parsed = tokenize_line(line);
+        match parsed {
+            PcodeLine::For { var, from, to } => {
+                assert_eq!(var, "i");
+                assert_eq!(from, "1");
+                assert_eq!(to, "5");
+            }
+            other => panic!("expected For, got {:?}", other),
+        }
+    }
+}
 
 // ----------------------------------------------------------------------
