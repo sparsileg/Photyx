@@ -218,8 +218,26 @@ const SESSION_COMMANDS: &[&str] = &[
 ];
 
 // Commands that alter the pixel data currently displayed in the viewer.
+// Issue 116: setframe/addfiles/readimages added — previously the frontend
+// had no way to know these commands changed what should be on screen
+// (SetFrame updated the session store's currentFrame, but nothing told
+// the Viewer to actually reload pixels for it), so the filename banner
+// updated while the displayed image silently didn't, until AutoStretch
+// happened to run and paint something.
+//
+// linearstretch/histogramequalization/backgroundextract/rejectcurrentframe
+// added in the same pass — Console.svelte was independently name-matching
+// these four commands to call ui.requestFrameRefresh() directly, a
+// parallel implementation of exactly what display_changed exists for.
+// Consolidated here so there's one backend-driven mechanism instead of
+// two, per UX_Best_Practices.md Pattern 5 (declarative side-effect
+// signaling, not frontend command-name matching).
 const DISPLAY_COMMANDS: &[&str] = &[
     "autostretch",
+    "setframe",
+    "addfiles",
+    "readimages",
+    "rejectcurrentframe",
 ];
 
 #[tauri::command]

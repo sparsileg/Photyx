@@ -153,6 +153,17 @@
         }
       }
 
+      // Issue 116: single hook for every display-affecting command, driven
+      // by the backend's DISPLAY_COMMANDS list (lib.rs) via
+      // result.display_changed — activates a field that was previously
+      // computed but never read anywhere on the frontend. Replaces
+      // rejectcurrentframe's per-command ui.requestFrameRefresh() call
+      // above, and is the actual fix for SetFrame/AddFiles/ReadImages
+      // never repainting the viewer.
+      if (result.display_changed) {
+        ui.requestFrameRefresh();
+      }
+
       // Dispatch client actions
       for (const action of result.client_actions ?? []) {
         if (action === 'refresh_autostretch') {
@@ -327,7 +338,16 @@
       }
     }
 
-    if (cmd === 'linearstretch' || cmd === 'histogramequalization' || cmd === 'backgroundextract') ui.requestFrameRefresh();
+    // Issue 116: removed a dead reference to linearstretch/
+    // histogramequalization/backgroundextract — none of these are real
+    // pcode commands (not in the command dictionary, and §3.4 of the
+    // 2026-07-10 code analysis already flagged a matching ghost-command
+    // list elsewhere as stale). rejectcurrentframe's own
+    // ui.requestFrameRefresh() call also removed from here — it's real
+    // and now flows through the single result.display_changed check in
+    // the effect above, alongside setframe/addfiles/readimages. Only the
+    // side effects display_changed doesn't cover (loading a specific
+    // file, clearing star annotations) stay here.
     if (cmd === 'contourheatmap') {
       const filePath = data?.output as string | null;
       if (filePath) loadFile(filePath);
@@ -336,11 +356,8 @@
       const filePath = data?.path as string | null;
       if (filePath) loadFile(filePath);
     }
-    if (cmd === 'setframe') ui.clearAnnotations();
-    if (cmd === 'rejectcurrentframe') {
-      ui.clearAnnotations();
-      ui.requestFrameRefresh();
-    }
+    if (cmd === 'setframe')          ui.clearAnnotations();
+    if (cmd === 'rejectcurrentframe') ui.clearAnnotations();
     if (cmd === 'stackframes' && data?.stack_available) {
       notifications.success('Stack complete — opening result 🔭');
       ui.showView('stackingWorkspace');

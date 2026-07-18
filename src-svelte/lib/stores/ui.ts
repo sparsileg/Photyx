@@ -132,12 +132,22 @@ function createUIStore() {
       return { ...s, quickLaunchVisible: next };
     }),
 
-    requestFrameRefresh: () => update(s => ({
-      ...s,
-      frameRefreshToken:   s.frameRefreshToken + 1,
-      autostretchImageUrl: null,
-      displayImageUrl:     null,
-    })),
+    requestFrameRefresh: () => update(s => {
+      // Issue 116: don't stomp the Blink tab's own image with a Pixels-tab
+      // reload while blink mode is active. Previously this guard existed
+      // nowhere in the refresh path — not here, not in the frameRefreshToken
+      // effect that consumes it — so every existing caller (RejectCurrentFrame,
+      // stretch-mode changes) already stomped the blink display before this fix.
+      // Blink's own frame updates go through a separate path
+      // (ui.setBlinkFrame) and are unaffected by this guard.
+      if (s.blinkModeActive) return s;
+      return {
+        ...s,
+        frameRefreshToken:   s.frameRefreshToken + 1,
+        autostretchImageUrl: null,
+        displayImageUrl:     null,
+      };
+    }),
     requestViewerClear: () => update(s => ({ ...s, viewerClearToken: s.viewerClearToken + 1 })),
     clearViewer: () => update(s => ({
       ...s,

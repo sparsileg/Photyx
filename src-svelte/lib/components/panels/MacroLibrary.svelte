@@ -223,6 +223,14 @@
         try {
           const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
           session.setFileList(s.fileList);
+          // Bug found during Issue 116 testing, introduced/carried forward
+          // during Issue 98: this handler fetched currentFrame but never
+          // applied it, unlike Console.svelte's and QuickLaunch.svelte's
+          // equivalent handlers — a macro-driven SetFrame updated the
+          // backend's current frame correctly, but session.currentFrame
+          // (and anything deriving from it, e.g. the filename banner in
+          // +page.svelte) stayed stale after a Macro Library run.
+          session.setCurrentFrame(s.currentFrame);
         } catch (e) {
           console.warn('MacroLibrary: session sync failed:', e);
         }
