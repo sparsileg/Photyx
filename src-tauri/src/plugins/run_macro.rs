@@ -59,13 +59,25 @@ impl PhotyxPlugin for RunMacro {
         let errors: Vec<_> = results.iter().filter(|r| !r.success).collect();
         let lines_run = results.len();
 
-        // Collect client actions from inner results so the frontend can
-        // execute them after run_script returns. Merges both the new
-        // client_actions field and the legacy client_command data field.
-        let mut client_actions: Vec<String> = results.iter()
+        // True client_actions tokens (refresh_autostretch, refresh_annotations,
+        // open_keyword_modal — §2.5), collected from inner results so the
+        // frontend can execute them after run_script returns.
+        let client_actions: Vec<String> = results.iter()
             .flat_map(|r| r.client_actions.iter().cloned())
             .collect();
-        let legacy: Vec<String> = results.iter()
+
+        // Issue 98: client-only pcode command names (ShowAnalysisGraph, etc.)
+        // hit by inner lines are a DIFFERENT vocabulary from the
+        // client_actions tokens above — previously merged into the same
+        // client_actions/client_action keys, which meant (a) only the first
+        // survived past execute_line's singular client_action extraction and
+        // (b) even that one landed in a field every frontend consumer's
+        // dispatch loop only matches against the three known action tokens,
+        // so no macro-invoked client command ever actually reached the
+        // frontend. Emitted here as a separate client_commands (plural)
+        // array instead, matching the shape Console.svelte's
+        // syncSessionState already expects.
+        let client_commands: Vec<String> = results.iter()
             .filter_map(|r| {
                 r.data.as_ref()
                     .and_then(|d| d.get("client_command"))
@@ -73,7 +85,6 @@ impl PhotyxPlugin for RunMacro {
                     .map(|s| s.to_string())
             })
             .collect();
-        client_actions.extend(legacy);
 
         // Collect inner output messages (exclude assignments, include Print and command output)
         let inner_output: Vec<String> = results.iter()
@@ -88,13 +99,14 @@ impl PhotyxPlugin for RunMacro {
             if !full_msg.is_empty() { full_msg.push('\n'); }
             full_msg.push_str(&summary);
 
-            if client_actions.is_empty() {
+            if client_actions.is_empty() && client_commands.is_empty() {
                 Ok(PluginOutput::Message(full_msg))
             } else {
                 Ok(PluginOutput::Data(serde_json::json!({
-                    "message":        full_msg,
-                    "client_action":  client_actions.first(),
-                    "client_actions": client_actions,
+                    "message":         full_msg,
+                    "client_action":   client_actions.first(),
+                    "client_actions":  client_actions,
+                    "client_commands": client_commands,
                 })))
             }
         } else {

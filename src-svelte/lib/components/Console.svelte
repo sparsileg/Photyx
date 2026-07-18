@@ -84,69 +84,91 @@
     const owner  = $jobOwner;
     if (!result || owner !== 'console') return;
 
-    let lastActionData: Record<string, unknown> | null = null;
-
-    for (const r of result.results) {
-      if (r.success) {
-        const isAssignment = r.command.toLowerCase().startsWith('set ');
-
-        if (trace && r.trace_line) {
-          append(r.trace_line, 'trace-echo');
-        }
-
-        if (r.message && !isAssignment) {
-          r.message.split('\n').forEach(line => {
-            if (line) append(line, 'success');
-          });
-        }
-
-        if (r.data) lastActionData = r.data;
-
-        syncSessionState(
-          r.command.toLowerCase(),
-          {},
-          r.message,
-          r.data,
-        );
-      } else {
-        const msg = r.message ?? 'Unknown error';
-        append(msg, 'error');
-        if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
-          notifications.alert('Too many files to load', msg, 10000);
-        } else {
-          notifications.error(msg);
-        }
-      }
-    }
-
-    if (result.session_changed) {
-      invoke<{ fileList: string[]; currentFrame: number }>('get_session').then(s => {
-        session.setFileList(s.fileList);
-        session.setCurrentFrame(s.currentFrame);
-      }).catch(e => {
-        notifications.error(`Session sync failed: ${e}`);
-      });
-    }
-
-    // Dispatch client actions
-    for (const action of result.client_actions ?? []) {
-      if (action === 'refresh_autostretch') {
-        const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
-        const targetBackground = lastActionData?.target_background as number | undefined;
-        applyAutoStretch(shadowClip, targetBackground).then(() => ui.clearAnnotations());
-      }
-      if (action === 'refresh_annotations') ui.refreshAnnotations();
-      if (action === 'open_keyword_modal')  ui.openKeywordModal();
-    }
-
-    const anyError = result.results.some(r => !r.success);
-    if (!anyError) {
-      notifications.success(result.results.at(-1)?.message ?? 'Done.');
-    }
-
-    // Clear job state
+    // Issue 98: clear job state synchronously, immediately — before any
+    // async work starts below. A prior version of this fix delayed this
+    // clear to the end of the async IIFE (behind await points added for
+    // client-command ordering), which reopened a real race: with jobResult
+    // still non-null and this effect still subscribed to it, the 500ms
+    // progress poller (or any other redelivery) could write a fresh-but-
+    // same-content result back into the store before cleanup ran, causing
+    // Svelte to rerun this effect on the same result and reprocess/reprint
+    // it — compounding indefinitely (confirmed via Svelte's own
+    // effect_update_depth_exceeded guard). Everything below now works off
+    // the locally-captured `result`, not the store, so clearing here first
+    // is safe.
     jobResult.set(null);
     jobOwner.set(null);
+
+    // Reactive reads ($jobResult, $jobOwner) stay synchronous above, per
+    // Svelte's effect dependency-tracking requirements. The rest of the
+    // work is wrapped in an async IIFE so the results loop can await
+    // syncSessionState() (which can await handleClientCommand()) in
+    // order — previously a fire-and-forget async call inside a synchronous
+    // loop let a later, fully-synchronous command (e.g. Pwd) print before
+    // an earlier async one (e.g. Version, which awaits getVersion()) had
+    // resolved, scrambling output order relative to script order.
+    (async () => {
+      let lastActionData: Record<string, unknown> | null = null;
+
+      for (const r of result.results) {
+        if (r.success) {
+          const isAssignment = r.command.toLowerCase().startsWith('set ');
+
+          if (trace && r.trace_line) {
+            append(r.trace_line, 'trace-echo');
+          }
+
+          if (r.message && !isAssignment) {
+            r.message.split('\n').forEach(line => {
+              if (line) append(line, 'success');
+            });
+          }
+
+          if (r.data) lastActionData = r.data;
+
+          await syncSessionState(
+            r.command.toLowerCase(),
+            {},
+            r.message,
+            r.data,
+          );
+        } else {
+          const msg = r.message ?? 'Unknown error';
+          append(msg, 'error');
+          if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
+            notifications.alert('Too many files to load', msg, 10000);
+          } else {
+            notifications.error(msg);
+          }
+        }
+      }
+
+      if (result.session_changed) {
+        try {
+          const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
+          session.setFileList(s.fileList);
+          session.setCurrentFrame(s.currentFrame);
+        } catch (e) {
+          notifications.error(`Session sync failed: ${e}`);
+        }
+      }
+
+      // Dispatch client actions
+      for (const action of result.client_actions ?? []) {
+        if (action === 'refresh_autostretch') {
+          const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
+          const targetBackground = lastActionData?.target_background as number | undefined;
+          applyAutoStretch(shadowClip, targetBackground).then(() => ui.clearAnnotations());
+        }
+        if (action === 'refresh_annotations') ui.refreshAnnotations();
+        if (action === 'open_keyword_modal')  ui.openKeywordModal();
+      }
+
+      const anyError = result.results.some(r => !r.success);
+      if (!anyError) {
+        notifications.success(result.results.at(-1)?.message ?? 'Done.');
+      }
+    })();
   });
 
   const ALL_COMMANDS = [...PCODE_COMMANDS].sort();
@@ -192,20 +214,15 @@
     }
   }
 
+  // Issue 98: help and clear are legitimately console-only (no other entry
+  // point has a help modal or a local `lines` array to clear) and stay
+  // implemented here directly. The other five — pwd, version,
+  // showanalysisgraph, showanalysisresults, clearannotations — now delegate
+  // to handleClientCommand(), the single canonical implementation in
+  // clientCommands.ts, instead of reimplementing each inline. Output from
+  // the delegated commands arrives via the existing consolePipe queue
+  // effect above rather than a synchronous append() call.
   const CLIENT_COMMANDS: Record<string, (raw: string) => void> = {
-    pwd: (_raw: string) => {
-      const fileList = $session.fileList;
-      if (fileList.length === 0) {
-        append('(no files loaded)', 'output');
-      } else {
-        const dirs = [...new Set(fileList.map(f => {
-          const parts = f.replace(/\\/g, '/').split('/');
-          parts.pop();
-          return parts.join('/');
-        }))].sort();
-        dirs.forEach(d => append(d, 'output'));
-      }
-    },
     help: (raw: string) => {
       const parts = raw.trim().split(/\s+/);
       const cmdArg = parts.length > 1 ? parts.slice(1).join(' ').trim() : null;
@@ -227,12 +244,11 @@
       append('Expression functions: abs  basename  ceil  dirof  floor  max  min  round  sqrt  stripext', 'output');
     },
     clear: (_raw: string) => { lines = []; },
-    version: async (_raw: string) => {
-      append(`Photyx ${await getVersion()}  |  pcode v1.0  |  Tauri + Svelte + Rust`, 'output');
-    },
-    showanalysisgraph: (_raw: string) => { ui.showView('analysisGraph'); },
-    showanalysisresults: (_raw: string) => { ui.showView('analysisResults'); },
-    clearannotations: (_raw: string) => { ui.clearAnnotations(); },
+    pwd:                  (_raw: string) => { handleClientCommand('pwd'); },
+    version:              (_raw: string) => { handleClientCommand('version'); },
+    showanalysisgraph:    (_raw: string) => { handleClientCommand('showanalysisgraph'); },
+    showanalysisresults:  (_raw: string) => { handleClientCommand('showanalysisresults'); },
+    clearannotations:     (_raw: string) => { handleClientCommand('clearannotations'); },
   };
 
   async function dispatch(raw: string) {
@@ -278,7 +294,7 @@
     }
   }
 
-  function syncSessionState(
+  async function syncSessionState(
     cmd: string,
     args: Record<string, string>,
     output: string | null,
@@ -291,22 +307,23 @@
       ui.clearViewer();
     }
 
+    // Issue 98: previously this inline if-chain ran, then
+    // handleClientCommand(data.client_command) ran again immediately after
+    // for the same value — a confirmed double-execution (Version printed
+    // twice). handleClientCommand() in clientCommands.ts is the single
+    // canonical implementation for all five commands; this file should only
+    // ever call it, never reimplement command behavior inline. The
+    // client_commands (plural) branch below was previously dead — nothing
+    // populated it — until run_macro.rs started emitting it (Issue 98).
+    // Awaited (and this whole function made async) so a Version followed
+    // by Pwd in the same script prints in script order — see the
+    // console-results effect above for the matching fix on the caller side.
     if (data?.client_command) {
-      const cc = data.client_command as string;
-      if (cc === 'showanalysisgraph')   ui.showView('analysisGraph');
-      if (cc === 'showanalysisresults') ui.showView('analysisResults');
-      if (cc === 'clearannotations')    ui.clearAnnotations();
-      if (cc === 'clear')               lines = [];
-      if (cc === 'version')             getVersion().then(v => append(`Photyx ${v}  |  pcode v1.0  |  Tauri + Svelte + Rust`, 'output'));
-      if (cc === 'pwd')                 CLIENT_COMMANDS['pwd']('');
-    }
-
-    if (data?.client_command) {
-      handleClientCommand(data.client_command as string);
+      await handleClientCommand(data.client_command as string);
     }
     if (Array.isArray(data?.client_commands)) {
       for (const cc of data.client_commands as string[]) {
-        handleClientCommand(cc);
+        await handleClientCommand(cc);
       }
     }
 
