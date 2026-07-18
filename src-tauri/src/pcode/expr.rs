@@ -464,15 +464,7 @@ fn call_function(name: &str, tokens: &[Token], pos: &mut usize, variables: &Hash
         "round" => Ok(Value::Num(one_numeric_arg(&args, "round")?.round())),
         "stripext" => {
             let s = one_string_arg(&args, "stripext")?;
-            let normalized = s.replace('\\', "/");
-            // Find the last known image extension and truncate there
-            for ext in &[".xisf", ".fits", ".fts", ".fit"] {
-                if let Some(pos) = normalized.to_lowercase().rfind(ext) {
-                    return Ok(Value::Str(normalized[..pos + ext.len()].to_string()));
-                }
-            }
-            // No known extension found — return as-is
-            Ok(Value::Str(s))
+            Ok(Value::Str(strip_known_extension(&s)))
         }
         _       => Err(format!("Unknown function '{}()'", name)),
     }
@@ -569,6 +561,100 @@ fn format_number(n: f64) -> String {
         format!("{}", n as i64)
     } else {
         format!("{}", n)
+    }
+}
+
+/// Strips a trailing suffix appended after a known image extension
+/// (.fit, .fits, .fts, .xisf) from a path — e.g. the `.session`/`.project`
+/// suffix CommitAnalysis appends. Case-insensitive on the extension.
+fn strip_known_extension(s: &str) -> String {
+    let normalized = s.replace('\\', "/");
+    // Issue 119: search directly on the original string with ASCII
+    // case-insensitive comparison at each valid char boundary, rather than
+    // computing a match position on a to_lowercase() copy and slicing the
+    // original at that position — to_lowercase() can change UTF-8 byte
+    // length for some non-ASCII characters (e.g. 'İ' -> "i̇"), which could
+    // land the slice mid-codepoint and panic. The known extensions are
+    // pure ASCII, so eq_ignore_ascii_case against the original bytes
+    // avoids the mismatched-length lowercase copy entirely. Iterates in
+    // ascending order and keeps the last match to preserve the original
+    // rfind() (rightmost-occurrence) semantics.
+    for ext in &[".xisf", ".fits", ".fts", ".fit"] {
+        let ext_len = ext.len();
+        let mut last_match_end: Option<usize> = None;
+        for (i, _) in normalized.char_indices() {
+            let end = i + ext_len;
+            if end <= normalized.len()
+                && normalized.is_char_boundary(end)
+                && normalized[i..end].eq_ignore_ascii_case(ext)
+            {
+                last_match_end = Some(end);
+            }
+        }
+        if let Some(end) = last_match_end {
+            return normalized[..end].to_string();
+        }
+    }
+// No known extension found — return as-is (original, not normalized,
+    // to preserve the caller's original separator style)
+    s.to_string()
+}
+
+#[cfg(test)]
+mod strip_known_extension_tests {
+    use super::*;
+
+    // Issue 119: the original bug — to_lowercase() can change UTF-8 byte
+    // length for some non-ASCII characters (Turkish dotted İ, U+0130,
+    // lowercases to "i̇" — an "i" plus a combining dot above, U+0307 — one
+    // extra byte), which could shift a match position computed on the
+    // lowercased copy past a char boundary in the original string and
+    // panic on slicing. This path never panics regardless of extension
+    // match outcome.
+    #[test]
+    fn turkish_dotted_i_path_does_not_panic() {
+        let path = "/data/İstanbul-M31/lights/frame001.fit.session";
+        let result = strip_known_extension(path);
+        assert_eq!(result, "/data/İstanbul-M31/lights/frame001.fit");
+    }
+
+    #[test]
+    fn turkish_dotted_i_with_no_known_extension_returns_unchanged() {
+        let path = "/data/İstanbul-M31/notes.txt";
+        let result = strip_known_extension(path);
+        assert_eq!(result, path);
+    }
+
+    #[test]
+    fn ordinary_path_strips_session_suffix() {
+        assert_eq!(strip_known_extension("frame001.fit.session"), "frame001.fit");
+        assert_eq!(strip_known_extension("frame001.FIT.session"), "frame001.FIT");
+        assert_eq!(strip_known_extension("stack.xisf.project"), "stack.xisf");
+    }
+
+    #[test]
+    fn no_known_extension_returns_original_unchanged() {
+        let path = "readme.txt";
+        assert_eq!(strip_known_extension(path), path);
+    }
+
+    #[test]
+    fn backslash_paths_are_normalized() {
+        assert_eq!(
+            strip_known_extension(r"D:\data\frame001.fit.session"),
+            "D:/data/frame001.fit"
+        );
+    }
+
+    #[test]
+    fn picks_rightmost_extension_occurrence() {
+        // A directory segment that itself contains an extension-like
+        // substring shouldn't be mistaken for the real one — rfind()
+        // semantics (rightmost match) preserved.
+        assert_eq!(
+            strip_known_extension("/data/old.fit.backups/frame002.fits.session"),
+            "/data/old.fit.backups/frame002.fits"
+        );
     }
 }
 
