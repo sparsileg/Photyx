@@ -130,8 +130,17 @@ pub fn compute_translation(
     let dy_reg = if raw_dy > half_h { raw_dy - reg_h as f32 } else { raw_dy };
 
     // ── Step 8: Scale back to full resolution ─────────────────────────────────
-    let dx = dx_reg / scale;
-    let dy = dy_reg / scale;
+    // Issue 132: the cross-power-spectrum peak (Steps 4-7) lands at
+    // n = -d mod N for a target shifted by +d, not n = +d — a standard
+    // consequence of this codebase's FFT sign convention (confirmed via
+    // test_known_translation/test_large_image_downsamples both failing
+    // with a near-exact sign flip, not a partial accuracy error).
+    // Negating here converts the raw peak location into the signed
+    // translation this function's docstring promises ("positive dx =
+    // target shifted right"), without touching the standard cross-power-
+    // spectrum math in Steps 4-7.
+    let dx = -dx_reg / scale;
+    let dy = -dy_reg / scale;
 
     Some(AlignmentTranslation { dx, dy })
 }

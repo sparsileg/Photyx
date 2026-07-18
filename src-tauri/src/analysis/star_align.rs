@@ -435,8 +435,16 @@ pub fn estimate_rigid_transform(
     _height:     usize,
 ) -> Option<AffineRigid> {
     // Step 1: Pre-translate frame stars by FFT offset.
+    // Issue 132: compute_translation now returns the correctly-signed
+    // translation (positive fft_dx = target shifted right, matching its
+    // docstring). A frame star at (cx, cy) that is itself shifted right
+    // by fft_dx relative to the reference needs fft_dx SUBTRACTED to land
+    // back on the reference star's position — this flipped from "+" to
+    // "-" as part of the same fix (previously this added fft_dx, which
+    // only produced correct alignment because compute_translation's
+    // pre-fix sign was already inverted; the two cancelled).
     let translated: Vec<(f32, f32)> = frame_stars.iter()
-        .map(|s| (s.cx + fft_dx, s.cy + fft_dy))
+        .map(|s| (s.cx - fft_dx, s.cy - fft_dy))
         .collect();
 
     // Step 2: Build candidate matches (greedy nearest-neighbour, one-to-one).
@@ -531,15 +539,15 @@ pub fn estimate_rigid_transform(
     }
 
     // Step 6: Fold the FFT pre-translation back in. `refined` was fit
-    // against frame coordinates already shifted by (fft_dx, fft_dy) — see
+    // against frame coordinates already shifted by (-fft_dx, -fft_dy) — see
     // Step 1 — so its tx/ty are only the residual correction on top of that
     // shift, not a transform that correctly maps raw frame coordinates.
-    // Compose the shift back in so the returned transform is usable
-    // directly against raw (unshifted) frame pixels, matching every
-    // caller's expectation (composition with M_cross, apply_inverse during
-    // resampling).
-    let final_tx = refined.a * fft_dx - refined.b * fft_dy + refined.tx;
-    let final_ty = refined.b * fft_dx + refined.a * fft_dy + refined.ty;
+    // Compose the shift back in (matching Step 1's sign, Issue 132) so the
+    // returned transform is usable directly against raw (unshifted) frame
+    // pixels, matching every caller's expectation (composition with
+    // M_cross, apply_inverse during resampling).
+    let final_tx = -(refined.a * fft_dx - refined.b * fft_dy) + refined.tx;
+    let final_ty = -(refined.b * fft_dx + refined.a * fft_dy) + refined.ty;
 
     Some(AffineRigid {
         a:  refined.a,

@@ -229,7 +229,13 @@ impl PhotyxPlugin for StackFrames {
                 }
                 None => {
                     info!("StackFrames: cross-group {} triangle match failed — falling back to FFT-only", g);
-                    AffineRigid::translation(fft_t.dx, fft_t.dy)
+                    // Issue 132: matches the sign convention now used
+                    // throughout estimate_rigid_transform (frame point -
+                    // fft offset = reference point) — this fallback
+                    // builds the same tx/ty a well-matched RANSAC refine
+                    // would produce directly, skipping the refinement
+                    // step, not a separate convention.
+                    AffineRigid::translation(-fft_t.dx, -fft_t.dy)
                 }
             };
 
