@@ -11,6 +11,7 @@
   import { notifications } from '../stores/notifications';
   import { displayFrame, commitAnalysis } from '../commands';
   import { analysisToggles } from '../stores/analysisToggles';
+  import { featureFlags } from '../stores/featureFlags';
   import Dropdown from './Dropdown.svelte';
 
   // ── Data types ────────────────────────────────────────────────────────────
@@ -420,14 +421,17 @@
     PT:  number,
     PL:  number,
     C:   ReturnType<typeof getThemeColors>,
+    showRefBadge: boolean,
   ) {
     const items = [
       { label: 'Pass',                   colors: ['#ffffff'] },
       { label: 'Reject — Optical',       colors: [CAT_COLORS.O] },
       { label: 'Reject — Transparency',  colors: [CAT_COLORS.T] },
       { label: 'Reject — Sky Brightness', colors: [CAT_COLORS.B] },
-      { label: 'Reference frame',        colors: ['#ffd700'] },
     ];
+    if (showRefBadge) {
+      items.push({ label: 'Reference frame', colors: ['#ffd700'] });
+    }
 
     const fontSize    = 13;
     const dotR        = 6;
@@ -720,17 +724,22 @@
     }
 
     // Dots — metric 1 only, drawn last so they sit on top of lines
+    // Issue 130: showRefBadge gates the reference-frame star/legend-entry
+    // display only. is_reference itself, and drawDot's/drawLegend's star
+    // rendering code, are untouched — the flag just controls whether that
+    // code path is ever invoked.
+    const showRefBadge = $featureFlags.flags['show_reference_frame_badge'] ?? false;
     for (let i = 0; i < n; i++) {
       const f = frames[i];
       const x = toX(i);
       const v1 = m1vals[i];
       if (v1 !== undefined) {
-        drawDot(ctx, x, toY1(v1), f.flag, f.rejection_category, outlierSet.has(f.filename), f.is_reference ?? false, C);
+        drawDot(ctx, x, toY1(v1), f.flag, f.rejection_category, outlierSet.has(f.filename), showRefBadge && (f.is_reference ?? false), C);
       }
     }
 
     // Legend — always visible, top-left corner
-    drawLegend(ctx, W, PT, PL, C);
+    drawLegend(ctx, W, PT, PL, C, showRefBadge);
   }
 
   // ── Hit test ──────────────────────────────────────────────────────────────

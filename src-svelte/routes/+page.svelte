@@ -6,6 +6,7 @@
   import AnalysisResults from '../lib/components/AnalysisResults.svelte';
   import AnalyzeFramesProfileDialog from '../lib/components/AnalyzeFramesProfileDialog.svelte';
   import Console from '../lib/components/Console.svelte';
+  import FeaturePreferencesDialog from '../lib/components/FeaturePreferencesDialog.svelte';
   import HelpModal from '../lib/components/HelpModal.svelte';
   import IconSidebar from '../lib/components/IconSidebar.svelte';
   import InfoPanel from '../lib/components/InfoPanel.svelte';
@@ -23,6 +24,7 @@
   import type { HelpEntry } from '../lib/pcode';
   import { VIEWS } from '../lib/stores/ui';
   import { db } from '../lib/db';
+  import { featureFlags } from '../lib/stores/featureFlags';
   import '../lib/types/svelte-elements';
   import { invoke } from '@tauri-apps/api/core';
   import { DEFAULT_FONT_SIZE } from '../lib/settings/constants';
@@ -78,6 +80,7 @@
       const buttons = await db.getQuickLaunchButtons();
       quickLaunch.hydrate(buttons);
       await thresholdProfiles.hydrate();
+      await featureFlags.hydrate();
     } catch (e) {
       console.error('DB hydration failed:', e);
     }
@@ -135,6 +138,9 @@
 {/if}
 {#if $ui.preferencesOpen}
   <PreferencesDialog onclose={() => ui.closePreferences()} />
+{/if}
+{#if $ui.featurePreferencesOpen}
+  <FeaturePreferencesDialog onclose={() => ui.closeFeaturePreferences()} />
 {/if}
 {#if $ui.keywordModalOpen}
   <KeywordModal onclose={() => ui.closeKeywordModal()} />

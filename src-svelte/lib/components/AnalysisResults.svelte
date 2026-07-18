@@ -7,6 +7,7 @@
   import { notifications } from '../stores/notifications';
   import { analysisToggles, type PxFlag } from '../stores/analysisToggles';
   import { commitAnalysis } from '../commands';
+  import { featureFlags } from '../stores/featureFlags';
 
   interface FrameResult {
     index: number;
@@ -242,7 +243,7 @@
               <td>{fmt(row.background_median)}</td>
               <td>{row.flag ?? '—'}</td>
               <td>
-                {#if row.is_reference}
+                {#if $featureFlags.flags['show_reference_frame_badge'] && row.is_reference}
                   <span class="ar-cat-badge ar-cat-ref" title="Reference frame">★</span>
                 {/if}
                 {#if row.rejection_category}

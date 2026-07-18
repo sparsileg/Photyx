@@ -82,6 +82,16 @@ export const db = {
     return invoke('restore_database', { backupPath });
   },
 
+  // ── Feature Flags ─────────────────────────────────────────────────────────
+
+  getFeatureFlags(): Promise<Record<string, boolean>> {
+    return invoke('get_feature_flags');
+  },
+
+  setFeatureFlag(key: string, enabled: boolean): Promise<void> {
+    return invoke('set_feature_flag', { key, enabled });
+  },
+
   // ── Macros ────────────────────────────────────────────────────────────────
 
   getMacros(): Promise<MacroRow[]> {

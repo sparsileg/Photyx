@@ -250,3 +250,26 @@ export const PREF_SECTIONS: PrefSection[] = [
     keys: ['autostretch_shadow_clip', 'autostretch_target_bg'],
   },
 ];
+
+// ── Feature Flags ────────────────────────────────────────────────────────────
+// Single source of truth for which feature flags exist, their labels, and
+// their defaults (Issue 130). The backend's feature_flags table has no
+// fixed key list and no seed data — this registry is authoritative. Adding
+// a new flag costs one entry here; FeaturePreferencesDialog.svelte renders
+// one row per entry with no further changes needed.
+
+export interface FeatureFlagMeta {
+  key:     string;
+  label:   string;
+  helper?: string;
+  default: boolean;
+}
+
+export const FEATURE_FLAGS: FeatureFlagMeta[] = [
+  {
+    key:     'show_reference_frame_badge',
+    label:   'Show Reference Frame Badge',
+    helper:  'Show the gold star/badge marking AnalyzeFrames\' selected reference frame in Analysis Results and Analysis Graph.',
+    default: false,
+  },
+];

@@ -6,7 +6,7 @@
 use rusqlite::{Connection, Result};
 use crate::db::schema;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 6;
+pub const CURRENT_SCHEMA_VERSION: u32 = 7;
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     let version = get_version(conn)?;
     tracing::info!("DB schema version on open: {}", version);
@@ -20,6 +20,7 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
                      //                signal_weight_reject_sigma column (Issue 89)
         migrate_v6,  // version 5 → 6: drop crash_recovery — feature removed, never used
                      //                in production (Issue 107)
+        migrate_v7,  // version 6 → 7: create feature_flags (Issue 130)
     ];
 
     for (i, migration) in migrations.iter().enumerate() {
@@ -41,6 +42,15 @@ fn get_version(conn: &Connection) -> Result<u32> {
 
 fn set_version(conn: &Connection, version: u32) -> Result<()> {
     conn.execute_batch(&format!("PRAGMA user_version = {}", version))
+}
+
+// Creates feature_flags (Issue 130) — a dynamically toggleable UI-facing
+// switch table, distinct from preferences/threshold_profiles in that the
+// backend has no seed rows and no knowledge of which keys are valid; the
+// frontend's FEATURE_FLAGS registry owns that. A fresh install and an
+// existing database both just get the empty table via IF NOT EXISTS.
+fn migrate_v7(conn: &Connection) -> Result<()> {
+    conn.execute_batch(schema::CREATE_FEATURE_FLAGS)
 }
 
 // Drops crash_recovery — the feature was live at one point (this table has

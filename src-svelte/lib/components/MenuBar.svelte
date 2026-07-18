@@ -51,6 +51,7 @@
     case 'contour-plot':        runContourHeatmap(); break;
     case 'exit':                getCurrentWindow().close(); break;
     case 'export-analysis-results': exportSessionJson(); break;
+    case 'feature-preferences': ui.openFeaturePreferences(); break;
     case 'import-analysis-results': importSessionJson(); break;
     case 'keywords':            ui.togglePanel('keywords'); break;
     case 'load-single-image':   loadSingleImage(); break;
@@ -345,6 +346,7 @@
     { name: 'Edit', items: [
       { label: 'Preferences',         action: 'preferences' },
       { label: 'Analysis Parameters', action: 'analysis-parameters' },
+      { label: 'Feature Preferences', action: 'feature-preferences' },
     ]},
     { name: 'View', items: [
       { label: 'Theme: Dark',   action: 'theme-dark' },

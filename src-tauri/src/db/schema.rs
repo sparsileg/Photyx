@@ -25,6 +25,20 @@ CREATE TABLE IF NOT EXISTS recent_directories (
     use_count   INTEGER NOT NULL DEFAULT 1
 );";
 
+// Feature flags — dynamically toggleable UI-facing switches (Issue 130).
+// Unlike threshold_profiles, there is no server-side seed: the frontend's
+// FEATURE_FLAGS registry (settings/constants.ts) is the single source of
+// truth for which keys exist and their defaults. A key absent from this
+// table simply means "not yet toggled from its registry default" — the
+// backend stays deliberately ignorant of what flags exist, same as
+// preferences.
+pub const CREATE_FEATURE_FLAGS: &str = "
+CREATE TABLE IF NOT EXISTS feature_flags (
+    key         TEXT PRIMARY KEY,
+    enabled     INTEGER NOT NULL DEFAULT 0,
+    updated_at  INTEGER NOT NULL
+);";
+
 // NOTE: this constant is used only by migrate_v1 (the version 0→1 step) and
 // must reflect the schema AS IT HISTORICALLY EXISTED at that point, not the
 // current/final schema — migrate_v2 (rename snr_reject_sigma) and migrate_v4

@@ -40,20 +40,25 @@ plugin host with no hard-coded operations.
 
 ## 2. Architecture
 
-### 2.1 Project Structure
-
 ```
 Photyx/
 ├── src-svelte/                ← Svelte 5 frontend
 │   ├── lib/
+│   │   ├── clientCommands.ts  ← Client-only command dispatch (Console, MacroLibrary, QuickLaunch — Issue 98)
 │   │   ├── commands.ts        ← Shared backend command helpers
-│   │   ├── pcodeCommands.ts   ← Single source of truth for all pcode command names
+│   │   ├── db.ts              ← Central database access layer (all Tauri DB commands)
+│   │   ├── pcode.ts           ← pcode help database, HelpEntry type
+│   │   ├── pcode_commands.json ← Single source of truth for all pcode command names
 │   │   ├── components/
 │   │   │   ├── panels/        ← Sliding panel components (FileBrowser, KeywordEditor, MacroEditor, MacroLibrary, PluginManager)
+│   │   │   ├── AboutModal.svelte
 │   │   │   ├── AnalysisGraph.svelte
 │   │   │   ├── AnalysisResults.svelte
+│   │   │   ├── AnalyzeFramesProfileDialog.svelte
 │   │   │   ├── Console.svelte
 │   │   │   ├── Dropdown.svelte
+│   │   │   ├── FeaturePreferencesDialog.svelte  ← Edit > Feature Preferences (§3.14, Issue 130)
+│   │   │   ├── HelpModal.svelte
 │   │   │   ├── IconSidebar.svelte
 │   │   │   ├── InfoPanel.svelte
 │   │   │   ├── KeywordModal.svelte
@@ -61,22 +66,29 @@ Photyx/
 │   │   │   ├── MenuBar.svelte
 │   │   │   ├── PreferencesDialog.svelte
 │   │   │   ├── QuickLaunch.svelte
+│   │   │   ├── StackingWorkspace.svelte
 │   │   │   ├── StatusBar.svelte
 │   │   │   ├── ThresholdProfilesDialog.svelte
 │   │   │   ├── Toolbar.svelte
 │   │   │   └── Viewer.svelte
 │   │   ├── settings/constants.ts   ← Frontend mirror of defaults.rs
-│   │   └── stores/                 ← consoleHistory, notifications, quickLaunch, session, settings, thresholdProfiles, ui, progress
+│   │   └── stores/                 ← analysisToggles, consoleHistory, featureFlags, notifications, progress, quickLaunch, session, settings, thresholdProfiles, ui
 │   └── routes/+page.svelte    ← Main application shell
 ├── src-tauri/                 ← Rust backend
 │   └── src/
 │       ├── lib.rs
-│       ├── settings/{mod.rs, defaults.rs}
+│       ├── main.rs
+│       ├── constants.rs
+│       ├── logging.rs
+│       ├── render.rs
+│       ├── utils.rs
+│       ├── settings/{defaults.rs, mod.rs}
 │       ├── plugin/{mod.rs, registry.rs}
 │       ├── context/mod.rs     ← AppContext
-│       ├── analysis/          ← background, eccentricity, fwhm, metrics, profiles, session_stats, stars, fft_align, star_align
-│       ├── pcode/{mod.rs, tokenizer.rs}
-│       ├── db/{schema.rs, mod.rs}
+│       ├── commands/          ← one file per command domain, incl. feature_flags.rs (Issue 130) — see §10
+│       ├── analysis/          ← background, debayer, eccentricity, fft_align, fwhm, metrics, moffat, profiles, session_stats, stack_metrics, star_align, stars
+│       ├── pcode/{expr.rs, mod.rs, tokenizer.rs}
+│       ├── db/{migrations.rs, mod.rs, schema.rs}
 │       └── plugins/           ← one file per plugin (see §11)
 ├── crates/photyx-xisf/        ← XISF reader/writer crate
 └── static/css/                ← one CSS file per major UI module; static/themes/
@@ -332,17 +344,16 @@ panel (34px) sits above the Viewer Region.
 
 Six top-level menus:
 
-**File** — Load Single Image… · Exit
+**File** — Load Single Image… · Save Session as FITS · Exit
 
-**Session** — Add Files… (Ctrl+O) · Close Session · Export Session
-JSON… · Import Session JSON…
+**Session** — Add Files… (Ctrl+O) · Clear Session
 
-**Edit** — Preferences · Analysis Parameters
+**Edit** — Preferences · Analysis Parameters · Feature Preferences
 
 **View** — Theme: Dark / Light / Matrix
 
 **Analyze** — Analyze Frames · Analysis Results · Analysis Graph ·
-Contour Plot
+Export Analysis Results · Import Analysis Results ·  Stacking Workspace
 
 Analyze Frames requires an explicit threshold profile selection before
 running: clicking it opens a popup listing all saved profiles,
@@ -422,14 +433,24 @@ line.
 **Reference frame:** the session's reference frame (selected by
 highest `frame_quality_score()` — see §7.1 — among PASS frames,
 falling back to all frames if none passed) renders as a gold 5-point
-star instead of the normal PASS/REJECT dot. The star's stroke color
-still signals the frame's real classification — black stroke for
-PASS, red stroke (`#dc3232`) if the reference frame is itself REJECT
-(rare, but possible when the fallback applies). The reference frame
-is never hidden or miscategorized by being selected as REF.
+star instead of the normal PASS/REJECT dot, when the
+`show_reference_frame_badge` feature flag is enabled (Edit > Feature
+Preferences, §3.14) — default off (Issue 130). The star's stroke
+color still signals the frame's real classification — black stroke
+for PASS, red stroke (`#dc3232`) if the reference frame is itself
+REJECT (rare, but possible when the fallback applies). The reference
+frame is never hidden or miscategorized by being selected as REF.
+With the flag off, the reference frame renders as an ordinary
+PASS/REJECT dot, indistinguishable from any other frame in its
+category — a deliberate UI-only removal (§7.1's selection logic,
+`is_reference`, and the JSON export field are all unchanged);
+StackFrames' own console/log output is the authoritative record of
+what reference frame(s) it actually used to stack, which is not
+always the same frame this dot would mark.
 
 **Legend:** fixed top-left corner of the canvas, always visible,
-showing all four categories.
+showing the four rejection categories plus a fifth "Reference frame"
+entry only when the `show_reference_frame_badge` flag is on.
 
 Commit Results is disabled for imported sessions (`is_imported` from
 `get_analysis_results`).
@@ -447,12 +468,16 @@ Close **Toolbar row 2:** [IMPORTED badge if applicable] | session path
 PXFLAG | Category
 
 Category badges are color-coded (O = red, T = yellow, B = blue,
-multi-category = purple), centered. The session's reference frame
-(see §3.9, §7.1) additionally shows a gold ★ badge in the Category
-column, alongside its rejection category badge if it has one — the
-PXFLAG column always shows the frame's real PASS/REJECT
-classification; being selected as reference never overrides or hides
-it.
+multi-category = purple), centered. When the
+`show_reference_frame_badge` feature flag is enabled (Edit > Feature
+Preferences, §3.14 — default off, Issue 130), the session's reference
+frame (see §3.9, §7.1) additionally shows a gold ★ badge in the
+Category column, alongside its rejection category badge if it has
+one. With the flag off (the default), the reference frame's row is
+indistinguishable from any other row in its PASS/REJECT category.
+Either way, the PXFLAG column always shows the frame's real
+PASS/REJECT classification; being selected as reference never
+overrides or hides it.
 
 **PXFLAG toggle:** right-click any row → "Set to PASS" (on a REJECT
 row) or "Set to REJECT" (on a PASS row). Local state only until
@@ -509,20 +534,33 @@ Switching profiles with unsaved edits shows an inline confirmation
 bar. OK/Apply saves to DB and sets the profile active (propagated to
 `AppContext` immediately). Clicking outside does not close the dialog.
 
-### 3.14 Log Viewer
+### 3.14 Edit > Feature Preferences
+
+Modal dialog, draft-copy pattern (nothing written until OK/Apply;
+Cancel discards), same shape as Edit > Preferences (§3.12) rather than
+Edit > Analysis Parameters' multi-profile shape (§3.13) — there is
+only one set of flags, not multiple named profiles. One row per entry
+in the `FEATURE_FLAGS` registry (`settings/constants.ts`), each a
+label and a Yes/No dropdown. Currently one flag:
+`show_reference_frame_badge` (default off) — see §3.9, §3.10, Issue
+130. Persisted via the `feature_flags` table (§8.2); the backend has
+no fixed list of valid keys or seed data, the frontend registry is
+authoritative for which flags exist.
+
+### 3.15 Log Viewer
 
 Modal overlay from Tools > Log Viewer. File picker → log content with
 ERROR/WARN/INFO/DEBUG level filters. Auto-tail polls every 2 seconds;
 auto-scroll suspends when the user scrolls up manually.
 
-### 3.15 Blink Tab
+### 3.16 Blink Tab
 
 Play/pause/step controls. Resolution dropdown (12.5% / 25%). Min Delay
 dropdown. "Highlight Rejected" toggle overlays a red border on REJECT
 frames during blink. Cache builds on first play; invalidated when
 resolution changes or the file list changes.
 
-### 3.16 Session Analysis JSON Export/Import
+### 3.17 Session Analysis JSON Export/Import
 
 **Export** (Session → Export Session JSON…): exports the current
 session's analysis results as a portable JSON archive. Default
@@ -1072,6 +1110,13 @@ CREATE TABLE IF NOT EXISTS macro_versions (
     saved_at    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_mv_macro ON macro_versions(macro_id, saved_at DESC);
+
+CREATE TABLE IF NOT EXISTS feature_flags (
+    key         TEXT PRIMARY KEY,
+    enabled     INTEGER NOT NULL DEFAULT 0,
+    updated_at  INTEGER NOT NULL
+);
+```
 ```
 
 **Note on Background Std Dev, Background Gradient, and SNR:** these three
@@ -1125,6 +1170,22 @@ confirmed fixed (issue #67). `defaults.rs` bounds `star_count` to
 `STAR_COUNT_SIGMA_MIN`/`MAX` of `0.5`–`4.0`, matching §8.5's table
 below; §3.13's Edit > Analysis Parameters field description had drifted
 to `0.5`–`5.0` and is corrected in this pass (Issue 97).
+
+**Note on feature_flags (Issue 130, migration v7):** unlike every other
+table in this schema, `feature_flags` has no server-side seed data and
+no fixed, backend-known list of valid keys — the frontend's
+`FEATURE_FLAGS` registry (`src-svelte/lib/settings/constants.ts`) is
+the single source of truth for which flags exist, their labels, and
+their defaults. A key absent from the table means "not yet toggled
+from its registry default," not "invalid" — `get_feature_flags`
+returns whatever rows happen to exist, and the frontend merges that
+over the registry defaults on hydration. Built as general-purpose
+infrastructure (Edit > Feature Preferences, §3.14) when Issue 130
+needed a UI-accessible way to hide the reference-frame badge (§3.9,
+§3.10); the mechanism itself is reusable for future flags at the cost
+of one registry entry each.
+
+### 8.3 Preferences
 
 ### 8.3 Preferences
 
@@ -1361,6 +1422,7 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 | `get_blink_cache_status`            | Returns blink cache build status: idle / building / ready                                                            |
 | `get_blink_frame`                   | Returns a blink frame as JPEG data URL from the blink cache (by index + resolution)                                |
 | `get_current_frame`                 | Returns the current image as a raw (unstretched) JPEG data URL, rendered on the fly                                |
+| `get_feature_flags`                 | Returns all feature_flags rows as a key/bool map (§8.2, §3.14); keys absent from the table are not included — the frontend merges this over registry defaults |
 | `get_frame_flags`                   | Returns PXFLAG values for all loaded frames (used by the blink overlay)                                            |
 | `get_full_frame`                    | Returns the current image at full resolution with the last STF params applied; cached after first call            |
 | `get_histogram`                     | Computes histogram bins + stats for the current frame (per-channel for RGB)                                        |
@@ -1391,6 +1453,7 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 | `save_quick_launch_buttons`         | Replaces all Quick Launch button assignments                                                                        |
 | `save_threshold_profile`            | Inserts or updates a threshold profile; clamps all values to bounds                                                 |
 | `set_active_threshold_profile`      | Sets the active profile; propagates thresholds into `AppContext` immediately                                       |
+| `set_feature_flag`                  | Upserts one feature_flags row (§8.2, §3.14) — key, enabled                                                          |
 | `set_frame_flag`                    | Updates the PASS/REJECT flag for a single frame in `ctx.analysis_results` by path; used before Commit to sync toggled flags |
 | `set_preference`                    | Upserts a single preference key/value; writes through the `AppSettings` struct                                     |
 | `start_background_cache`            | Spawns a background task that builds display-resolution JPEGs and both blink caches, snapshotting pixel data in chunks via `pixel_chunking` with a short `AppContext` lock per chunk (§2.2) |
@@ -1437,6 +1500,7 @@ here.
 | `consoleExpanded` | Whether the console is expanded |
 | `currentBlinkFlag` | PXFLAG value for the currently displayed blink frame |
 | `displayImageUrl` | Data URL of a temporary display image |
+| `featurePreferencesOpen` | Whether the Feature Preferences dialog is open |
 | `frameRefreshToken` | Incremented to trigger a viewer frame reload |
 | `keywordModalOpen` | Whether the keyword modal is open |
 | `logViewerOpen` | Whether the Log Viewer modal is open |
