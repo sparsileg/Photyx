@@ -146,7 +146,13 @@ pub fn restore_database(backup_path: String, state: State<Arc<PhotoxState>>) -> 
         bytes
     };
 
-    // Acquire DB lock for the entire restore operation
+    // Acquire the single shared DB lock for the entire restore operation.
+    // Under Option B (Issue 125), state.db and crate::GLOBAL_DB are clones
+    // of the same Arc<Mutex<Connection>> — there is only one connection to
+    // release/reopen, and doing so here is sufficient for both Tauri
+    // commands and plugins (AnalyzeFrames, RunMacro) to see the restored
+    // data. A separate GLOBAL_DB release step is no longer just redundant,
+    // it would deadlock — it's the same Mutex this lock already holds.
     let mut db = state.db.lock().expect("db lock poisoned");
 
     // Checkpoint WAL on the OLD connection, then fully close it — by
@@ -159,21 +165,6 @@ pub fn restore_database(backup_path: String, state: State<Arc<PhotoxState>>) -> 
     let _ = db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
     *db = rusqlite::Connection::open_in_memory()
         .map_err(|e| format!("Failed to release old database connection: {}", e))?;
-
-    // A second, independent connection to this same file exists at
-    // crate::GLOBAL_DB — plugins only receive &mut AppContext, not the
-    // full PhotoxState, so AnalyzeFrames/RunMacro reach the database
-    // through this instead. Missing this release is exactly what caused
-    // "Cannot remove existing file before replace" on Windows: state.db
-    // was released but this second handle stayed open the whole time,
-    // continuing to lock the file. Harmless no-op on Linux, where a file
-    // can be unlinked/renamed regardless of open handles.
-    if let Some(global_db) = crate::GLOBAL_DB.get() {
-        let mut global_conn = global_db.lock().expect("global db lock poisoned");
-        let _ = global_conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
-        *global_conn = rusqlite::Connection::open_in_memory()
-            .map_err(|e| format!("Failed to release global database connection: {}", e))?;
-    }
 
     // Write atomically (temp file + rename), same helper and guarantee
     // used by the batch export writers (Issue 82) — never leaves a
@@ -196,13 +187,10 @@ pub fn restore_database(backup_path: String, state: State<Arc<PhotoxState>>) -> 
 
     *db = new_conn;
 
-    // Reopen the global connection too, so AnalyzeFrames/RunMacro see the
-    // restored data instead of the throwaway in-memory connection above.
-    if let Some(global_db) = crate::GLOBAL_DB.get() {
-        let new_global_conn = db::open_db(crate::utils::get_db_dir())
-            .map_err(|e| format!("Failed to reopen global database connection after restore: {}", e))?;
-        *global_db.lock().expect("global db lock poisoned") = new_global_conn;
-    }
+    // AnalyzeFrames/RunMacro already see the restored data through this
+    // same connection — GLOBAL_DB and state.db are the same
+    // Arc<Mutex<Connection>> under Option B (Issue 125), so there is no
+    // separate global connection left to reopen.
 
     // Reload in-memory settings from the restored DB
     // Tauri command that reads state.settings rather than querying the DB

@@ -27,8 +27,12 @@ mod render;
 pub static GLOBAL_REGISTRY: once_cell::sync::OnceCell<Arc<PluginRegistry>> =
     once_cell::sync::OnceCell::new();
 
-/// Global DB reference for use by RunMacro (plugins cannot access PhotoxState directly)
-pub static GLOBAL_DB: once_cell::sync::OnceCell<std::sync::Mutex<rusqlite::Connection>> =
+/// Global DB reference for use by RunMacro and other plugins that only
+/// receive &mut AppContext, not the full PhotoxState. Under Option B
+/// (Issue 125), this Arc is the single live database connection —
+/// PhotoxState.db holds a clone of the same Arc rather than opening a
+/// second, independent connection to the same file.
+pub static GLOBAL_DB: once_cell::sync::OnceCell<Arc<std::sync::Mutex<rusqlite::Connection>>> =
     once_cell::sync::OnceCell::new();
 
 /// Global progress atomics — written by long-running plugins, polled by the frontend
@@ -120,7 +124,7 @@ impl Drop for JobGuard {
 pub struct PhotoxState {
     pub registry: Arc<PluginRegistry>,
     pub context:  Mutex<AppContext>,
-    pub db:       Mutex<rusqlite::Connection>,
+    pub db:       Arc<Mutex<rusqlite::Connection>>,
     pub settings: Mutex<settings::AppSettings>,
 }
 
@@ -436,15 +440,23 @@ pub fn run() {
         .join("Photyx");
     std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
 
-    let db_conn = db::open_db(app_data_dir.clone()).expect("Failed to open database");
+    let db_conn = db::open_db(app_data_dir).expect("Failed to open database");
     commands::macros::migrate_quick_launch_macro_refs(&db_conn)
         .unwrap_or_else(|e| tracing::warn!("Quick Launch macro migration failed: {}", e));
-    let global_db_conn = db::open_db(app_data_dir).expect("Failed to open global DB connection");
-    let _ = GLOBAL_DB.set(Mutex::new(global_db_conn));
 
     let mut app_settings = settings::AppSettings::new();
     app_settings.load_from_db(&db_conn);
     app_settings.load_threshold_profiles(&db_conn);
+
+    // Single shared connection (Option B, Issue 125) — PhotoxState.db and
+    // GLOBAL_DB are clones of the same Arc<Mutex<Connection>>, not two
+    // independent connections to the same file. Removes the double
+    // "Opening database" / migration-check pass on every launch. Placed
+    // here, after the two load_from_db/load_threshold_profiles calls that
+    // still need a bare &Connection — db_conn moves into the Arc on this
+    // line, so nothing after this point can borrow it directly.
+    let shared_db = Arc::new(Mutex::new(db_conn));
+    let _ = GLOBAL_DB.set(shared_db.clone());
 
     let mut app_context = AppContext::new();
     app_context.sync_from_settings(&app_settings);
@@ -468,7 +480,7 @@ pub fn run() {
     let state = Arc::new(PhotoxState {
         registry,
         context:  Mutex::new(app_context),
-        db:       Mutex::new(db_conn),
+        db:       shared_db,
         settings: Mutex::new(app_settings),
     });
 
