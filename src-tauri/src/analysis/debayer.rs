@@ -99,10 +99,24 @@ pub fn debayer_bilinear(
             let idx = y * width + x;
             let ch  = pattern.channel_at(x, y);
 
-            // Helper: sample a buffer at (sx, sy), clamped to image bounds
+            // Helper: sample a buffer at (sx, sy), reflecting at image
+            // bounds rather than clamping. Reflection (mirror around the
+            // border index) preserves the coordinate's parity, so the
+            // reflected pixel is always the same Bayer channel as the
+            // original position — clamping instead could land on the
+            // pixel's own (different-channel, never-populated) position
+            // at a border, corrupting G/R/B interpolation there (Issue 131:
+            // test_debayer_flat_image caught this via a flat 0.5 image
+            // reading back 0.25 at border pixels). Only ever called with
+            // sx/sy one step outside the buffer (immediate neighbors), so
+            // a single reflection is sufficient — no need for iterative
+            // wraparound.
+            let reflect = |s: i32, len: i32| -> i32 {
+                if s < 0 { -s } else if s >= len { 2 * (len - 1) - s } else { s }
+            };
             let sample = |buf: &[f32], sx: i32, sy: i32| -> f32 {
-                let cx = sx.clamp(0, width  as i32 - 1) as usize;
-                let cy = sy.clamp(0, height as i32 - 1) as usize;
+                let cx = reflect(sx, width  as i32) as usize;
+                let cy = reflect(sy, height as i32) as usize;
                 buf[cy * width + cx]
             };
 

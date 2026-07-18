@@ -594,9 +594,17 @@ mod tests {
 
     #[test]
     fn test_bimodal_star_count_rejects_cloudy_frames() {
-        // Simulate 20 clear frames (~250 stars) and 15 cloudy frames (~50 stars)
+        // Simulate 20 clear frames (~250 stars, with realistic jitter) and
+        // 15 cloudy frames (~50 stars). Issue 131: the original fixture
+        // gave every clear frame the exact same star_count (250), so the
+        // bimodal-anchored upper cluster had zero variance — sigma_dev's
+        // divide-by-zero guard then made the sigma check permanently
+        // unable to fire, regardless of how far the cloudy value sat from
+        // the cluster. This was purely a fixture defect: the bimodal
+        // anchoring itself was already correct (proven by the mean
+        // assertion below, which passed even before this fix).
         let mut results: Vec<AnalysisResult> = (0..20)
-            .map(|i| make_result(&format!("clear_{i}"), 3.0, 0.5, 250, 0.049))
+            .map(|i| make_result(&format!("clear_{i}"), 3.0, 0.5, 240 + (i * 3) % 21, 0.049))
             .collect();
         results.extend((0..15).map(|i| make_result(&format!("cloudy_{i}"), 3.2, 0.6, 50, 0.055)));
 
