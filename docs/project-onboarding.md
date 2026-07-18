@@ -207,7 +207,7 @@ BEFORE/AFTER blocks:
 | Implementation details | Photyx Technical Reference |
 | UI patterns & rules | `ux_best_practices.md` |
 | CSS variables | `ux_best_practices.md` |
-| Commands, keywords, settings | `photyx_reference.md` |
-| Plugin status table | `photyx_reference.md` |
-| Stacking implementation | `stacking_development.md` |
-| DB schema & persistence | Photyx Technical Reference |
+| Commands, keywords, settings | `Photyx_pcode_guide.md` |
+| Plugin status table | Photyx Technical Reference §11 |
+| Stacking implementation | Photyx Technical Reference §7 |
+| DB schema & persistence | Photyx Technical Reference §8 |

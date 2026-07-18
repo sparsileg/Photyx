@@ -2,7 +2,9 @@
 // Spec §7.8, §15.4
 //
 // Moment-based FWHM using intensity-weighted second-order moments.
-// This matches PI's approach of using the geometric mean of major/minor axes:
+// This matches PI's approach of using the quadratic (RMS) mean of
+// major/minor axes — not the geometric mean (sqrt(a*b)), despite an
+// earlier version of this comment saying so (Issue 97):
 //
 //   Mxx = Σ(w * dx²) / Σw
 //   Myy = Σ(w * dy²) / Σw
@@ -63,7 +65,7 @@ pub fn star_fwhm(star: &StarCandidate) -> Option<f32> {
     myy /= total_weight;
 
     // FWHM = 2.355 * sqrt((Mxx + Myy) / 2)
-    // Geometric mean of the two axes — matches PI's approach
+    // Quadratic (RMS) mean of the two axes — matches PI's approach
     let sigma_mean = ((mxx + myy) / 2.0).sqrt() as f32;
     let fwhm = 2.355 * sigma_mean;
 

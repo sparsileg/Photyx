@@ -88,14 +88,23 @@ Session state lives in a single `AppContext` struct behind a
 `Mutex`. Raw pixel buffers are loaded once and never modified; all
 display representations are derived JPEG copies:
 
-```
 AppContext
 ├── image_buffers: HashMap   ← raw pixels, NEVER modified
-├── display_cache: HashMap>       ← display-res JPEG bytes
+├── display_cache: HashMap>       ← display-res JPEG bytes (see note below)
 ├── full_res_cache: HashMap>      ← full-resolution JPEG bytes
 ├── blink_cache_12: HashMap>      ← blink-res 12.5% JPEG bytes
 └── blink_cache_25: HashMap>      ← blink-res 25% JPEG bytes
-```
+
+**`display_cache` is currently dead** (Issue 84, deferred): nothing in
+source writes to it. `start_background_cache` computes stretched
+display-resolution JPEGs for the whole session — the most expensive
+pass it runs — but uses them only as blink-thumbnail sources and
+discards the display-resolution output rather than storing it here;
+frame navigation re-renders from raw pixels on every request instead of
+reading a cached copy. Deferred rather than fixed because Stan
+navigates frames via the file browser, not keyboard/arrow stepping, so
+the cache-miss cost is low-impact under that usage pattern; revisit if
+full-resolution scaled-down frame stepping becomes a workflow.
 
 Design rule: display plugins read from `image_buffers` and write to
 caches; they never modify `image_buffers`. Because `AppContext` is
@@ -135,9 +144,9 @@ levels.
 Relevant constants from `settings/defaults.rs` (non-persisted runtime
 constants, not user preferences): `DISPLAY_MAX_WIDTH_PX = 1200` (the
 box-filter downsample ceiling for display resolution),
-`DISPLAY_JPEG_QUALITY = 92`, `BLINK_JPEG_QUALITY = 85`. There is no
-dedicated full-resolution JPEG quality constant in `defaults.rs` — see
-§14 for the resulting discrepancy against documented behavior.
+`DETAIL_JPEG_QUALITY = 90` (shared by both the full-resolution cache and
+the display-resolution cache), `THUMBNAIL_JPEG_QUALITY = 75` (both blink
+caches, 12.5% and 25%).
 
 ### 2.3 Session & File Model
 
@@ -494,7 +503,7 @@ on OK/Apply.
 **Threshold fields** (label / direction / input / unit): Background
 Median (`> +σ`, 0.5–4.0, default 2.5) · FWHM (`> +σ`, 0.5–4.0, default
 2.5) · Eccentricity (`> absolute`, 0.10–1.00, default 0.85) · Star
-Count (`< σ`, 0.5–5.0, default 1.5)
+Count (`< σ`, 0.5–4.0, default 1.5)
 
 Switching profiles with unsaved edits shows an inline confirmation
 bar. OK/Apply saves to DB and sets the profile active (propagated to
@@ -654,11 +663,24 @@ Five metrics are computed per frame:
 | Eccentricity         | Absolute   | `> threshold`            | 0.85                | ✓                    |
 | Star Count           | Sigma      | `−σ` (low is worse)      | 1.5σ                | ✓                    |
 
-All metrics except Background Median are derived from elliptical 2D
-Moffat PSF fitting per detected star. Star Count only counts stars
-that pass Moffat PSF acceptance criteria (a lenient connected-pixel
-detector was replaced by this). PSF Residual is computed internally as
-the star-acceptance gate but is not user-facing.
+All metrics except Background Median are derived from intensity-weighted
+second-order image moments per detected star (`analysis/fwhm.rs`,
+`analysis/eccentricity.rs`) — not Moffat PSF fitting. FWHM is
+`2.355 × sqrt((Mxx + Myy) / 2)` (the quadratic mean of the two axis
+variances); Eccentricity comes from the eigenvalues of the moment matrix
+`[[Mxx, Mxy], [Mxy, Myy]]`. Star Count is the count of stars with a
+valid moment-based FWHM in the 0.5–50px range — not a Moffat
+acceptance gate; detection itself is peak-finding with flood-fill on a
+sigma-clipped, background-subtracted image (`analysis/stars.rs`), no
+PSF model involved.
+
+An elliptical 2D Moffat PSF fitter (`analysis/moffat.rs`) exists in the
+codebase but is entirely `#[allow(dead_code)]` — it was Signal Weight's
+only caller before that metric was deprecated, and is retained
+intentionally rather than deleted, since its per-star fit (semi-axes,
+centroid) could feed a future FWHM/Eccentricity/PSF-residual pass. See
+issue #70. It does not run today and does not gate anything described
+in this section.
 
 **SNR** is computed and displayed as a diagnostic value only — it does
 **not** drive classification. Cross-session analysis confirmed a PSF
@@ -670,8 +692,11 @@ didn't already catch.
 with Background Median) and Background Gradient (sign reversal is
 session-dependent) were dropped as rejection metrics. Both
 corresponding pcode commands remain as deprecated stubs for script
-compatibility; the underlying values are still stored in
-`frame_analysis_results` (§8.2) but unused for classification.
+compatibility. Their values live only in `ctx.analysis_results`
+(in-memory, per frame) and the JSON export — `frame_analysis_results`,
+the table originally intended to persist them, was never wired up with
+a reader or writer and was dropped via migration v5 (§8.2); no database
+table persists these two metrics today.
 
 ### 6.3 Classification
 
@@ -752,9 +777,13 @@ co-occurrence. Possible category strings: `O`, `B`, `T`, `OB`, `OT`,
 
 1. Any locally toggled PXFLAG changes are pushed to Rust first
    (`set_frame_flag` per toggled frame).
-2. Every REJECT file is moved to `/rejected/..rejected` — within *its
+2. Every REJECT file is moved to a `rejected/` subfolder with `.reject`
+   appended to its filename (e.g. `frame001.fit.reject`) — within *its
    own* source directory, so a multi-directory session produces
-   multiple `rejected/` subfolders.
+   multiple `rejected/` subfolders. The suffix comes from
+   `REJECT_FILE_SUFFIX` (`"reject"`, not `"rejected"`); the frontend's
+   `commitAnalysis()` passes it explicitly as `commit_analysis_results`'s
+   `append` argument.
 3. `ctx.remove_rejected_files()` removes the rejected paths from
    `file_list` and all caches, and clears `analysis_results`,
    `outlier_frame_paths`, `last_session_stats`, and
@@ -1043,17 +1072,6 @@ CREATE TABLE IF NOT EXISTS macro_versions (
     saved_at    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_mv_macro ON macro_versions(macro_id, saved_at DESC);
-
-CREATE TABLE IF NOT EXISTS crash_recovery (
-    id                  INTEGER PRIMARY KEY CHECK (id = 1),
-    file_list           TEXT,
-    current_frame_index INTEGER,
-    autostretch_enabled INTEGER,
-    zoom_level          TEXT,
-    active_panel        TEXT,
-    written_at          INTEGER NOT NULL
-);
-INSERT OR IGNORE INTO crash_recovery (id, written_at) VALUES (1, 0);
 ```
 
 **Note on Background Std Dev, Background Gradient, and SNR:** these three
@@ -1077,7 +1095,7 @@ respectively — but none was ever given a runtime reader or writer, and all
 four were dropped via migration v5. `threshold_profiles.signal_weight_reject_sigma`
 was dropped in the same migration — the last of three dead columns left
 over from the Signal Weight metric's removal; the other two,
-`bg_stddev_reject_sigma` and `bg_gradient_reject_sigma`, were dropped
+bg_stddev_reject_sigma` and `bg_gradient_reject_sigma`, were dropped
 earlier in migration v4. All migrations are now historically accurate as of
 this cleanup — `migrate_v1` correctly reflects the schema as it existed at
 that point in time, so a genuinely fresh install chains through the full
@@ -1085,6 +1103,14 @@ migration sequence correctly instead of erroring on columns/tables the
 current canonical schema no longer creates (a real bug this cleanup found
 and fixed, previously undetectable since no fresh install had been tested
 against the schema in its pre-cleanup state).
+
+**Note on crash recovery removal (Issue 107, migration v6):** the crash
+recovery feature — `crash_recovery` table, `check_crash_recovery`/
+`write_crash_recovery` commands, the `crash_recovery_interval_secs`
+setting, and all frontend wrappers/UI — was removed outright rather than
+fixed, after confirming it was never relied on in practice. This is a
+distinct migration from the Issue 89 cleanup above; `crash_recovery` was
+still present at v5 and dropped in v6.
 
 **Note on threshold default consistency — confirmed via
 `defaults.rs`:** `DEFAULT_STAR_COUNT_SIGMA = 1.5` in
@@ -1095,10 +1121,10 @@ strings anywhere else."* The DB column default
 exactly, and `AnalysisThresholds::default()` in
 `analysis/session_stats.rs` correctly sources its `star_count` value
 from `DEFAULT_STAR_COUNT_SIGMA` rather than hardcoding a literal —
-confirmed fixed (issue #67). One remaining discrepancy: `defaults.rs`
-bounds `star_count` to `STAR_COUNT_SIGMA_MIN`/`MAX` of `0.5`–`4.0`,
-while §8.5 below documents the bound as `0.5σ`–`5.0σ`. Worth
-reconciling.
+confirmed fixed (issue #67). `defaults.rs` bounds `star_count` to
+`STAR_COUNT_SIGMA_MIN`/`MAX` of `0.5`–`4.0`, matching §8.5's table
+below; §3.13's Edit > Analysis Parameters field description had drifted
+to `0.5`–`5.0` and is corrected in this pass (Issue 97).
 
 ### 8.3 Preferences
 
@@ -1125,6 +1151,7 @@ startup):
 | Setting                  | Default          | Persisted | User Pref | DB Key                     | Min    | Max   |
 | --------------------------- | ------------------ | ----------- | ----------- | ----------------------------- | -------- | ------- |
 | Color theme                | Matrix              | X           |             | `theme`                      | —       | —      |
+| Last-used directory        | (empty)             | X           |             | `last_directory`              | —       | —      |
 | JPEG quality                | 75%                 | X           | X           | `jpeg_quality`                | 1       | 100    |
 | Recent directories max      | 10                  | X           | X           | `recent_directories_max`      | 1       | 50     |
 | Backup directory            | Downloads folder    | X           | X           | `backup_directory`            | —       | —      |
@@ -1133,8 +1160,15 @@ startup):
 | Buffer pool memory limit    | 4 GB                | X           | X           | `buffer_pool_memory_limit`    | 512 MB  | 32 GB  |
 | Shadow clip (AutoStretch)   | -2.8                | X           | X           | `autostretch_shadow_clip`     | -5.0    | 0.0    |
 | Target background (AutoStretch) | 0.15            | X           | X           | `autostretch_target_bg`       | 0.01    | 0.50   |
-| Crash recovery interval     | 60s                 | X           | (internal)  | `crash_recovery_interval_secs`| 15      | 300    |
 | Active threshold profile ID | null                | X           | (internal)  | `active_threshold_profile_id` | —       | —      |
+| Quick Launch bar visible    | true                | X           | (internal)  | `quick_launch_visible`        | —       | —      |
+
+Last-used directory is populated automatically (not a user-facing
+preference toggle — "Persisted" but not "User Pref" in the table above,
+same category as theme). Its exact write path and relationship to the
+separate `recent_directories` table (§8.2 — multiple directories with
+usage counts, a different mechanism) was not traced source-side in this
+pass; worth a follow-up if the two are ever found to disagree.
 
 Not persisted (always hard-coded default): Default zoom level (Fit),
 default blink rate (0.1s/frame), default channel view (RGB), overwrite
@@ -1235,8 +1269,12 @@ against partial writes on failure.
 - Color modes: Monochrome (1 channel), RGB (3 channel)
 - U32 data is downconverted to U16 on load (high 16 bits retained)
 - CFA (Bayer) files load and display as mono by default; debayering is
-  on-demand via `DebayerImage` — supported algorithms: Nearest
-  Neighbor, Bilinear (default), VNG, AHD
+  on-demand via `DebayerImage`, which always uses bilinear interpolation
+  (`debayer_bilinear()`) — no other algorithm exists in source and none
+  is selectable; the Bayer pattern is read from the `BAYERPAT`/
+  `BAYER_PATTERN` keyword (`analysis/debayer.rs`, Issue 122),
+  defaulting to RGGB if absent (Issue 97 — this list previously named
+  Nearest Neighbor, VNG, and AHD as supported, none of which exist)
 
 ### 9.5 Format Conversion
 
@@ -1309,7 +1347,6 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 | Command                            | Description                                                                                                     |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `backup_database`                   | Creates a timestamped ZIP backup of `photyx.db` in the configured backup directory                                |
-| `check_crash_recovery`              | Returns crash recovery candidate if `written_at` is recent and a session is open (file list + current frame index) |
 | `close_session`                     | Sets `closed_at` on the current `session_history` row; resets `is_imported_session`                                |
 | `commit_analysis_results`           | Moves REJECT files to `rejected/` subfolders; removes them from the session; pass frames remain loaded. Fast, non-terminal (§6.7) |
 | `debug_buffer_info`                 | Returns buffer metadata including `display_width` and `color_space`                                               |
@@ -1357,7 +1394,6 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 | `set_frame_flag`                    | Updates the PASS/REJECT flag for a single frame in `ctx.analysis_results` by path; used before Commit to sync toggled flags |
 | `set_preference`                    | Upserts a single preference key/value; writes through the `AppSettings` struct                                     |
 | `start_background_cache`            | Spawns a background task that builds display-resolution JPEGs and both blink caches, snapshotting pixel data in chunks via `pixel_chunking` with a short `AppContext` lock per chunk (§2.2) |
-| `write_crash_recovery`              | Upserts the single `crash_recovery` row with current session state (file list, current frame)                      |
 
 ---
 
@@ -1454,6 +1490,7 @@ believed still open as of this document.
 | Full-res frames are JPEG, not lossless    | Disclosed via a disclaimer bar; pixel readout still uses the raw buffer, not the JPEG                     |
 | AppContext mutex serializes long operations | A long-running plugin holding `&mut AppContext` blocks all other commands, including frame display, for its duration — see §2.2 |
 | Zoom approximate at high levels           | Full-res cache reuses STF params computed at display resolution, not recomputed at full res — see §2.2   |
+| `display_cache` never written (Issue 84, deferred) | `start_background_cache` computes display-resolution JPEGs but discards them; frame navigation re-renders from raw pixels every time instead of reusing a cached copy — see §2.2. Deferred: low-impact under file-browser-only navigation |
 | XISF Vector/Matrix properties             | Read as a placeholder; skipped on write                                                                    |
 | Rayon thread count not user-configurable  | Hardcoded to `num_cpus - 1`; not exposed as a preference despite `RAYON_THREAD_COUNT_MIN` existing in defaults |
 | Sidebar icon tooltips clipped by Quick Launch | CSS stacking context issue                                                                              |
@@ -1461,10 +1498,8 @@ believed still open as of this document.
 | AutoStretch performance in dev builds     | 3–5 seconds for a 9MP RGB frame in debug builds; near-instant in release builds                             |
 | AutoStretch lost on Blink→Pixels tab switch | Viewer reverts to raw unstretched display                                                                 |
 | SNR estimator PSF artifact                | Worse-seeing frames produce higher SNR due to bloated star flux; excluded from rejection classification — see §6.2 |
-| AnalyzeFrames progress reporting          | Documented as having no per-frame progress reporting (unlike StackFrames, which does — §2.7); not independently re-verified against AnalyzeFrames source in this pass |
 | `threshold_profiles` orphaned columns     | `bg_stddev_reject_sigma`/`bg_gradient_reject_sigma` may still exist on pre-cleanup databases — see §8.2   |
 | `validate_alignment()` unused in StackFrames | Defined but never called; all frames pass without this validation step — see §7.4                       |
-| Full-res JPEG quality documented as 90, but no matching constant found | `defaults.rs` defines `DISPLAY_JPEG_QUALITY` (92) and `BLINK_JPEG_QUALITY` (85) but no full-res-specific constant — see §2.2, §9.3 |
 | Linux GTK file picker multi-select        | Silently refuses to confirm a selection containing both files and folders (e.g. Ctrl+A when a `rejected/` subfolder is present) — select files manually instead |
 | Separate RGB channel views not working correctly | Pre-existing display bug                                                                          |
 | `TRI_MAX_STARS = 30` unvalidated on sparse-star sessions | Current value works for typical sessions; not yet confirmed as a safe floor for sparse-star fields — see §7.2 |
