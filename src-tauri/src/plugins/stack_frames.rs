@@ -411,12 +411,22 @@ impl PhotyxPlugin for StackFrames {
                         contrib.alignment_validated = Some(true);
                         info!("Frame {}: RANSAC input   {} ref stars, {} frame stars, fft=({:.2},{:.2})",
                               snap.index, g_ref_stars.len(), snap.stars.len(), t.dx, t.dy);
-                        let xform = try_rigid_refinement(
+                        match try_rigid_refinement(
                             g_ref_stars, &snap.stars,
                             t.dx, t.dy, width, height,
                             snap.index, &mut messages,
-                        );
-                        Some(xform)
+                        ) {
+                            Some(xform) => Some(xform),
+                            // Issue 133 (Fix 2): RANSAC's own sanity checks
+                            // rejected the match — exclude the frame rather
+                            // than silently falling back to an unvalidated
+                            // translation-only transform.
+                            None => {
+                                alignment_failed(snap.index, "RANSAC sanity check rejected the match",
+                                                 &mut messages, &mut contrib, &mut contributions);
+                                continue;
+                            }
+                        }
                     }
                     None => {
                         alignment_failed(snap.index, "FFT returned no result",
@@ -878,6 +888,28 @@ fn collect_snapshots(
 
 //  ── Group assignment ──────────────────────────────────────────────────────────
 
+/// Resolves the rotator delta (degrees) between two consecutive frames for
+/// grouping purposes.
+///
+/// When both frames carry a `ROTATOR` keyword, this is the literal keyword
+/// delta — unchanged behavior. When either is missing (Issue 133), falls
+/// back to triangle-based star matching as a substitute rotation signal:
+/// `estimate_rigid_transform_triangles()` is scale/rotation-invariant and
+/// needs no FFT pre-translation, unlike the RANSAC path used elsewhere in
+/// this file, so it works without any prior orientation hint.
+///
+/// Returns `None` only when the substitute check itself is inconclusive
+/// (too few stars, no confident triangle match) — the caller treats `None`
+/// as "force a new group": an inconclusive signal defaults to splitting
+/// rather than risking a silent cross-orientation merge.
+fn resolve_rot_diff(prev: &FrameSnapshot, curr: &FrameSnapshot) -> Option<f32> {
+    if let (Some(a), Some(b)) = (prev.rotator, curr.rotator) {
+        return Some((b - a).abs());
+    }
+    estimate_rigid_transform_triangles(&prev.stars, &curr.stars)
+        .map(|xform| xform.theta().to_degrees().abs())
+}
+
 fn assign_groups(snapshots: &mut Vec<FrameSnapshot>) {
     snapshots.sort_by(|a, b| {
         a.date_obs.partial_cmp(&b.date_obs).unwrap_or(std::cmp::Ordering::Equal)
@@ -891,14 +923,31 @@ fn assign_groups(snapshots: &mut Vec<FrameSnapshot>) {
             (Some(a), Some(b)) => (b - a) / 60.0,
             _ => 0.0,
         };
-        let rot_diff = match (snapshots[i - 1].rotator, snapshots[i].rotator) {
-            (Some(a), Some(b)) => (b - a).abs(),
-            _ => 0.0,
+
+        let rotator_missing = snapshots[i - 1].rotator.is_none() || snapshots[i].rotator.is_none();
+        let rot_diff = resolve_rot_diff(&snapshots[i - 1], &snapshots[i]);
+
+        let split = match rot_diff {
+            Some(diff) => {
+                diff > MERIDIAN_FLIP_THRESHOLD
+                    || (time_gap > SESSION_GAP_MINUTES as f64 && diff > ROTATOR_GROUP_TOLERANCE)
+            }
+            // Issue 133: ROTATOR missing on at least one side and the
+            // triangle-match substitute was itself inconclusive — split
+            // rather than risk silently merging two different
+            // orientations into one group.
+            None => true,
         };
-        if rot_diff > MERIDIAN_FLIP_THRESHOLD
-            || (time_gap > SESSION_GAP_MINUTES as f64 && rot_diff > ROTATOR_GROUP_TOLERANCE)
-        {
+
+        if split {
             group += 1;
+            if rotator_missing {
+                info!(
+                    "StackFrames: group split at frame {} — ROTATOR missing, \
+                     resolved via triangle-match substitute (rot_diff={:?})",
+                    snapshots[i].index, rot_diff
+                );
+            }
         }
         snapshots[i].group = group;
     }
@@ -1024,21 +1073,29 @@ fn try_rigid_refinement(
     height:     usize,
     frame_idx:  usize,
     messages:   &mut Vec<String>,
-) -> AffineRigid {
+) -> Option<AffineRigid> {
     match estimate_rigid_transform(ref_stars, frm_stars, fft_dx, fft_dy, width, height) {
         Some(refined) => {
             let theta = refined.theta();
             info!("Frame {}: RANSAC match — tx={:.2} ty={:.2} θ={:.4}rad ({:.3}°)",
                   frame_idx, refined.tx, refined.ty, theta, theta.to_degrees());
-            refined
+            Some(refined)
         }
         None => {
+            // Issue 133 (Fix 2): previously silently fell back to a
+            // translation-only transform when RANSAC's own sanity checks
+            // rejected the refined match — this could stack a frame using
+            // an unvalidated FFT translation with no rotation applied,
+            // even when the true motion included rotation RANSAC couldn't
+            // confirm. Now excluded via the caller's alignment_failed()
+            // path instead, consistent with the FFT-failure case just
+            // above it.
             let msg = format!(
-                "Frame {}: RANSAC match failed — using FFT translation only", frame_idx
+                "Frame {}: RANSAC match failed — excluding frame", frame_idx
             );
             info!("{}", msg);
             messages.push(msg);
-            AffineRigid::translation(fft_dx, fft_dy)
+            None
         }
     }
 }
