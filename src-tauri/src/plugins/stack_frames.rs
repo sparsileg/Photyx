@@ -123,10 +123,7 @@ impl PhotyxPlugin for StackFrames {
             return Err(PluginError::new("NO_PIXELS", "No frames with pixel data available."));
         }
 
-        let width    = snapshots[0].width;
-        let height   = snapshots[0].height;
-        let n_pixels = width * height;
-        let total    = snapshots.len();
+        let total = snapshots.len();
 
         let mut messages: Vec<String> = Vec::new();
 
@@ -156,6 +153,35 @@ impl PhotyxPlugin for StackFrames {
 
         info!("StackFrames: master group = {} (reference frame {})",
               master_group, snapshots[master_ref_idx].index);
+
+        // Issue 139: the output canvas is defined by the master reference
+        // frame — the frame every other frame's transform ultimately maps
+        // into — rather than snapshots[0], which was an arbitrary
+        // chronologically-first frame with no geometric significance.
+        let width    = snapshots[master_ref_idx].width;
+        let height   = snapshots[master_ref_idx].height;
+        let channels = snapshots[master_ref_idx].channels;
+        let n_pixels = width * height;
+
+        // Issue 139: every frame must share the master reference's pixel
+        // geometry before any pixel work begins. A smaller frame would
+        // index out of bounds in extract_luminance/debayer downstream; a
+        // larger frame would silently truncate and stack garbage at the
+        // wrong row stride. Fail loudly and name the offending file rather
+        // than let either happen.
+        for snap in &snapshots {
+            if snap.width != width || snap.height != height || snap.channels != channels {
+                return Err(PluginError::new(
+                    "DIMENSION_MISMATCH",
+                    &format!(
+                        "Frame {} ({}) is {}×{}×{}ch but the master reference {} is {}×{}×{}ch. \
+                         All frames in a stack must share the same dimensions.",
+                        snap.index, short_name(&snap.path), snap.width, snap.height, snap.channels,
+                        snapshots[master_ref_idx].index, width, height, channels,
+                    ),
+                ));
+            }
+        }
 
         let ref_filter      = snapshots[master_ref_idx].filter.clone();
         let ref_color_space = snapshots[master_ref_idx].color_space.clone();
