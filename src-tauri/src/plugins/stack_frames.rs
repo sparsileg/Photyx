@@ -51,8 +51,7 @@ use crate::analysis::{
 use crate::context::{AppContext, BitDepth, ColorSpace, ImageBuffer, PixelData};
 use crate::plugin::{ArgMap, ParamSpec, PhotyxPlugin, PluginError, PluginOutput};
 use crate::settings::defaults::{
-    CROSS_GROUP_MAX_RESIDUAL_PX, CROSS_GROUP_MIN_MATCHED, CROSS_GROUP_THETA_TOLERANCE_DEG,
-    REF_MIN_STAR_FRACTION,
+    CROSS_GROUP_MAX_RESIDUAL_PX, CROSS_GROUP_MIN_MATCHED, REF_MIN_STAR_FRACTION,
 };
 use chrono::Utc;
 use rayon::prelude::*;
@@ -192,10 +191,67 @@ impl PhotyxPlugin for StackFrames {
             let gref_snap = &snapshots[group_refs[g]];
             let gref_luma = load_debayered_luma(ctx, gref_snap)?;
 
-            let mut flipped_luma = gref_luma.clone();
-            flipped_luma.reverse();
+            // Diagnostic logging (galaxy-contamination investigation): dumps
+            // the largest-by-pixel_count detected candidates for this
+            // group's reference frame, plus explicitly flags any candidate
+            // near a known suspect position. pixel_count is the flood-fill
+            // component size — a real stellar PSF should stay small and
+            // compact; a galaxy bulge/core feeding the same flood-fill from
+            // a much brighter, broader base would plausibly pull in far
+            // more connected pixels before dropping below the flood
+            // threshold. Purely diagnostic; does not change star selection,
+            // matching, or gating.
+            {
+                let mut by_size: Vec<&crate::analysis::stars::StarCandidate> =
+                    gref_snap.stars.iter().collect();
+                by_size.sort_by(|a, b| b.pixel_count.cmp(&a.pixel_count));
 
-            let fft_t = match compute_translation(&master_ref_luma, &flipped_luma, width, height) {
+                let counts: Vec<usize> = gref_snap.stars.iter().map(|s| s.pixel_count).collect();
+                let median = if counts.is_empty() { 0 } else {
+                    let mut sorted = counts.clone();
+                    sorted.sort_unstable();
+                    sorted[sorted.len() / 2]
+                };
+                info!("StackFrames: M_cross[{}] candidate size check — {} total, median pixel_count={}",
+                      g, gref_snap.stars.len(), median);
+
+                for (i, s) in by_size.iter().take(10).enumerate() {
+                    let (x0, y0, x1, y1) = s.bbox;
+                    info!("StackFrames: M_cross[{}] largest {} — star at ({:.1},{:.1}) pixel_count={} bbox=({},{})-({},{}) peak={:.3}",
+                          g, i, s.cx, s.cy, s.pixel_count, x0, y0, x1, y1, s.peak);
+                }
+
+                // Explicit proximity check against the known suspect
+                // position from the earlier outlier/unmatched investigation
+                // (~1554,1469 in this group's own coordinate space).
+                for s in &gref_snap.stars {
+                    let d = ((s.cx - 1554.0).powi(2) + (s.cy - 1469.0).powi(2)).sqrt();
+                    if d < 30.0 {
+                        let (x0, y0, x1, y1) = s.bbox;
+                        info!("StackFrames: M_cross[{}] suspect-position match — star at ({:.1},{:.1}) dist_from_suspect={:.1}px pixel_count={} bbox=({},{})-({},{}) peak={:.3}",
+                              g, s.cx, s.cy, d, s.pixel_count, x0, y0, x1, y1, s.peak);
+                    }
+                }
+            }
+
+            // Issue 134: previously this compared a 180°-reversed copy of
+            // the group reference against the master reference, assuming
+            // every non-master group was a meridian flip. Real sessions
+            // showed that assumption fails across most of the angular
+            // range — M104 (~105° cross-night rotation, no flip at all)
+            // and Sh2-101 (a same-orientation group misread as 180° of
+            // "drift") both had valid, well-matched cross-group transforms
+            // discarded because they weren't near 180°. Triangle matching
+            // is rotation-invariant and finds the true relative
+            // orientation directly (confirmed: it recovered M104's real
+            // ~105° unassisted before this fix discarded the answer), so
+            // this now compares the group reference to the master
+            // reference unflipped and uses whatever transform is found —
+            // 0°, 105°, 179°, or anything else — with no pre-composed
+            // assumption. `gref_snap.stars` is reused directly from
+            // `collect_snapshots()` rather than re-detecting on a
+            // reversed buffer.
+            let fft_t = match compute_translation(&master_ref_luma, &gref_luma, width, height) {
                 Some(t) => t,
                 None    => {
                     let msg = format!(
@@ -211,15 +267,8 @@ impl PhotyxPlugin for StackFrames {
             info!("StackFrames: cross-group {} FFT vs master ref dx={:.2} dy={:.2}",
                   g, fft_t.dx, fft_t.dy);
 
-            let flipped_stars = detect_stars(&flipped_luma, width, height, &det_config);
-
-            let ransac = estimate_rigid_transform(
-                &master_ref_stars, &flipped_stars,
-                fft_t.dx, fft_t.dy, width, height,
-            );
-
-            let post_flip = match estimate_rigid_transform_triangles(
-                &master_ref_stars, &flipped_stars,
+            let cross_transform = match estimate_rigid_transform_triangles(
+                &master_ref_stars, &gref_snap.stars,
             ) {
                 Some(r) => {
                     let theta = r.theta();
@@ -229,82 +278,121 @@ impl PhotyxPlugin for StackFrames {
                 }
                 None => {
                     info!("StackFrames: cross-group {} triangle match failed — falling back to FFT-only", g);
-                    // Issue 132: matches the sign convention now used
-                    // throughout estimate_rigid_transform (frame point -
-                    // fft offset = reference point) — this fallback
-                    // builds the same tx/ty a well-matched RANSAC refine
-                    // would produce directly, skipping the refinement
-                    // step, not a separate convention.
+                    // Issue 132: matches the sign convention used throughout
+                    // estimate_rigid_transform (frame point - fft offset =
+                    // reference point). Unchanged by Issue 134 — this sign
+                    // relationship holds regardless of which buffer was
+                    // passed as the FFT target.
                     AffineRigid::translation(-fft_t.dx, -fft_t.dy)
                 }
             };
 
-            let _ = ransac;
+            m_cross[g] = cross_transform;
 
-            let flip   = AffineRigid::flip_180(width, height);
-            m_cross[g] = compose(&post_flip, &flip);
-
-            info!("StackFrames: M_cross[{}] = a={:.4} b={:.4} tx={:.2} ty={:.2}",
-                  g, m_cross[g].a, m_cross[g].b, m_cross[g].tx, m_cross[g].ty);
+            info!("StackFrames: M_cross[{}] = a={:.4} b={:.4} tx={:.2} ty={:.2} θ={:.3}° scale={:.5}",
+                  g, m_cross[g].a, m_cross[g].b, m_cross[g].tx, m_cross[g].ty,
+                  m_cross[g].theta().to_degrees(), m_cross[g].scale());
 
             let mut residual_count = 0usize;
             let mut residual_mean  = 0.0f32;
             {
-                let mut residuals: Vec<f32> = Vec::new();
+                // Diagnostic logging (companion to the max-residual gate
+                // issue): each sample keeps the group-reference star's own
+                // unflipped position alongside the residual vector to its
+                // closest master-reference match, not just the scalar
+                // distance already logged. Purely diagnostic; does not
+                // change what gates the solve or the meaning of
+                // residual_count/residual_mean (still matched-only, as the
+                // existing CROSS_GROUP_MIN_MATCHED/MAX_RESIDUAL_PX gate
+                // expects).
+                struct ResidualSample { gx: f32, gy: f32, dx: f32, dy: f32, dist: f32 }
+                let mut residuals: Vec<ResidualSample> = Vec::new();
+                // Stars whose closest master-reference candidate is still
+                // >= 10px away — i.e. found no match at all. These never
+                // appear in the mean/max above, but a star whose true
+                // displacement under M_cross exceeds the search radius
+                // entirely is arguably the more important signal: it
+                // silently drops out of the matched population rather than
+                // showing up as a bad residual, which is exactly the kind
+                // of thing a mean-only check (and a human skimming only the
+                // worst matched residuals) can miss.
+                let mut unmatched: Vec<ResidualSample> = Vec::new();
                 for gs in &gref_snap.stars {
                     let (mx, my) = m_cross[g].apply_forward(gs.cx, gs.cy);
-                    if let Some(closest) = master_ref_stars.iter()
-                        .map(|r| ((r.cx - mx).powi(2) + (r.cy - my).powi(2)).sqrt())
-                        .reduce(f32::min)
-                    {
-                        if closest < 10.0 { residuals.push(closest); }
+                    let closest = master_ref_stars.iter()
+                        .map(|r| (r.cx, r.cy, ((r.cx - mx).powi(2) + (r.cy - my).powi(2)).sqrt()))
+                        .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+                    if let Some((rx, ry, dist)) = closest {
+                        let sample = ResidualSample { gx: gs.cx, gy: gs.cy, dx: rx - mx, dy: ry - my, dist };
+                        if dist < 10.0 {
+                            residuals.push(sample);
+                        } else {
+                            unmatched.push(sample);
+                        }
                     }
                 }
+
+                let total = gref_snap.stars.len();
                 if residuals.is_empty() {
-                    info!("StackFrames: M_cross[{}] verification — no stars matched within 10px", g);
+                    info!("StackFrames: M_cross[{}] verification — no stars matched within 10px ({} total)", g, total);
                 } else {
-                    let mean = residuals.iter().sum::<f32>() / residuals.len() as f32;
-                    let max  = residuals.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-                    info!("StackFrames: M_cross[{}] verification — {} stars matched, mean residual={:.2}px, max={:.2}px",
-                          g, residuals.len(), mean, max);
+                    let mean = residuals.iter().map(|r| r.dist).sum::<f32>() / residuals.len() as f32;
+                    let max  = residuals.iter().map(|r| r.dist).fold(f32::NEG_INFINITY, f32::max);
+                    let unmatched_pct = 100.0 * unmatched.len() as f32 / total as f32;
+                    info!("StackFrames: M_cross[{}] verification — {}/{} stars matched, mean residual={:.2}px, max={:.2}px, {} unmatched ({:.1}%)",
+                          g, residuals.len(), total, mean, max, unmatched.len(), unmatched_pct);
                     residual_count = residuals.len();
                     residual_mean  = mean;
+
+                    // Worst matched outliers (up to 10) — position + residual
+                    // vector; angle=0° is "up", increasing clockwise.
+                    let mut sorted = residuals;
+                    sorted.sort_by(|a, b| b.dist.partial_cmp(&a.dist).unwrap_or(std::cmp::Ordering::Equal));
+                    for (i, r) in sorted.iter().take(10).enumerate() {
+                        let angle_deg = r.dx.atan2(-r.dy).to_degrees();
+                        info!("StackFrames: M_cross[{}] outlier {} — star at ({:.1},{:.1}) residual=({:.2},{:.2}) dist={:.2}px angle={:.1}\u{00b0} (0\u{00b0}=up, clockwise)",
+                              g, i, r.gx, r.gy, r.dx, r.dy, r.dist, angle_deg);
+                    }
+
+                    // Closest-miss unmatched stars (up to 15), sorted by
+                    // attempted distance ascending — the near-boundary
+                    // misses are the most informative for seeing where a
+                    // rigid-only model starts breaking down spatially.
+                    if !unmatched.is_empty() {
+                        let mut sorted_unmatched = unmatched;
+                        sorted_unmatched.sort_by(|a, b| a.dist.partial_cmp(&b.dist).unwrap_or(std::cmp::Ordering::Equal));
+                        for (i, r) in sorted_unmatched.iter().take(15).enumerate() {
+                            let angle_deg = r.dx.atan2(-r.dy).to_degrees();
+                            info!("StackFrames: M_cross[{}] unmatched {} — star at ({:.1},{:.1}) nearest-miss=({:.2},{:.2}) dist={:.2}px angle={:.1}\u{00b0} (0\u{00b0}=up, clockwise)",
+                                  g, i, r.gx, r.gy, r.dx, r.dy, r.dist, angle_deg);
+                        }
+                    }
                 }
             }
 
-            // ── Issue 128: turn verification into a real gate ──────────────────
+
+            // ── Issue 128 / Issue 134: verification gate ────────────────────────
             // A garbage cross-group solve was previously logged (loudly) and
-            // then stacked anyway. Two independent checks:
-            //   1. Verification quality — too few matched stars, or a mean
-            //      residual far above what a real solve produces (healthy
-            //      sessions run 0.28–0.47px; the 20260615 failure ran 6.50px).
-            //   2. Physical plausibility of the triangle match's own rotation
-            //      (post_flip, BEFORE the explicit 180° pre-rotation composed
-            //      into m_cross) — this represents minor camera/rotator drift
-            //      between the pre- and post-flip halves of a session and
-            //      should be small. The 20260615 failure measured -46.8° here
-            //      against a healthy-session baseline of -0.4°: the triangle
-            //      matcher had locked onto spurious correspondences from a
-            //      cloud-obscured group reference, not a real flip-plus-drift.
-            let mut exclude_reason: Option<String> = None;
-
-            if residual_count < CROSS_GROUP_MIN_MATCHED || residual_mean > CROSS_GROUP_MAX_RESIDUAL_PX {
-                exclude_reason = Some(format!(
-                    "verification matched {} stars (min {}), mean residual {:.2}px (max allowed {:.2}px)",
-                    residual_count, CROSS_GROUP_MIN_MATCHED, residual_mean, CROSS_GROUP_MAX_RESIDUAL_PX
-                ));
-            }
-
-            if exclude_reason.is_none() {
-                let post_flip_theta_deg = post_flip.theta().to_degrees().abs();
-                if post_flip_theta_deg > CROSS_GROUP_THETA_TOLERANCE_DEG {
-                    exclude_reason = Some(format!(
-                        "triangle-match residual rotation {:.1}\u{00b0} exceeds the {:.0}\u{00b0} tolerance \
-                         for drift between the pre- and post-flip halves of the session",
-                        post_flip_theta_deg, CROSS_GROUP_THETA_TOLERANCE_DEG
-                    ));
-                }
-            }
+            // then stacked anyway (Issue 128). This angle-agnostic residual/
+            // matched-star check — too few matched stars, or a mean residual
+            // far above what a real solve produces (healthy sessions run
+            // 0.28–0.47px) — is now the sole gate. Issue 134 removed the
+            // companion rotation-plausibility check that used to run
+            // alongside it: that check only made sense under the retired
+            // 180°-flip assumption (see header note above) and had no valid
+            // generalization once arbitrary relative orientations are
+            // accepted — a spurious match is expected to already fail this
+            // residual check on its own, since the transform is applied to
+            // the same points it was fit from.
+            let exclude_reason: Option<String> =
+                if residual_count < CROSS_GROUP_MIN_MATCHED || residual_mean > CROSS_GROUP_MAX_RESIDUAL_PX {
+                    Some(format!(
+                        "verification matched {} stars (min {}), mean residual {:.2}px (max allowed {:.2}px)",
+                        residual_count, CROSS_GROUP_MIN_MATCHED, residual_mean, CROSS_GROUP_MAX_RESIDUAL_PX
+                    ))
+                } else {
+                    None
+                };
 
             if let Some(reason) = exclude_reason {
                 let frame_count = snapshots.iter().filter(|s| s.group == g).count();

@@ -87,7 +87,6 @@ pub const ALGORITHM_SET_VERSION:       i64  = 1;     // bump when any analysis a
 
 pub const CROSS_GROUP_MAX_RESIDUAL_PX:    f32   = 2.0;  // max mean verification residual (px) before rejecting M_cross
 pub const CROSS_GROUP_MIN_MATCHED:        usize = 10;   // min matched stars on M_cross verification before rejecting
-pub const CROSS_GROUP_THETA_TOLERANCE_DEG: f32  = 10.0; // max |triangle-match residual rotation| (degrees) before rejecting
 pub const REF_MIN_STAR_FRACTION:          f64   = 0.5;  // min star count as a fraction of group median to be reference-eligible
 
 // ----------------------------------------------------------------------

@@ -149,6 +149,41 @@ pub fn detect_stars(
         });
     }
 
+    // ── Step 7: reject extended-source contamination ─────────────────────────
+    // The flood fill seeds from a local maximum only just above
+    // detect_thresh, then expands using the looser flood_thresh — so a
+    // broad, gently-sloped structure (e.g. a galaxy bulge/core) can sprawl
+    // into a huge connected region even though its seed pixel was
+    // unremarkable. Confirmed on real M104 data: a genuine star population
+    // clustered at peak 0.5-0.9, while a galaxy-core false positive
+    // registered peak=0.005 (~100x dimmer) with pixel_count over 100x the
+    // frame's median. Peak alone isn't a safe filter (a legitimately large,
+    // genuinely bright object would have high peak too) — it's the
+    // combination of "large relative to the population" AND "dim relative
+    // to the population's bright end" that marks a candidate as extended
+    // structure rather than a point source. Thresholds are relative to
+    // this frame's own candidate population, not hardcoded, since sky
+    // background and exposure depth vary session to session.
+    const EXTENDED_SOURCE_SIZE_MULTIPLIER: f32 = 5.0;
+    const EXTENDED_SOURCE_PEAK_FRACTION:   f32 = 0.1;
+
+    if candidates.len() >= 2 {
+        let mut pixel_counts: Vec<usize> = candidates.iter().map(|c| c.pixel_count).collect();
+        pixel_counts.sort_unstable();
+        let median_pixel_count = pixel_counts[pixel_counts.len() / 2] as f32;
+        let max_peak = candidates.iter()
+            .map(|c| c.peak)
+            .fold(f32::MIN, f32::max);
+
+        if median_pixel_count > 0.0 && max_peak > 0.0 {
+            candidates.retain(|c| {
+                let is_oversized = c.pixel_count as f32 > EXTENDED_SOURCE_SIZE_MULTIPLIER * median_pixel_count;
+                let is_dim       = c.peak < EXTENDED_SOURCE_PEAK_FRACTION * max_peak;
+                !(is_oversized && is_dim)
+            });
+        }
+    }
+
     // Sort by descending peak brightness
     candidates.sort_unstable_by(|a, b| {
         b.peak.partial_cmp(&a.peak).unwrap_or(std::cmp::Ordering::Equal)

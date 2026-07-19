@@ -64,12 +64,32 @@ const TRI_THETA_BIN: f32 = 0.005; // radians (~0.29°)
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-/// A 2D affine rigid transform: rotation + translation, scale fixed at 1.0
-/// (or scale ±1 to allow 180° reflection-via-rotation).
+/// A 2D similarity transform: rotation + uniform scale + translation.
 ///
 /// Maps a frame point (fx, fy) to reference space:
 ///   rx = a·fx - b·fy + tx
 ///   ry = b·fx + a·fy + ty
+///
+/// `a` and `b` encode rotation and scale together — `theta()` recovers
+/// the angle, `scale()` recovers the magnitude, where
+/// `a = scale·cos θ` and `b = scale·sin θ`.
+///
+/// The name is retained for continuity: in practice most transforms this
+/// type carries *are* rigid. Within-group alignment fits converge to
+/// scale ≈ 1.0 on their own (many tight correspondences from a single
+/// session), and `identity()` / `translation()` / `flip_180()` are all
+/// exactly unit scale. What the type no longer does is *enforce* unit
+/// scale, because a cross-group solve between two sessions can legitimately
+/// need it: a real M104 two-night session measured a 1.78% scale
+/// difference between nights, plausibly from a focus/backfocus or
+/// temperature-driven focal-length change over the 9 days between them.
+/// Forcing that to 1.0 leaves an error that grows linearly with distance
+/// from the transform's fixed point (~36px at r=2000 for 1.78%), which
+/// shows up as radially-varying doubled stars in the stacked output.
+///
+/// Note `apply_inverse()` divides by a² + b², so it is a true inverse at
+/// any scale; at unit scale it reduces to the rotation-transpose form
+/// used previously.
 #[derive(Debug, Clone)]
 pub struct AffineRigid {
     pub a:  f32,
@@ -104,9 +124,16 @@ impl AffineRigid {
         }
     }
 
-    /// Rotation angle in radians.
+    /// Rotation angle in radians. Independent of scale.
     pub fn theta(&self) -> f32 {
         self.b.atan2(self.a)
+    }
+
+    /// Uniform scale factor. 1.0 for a pure rigid transform; may differ
+    /// for a cross-group solve between sessions with a real focal-length
+    /// or backfocus difference (see the struct doc).
+    pub fn scale(&self) -> f32 {
+        (self.a * self.a + self.b * self.b).sqrt()
     }
 
     /// Apply the forward transform: frame point → reference space.
@@ -118,12 +145,23 @@ impl AffineRigid {
     }
 
     /// Apply the inverse transform: reference point → frame space.
+    ///
+    /// The previous formulation used the rotation matrix transpose,
+    /// which is the true inverse only when a² + b² = 1. Now that a/b may
+    /// carry a real uniform scale, the transpose must be divided by the
+    /// squared scale to be a genuine inverse. At unit scale this reduces
+    /// exactly to the old expression, so rigid-transform behaviour is
+    /// unchanged.
     pub fn apply_inverse(&self, rx: f32, ry: f32) -> (f32, f32) {
         let ox = rx - self.tx;
         let oy = ry - self.ty;
+        let det = self.a * self.a + self.b * self.b;
+        if det < 1e-12 {
+            return (0.0, 0.0);
+        }
         (
-             self.a * ox + self.b * oy,
-            -self.b * ox + self.a * oy,
+            ( self.a * ox + self.b * oy) / det,
+            (-self.b * ox + self.a * oy) / det,
         )
     }
 }
@@ -638,10 +676,30 @@ fn least_squares_affine(pairs: &[MatchedPair]) -> Option<AffineRigid> {
         return None;
     }
 
+    // Solved as a similarity transform: a and b are free parameters, so
+    // they encode rotation *and* uniform scale together. This is
+    // deliberate — see the AffineRigid struct doc. Within-group fits
+    // converge to scale ≈ 1.0 naturally (hundreds of tight
+    // correspondences from the same session), so they are rigid in
+    // practice without being constrained to it. Cross-group fits between
+    // sessions may carry a real scale difference (focus/backfocus shift,
+    // temperature, focal-length change between nights) which this
+    // formulation captures rather than discards.
+    //
+    // An earlier revision renormalized a/b onto the unit circle here to
+    // enforce rigidity. That removed a genuine 1.78% scale difference in
+    // a real M104 two-night session, and because the translation is
+    // recovered from the centroids using whatever rotation is passed in,
+    // the renormalized rotation produced a translation solving a
+    // different problem than the one the correspondences described — a
+    // globally offset transform that pushed 92% of stars outside the
+    // verification match radius. Rotation, scale, and translation are a
+    // matched set from a single solve and must stay consistent with each
+    // other.
     let a = sum_rhs_a / sum_ff;
     let b = sum_rhs_b / sum_ff;
 
-    // Translation recovered from the centroids: ref_mean = R * frame_mean + t
+    // Translation recovered from the centroids: ref_mean = M * frame_mean + t
     let tx = rx_mean - (a * fx_mean - b * fy_mean);
     let ty = ry_mean - (b * fx_mean + a * fy_mean);
 
