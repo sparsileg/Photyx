@@ -1,6 +1,6 @@
 [package]
 name = "photyx"
-version = "0.9.0"
+version = "0.10.0"
 description = "Photyx — High-performance astrophotography platform"
 authors = ["Sparsile"]
 edition = "2021"

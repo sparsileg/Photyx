@@ -1,7 +1,6 @@
 {
     "$schema": "https://schema.tauri.app/config/2",
     "productName": "photyx",
-    "version": "0.10.0",
     "identifier": "com.sparsile.photyx",
     "build": {
         "beforeDevCommand": "npm run dev",
