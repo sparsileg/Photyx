@@ -1,6 +1,30 @@
 <!-- AboutModal.svelte — About Photyx dialog. Spec §8.2 -->
+
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { getVersion } from '@tauri-apps/api/app';
+  import { invoke } from '@tauri-apps/api/core';
+
   let { onclose } = $props<{ onclose: () => void }>();
+
+  // Issue 161: read the live app version and DB schema version rather
+  // than a hardcoded string — same pattern already used for the
+  // console's Version command in clientCommands.ts (Issue 87).
+  let appVersion = $state('');
+  let dbVersion  = $state<number | null>(null);
+
+  onMount(async () => {
+    try {
+      appVersion = await getVersion();
+    } catch (e) {
+      console.error('Failed to read app version:', e);
+    }
+    try {
+      dbVersion = await invoke<number>('get_db_schema_version');
+    } catch (e) {
+      console.error('Failed to read DB schema version:', e);
+    }
+  });
 </script>
 
 <div class="modal-overlay" onclick={onclose}>
@@ -13,7 +37,8 @@
 
     <div class="modal-body about-body">
       <div class="about-title">PHOTYX</div>
-      <div class="about-version">Version 1.0.0-dev</div>
+      <div class="about-version">Version {appVersion || '…'}</div>
+      <div class="about-db-version">DB schema v{dbVersion ?? '…'}</div>
 
       <div class="about-divider"></div>
 
@@ -27,8 +52,8 @@
         engine enables rapid sequential comparison of image sets for
         focus, tracking, and quality evaluation. Photyx automates
         frame triage through its AnalyzeFrames engine, which computes
-        five quality metrics per frame — FWHM, eccentricity, star
-        count, signal weight, and background median — classifying each
+        four quality metrics per frame — background median, FWHM,
+        eccentricity, and star count — classifying each
         frame as PASS or REJECT. Results are visualized in
         the Analysis Graph and Analysis Results table for session-wide
         review.  All operations are scriptable through pcode, a

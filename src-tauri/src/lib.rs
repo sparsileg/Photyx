@@ -344,6 +344,13 @@ fn list_plugins(state: State<Arc<PhotoxState>>) -> Vec<serde_json::Value> {
     state.registry.list_with_details()
 }
 
+// ── Tauri command: current DB schema version (Issue 161) ──────────────────────
+
+#[tauri::command]
+fn get_db_schema_version() -> u32 {
+    crate::db::migrations::CURRENT_SCHEMA_VERSION
+}
+
 // ── Logging init ──────────────────────────────────────────────────────────────
 
 fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
@@ -537,6 +544,7 @@ pub fn run() {
             commands::threshold_profiles::save_threshold_profile,
             commands::threshold_profiles::set_active_threshold_profile,
             dispatch_command,
+            get_db_schema_version,
             get_job_result,
             get_progress,
             list_plugins,

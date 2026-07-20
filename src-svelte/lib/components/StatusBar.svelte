@@ -1,10 +1,32 @@
 <!-- StatusBar.svelte — Notification / status bar. Spec §8.10 -->
+
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { getVersion } from '@tauri-apps/api/app';
+  import { invoke } from '@tauri-apps/api/core';
   import { latestNotification, notifications } from '../stores/notifications';
   import { session, directoryCount } from '../stores/session';
   import { progress } from '../stores/progress';
 
   let historyOpen = $state(false);
+
+  // Issue 161: app + DB schema version, always-visible companion to the
+  // same values shown in AboutModal. Format: "v<app> d<schema>".
+  let appVersion = $state('');
+  let dbVersion  = $state<number | null>(null);
+
+  onMount(async () => {
+    try {
+      appVersion = await getVersion();
+    } catch (e) {
+      console.error('Failed to read app version:', e);
+    }
+    try {
+      dbVersion = await invoke<number>('get_db_schema_version');
+    } catch (e) {
+      console.error('Failed to read DB schema version:', e);
+    }
+  });
 
   const TYPE_META: Record<string, { icon: string; cls: string }> = {
     idle:    { icon: '◈', cls: '' },
@@ -68,5 +90,10 @@
         </span>
       </div>
     {/if}
+    <div class="status-item">
+      <span class="status-item-val" id="status-version">
+        v{appVersion || '…'} d{dbVersion ?? '…'}
+      </span>
+    </div>
   </div>
 </div>

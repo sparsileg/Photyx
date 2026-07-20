@@ -154,6 +154,14 @@
     letter-spacing: 0.05em;
 }
 
+.about-db-version {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-align: center;
+    letter-spacing: 0.05em;
+    opacity: 0.75;
+}
+
 .about-divider {
     width: 100%;
     border-top: 1px solid var(--border-color);
