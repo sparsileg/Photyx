@@ -540,13 +540,6 @@ impl PhotyxPlugin for StackFrames {
                 }
             };
 
-            // Extract luma for background estimation and FFT alignment.
-            let cal_luma = if is_color {
-                analysis::extract_luminance(&frame_pixels, width, height, 3)
-            } else {
-                frame_pixels.clone()
-            };
-
             if group_ref_luma[snap.group].is_none() {
                 let g_ref = &snapshots[group_refs[snap.group]];
                 match load_debayered_luma(ctx, g_ref) {
@@ -584,14 +577,30 @@ impl PhotyxPlugin for StackFrames {
             let g_ref_luma  = group_ref_luma[snap.group].as_ref().unwrap();
             let g_ref_stars = group_ref_stars[snap.group].as_ref().unwrap();
 
-            // Background estimation for normalization
-            let bg_est   = estimate_background(&cal_luma, &bg_sigma_config);
-            let bg_level = bg_est.median;
+            // Background estimation, and the buffer used for FFT alignment
+            // (Issue 143). Color: a genuine luminance extraction from RGB
+            // (cal_luma) is needed for background estimation and alignment,
+            // and is dropped as soon as normalized_luma is built from it —
+            // nothing after this point reads cal_luma again. Mono: luma and
+            // raw pixels are the same data, so frame_pixels is background-
+            // estimated and normalized directly, with no separate clone —
+            // the previous mono path cloned frame_pixels into cal_luma for
+            // no reason, then normalized both it and frame_pixels
+            // separately into two buffers holding identical values.
+            let (bg_level, normalized_luma): (f32, Vec<f32>) = if is_color {
+                let cal_luma = analysis::extract_luminance(&frame_pixels, width, height, 3);
+                let bg = estimate_background(&cal_luma, &bg_sigma_config).median;
+                let divisor = if bg > 1e-6 { bg } else { 1.0 };
+                let normalized: Vec<f32> = cal_luma.par_iter().map(|&v| v / divisor).collect();
+                (bg, normalized)
+            } else {
+                let bg = estimate_background(&frame_pixels, &bg_sigma_config).median;
+                let divisor = if bg > 1e-6 { bg } else { 1.0 };
+                let normalized: Vec<f32> = frame_pixels.par_iter().map(|&v| v / divisor).collect();
+                (bg, normalized)
+            };
             contrib.background_level = Some(bg_level);
             let divisor = if bg_level > 1e-6 { bg_level } else { 1.0 };
-
-            // Normalize luma by background for FFT alignment
-            let normalized_luma: Vec<f32> = cal_luma.par_iter().map(|&v| v / divisor).collect();
 
             let g_transform: Option<AffineRigid> = if i == group_refs[snap.group] {
                 contrib.fft_translation     = Some((0.0, 0.0));
@@ -631,11 +640,18 @@ impl PhotyxPlugin for StackFrames {
 
             let g_xform = g_transform.unwrap();
             let t_final = compose(&m_cross[snap.group], &g_xform);
+            let theta   = t_final.theta();
 
-            let accum_pixels: Vec<f32> = frame_pixels.iter().map(|&v| v / divisor).collect();
-
-            let theta = t_final.theta();
+            // Issue 143: mono accumulates straight off normalized_luma —
+            // it is already the same background-normalized data the old
+            // accum_pixels duplicated from frame_pixels. Color still needs
+            // a genuine second buffer here (full RGB, vs. normalized_luma's
+            // single channel); frame_pixels is dropped immediately after
+            // building it, since nothing below this point reads it again.
             if is_color {
+                let accum_pixels: Vec<f32> = frame_pixels.iter().map(|&v| v / divisor).collect();
+                drop(frame_pixels);
+
                 let aligned_rgb = if theta.abs() >= MIN_ROTATION_TO_APPLY || t_final.a < 0.5 {
                     resample_frame_rgb_affine(&accum_pixels, width, height, &t_final)
                 } else {
@@ -656,9 +672,9 @@ impl PhotyxPlugin for StackFrames {
                 }
             } else {
                 let aligned = if theta.abs() >= MIN_ROTATION_TO_APPLY || t_final.a < 0.5 {
-                    resample_frame_affine(&accum_pixels, width, height, &t_final)
+                    resample_frame_affine(&normalized_luma, width, height, &t_final)
                 } else {
-                    resample_frame(&accum_pixels, width, height, t_final.tx, t_final.ty)
+                    resample_frame(&normalized_luma, width, height, t_final.tx, t_final.ty)
                 };
 
                 mean_buf.par_iter_mut()
@@ -796,24 +812,27 @@ impl PhotyxPlugin for StackFrames {
             let aligned_buffers: Vec<Vec<f32>> = chunk_ok.par_iter()
                 .zip(chunk_pixels.into_par_iter())
                 .map(|(inp, frame_pixels)| {
-                    let cal_luma = if is_color {
-                        analysis::extract_luminance(&frame_pixels, width, height, 3)
-                    } else {
-                        frame_pixels.clone()
-                    };
-
                     let divisor = inp.divisor;
-                    let accum_pixels: Vec<f32> = frame_pixels.iter().map(|&v| v / divisor).collect();
-                    let theta = inp.xform.theta();
+                    let theta   = inp.xform.theta();
 
+                    // Issue 143: cal_luma was computed unconditionally here
+                    // (a real extract_luminance in the color case, a full
+                    // clone in the mono case) but only ever consumed by the
+                    // mono branch's `normalized` — the color branch used
+                    // accum_pixels (built from frame_pixels directly) and
+                    // never read cal_luma at all, so the color case paid
+                    // for a full luminance extraction and threw the result
+                    // away. Both branches now build exactly one buffer,
+                    // directly from frame_pixels.
                     if is_color {
+                        let accum_pixels: Vec<f32> = frame_pixels.iter().map(|&v| v / divisor).collect();
                         if theta.abs() >= MIN_ROTATION_TO_APPLY || inp.xform.a < 0.5 {
                             resample_frame_rgb_affine(&accum_pixels, width, height, &inp.xform)
                         } else {
                             resample_frame_rgb(&accum_pixels, width, height, inp.xform.tx, inp.xform.ty)
                         }
                     } else {
-                        let normalized: Vec<f32> = cal_luma.iter().map(|&v| v / divisor).collect();
+                        let normalized: Vec<f32> = frame_pixels.iter().map(|&v| v / divisor).collect();
                         if theta.abs() >= MIN_ROTATION_TO_APPLY || inp.xform.a < 0.5 {
                             resample_frame_affine(&normalized, width, height, &inp.xform)
                         } else {
@@ -1061,9 +1080,25 @@ fn collect_snapshots(
             analysis::to_luminance(pixels, channels)
         };
 
-        let stars        = detect_stars(&luma, width, height, det_config);
+        let mut stars    = detect_stars(&luma, width, height, det_config);
         let fwhm         = if stars.len() >= 5 { compute_fwhm(&stars, None).map(|r| r.fwhm_pixels) } else { None };
         let eccentricity = if stars.len() >= 5 { compute_eccentricity(&stars).map(|r| r.eccentricity) } else { None };
+
+        // Issue 143: StarCandidate.patch (the extracted pixel-region buffer)
+        // is consumed only by compute_fwhm/compute_eccentricity above —
+        // everything downstream in the stacking pipeline (triangle
+        // matching, RANSAC, M_cross verification) uses only cx/cy/peak.
+        // Dropping patch here, rather than retaining it for the life of
+        // the plugin, matters because this vector is retained per-frame
+        // for the whole session and cloned up to three more times (master
+        // reference, group references). Replacing with an empty Vec (not
+        // .clear(), which keeps the allocation) actually releases the
+        // backing memory. The StarCandidate type itself is unchanged —
+        // detect_stars is shared with the analysis pipeline, where patch
+        // is genuinely needed by its callers.
+        for s in stars.iter_mut() {
+            s.patch = Vec::new();
+        }
 
         let filter   = buf.keywords.get("FILTER").map(|kw| kw.value.clone());
         let exptime  = buf.keywords.get("EXPTIME").and_then(|kw| kw.value.parse::<f32>().ok());
