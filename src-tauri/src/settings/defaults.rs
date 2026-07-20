@@ -76,7 +76,6 @@ pub const DETAIL_JPEG_QUALITY:         u8   = 90;    // full-res cache and displ
 pub const THUMBNAIL_JPEG_QUALITY:      u8   = 75;    // blink caches (12.5% / 25%)
 pub const BLINK_WIDTH_12:              u32  = 376;   // blink thumbnail width, 12.5% resolution
 pub const BLINK_WIDTH_25:              u32  = 752;   // blink thumbnail width, 25% resolution
-pub const ALGORITHM_SET_VERSION:       i64  = 1;     // bump when any analysis algorithm changes
 
 // ── Stacking (StackFrames) ─────────────────────────────────────────────────
 // Non-persisted algorithm thresholds — Issue 127 (reference candidacy gate),

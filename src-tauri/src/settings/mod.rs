@@ -72,7 +72,6 @@ pub struct AppSettings {
 
     // ── Non-persisted runtime constants ──────────────────────────────
     pub display_max_width_px:        u32,
-    pub algorithm_set_version:       i64,
 }
 
 impl AppSettings {
@@ -98,7 +97,6 @@ impl AppSettings {
             active_threshold_profile_id:  None,
             threshold_profiles:           Vec::new(),
             display_max_width_px:         DISPLAY_MAX_WIDTH_PX,
-            algorithm_set_version:        ALGORITHM_SET_VERSION,
         }
     }
 
