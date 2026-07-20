@@ -1825,6 +1825,190 @@ fn build_stack_keywords(
 }
 
 
+//  ── Tests (Issue 149) ───────────────────────────────────────────────────────
+// These pin the sign convention shared across fft_align::compute_translation,
+// star_align::estimate_rigid_transform, and this file's resample_frame_affine
+// (Issue 131/132) — the specific failure mode was two compensating sign
+// errors producing correct output, so a partial revert of the fix would
+// restore working alignment while leaving the code semantically wrong.
+// Test data here is synthetic rather than real, deliberately: the whole
+// point is an exactly-known ground-truth transform, which real frames
+// cannot provide.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analysis::stars::StarCandidate;
+
+    fn make_test_star(cx: f32, cy: f32) -> StarCandidate {
+        StarCandidate { cx, cy, peak: 0.8, bbox: (0, 0, 1, 1), patch: vec![], pixel_count: 1 }
+    }
+
+    /// Flat background with Gaussian blob "stars" at the given sub-pixel
+    /// positions, matching the pattern fft_align.rs's own tests use.
+    fn synth_image(width: usize, height: usize, stars: &[(f32, f32)]) -> Vec<f32> {
+        let mut img = vec![0.05f32; width * height];
+        for &(cx, cy) in stars {
+            let x0 = (cx as i32 - 6).max(0);
+            let x1 = (cx as i32 + 6).min(width as i32 - 1);
+            let y0 = (cy as i32 - 6).max(0);
+            let y1 = (cy as i32 + 6).min(height as i32 - 1);
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    let dx = x as f32 - cx;
+                    let dy = y as f32 - cy;
+                    let r2 = dx * dx + dy * dy;
+                    img[y as usize * width + x as usize] += 0.6 * (-r2 / 5.0).exp();
+                }
+            }
+        }
+        img
+    }
+
+    /// Builds the "frame" image a sensor would see under `xform` (frame ->
+    /// reference space, matching AffineRigid::apply_forward's documented
+    /// direction): for each frame-space pixel (fx, fy), samples `reference`
+    /// at apply_forward(fx, fy). This is the mirror operation of
+    /// resample_frame_affine, which warps frame data into reference-space
+    /// output via apply_inverse — used only to construct test input, not
+    /// production code.
+    fn warp_forward(reference: &[f32], width: usize, height: usize, xform: &AffineRigid) -> Vec<f32> {
+        let mut out = vec![0.05f32; width * height];
+        for y in 0..height {
+            for x in 0..width {
+                let (rx, ry) = xform.apply_forward(x as f32, y as f32);
+                let x0 = rx.floor() as i32;
+                let y0 = ry.floor() as i32;
+                let fx = rx - x0 as f32;
+                let fy = ry - y0 as f32;
+                out[y * width + x] = bilinear(reference, width, height, x0, y0, x0 + 1, y0 + 1, fx, fy);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn test_end_to_end_translation_rotation_round_trip() {
+        let (w, h) = (512usize, 512usize);
+
+        // Ten well-separated star positions, matching star_align.rs's own
+        // test convention, with enough margin from the canvas edges that
+        // the translation below never pushes a star's sampling footprint
+        // out of bounds.
+        let ref_positions: [(f32, f32); 10] = [
+            (100.0, 100.0), (400.0, 120.0), (250.0, 300.0), (380.0, 380.0),
+            (120.0, 350.0), (300.0, 150.0), (200.0, 250.0), (350.0, 200.0),
+            (150.0, 150.0), (300.0, 400.0),
+        ];
+        let reference = synth_image(w, h, &ref_positions);
+
+        // Known ground-truth transform, frame -> reference space. Rotation
+        // magnitude matches the real within-group regime measured in
+        // Issue 146 (worst observed residual ~0.01°, so 0.3° gives a
+        // comfortable margin above the noise floor while staying well
+        // inside MAX_ROTATION_RAD); translation matches a typical dither
+        // offset.
+        let theta_true = 0.3f32.to_radians();
+        let xform_true = AffineRigid {
+            a: theta_true.cos(),
+            b: theta_true.sin(),
+            tx: 12.0,
+            ty: -7.0,
+        };
+
+        let frame = warp_forward(&reference, w, h, &xform_true);
+
+        let ref_stars: Vec<StarCandidate> = ref_positions.iter()
+            .map(|&(x, y)| make_test_star(x, y))
+            .collect();
+        // Frame-space star positions are the inverse of the known
+        // transform applied to the reference positions — same convention
+        // star_align.rs's own rotation test (test_triangle_matching_rotation)
+        // uses to build frame_stars from a known ref->frame relationship.
+        let frame_stars: Vec<StarCandidate> = ref_positions.iter()
+            .map(|&(x, y)| {
+                let (fx, fy) = xform_true.apply_inverse(x, y);
+                make_test_star(fx, fy)
+            })
+            .collect();
+
+        // Full chain under test: FFT translation estimate -> RANSAC-refined
+        // rigid transform -> resample.
+        let fft_t = compute_translation(&reference, &frame, w, h)
+            .expect("FFT should find a translation estimate");
+        let recovered = estimate_rigid_transform(
+            &ref_stars, &frame_stars, fft_t.dx, fft_t.dy, w, h,
+        ).expect("RANSAC should recover a transform from clean synthetic data");
+
+        let resampled = resample_frame_affine(&frame, w, h, &recovered);
+
+        // Each star should land back at its original reference-space
+        // position, within sub-pixel tolerance. A single-sided sign error
+        // anywhere in the chain (the Step 8 negation in compute_translation,
+        // the Step 1 pre-translation sign in estimate_rigid_transform, or
+        // resample_frame_affine's apply_inverse convention) would place
+        // stars at roughly double the true offset or in the wrong
+        // direction entirely — failing this by several pixels, not a
+        // fraction of one.
+for &(rx, ry) in &ref_positions {
+            let x0 = rx.floor() as i32;
+            let y0 = ry.floor() as i32;
+            let fx = rx - x0 as f32;
+            let fy = ry - y0 as f32;
+            let val = bilinear(&resampled, w, h, x0, y0, x0 + 1, y0 + 1, fx, fy);
+            assert!(
+                val > 0.4,
+                "star at ({:.1},{:.1}) not recovered in resampled frame — \
+                 sampled value {:.3} (expected > 0.4; a low value here \
+                 indicates a possible sign inversion somewhere in the \
+                 compute_translation -> estimate_rigid_transform -> \
+                 resample_frame_affine chain)",
+                rx, ry, val
+            );
+        }
+    }
+
+    #[test]
+    fn test_resample_frame_affine_uses_inverse_map() {
+        // Issue 149: isolates resample_frame_affine's apply_inverse
+        // convention specifically, using a pure translation (no rotation)
+        // so the two candidate failure locations below are unambiguous
+        // and don't overlap with any rotation-related error.
+        let (w, h) = (64usize, 64usize);
+        let mut frame = vec![0.0f32; w * h];
+        let (src_x, src_y) = (20usize, 20usize);
+        frame[src_y * w + src_x] = 1.0;
+
+        let xform = AffineRigid::translation(10.0, -5.0);
+        let resampled = resample_frame_affine(&frame, w, h, &xform);
+
+        // Correct (apply_inverse): the frame's bright pixel, mapped
+        // forward by the transform, should appear at (30, 15) in the
+        // output — this is the actual production contract, matching how
+        // t_final (frame -> reference-canvas space) is used everywhere
+        // else in this file.
+        let (expect_x, expect_y) = (30usize, 15usize);
+        assert!(
+            resampled[expect_y * w + expect_x] > 0.9,
+            "expected bright pixel at ({}, {}) [apply_forward(src)], got {:.3}",
+            expect_x, expect_y, resampled[expect_y * w + expect_x]
+        );
+
+        // Wrong-direction alternative (what a apply_forward-instead-of-
+        // apply_inverse bug would produce): the pixel would land at
+        // apply_inverse(src) = (10, 25) instead. Confirms the test
+        // actually discriminates direction, not just presence.
+        let (wrong_x, wrong_y) = (10usize, 25usize);
+        assert!(
+            resampled[wrong_y * w + wrong_x] < 0.1,
+            "found bright pixel at ({}, {}) — this is apply_inverse(src), \
+             the wrong-direction result a forward/inverse swap in \
+             resample_frame_affine would produce",
+            wrong_x, wrong_y
+        );
+    }
+}
+
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------

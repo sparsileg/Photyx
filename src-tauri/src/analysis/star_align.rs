@@ -888,11 +888,84 @@ mod tests {
             })
             .collect();
 
-        let result = estimate_rigid_transform_triangles(&ref_stars, &frame_stars);
+let result = estimate_rigid_transform_triangles(&ref_stars, &frame_stars);
         assert!(result.is_some(), "triangle matching should succeed for rotation");
         let r = result.unwrap();
         let theta_err = (r.theta() - theta).abs();
         assert!(theta_err < 0.01, "theta error: got {:.4}rad, expected {:.4}rad",
             r.theta(), theta);
     }
+
+    #[test]
+    fn test_estimate_rigid_transform_sign_contract() {
+        // Issue 149: pins Step 1 (the fft_dx/fft_dy pre-translation sign)
+        // and Step 6 (folding that pre-translation back into the returned
+        // transform) together — a single-sided sign flip in either would
+        // still let this compile and run, but would fail the assertions
+        // below rather than just producing a slightly-off number.
+        let ref_stars: Vec<StarCandidate> = vec![
+            make_star(100.0, 100.0), make_star(400.0, 120.0), make_star(250.0, 300.0),
+            make_star(380.0, 380.0), make_star(120.0, 350.0), make_star(300.0, 150.0),
+            make_star(200.0, 250.0), make_star(350.0, 200.0), make_star(150.0, 150.0),
+            make_star(300.0, 400.0),
+        ];
+
+        // Known ground-truth transform, frame -> reference space.
+        let theta_true = 0.3f32.to_radians();
+        let tx_true = 12.0f32;
+        let ty_true = -7.0f32;
+        let xform_true = AffineRigid {
+            a: theta_true.cos(),
+            b: theta_true.sin(),
+            tx: tx_true,
+            ty: ty_true,
+        };
+
+        let frame_stars: Vec<StarCandidate> = ref_stars.iter()
+            .map(|s| {
+                let (fx, fy) = xform_true.apply_inverse(s.cx, s.cy);
+                make_star(fx, fy)
+            })
+            .collect();
+
+        // fft_dx/fft_dy as if compute_translation had already found the
+        // (rotation-free) translation component exactly — this isolates
+        // estimate_rigid_transform's own Step 1/Step 6 sign handling from
+        // compute_translation's Step 8 negation, which test_end_to_end_*
+        // in stack_frames.rs exercises together instead. Per Step 1's
+        // documented convention (positive fft_dx = target/frame shifted
+        // right), a frame shifted by approximately -tx_true relative to
+        // the reference corresponds to fft_dx = -tx_true.
+        let fft_dx = -tx_true;
+        let fft_dy = -ty_true;
+
+        let result = estimate_rigid_transform(&ref_stars, &frame_stars, fft_dx, fft_dy, 512, 512);
+        assert!(result.is_some(), "should recover a transform from clean synthetic data");
+        let recovered = result.unwrap();
+
+        // Step 6 fold-back: the returned transform's parameters should
+        // match the known ground truth directly, not just its residual on
+        // top of the FFT pre-translation.
+        assert!((recovered.tx - tx_true).abs() < 1.0,
+            "tx error: got {:.2}, expected {:.2}", recovered.tx, tx_true);
+        assert!((recovered.ty - ty_true).abs() < 1.0,
+            "ty error: got {:.2}, expected {:.2}", recovered.ty, ty_true);
+        assert!((recovered.theta() - theta_true).abs() < 0.01,
+            "theta error: got {:.4}rad, expected {:.4}rad", recovered.theta(), theta_true);
+
+        // And directly: apply_forward on each frame star should land on
+        // its corresponding reference star, within sub-pixel tolerance —
+        // the actual contract every caller relies on.
+        for (rs, fs) in ref_stars.iter().zip(frame_stars.iter()) {
+            let (px, py) = recovered.apply_forward(fs.cx, fs.cy);
+            let d = dist(px, py, rs.cx, rs.cy);
+            assert!(d < 1.0,
+                "frame star ({:.1},{:.1}) mapped to ({:.2},{:.2}), expected near ({:.1},{:.1}) — dist={:.2}",
+                fs.cx, fs.cy, px, py, rs.cx, rs.cy, d);
+        }
+    }
 }
+
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
