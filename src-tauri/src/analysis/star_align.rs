@@ -353,7 +353,17 @@ pub fn estimate_rigid_transform_triangles(
                         None    => continue,
                     };
 
-                    // Sanity: scale should be near 1.0 (rigid transform)
+                    // Redundant with solve_affine_2pairs()'s own ±5% gate
+                    // (called by transform_from_triangle_pair() just above)
+                    // — that check runs first and is tighter, so nothing
+                    // reaches this ±10% check that didn't already pass a
+                    // stricter one. Not a rigidity requirement: AffineRigid
+                    // deliberately permits non-unit scale for cross-group
+                    // solves (see the struct doc) — this is just a coarse
+                    // early-out to avoid voting on a degenerate hypothesis.
+                    // See Issue 147 for the open question of whether the
+                    // upstream gate is too tight for legitimate cross-night
+                    // scale drift.
                     let scale_sq = xform.a * xform.a + xform.b * xform.b;
                     if (scale_sq - 1.0).abs() > 0.1 {
                         continue;
@@ -641,6 +651,24 @@ fn solve_affine_2pairs(p0: MatchedPair, p1: MatchedPair) -> Option<AffineRigid> 
     let a = ( dfx * drx + dfy * dry) / det;
     let b = (-dfy * drx + dfx * dry) / det;
 
+    // Issue 147 (deferred, not fixed): this ±5% gate runs for every RANSAC
+    // and triangle-pair hypothesis, including cross-group solves — but
+    // AffineRigid deliberately permits non-unit scale for exactly that
+    // case (real focus/backfocus/temperature-driven focal-length drift
+    // between nights; see the struct doc). A real M104 two-night session
+    // measured ~1.78% scale drift, which clears this gate with only ~30%
+    // margin — a modestly larger drift would be silently rejected here,
+    // before ever reaching the empirical CROSS_GROUP_MAX_RESIDUAL_PX/
+    // CROSS_GROUP_MIN_MATCHED verification gate that was actually built to
+    // judge cross-group solves. Left as-is: the exposure is narrow (only
+    // multi-night sessions with group splits, and only when true drift
+    // exceeds what's been observed in practice), and today's fallback
+    // degrades gracefully rather than corrupting anything — a scale-
+    // rejected triangle match just falls through to a logged
+    // "triangle match failed, falling back to FFT-translation-only",
+    // which is a worse solve (no rotation/scale correction) but not a
+    // silently wrong one. Revisit if a session is ever seen where that
+    // fallback's degraded accuracy is a real problem.
     let scale_sq = a * a + b * b;
     if (scale_sq - 1.0).abs() > 0.05 {
         return None;
