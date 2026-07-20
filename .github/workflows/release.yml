@@ -1,0 +1,87 @@
+name: 'release'
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'   # Apple Silicon
+            args: '--target aarch64-apple-darwin'
+          - platform: 'macos-latest'   # Intel
+            args: '--target x86_64-apple-darwin'
+          - platform: 'ubuntu-22.04'
+            args: ''
+          - platform: 'windows-latest'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf xdg-utils libcfitsio-dev
+
+      - name: install Windows dependencies (vcpkg + cfitsio)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          vcpkg install cfitsio
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+        shell: pwsh
+        # NOTE: confirm this matches whatever env vars fitsio-sys actually
+        # needs on your machine (see §2 Windows section) — GitHub's
+        # windows-latest runners ship vcpkg pre-installed at
+        # $env:VCPKG_INSTALLATION_ROOT, which is a good starting point,
+        # but verify against your known-working local setup before
+        # trusting this in CI.
+
+      - name: install macOS dependencies (cfitsio via Homebrew)
+        if: matrix.platform == 'macos-latest'
+        run: brew install cfitsio
+
+      - name: setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: 'npm'
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          # Photyx is a Cargo workspace — target/ lives at the repo root,
+          # not inside src-tauri/. This differs from Tauri's default
+          # single-crate template (which uses 'src-tauri -> target').
+          workspaces: '. -> target'
+
+      - name: install frontend dependencies
+        run: npm install
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'Photyx v__VERSION__'
+          releaseBody: 'See the assets below to download and install this version.'
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          args: ${{ matrix.args }}
