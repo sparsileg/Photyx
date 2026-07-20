@@ -130,14 +130,34 @@ impl PhotyxPlugin for StackFrames {
         let n_groups = snapshots.iter().map(|s| s.group).max().unwrap_or(0) + 1;
         info!("StackFrames: identified {} rotational group(s)", n_groups);
 
-        let mut group_refs: Vec<usize> = Vec::with_capacity(n_groups);
+        // Issue 141: the master group's reference must be selected before
+        // any other group's, because non-master groups now filter their
+        // reference candidate pool against the master reference's FILTER
+        // value (see select_reference_in_group). Master group membership
+        // itself only depends on frame counts, not on any reference having
+        // been chosen yet, so it's determined first and independently.
+        let master_group = (0..n_groups)
+            .max_by_key(|&g| snapshots.iter().filter(|s| s.group == g).count())
+            .unwrap();
+
+        let (master_ref_idx, master_warning) = select_reference_in_group(&snapshots, master_group, None);
+        if let Some(msg) = master_warning {
+            info!("StackFrames: {}", msg);
+            messages.push(msg);
+        }
+
+        let ref_filter = snapshots[master_ref_idx].filter.clone();
+
+        let mut group_refs: Vec<usize> = vec![0; n_groups];
+        group_refs[master_group] = master_ref_idx;
         for g in 0..n_groups {
-            let (ridx, warning) = select_reference_in_group(&snapshots, g);
+            if g == master_group { continue; }
+            let (ridx, warning) = select_reference_in_group(&snapshots, g, ref_filter.as_deref());
             if let Some(msg) = warning {
                 info!("StackFrames: {}", msg);
                 messages.push(msg);
             }
-            group_refs.push(ridx);
+            group_refs[g] = ridx;
         }
 
         for (g, &ridx) in group_refs.iter().enumerate() {
@@ -145,11 +165,6 @@ impl PhotyxPlugin for StackFrames {
             info!("  Group {}: {} frames, reference = frame {} ({})",
                   g, count, snapshots[ridx].index, short_name(&snapshots[ridx].path));
         }
-
-        let master_group   = (0..n_groups)
-            .max_by_key(|&g| snapshots.iter().filter(|s| s.group == g).count())
-            .unwrap();
-        let master_ref_idx = group_refs[master_group];
 
         info!("StackFrames: master group = {} (reference frame {})",
               master_group, snapshots[master_ref_idx].index);
@@ -183,7 +198,6 @@ impl PhotyxPlugin for StackFrames {
             }
         }
 
-        let ref_filter      = snapshots[master_ref_idx].filter.clone();
         let ref_color_space = snapshots[master_ref_idx].color_space.clone();
 
         let is_color   = ref_color_space == ColorSpace::Bayer
@@ -486,19 +500,35 @@ impl PhotyxPlugin for StackFrames {
                 continue;
             }
 
-            // Filter validation
-            if let (Some(ref rf), Some(ref sf)) = (&ref_filter, &snap.filter) {
-                if rf != sf && i != master_ref_idx {
-                    let msg = format!(
-                        "Filter mismatch: frame {} ({}) excluded — stack filter is {}",
-                        snap.index, sf, rf
-                    );
-                    info!("{}", msg);
-                    messages.push(msg);
-                    contrib.exclusion_reason = Some(ExclusionReason::FilterMismatch);
-                    contributions.push(contrib);
-                    continue;
-                }
+            // Filter validation (Issue 141). Comparison is trimmed and
+            // case-folded via filters_match — "Ha", "ha", and "Ha " are the
+            // same filter. A frame (or the master reference) with no FILTER
+            // keyword is deliberately treated as matching any filter;
+            // missing metadata should not disqualify a frame.
+            //
+            // The exemption is against this frame's own group reference,
+            // not just the master reference: select_reference_in_group
+            // already prefers a filter-matching candidate for every group
+            // (falling back only when none exists), so this exemption is
+            // now the safety net for that fallback case — without it, a
+            // group whose only viable reference has a mismatched filter
+            // would have that reference excluded here after it has already
+            // been used to solve every other frame's transform in the
+            // group (the original form of this bug).
+            if !filters_match(ref_filter.as_deref(), snap.filter.as_deref())
+                && i != group_refs[snap.group]
+            {
+                let msg = format!(
+                    "Filter mismatch: frame {} ({}) excluded — stack filter is {}",
+                    snap.index,
+                    snap.filter.as_deref().unwrap_or("(none)"),
+                    ref_filter.as_deref().unwrap_or("(none)")
+                );
+                info!("{}", msg);
+                messages.push(msg);
+                contrib.exclusion_reason = Some(ExclusionReason::FilterMismatch);
+                contributions.push(contrib);
+                continue;
             }
 
             // Load raw [0,1] pixels
@@ -1127,6 +1157,18 @@ fn assign_groups(snapshots: &mut Vec<FrameSnapshot>) {
 
 //  ── Reference frame selection ─────────────────────────────────────────────────
 
+/// True if `a` and `b` should be treated as the same filter (Issue 141): a
+/// missing FILTER keyword on either side is deliberately treated as
+/// "matches anything" — missing metadata should not disqualify a frame —
+/// otherwise the comparison is trimmed and case-folded, so "Ha", "ha", and
+/// "Ha " are all the same filter.
+fn filters_match(a: Option<&str>, b: Option<&str>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => a.trim().eq_ignore_ascii_case(b.trim()),
+        _ => true,
+    }
+}
+
 /// Selects the best-quality frame within a group to serve as its reference,
 /// restricted to candidates whose star count is at least REF_MIN_STAR_FRACTION
 /// of the group's own median star count (Issue 127). Prevents a cloud-obscured
@@ -1136,10 +1178,27 @@ fn assign_groups(snapshots: &mut Vec<FrameSnapshot>) {
 /// population. The gate is per-group, not session-wide, since pre-flip and
 /// post-flip populations legitimately differ in size.
 ///
+/// `required_filter`, when given, further narrows the candidate pool to
+/// frames whose FILTER matches it via `filters_match` (Issue 141) — pass the
+/// master reference's filter when selecting a non-master group's reference,
+/// so a group's reference is chosen to match the stack's filter whenever
+/// possible. Pass `None` when selecting the master group's own reference,
+/// since there is no stack filter yet to compare against. If no candidate in
+/// the group matches the required filter, selection falls back to the
+/// pre-filter pool and warns, rather than leaving the group without a
+/// reference — the Pass 1 filter-exclusion check exempts whichever frame
+/// this function returns, so a mismatched fallback reference still stacks,
+/// it just isn't silently treated as filter-clean.
+///
 /// Returns the chosen index plus an optional warning message (for the caller
-/// to log/surface) when no frame in the group passed the gate and selection
-/// fell back to the ungated best-by-quality-score frame.
-fn select_reference_in_group(snapshots: &[FrameSnapshot], group: usize) -> (usize, Option<String>) {
+/// to log/surface) when either gate fell back to a wider pool. If both the
+/// star-count gate and the filter gate fell back, both messages are
+/// returned joined together rather than one silently dropping the other.
+fn select_reference_in_group(
+    snapshots: &[FrameSnapshot],
+    group: usize,
+    required_filter: Option<&str>,
+) -> (usize, Option<String>) {
     let member_indices: Vec<usize> = snapshots.iter()
         .enumerate()
         .filter(|(_, s)| s.group == group)
@@ -1163,7 +1222,7 @@ fn select_reference_in_group(snapshots: &[FrameSnapshot], group: usize) -> (usiz
         .collect();
     let passed = candidate_indices.len();
 
-    let (pool, warning): (Vec<usize>, Option<String>) = if candidate_indices.is_empty() {
+    let (pool, star_warning): (Vec<usize>, Option<String>) = if candidate_indices.is_empty() {
         let msg = format!(
             "Group {}: reference candidacy gate found no frame with star count \u{2265} {:.0} \
              (median {:.0} \u{00d7} {:.2}) \u{2014} falling back to best-available by quality score \
@@ -1181,7 +1240,38 @@ fn select_reference_in_group(snapshots: &[FrameSnapshot], group: usize) -> (usiz
         group, passed, member_indices.len(), median_stars, min_stars
     );
 
-    let chosen = pool.iter()
+    // Issue 141: further narrow to frames whose filter matches the stack
+    // filter, so a group's reference — which every other frame in the group
+    // aligns against, and which the Pass 1 filter check exempts from
+    // exclusion — is never itself the frame that mismatches the stack
+    // filter unless nothing in the group's candidate pool qualifies.
+    let (final_pool, filter_warning): (Vec<usize>, Option<String>) = if let Some(rf) = required_filter {
+        let filtered: Vec<usize> = pool.iter()
+            .cloned()
+            .filter(|&i| filters_match(Some(rf), snapshots[i].filter.as_deref()))
+            .collect();
+        if filtered.is_empty() {
+            let msg = format!(
+                "Group {}: no candidate matches stack filter \u{201c}{}\u{201d} \u{2014} falling back \
+                 to best-available by quality score, ignoring filter",
+                group, rf
+            );
+            (pool, Some(msg))
+        } else {
+            (filtered, None)
+        }
+    } else {
+        (pool, None)
+    };
+
+    let warning = match (star_warning, filter_warning) {
+        (Some(a), Some(b)) => Some(format!("{}; {}", a, b)),
+        (Some(a), None)    => Some(a),
+        (None, Some(b))    => Some(b),
+        (None, None)       => None,
+    };
+
+    let chosen = final_pool.iter()
         .cloned()
         .max_by(|&a, &b| {
             quality_score(&snapshots[a]).partial_cmp(&quality_score(&snapshots[b]))
@@ -1191,6 +1281,7 @@ fn select_reference_in_group(snapshots: &[FrameSnapshot], group: usize) -> (usiz
 
     (chosen, warning)
 }
+
 
 fn quality_score(snap: &FrameSnapshot) -> f32 {
     crate::analysis::frame_quality_score(snap.fwhm, snap.eccentricity)
