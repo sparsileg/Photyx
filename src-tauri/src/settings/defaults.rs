@@ -101,10 +101,28 @@ pub const STACK_SIGMA_CLIP:               f32   = 2.5;   // sigma-clip threshold
 
 // RANSAC rigid alignment (from star_align.rs, estimate_rigid_transform)
 pub const MATCH_TOLERANCE:                f32   = 15.0;
-pub const MIN_MATCHES:                    usize = 4;
+// Issue 146: raised from 4. Measured against a real sparse-star session
+// (M104, two nights with meridian flips, per-frame star counts 27-274,
+// worst-case RANSAC candidate-match count 50) — even the sparsest frame
+// in that session cleared 8 candidate matches with wide margin. Must stay
+// >= MIN_INLIERS to be meaningful.
+pub const MIN_MATCHES:                    usize = 8;
 pub const INLIER_TOLERANCE:               f32   = 2.0;
-pub const MIN_INLIERS:                    usize = 4;
-pub const MAX_ROTATION_RAD:               f32   = 0.52;  // ~30 degrees
+// Issue 146: raised from 4 to match TRI_MIN_INLIERS below — unifies the
+// RANSAC and triangle paths on the same "how many agreeing correspondences
+// constitute a valid transform" answer. Measured against the same M104
+// session: worst-case accepted inlier count was 49 (frame 50 of 97),
+// clearing this floor by ~8x.
+pub const MIN_INLIERS:                    usize = 6;
+// Issue 146: tightened from 0.52 (~30°). Measured within-group residual
+// rotation across the same M104 session (97 frames, both nights) ranged
+// essentially 0.000°-0.010° — the old bound was roughly three orders of
+// magnitude looser than the real signal. Set with real margin above the
+// observed maximum, not right at it, since this is one session's evidence,
+// not a hard physical limit — a session with genuinely poor polar
+// alignment or guiding could still exceed this and be correctly excluded,
+// which is the intended behavior, not a bug.
+pub const MAX_ROTATION_RAD:               f32   = 0.0349; // ~2 degrees
 pub const MAX_TRANSLATION_DEVIATION:      f32   = 20.0;
 
 // Triangle rigid alignment (from star_align.rs, estimate_rigid_transform_triangles)

@@ -556,6 +556,16 @@ pub fn estimate_rigid_transform(
         return None;
     }
 
+    // Issue 146: log candidate matches and accepted inliers on the success
+    // path — previously only the failure branches above logged these
+    // counts, so there was no way to measure headroom above MIN_MATCHES/
+    // MIN_INLIERS on frames that already pass. Pure logging addition, no
+    // behavior change.
+    info!(
+        "star_align: accepted {} inlier(s) from {} candidate match(es) (min {}/{})",
+        best_inliers.len(), pairs.len(), MIN_MATCHES, MIN_INLIERS
+    );
+
     // Step 4: Least-squares refine (residual on top of the FFT pre-translation)
     let inlier_pairs: Vec<MatchedPair> = best_inliers.iter()
         .map(|&i| pairs[i])
@@ -568,6 +578,16 @@ pub fn estimate_rigid_transform(
     // solve is allowed to deviate from the already-known-good FFT estimate,
     // not the frame's total dither offset.
     let theta = refined.theta();
+
+    // Issue 146: log the residual rotation regardless of outcome, to
+    // measure real within-group theta distribution against
+    // MAX_ROTATION_RAD (currently ~30°, suspected far looser than the
+    // real signal — see issue discussion). Pure logging addition.
+    info!(
+        "star_align: residual rotation θ={:.4}rad ({:.3}°) (limit {:.3}°)",
+        theta, theta.to_degrees(), MAX_ROTATION_RAD.to_degrees()
+    );
+
     if theta.abs() > MAX_ROTATION_RAD {
         return None;
     }

@@ -955,15 +955,15 @@ sigma-clipped mean combination. Implementation lives in
 ### 7.2 Alignment Primitives
 
 **FFT phase correlation** (`fft_align::compute_translation`) — both
-frames are downsampled to ≤ `REG_SIZE` (1024px, local to
-`fft_align.rs` — an FFT tractability limit, not a tuning knob) on the
-long axis, apodized with a 2D Hann window, cross-correlated in the
-frequency domain via normalized cross-power spectrum, and refined to
-sub-pixel accuracy via 2D parabolic interpolation around the
-correlation peak. Returns `None` on empty input or a degenerate peak.
-The cross-power-spectrum peak location is negated before being
-returned as the signed translation (Issue 132) — a documented
-sign-convention correction, confirmed by test.
+frames are downsampled to ≤ `REG_SIZE` (1024px, local to `fft_align.rs`
+— an FFT tractability limit, not a tuning knob) on the long axis,
+apodized with a 2D Hann window, cross-correlated in the frequency
+domain via normalized cross-power spectrum, and refined to sub-pixel
+accuracy via 2D parabolic interpolation around the correlation peak.
+Returns `None` on empty input or a degenerate peak. The cross-power-
+spectrum peak location is negated before being returned as the signed
+translation (Issue 132) — a documented sign-convention correction,
+confirmed by test.
 
 **Star-based rigid refinement** — two strategies, both producing an
 `AffineRigid` (rotation + translation; scale is a free parameter
@@ -976,15 +976,18 @@ implicit in the solved translation):
 - `estimate_rigid_transform()` — FFT-primed RANSAC. Pre-translates
   frame stars by the FFT offset, greedy nearest-neighbor matching
   within `MATCH_TOLERANCE` (15px, `defaults.rs`); requires at least
-  `MIN_MATCHES` (4, `defaults.rs`) candidate matches to proceed. Runs
+  `MIN_MATCHES` (8, `defaults.rs`) candidate matches to proceed. Runs
   `RANSAC_ITERATIONS` (50, local to `star_align.rs` — an iteration
   count, not a tuning knob) iterations with `INLIER_TOLERANCE` (2px,
-  `defaults.rs`), requiring at least `MIN_INLIERS` (4, `defaults.rs`)
-  inliers on the winning hypothesis, followed by least-squares
-  refinement over the inlier set. Sanity checks reject results with
-  rotation beyond `MAX_ROTATION_RAD` (~30°, `defaults.rs`) or
-  translation beyond `MAX_TRANSLATION_DEVIATION` (20px, `defaults.rs`).
-  Used for within-group per-frame alignment.
+  `defaults.rs`), requiring at least `MIN_INLIERS` (6, `defaults.rs`
+  — unified with `TRI_MIN_INLIERS` below) inliers on the winning
+  hypothesis, followed by least-squares refinement over the inlier
+  set. Sanity checks reject results with rotation beyond
+  `MAX_ROTATION_RAD` (~2°, `defaults.rs`) or translation beyond
+  `MAX_TRANSLATION_DEVIATION` (20px, `defaults.rs`). `MIN_MATCHES`,
+  `MIN_INLIERS`, and `MAX_ROTATION_RAD` were measured against a real
+  sparse-star session rather than inherited from another codebase
+  (Issue 146). Used for within-group per-frame alignment.
 - `estimate_rigid_transform_triangles()` — scale-invariant triangle
   matching, no FFT pre-translation required. Builds descriptors from
   the `TRI_MAX_STARS` (30, `defaults.rs`) brightest stars, matches by
