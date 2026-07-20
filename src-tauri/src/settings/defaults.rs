@@ -79,15 +79,38 @@ pub const BLINK_WIDTH_25:              u32  = 752;   // blink thumbnail width, 2
 pub const ALGORITHM_SET_VERSION:       i64  = 1;     // bump when any analysis algorithm changes
 
 // ── Stacking (StackFrames) ─────────────────────────────────────────────────
-// Non-persisted algorithm thresholds — Issue 127 (reference candidacy gate).
-
-// ── Stacking (StackFrames) ─────────────────────────────────────────────────
 // Non-persisted algorithm thresholds — Issue 127 (reference candidacy gate),
-// Issue 128 (cross-group M_cross validation).
+// Issue 128 (cross-group M_cross validation), Issue 148 (constants
+// consolidated from star_align.rs and stack_frames.rs — pure relocation,
+// no values changed; each group below is labeled with its origin file).
 
 pub const CROSS_GROUP_MAX_RESIDUAL_PX:    f32   = 2.0;  // max mean verification residual (px) before rejecting M_cross
 pub const CROSS_GROUP_MIN_MATCHED:        usize = 10;   // min matched stars on M_cross verification before rejecting
 pub const REF_MIN_STAR_FRACTION:          f64   = 0.5;  // min star count as a fraction of group median to be reference-eligible
+
+// Frame grouping (from stack_frames.rs)
+pub const MERIDIAN_FLIP_THRESHOLD:        f32   = 90.0;  // rotator delta (deg) that always starts a new group
+pub const SESSION_GAP_MINUTES:            f32   = 120.0; // time gap (min) that, combined with ROTATOR_GROUP_TOLERANCE, starts a new group
+pub const ROTATOR_GROUP_TOLERANCE:        f32   = 10.0;  // rotator delta (deg) required alongside a session gap to start a new group
+
+// M_cross verification (from stack_frames.rs)
+pub const CROSS_GROUP_VERIFY_MATCH_RADIUS_PX: f32 = 10.0; // search radius (px) matching a group-ref star to a master-ref star during M_cross verification; feeds CROSS_GROUP_MIN_MATCHED above
+
+// Pass 2 combination (from stack_frames.rs)
+pub const STACK_SIGMA_CLIP:               f32   = 2.5;   // sigma-clip threshold for Pass 2 accumulation
+
+// RANSAC rigid alignment (from star_align.rs, estimate_rigid_transform)
+pub const MATCH_TOLERANCE:                f32   = 15.0;
+pub const MIN_MATCHES:                    usize = 4;
+pub const INLIER_TOLERANCE:               f32   = 2.0;
+pub const MIN_INLIERS:                    usize = 4;
+pub const MAX_ROTATION_RAD:               f32   = 0.52;  // ~30 degrees
+pub const MAX_TRANSLATION_DEVIATION:      f32   = 20.0;
+
+// Triangle rigid alignment (from star_align.rs, estimate_rigid_transform_triangles)
+pub const TRI_MAX_STARS:                  usize = 30;
+pub const TRI_INLIER_TOLERANCE:           f32   = 3.0;
+pub const TRI_MIN_INLIERS:                usize = 6;
 
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------

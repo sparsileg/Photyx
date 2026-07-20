@@ -52,22 +52,22 @@ use crate::context::{AppContext, BitDepth, ColorSpace, ImageBuffer, PixelData};
 use crate::plugin::{ArgMap, ParamSpec, PhotyxPlugin, PluginError, PluginOutput};
 use crate::settings::defaults::{
     CROSS_GROUP_MAX_RESIDUAL_PX, CROSS_GROUP_MIN_MATCHED, REF_MIN_STAR_FRACTION,
+    MERIDIAN_FLIP_THRESHOLD, SESSION_GAP_MINUTES, ROTATOR_GROUP_TOLERANCE,
+    CROSS_GROUP_VERIFY_MATCH_RADIUS_PX, STACK_SIGMA_CLIP,
 };
 use chrono::Utc;
 use rayon::prelude::*;
 use tracing::info;
 
 /// Rotation magnitude (radians) below which we skip the affine resampler.
+/// Stays local (Issue 148): a numerical guard against doing unnecessary
+/// affine-resample work for a near-zero rotation, not a tuning knob — it
+/// doesn't change what counts as a valid alignment.
 const MIN_ROTATION_TO_APPLY: f32 = 0.001;
 
-/// ROTATOR delta tolerance (degrees) for grouping frames across sessions.
-const ROTATOR_GROUP_TOLERANCE: f32 = 10.0;
-
-/// Gap in minutes between consecutive frames that indicates a new imaging session.
-const SESSION_GAP_MINUTES: f32 = 120.0;
-
-/// Rotator change above this threshold always triggers a new group (meridian flip).
-const MERIDIAN_FLIP_THRESHOLD: f32 = 90.0;
+// ROTATOR_GROUP_TOLERANCE, SESSION_GAP_MINUTES, MERIDIAN_FLIP_THRESHOLD
+// moved to settings::defaults (Issue 148) — frame-grouping thresholds a
+// maintainer might plausibly retune for an unusual session cadence.
 
 pub struct StackFrames;
 
@@ -352,17 +352,18 @@ impl PhotyxPlugin for StackFrames {
                 // residual_count/residual_mean (still matched-only, as the
                 // existing CROSS_GROUP_MIN_MATCHED/MAX_RESIDUAL_PX gate
                 // expects).
+
                 struct ResidualSample { gx: f32, gy: f32, dx: f32, dy: f32, dist: f32 }
                 let mut residuals: Vec<ResidualSample> = Vec::new();
                 // Stars whose closest master-reference candidate is still
-                // >= 10px away — i.e. found no match at all. These never
-                // appear in the mean/max above, but a star whose true
-                // displacement under M_cross exceeds the search radius
-                // entirely is arguably the more important signal: it
-                // silently drops out of the matched population rather than
-                // showing up as a bad residual, which is exactly the kind
-                // of thing a mean-only check (and a human skimming only the
-                // worst matched residuals) can miss.
+                // >= CROSS_GROUP_VERIFY_MATCH_RADIUS_PX away — i.e. found no
+                // match at all. These never appear in the mean/max above,
+                // but a star whose true displacement under M_cross exceeds
+                // the search radius entirely is arguably the more important
+                // signal: it silently drops out of the matched population
+                // rather than showing up as a bad residual, which is
+                // exactly the kind of thing a mean-only check (and a human
+                // skimming only the worst matched residuals) can miss.
                 let mut unmatched: Vec<ResidualSample> = Vec::new();
                 for gs in &gref_snap.stars {
                     let (mx, my) = m_cross[g].apply_forward(gs.cx, gs.cy);
@@ -371,7 +372,7 @@ impl PhotyxPlugin for StackFrames {
                         .min_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
                     if let Some((rx, ry, dist)) = closest {
                         let sample = ResidualSample { gx: gs.cx, gy: gs.cy, dx: rx - mx, dy: ry - my, dist };
-                        if dist < 10.0 {
+                        if dist < CROSS_GROUP_VERIFY_MATCH_RADIUS_PX {
                             residuals.push(sample);
                         } else {
                             unmatched.push(sample);
@@ -381,7 +382,7 @@ impl PhotyxPlugin for StackFrames {
 
                 let total = gref_snap.stars.len();
                 if residuals.is_empty() {
-                    info!("StackFrames: M_cross[{}] verification — no stars matched within 10px ({} total)", g, total);
+                    info!("StackFrames: M_cross[{}] verification — no stars matched within {}px ({} total)", g, CROSS_GROUP_VERIFY_MATCH_RADIUS_PX, total);
                 } else {
                     let mean = residuals.iter().map(|r| r.dist).sum::<f32>() / residuals.len() as f32;
                     let max  = residuals.iter().map(|r| r.dist).fold(f32::NEG_INFINITY, f32::max);
@@ -678,7 +679,7 @@ impl PhotyxPlugin for StackFrames {
 
         //  ── Pass 2 — sigma-clipped accumulation (batched parallel) ────────────
 
-        let sigma      = 2.5f32;
+        let sigma      = STACK_SIGMA_CLIP;
         let n_threads  = if ctx.rayon_thread_count == -1 {
             rayon::current_num_threads()
         } else {

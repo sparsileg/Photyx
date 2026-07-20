@@ -897,11 +897,11 @@ sigma-clipped mean combination. Implementation lives in
    introduce.
 2. **Rotational grouping.** Frames are grouped by `ROTATOR` keyword
    and imaging-session continuity. A new group starts when either:
-   - the rotator changes by more than `MERIDIAN_FLIP_THRESHOLD` (90°)
-     between consecutive frames, regardless of time gap, **or**
-   - the time gap exceeds `SESSION_GAP_MINUTES` (120 min) **and** the
-     rotator has also changed by more than `ROTATOR_GROUP_TOLERANCE`
-     (10°)
+   - the rotator changes by more than `MERIDIAN_FLIP_THRESHOLD` (90°,
+     `defaults.rs`) between consecutive frames, regardless of time gap, **or**
+   - the time gap exceeds `SESSION_GAP_MINUTES` (120 min, `defaults.rs`)
+     **and** the rotator has also changed by more than
+     `ROTATOR_GROUP_TOLERANCE` (10°, `defaults.rs`)
 
    A time gap alone, with an unchanged rotator, does not start a new
    group.
@@ -925,19 +925,29 @@ sigma-clipped mean combination. Implementation lives in
    group reference and the master reference. If triangle matching
    fails, this falls back to FFT-translation-only. `M_cross` is solved
    once per group, not once per frame.
-6. **M_cross verification is logging-only.** After each solve,
-   group-reference stars are transformed by `M_cross` and matched
-   against master-reference stars within 10px; mean/max residual is
-   logged. This does not gate acceptance — a poor residual is visible
-   in logs but does not cause the group to be excluded or retried.
+6. **M_cross verification gates group inclusion (Issue 128/134).**
+   After each solve, group-reference stars are transformed by
+   `M_cross` and matched against master-reference stars within
+   `CROSS_GROUP_VERIFY_MATCH_RADIUS_PX` (10px, `defaults.rs`);
+   mean/max residual is logged. A group is now excluded from the stack
+   entirely if fewer than `CROSS_GROUP_MIN_MATCHED` stars matched or
+   the mean residual exceeds `CROSS_GROUP_MAX_RESIDUAL_PX` (both
+   `defaults.rs`, Issue 127/128) — this replaced an earlier
+   logging-only version of the check, which recorded a bad solve but
+   stacked the group anyway. A companion rotation-plausibility check
+   that ran alongside this gate was removed in Issue 134: it assumed a
+   180°-flip-only relationship between groups that no longer holds now
+   that arbitrary relative orientations are accepted, and a spurious
+   match is expected to already fail the residual check on its own.
 7. **Per-frame transform.** `T = compose(M_cross, G)`, where `G` is
    the within-group transform (FFT phase correlation, optionally
    refined by RANSAC via `estimate_rigid_transform`). For master-group
    frames, `M_cross` is identity, so `T = G`. Resampling uses the
    affine resampler (`resample_frame_affine` /
-   `resample_frame_rgb_affine`) when `|θ| ≥ 0.001 rad` or `a < 0.5`
-   (near-180°-flip scale sign); otherwise the faster translation-only
-   resampler is used.
+   `resample_frame_rgb_affine`) when `|θ| ≥ MIN_ROTATION_TO_APPLY`
+   (0.001 rad, local to `stack_frames.rs` — a numerical guard, not a
+   tuning knob) or `a < 0.5` (near-180°-flip scale sign); otherwise the
+   faster translation-only resampler is used.
 8. **Color awareness.** If the master reference is Bayer or RGB, all
    three channels are accumulated and the output is `ColorSpace::RGB`;
    a mono master reference produces grayscale output.
@@ -945,35 +955,52 @@ sigma-clipped mean combination. Implementation lives in
 ### 7.2 Alignment Primitives
 
 **FFT phase correlation** (`fft_align::compute_translation`) — both
-frames are downsampled to ≤1024px on the long axis, apodized with a 2D
-Hann window, cross-correlated in the frequency domain via normalized
-cross-power spectrum, and refined to sub-pixel accuracy via 2D
-parabolic interpolation around the correlation peak. Returns `None` on
-empty input or a degenerate peak.
+frames are downsampled to ≤ `REG_SIZE` (1024px, local to
+`fft_align.rs` — an FFT tractability limit, not a tuning knob) on the
+long axis, apodized with a 2D Hann window, cross-correlated in the
+frequency domain via normalized cross-power spectrum, and refined to
+sub-pixel accuracy via 2D parabolic interpolation around the
+correlation peak. Returns `None` on empty input or a degenerate peak.
+The cross-power-spectrum peak location is negated before being
+returned as the signed translation (Issue 132) — a documented
+sign-convention correction, confirmed by test.
 
 **Star-based rigid refinement** — two strategies, both producing an
-`AffineRigid` (rotation + translation, scale fixed at 1.0; no
-assumption about rotation center — the center is implicit in the
-solved translation):
+`AffineRigid` (rotation + translation; scale is a free parameter
+rather than fixed at 1.0, to capture real focus/backfocus-driven scale
+differences on cross-group solves between sessions — see the
+`AffineRigid` struct doc. Within-group fits converge to scale ≈ 1.0
+naturally. No assumption about rotation center — the center is
+implicit in the solved translation):
 
 - `estimate_rigid_transform()` — FFT-primed RANSAC. Pre-translates
   frame stars by the FFT offset, greedy nearest-neighbor matching
-  within `MATCH_TOLERANCE` (15px), then 50 RANSAC iterations with
-  `INLIER_TOLERANCE` (2px), followed by least-squares refinement over
-  the inlier set. Sanity checks reject results with rotation beyond
-  `MAX_ROTATION_RAD` (~30°) or translation beyond
-  `MAX_TRANSLATION_DEVIATION` (20px). Used for within-group per-frame
-  alignment.
+  within `MATCH_TOLERANCE` (15px, `defaults.rs`); requires at least
+  `MIN_MATCHES` (4, `defaults.rs`) candidate matches to proceed. Runs
+  `RANSAC_ITERATIONS` (50, local to `star_align.rs` — an iteration
+  count, not a tuning knob) iterations with `INLIER_TOLERANCE` (2px,
+  `defaults.rs`), requiring at least `MIN_INLIERS` (4, `defaults.rs`)
+  inliers on the winning hypothesis, followed by least-squares
+  refinement over the inlier set. Sanity checks reject results with
+  rotation beyond `MAX_ROTATION_RAD` (~30°, `defaults.rs`) or
+  translation beyond `MAX_TRANSLATION_DEVIATION` (20px, `defaults.rs`).
+  Used for within-group per-frame alignment.
 - `estimate_rigid_transform_triangles()` — scale-invariant triangle
   matching, no FFT pre-translation required. Builds descriptors from
-  the `TRI_MAX_STARS` (30) brightest stars, matches by descriptor
-  distance (`TRI_DESC_TOLERANCE` = 0.02) with matching triangle
-  orientation required, votes on the implied transform in binned `(tx,
-  ty, θ)` space, and returns the winning voted transform directly — no
-  least-squares refinement, since that's numerically unstable with
-  centroids far from the origin. Requires at least `TRI_MIN_INLIERS`
-  (6) inliers under the winning transform to accept. Used exclusively
-  for the cross-group `M_cross` solve.
+  the `TRI_MAX_STARS` (30, `defaults.rs`) brightest stars, matches by
+  descriptor distance (`TRI_DESC_TOLERANCE` = 0.02, local to
+  `star_align.rs` — a private descriptor-space unit, not a physical
+  pixel tolerance) with matching triangle orientation required, votes
+  on the implied transform in binned `(tx, ty, θ)` space (bin widths
+  `TRI_TX_BIN`/`TRI_TY_BIN`/`TRI_THETA_BIN`, local to `star_align.rs`
+  — vote-binning granularity with no meaning outside the voting step),
+  and returns the winning voted transform directly — no least-squares
+  refinement at the voting stage, since that's numerically unstable
+  with centroids far from the origin. Inliers under the winning
+  transform are then collected within `TRI_INLIER_TOLERANCE` (3px,
+  `defaults.rs`) and refined by least squares; at least
+  `TRI_MIN_INLIERS` (6, `defaults.rs`) inliers are required to accept.
+  Used exclusively for the cross-group `M_cross` solve.
 
 ### 7.3 Combination — Two-Pass Sigma-Clipped Mean
 

@@ -26,38 +26,44 @@
 // be large and poorly constrained by local star pairs.
 
 use crate::analysis::stars::StarCandidate;
+use crate::settings::defaults::{
+    MATCH_TOLERANCE, MIN_MATCHES, INLIER_TOLERANCE, MIN_INLIERS,
+    MAX_ROTATION_RAD, MAX_TRANSLATION_DEVIATION,
+    TRI_MAX_STARS, TRI_INLIER_TOLERANCE, TRI_MIN_INLIERS,
+};
 use rayon::prelude::*;
 use tracing::info;
 
 // ── Tuning constants (RANSAC) ─────────────────────────────────────────────────
+// MATCH_TOLERANCE, MIN_MATCHES, INLIER_TOLERANCE, MIN_INLIERS,
+// MAX_ROTATION_RAD, MAX_TRANSLATION_DEVIATION moved to settings::defaults
+// (Issue 148) — user/maintainer-tunable rejection and matching thresholds.
 
-const MATCH_TOLERANCE: f32        = 15.0;
-const MIN_MATCHES: usize          = 4;
-const INLIER_TOLERANCE: f32       = 2.0;
-const MIN_INLIERS: usize          = 4;
-const RANSAC_ITERATIONS: usize    = 50;
-const MAX_ROTATION_RAD: f32       = 0.52; // ~30 degrees
-const MAX_TRANSLATION_DEVIATION: f32 = 20.0;
+/// RANSAC iteration count. Not a tuning knob in the usual sense — raising it
+/// trades runtime for a marginally higher chance of finding the true inlier
+/// set; it has no effect on what counts as a valid alignment. Stays local
+/// (Issue 148).
+const RANSAC_ITERATIONS: usize = 50;
 
 // ── Tuning constants (triangle matching) ─────────────────────────────────────
-
-/// Number of brightest stars to use for triangle building.
-const TRI_MAX_STARS: usize = 30;
+// TRI_MAX_STARS, TRI_INLIER_TOLERANCE, TRI_MIN_INLIERS moved to
+// settings::defaults (Issue 148) — physical pixel tolerances and counts a
+// maintainer might plausibly retune.
 
 /// Maximum descriptor distance for two triangles to be considered a match.
 /// Each descriptor is (ratio1, ratio2) normalized to [0,1], so max distance
 /// between any two descriptors is sqrt(2) ≈ 1.41. A tolerance of 0.02 is
 /// tight enough to reject most false matches while allowing for centroid noise.
+/// Stays local (Issue 148): this is a distance in a private, normalized
+/// descriptor space, not a physical unit — it has no meaning outside this
+/// matching step.
 const TRI_DESC_TOLERANCE: f32 = 0.02;
-
-/// Inlier tolerance (pixels) when refining the triangle-voted transform.
-const TRI_INLIER_TOLERANCE: f32 = 3.0;
-
-/// Minimum number of inliers required to accept a triangle-matched transform.
-const TRI_MIN_INLIERS: usize = 6;
 
 /// Vote bin size for translation (pixels). Transforms within this distance
 /// in tx/ty and TRI_THETA_BIN_RAD in theta vote for the same hypothesis.
+/// Stays local (Issue 148): vote-binning granularity, not an independently
+/// meaningful tolerance — changing it reshapes the voting histogram, not
+/// what counts as a good match.
 const TRI_TX_BIN: f32    = 3.0;
 const TRI_TY_BIN: f32    = 3.0;
 const TRI_THETA_BIN: f32 = 0.005; // radians (~0.29°)
