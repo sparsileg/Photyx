@@ -1,4 +1,5 @@
 <!-- Viewer.svelte — Image viewer canvas. Spec §8.7 -->
+
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
@@ -769,13 +770,12 @@
   onmouseleave={onViewerMouseLeave}
   style:cursor={isPanning ? 'grabbing' : (hasImage && $ui.zoomLevel !== 'fit' ? 'grab' : 'crosshair')}
   >
-  <!-- Starfield — shown when no image is loaded -->
+
+<!-- Starfield — shown when no image is loaded -->
   <canvas
     id="viewer-canvas"
     bind:this={starCanvas}
     style:display={hasImage ? 'none' : 'block'}
-    style:width="100%"
-    style:height="100%"
     ></canvas>
 
   <!-- Image display canvas — fixed size, never resizes, no layout shift -->
@@ -783,11 +783,6 @@
     id="viewer-image-canvas"
     bind:this={imageCanvas}
     style:display={hasImage ? 'block' : 'none'}
-    style:position="absolute"
-    style:top="0"
-    style:left="0"
-    style:width="100%"
-    style:height="100%"
     ></canvas>
 
   <!-- Quality flag overlay canvas — sits above image, pointer-events:none so mouse still works -->
@@ -795,12 +790,6 @@
     id="viewer-overlay-canvas"
     bind:this={overlayCanvas}
     style:display={hasImage ? 'block' : 'none'}
-    style:position="absolute"
-    style:top="0"
-    style:left="0"
-    style:width="100%"
-    style:height="100%"
-    style:pointer-events="none"
     ></canvas>
 
   {#if hasImage && !$ui.macroEditorFile}
