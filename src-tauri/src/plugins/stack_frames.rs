@@ -215,7 +215,19 @@ impl PhotyxPlugin for StackFrames {
             if g == master_group { continue; }
 
             let gref_snap = &snapshots[group_refs[g]];
-            let gref_luma = load_debayered_luma(ctx, gref_snap)?;
+            let gref_luma = match load_debayered_luma(ctx, gref_snap) {
+                Ok(luma) => luma,
+                Err(e) => {
+                    let msg = format!(
+                        "StackFrames: cross-group {} reference buffer unavailable ({}) — frames from this group will be excluded",
+                        g, e.message
+                    );
+                    info!("{}", msg);
+                    messages.push(msg);
+                    group_excluded[g] = true;
+                    continue;
+                }
+            };
 
             // Diagnostic logging (galaxy-contamination investigation): dumps
             // the largest-by-pixel_count detected candidates for this
@@ -497,10 +509,29 @@ impl PhotyxPlugin for StackFrames {
             };
 
             if group_ref_luma[snap.group].is_none() {
-                let g_ref  = &snapshots[group_refs[snap.group]];
-                let g_luma = load_debayered_luma(ctx, g_ref)?;
-                group_ref_stars[snap.group] = Some(g_ref.stars.clone());
-                group_ref_luma[snap.group]  = Some(g_luma);
+                let g_ref = &snapshots[group_refs[snap.group]];
+                match load_debayered_luma(ctx, g_ref) {
+                    Ok(g_luma) => {
+                        group_ref_stars[snap.group] = Some(g_ref.stars.clone());
+                        group_ref_luma[snap.group]  = Some(g_luma);
+                    }
+                    Err(e) => {
+                        // Issue 142: a group reference that fails to load
+                        // once will not load later in the same run, so the
+                        // whole group is excluded here rather than retried
+                        // frame by frame — mirrors the cross-group solve's
+                        // own reference-load failure handling above.
+                        let msg = format!(
+                            "StackFrames: group {} reference buffer unavailable ({}) — frames from this group will be excluded",
+                            snap.group, e.message
+                        );
+                        info!("{}", msg);
+                        messages.push(msg);
+                        group_excluded[snap.group] = true;
+                        cross_group_failed(snap.index, &mut messages, &mut contrib, &mut contributions);
+                        continue;
+                    }
+                }
             }
             let g_ref_luma  = group_ref_luma[snap.group].as_ref().unwrap();
             let g_ref_stars = group_ref_stars[snap.group].as_ref().unwrap();
