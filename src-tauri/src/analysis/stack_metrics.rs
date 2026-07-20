@@ -111,6 +111,14 @@ pub struct StackSummary {
     /// Frames successfully stacked
     pub stacked_frames: usize,
 
+    /// Number of output pixels stacked from fewer than two contributing
+    /// frames (Issue 144) — these bypass sigma clipping entirely (a single
+    /// sample cannot be clipped against itself), so they carry no outlier
+    /// protection. Most common at frame edges under significant dither, or
+    /// whenever the Issue 111 common-overlap crop degenerates to the full
+    /// uncropped canvas rather than trimming low-coverage edges away.
+    pub low_coverage_pixels: usize,
+
     /// Theoretical SNR improvement vs single frame (sqrt of stacked_frames)
     pub snr_improvement: f32,
 
@@ -134,7 +142,11 @@ pub struct StackSummary {
 }
 
 impl StackSummary {
-    pub fn compute(contributions: &[FrameContribution], completed_at: &str) -> Self {
+    /// `low_coverage_pixels` (Issue 144) is pixel-level data computed during
+    /// Pass 2 accumulation — it can't be derived from `contributions`, which
+    /// is per-frame, so the caller passes it in directly from its own
+    /// clip_count buffer.
+    pub fn compute(contributions: &[FrameContribution], completed_at: &str, low_coverage_pixels: usize) -> Self {
         let total_frames      = contributions.len();
         let filter_excluded   = contributions.iter()
             .filter(|c| c.exclusion_reason == Some(ExclusionReason::FilterMismatch))
@@ -172,6 +184,7 @@ impl StackSummary {
             buffer_excluded,
             cross_group_excluded,
             stacked_frames,
+            low_coverage_pixels,
             snr_improvement,
             alignment_success_rate,
             background_uniformity,

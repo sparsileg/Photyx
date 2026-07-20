@@ -702,7 +702,13 @@ impl PhotyxPlugin for StackFrames {
             return Err(PluginError::new("NO_FRAMES_STACKED", "No frames could be stacked."));
         }
 
-        // Per-pixel stddev from Welford M2
+        // Per-pixel stddev from Welford M2. Issue 144: uses the unbiased
+        // sample variance M2 / (n - 1), not the population form M2 / n —
+        // dividing by n systematically underestimates sigma, worst at small
+        // frame counts (~10.6% low at n=5, ~5.1% at n=10, ~1.7% at n=30),
+        // which meant a small stack was effectively clipping tighter than
+        // its nominal STACK_SIGMA_CLIP threshold. The existing count > 1
+        // guard already establishes n >= 2, so count - 1 is safe here.
         let stddev_buf: Vec<f32> = if is_color {
             let m2_ref = &m2_buf;
             count_buf.par_iter()
@@ -710,7 +716,7 @@ impl PhotyxPlugin for StackFrames {
                 .flat_map_iter(|(px, &count)| {
                     (0..3).map(move |ch| {
                         let idx = px * 3 + ch;
-                        if count > 1 { (m2_ref[idx] / count as f32).sqrt() } else { 0.0 }
+                        if count > 1 { (m2_ref[idx] / (count - 1) as f32).sqrt() } else { 0.0 }
                     })
                 })
                 .collect()
@@ -718,10 +724,22 @@ impl PhotyxPlugin for StackFrames {
             count_buf.par_iter()
                 .zip(m2_buf.par_iter())
                 .map(|(&count, &m2)| {
-                    if count > 1 { (m2 / count as f32).sqrt() } else { 0.0 }
+                    if count > 1 { (m2 / (count - 1) as f32).sqrt() } else { 0.0 }
                 })
                 .collect()
         };
+
+        // Issue 144: number of output pixels that received data from fewer
+        // than two contributing frames in Pass 1 — exactly the pixels
+        // stddev_buf just set to 0.0 above, which means Pass 2's
+        // sd_luma < 1e-10 fallback accepts them unconditionally with no
+        // outlier protection at all. Most common at frame edges under
+        // significant dither, or whenever the Issue 111 common-overlap crop
+        // degenerates to the full uncropped canvas rather than trimming
+        // low-coverage edges away. Computed here from count_buf (Pass 1
+        // output, unmodified by Pass 2) rather than clip_count, which is a
+        // different count — post-clip acceptances, not raw coverage.
+        let low_coverage_pixels = count_buf.iter().filter(|&&c| c < 2).count();
 
         //  ── Pass 2 — sigma-clipped accumulation (batched parallel) ────────────
 
@@ -993,7 +1011,7 @@ impl PhotyxPlugin for StackFrames {
 
         ctx.stack_result = Some(stack_buf);
 
-        let mut summary = StackSummary::compute(&contributions, &completed_at);
+        let mut summary = StackSummary::compute(&contributions, &completed_at, low_coverage_pixels);
         summary.target              = ref_target;
         summary.filter              = ref_filter;
         summary.integration_seconds = total_integration;
@@ -1001,12 +1019,22 @@ impl PhotyxPlugin for StackFrames {
         ctx.stack_contributions = contributions;
         ctx.stack_summary       = Some(summary.clone());
 
+        // Issue 144: only add the low-coverage line when it's actually
+        // nonzero, so a normal well-overlapped stack's summary doesn't grow
+        // a permanent "0 pixels" line that nobody needs to read.
+        let low_coverage_line = if summary.low_coverage_pixels > 0 {
+            format!("\n  Low-coverage pixels:   {} (unclipped, <2 contributing frames)", summary.low_coverage_pixels)
+        } else {
+            String::new()
+        };
+
         let quality_summary = format!(
-            "Stack Quality Summary:\n  Frames stacked:        {} / {}\n  SNR improvement:       ~{:.1}x (vs single frame)\n  Alignment success:     {:.1}%\n  Background uniformity: {}\n  Output mode:           {}",
+            "Stack Quality Summary:\n  Frames stacked:        {} / {}\n  SNR improvement:       ~{:.1}x (vs single frame)\n  Alignment success:     {:.1}%\n  Background uniformity: {}\n  Output mode:           {}{}",
             summary.stacked_frames, summary.total_frames,
             summary.snr_improvement, summary.alignment_success_rate * 100.0,
             summary.background_uniformity,
             if is_color { "RGB color" } else { "Grayscale" },
+            low_coverage_line,
         );
 
         messages.push(format!(

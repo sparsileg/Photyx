@@ -1004,32 +1004,70 @@ implicit in the solved translation):
 
 ### 7.3 Combination — Two-Pass Sigma-Clipped Mean
 
-**Pass 1 (Welford online mean/variance):** for every included frame,
-pixels are normalized by that frame's background median (via
+**Pass 1 (Welford online mean/variance):** for every included frame, pixels
+are normalized by that frame's background median (via
 `estimate_background`), resampled into alignment, then folded into a
-running per-pixel mean and M2 (Welford's algorithm) — avoiding the
-need to hold all aligned frames in memory simultaneously. Frames are
-excluded from Pass 1 (and the stack entirely) on filter mismatch
-against the master reference's filter, or if FFT alignment fails
-outright.
+running per-pixel mean and M2 (Welford's algorithm) — avoiding the need to
+hold all aligned frames in memory simultaneously. Frames are excluded from
+Pass 1 (and the stack entirely) on filter mismatch against the master
+reference's filter, or if FFT alignment fails outright. Per-pixel standard
+deviation is derived from M2 using the unbiased sample form, `M2 / (n − 1)`,
+not the population form `M2 / n` (Issue 144) — the population form
+systematically underestimates σ, most severely at small frame counts
+(~10.6% low at n=5, ~5.1% at n=10, ~1.7% at n=30), which meant a small stack
+was effectively clipping tighter than its nominal threshold. The existing
+`count > 1` guard (below) already establishes n ≥ 2, so `n − 1` is safe
+wherever it's used.
+
+**Known limitation (Issue 144):** the mean and σ used to gate Pass 2 are
+computed from every included frame's pixels unconditionally — they are not
+recomputed from an outlier-free subset the way
+`compute_session_stats_iterative()` does for frame-level analysis (§6.4). A
+bright transient (satellite trail, aircraft, cosmic ray hit) on one frame
+therefore contributes to the very mean and σ used to judge whether that
+transient is an outlier, which can inflate σ enough to pull the transient
+inside its own clipping threshold — most visible on small stacks, where one
+outlier frame is a larger fraction of the population. This is a deliberate
+scope decision, not an oversight: an iterative refinement pass would cost
+re-resampling every frame a second time (Pass 2's chunked design
+deliberately drops aligned buffers per chunk to bound memory — retaining
+them for a refinement pass would scale memory with session size divided by
+chunk size, reintroducing the unbounded growth this pipeline was built to
+avoid). Photyx's single-method sigma clip is an intentional scope choice
+(contrast with e.g. Siril's PERCENTILE/SIGMA/MAD/SIGMEDIAN/WINSORIZED/
+LINEARFIT/GESDT rejection methods); this limitation is a known consequence
+of that choice, not a bug to fix incidentally.
 
 **Pass 2 (sigma-clipped accumulation):** processed in chunks of
 `rayon_thread_count` frames at a time — pixel loading/debayering is
-sequential per chunk, background estimation and resampling are
-parallelized within the chunk, and accumulation into the running sum
-is sequential. A pixel is accepted into the final sum if it falls
-within `2.5σ` of the Pass 1 per-pixel mean (using the luma channel's
+sequential per chunk, background estimation and resampling are parallelized
+within the chunk, and accumulation into the running sum is sequential. A
+pixel is accepted into the final sum if it falls within `STACK_SIGMA_CLIP`
+(2.5σ, `defaults.rs`) of the Pass 1 per-pixel mean (using the luma channel's
 deviation to gate all three RGB channels together, when color). The
-batched-chunk approach bounds peak Pass 2 memory to roughly one batch
-of aligned frames rather than the whole session.
+batched-chunk approach bounds peak Pass 2 memory to roughly one batch of
+aligned frames rather than the whole session.
+
+A pixel covered by fewer than two contributing frames has σ = 0 from Pass 1
+(the `count > 1` guard above), which Pass 2 treats as "cannot be clipped"
+and accepts unconditionally (`sd_luma < 1e-10` fallback) — correct given a
+single sample can't be judged against its own spread, but it means that
+pixel carries no outlier protection at all. This is most common at frame
+edges under significant dither, or whenever the Issue 111 common-overlap
+crop (below) degenerates to the full uncropped canvas rather than trimming
+low-coverage edges away. The count of such pixels is tracked as
+`low_coverage_pixels` on `StackSummary` (Issue 144) and, when nonzero,
+surfaced as a line in the printed Stack Quality Summary — silent otherwise,
+so a normally-overlapped stack's summary doesn't carry a permanent "0
+pixels" line.
 
 **Output:** the per-pixel mean of accepted values, normalized
 (`normalize_output`), stored as a transient `ImageBuffer` in
-`ctx.stack_result` — no source file path, since it isn't backed by a
-file until explicitly written out. `ctx.stack_summary` and
-`ctx.stack_contributions` carry per-run and per-frame metrics
-respectively (SNR improvement estimate, alignment success rate,
-background uniformity, exclusion reasons).
+`ctx.stack_result` — no source file path, since it isn't backed by a file
+until explicitly written out. `ctx.stack_summary` and
+`ctx.stack_contributions` carry per-run and per-frame metrics respectively
+(SNR improvement estimate, alignment success rate, background uniformity,
+low-coverage pixel count, exclusion reasons).
 
 ### 7.4 Known Limitation
 
