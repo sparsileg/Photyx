@@ -252,7 +252,9 @@ export async function closeSession() {
   notifications.info('Session cleared.');
 }
 
-/** Load a file from disk and display it in the viewer without adding to the session */
+/** Load a file from disk and display it in the viewer. Adds the file to
+ *  the session if not already present (Issue 157) — reloading an
+ *  already-open path refreshes it in place instead. */
 export async function loadFile(path: string) {
   try {
     const dataUrl = await invoke<string>('load_file', { path });

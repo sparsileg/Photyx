@@ -525,18 +525,16 @@ pub fn load_file(path: String, state: State<Arc<PhotoxState>>) -> Result<String,
         .map_err(|e| format!("Failed to load '{}': {}", path, e))?;
 
     {
+        // Issue 157: load_file no longer evicts existing files from the
+        // session — File > Open Image now matches drag-and-drop/AddFiles
+        // behavior (append, don't replace). Reloading an already-open
+        // path refreshes its buffer with freshly-read pixel data rather
+        // than silently keeping the stale one.
         let mut ctx = state.context.lock().expect("context lock poisoned");
-        if ctx.file_list.len() == 1 && ctx.file_list[0] == path {
-            // Same file — just update
-        } else if ctx.file_list.len() == 1 {
-            let old = ctx.file_list[0].clone();
-            ctx.file_list.clear();
-            ctx.image_buffers.remove(&old);
-        }
         if !ctx.file_list.contains(&path) {
             ctx.file_list.push(path.clone());
-            ctx.image_buffers.insert(path.clone(), buffer.clone());
         }
+        ctx.image_buffers.insert(path.clone(), buffer.clone());
         ctx.current_frame = ctx.file_list.iter().position(|p| p == &path).unwrap_or(0);
     }
 
