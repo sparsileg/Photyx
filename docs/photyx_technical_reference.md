@@ -917,18 +917,27 @@ sigma-clipped mean combination. Implementation lives in
    own best-quality frame as a group reference. Frames align natively
    to their own group's reference, avoiding a per-frame buffer
    reversal and its associated Bayer-pattern issues.
-5. **Cross-group solve (`M_cross`).** For each non-master group, one
+5. Cross-group solve (M_cross). For each non-master group, one
    transform is solved that maps that group's reference into master
-   coordinates: an explicit 180° pre-rotation
-   (`AffineRigid::flip_180`) composed with a triangle-based rigid
-   match (`estimate_rigid_transform_triangles`) between the flipped
-   group reference and the master reference. If triangle matching
-   fails, this falls back to FFT-translation-only. `M_cross` is solved
-   once per group, not once per frame.
+   coordinates: a triangle-based rigid match
+   (estimate_rigid_transform_triangles) between the group reference
+   and the master reference, compared unflipped and at whatever
+   relative orientation is actually found — 0°, 105°, 179°, or
+   anything else — with no pre-composed rotation assumption. An
+   earlier version composed an explicit 180° pre-rotation
+   (AffineRigid::flip_180) before matching, assuming every
+   non-master group was a meridian flip; that assumption failed on
+   real data (a ~105° cross-night rotation with no flip at all, and a
+   same-orientation group misread as 180° of drift), so it was
+   removed (Issue 134). flip_180 is retained as a tested primitive
+   for a possible future meridian-flip special case but is not part
+   of the current cross-group path. If triangle matching fails, this
+   falls back to FFT-translation-only. M_cross is solved once per
+   group, not once per frame.
 6. **M_cross verification gates group inclusion (Issue 128/134).**
-   After each solve, group-reference stars are transformed by
-   `M_cross` and matched against master-reference stars within
-   `CROSS_GROUP_VERIFY_MATCH_RADIUS_PX` (10px, `defaults.rs`);
+      After each solve, group-reference stars are transformed by
+`M_cross` and matched against master-reference stars within
+`CROSS_GROUP_VERIFY_MATCH_RADIUS_PX` (10px, `defaults.rs`);
    mean/max residual is logged. A group is now excluded from the stack
    entirely if fewer than `CROSS_GROUP_MIN_MATCHED` stars matched or
    the mean residual exceeds `CROSS_GROUP_MAX_RESIDUAL_PX` (both
@@ -1090,13 +1099,28 @@ uniformity, low-coverage pixel count, exclusion reasons).
 
 
 
-### 7.4 Known Limitation
+7.4 Alignment Acceptance
 
-`validate_alignment()` — a match-rate sanity check comparing predicted
-vs. actual star positions — exists in the source but is not called
-anywhere in the stacking pipeline. All frames that survive the earlier
-FFT/RANSAC/triangle-matching stages are currently accepted without
-this additional validation pass.
+Per-frame acceptance (within-group) is handled by
+estimate_rigid_transform()'s own sanity gates — MIN_MATCHES,
+MIN_INLIERS, MAX_ROTATION_RAD, MAX_TRANSLATION_DEVIATION (§7.2) — with
+a RANSAC rejection excluding the frame (Issue 133) rather than falling
+back to an unvalidated translation-only transform.
+
+Group-level acceptance (cross-group) is handled by the M_cross
+verification gate: CROSS_GROUP_MIN_MATCHED and
+CROSS_GROUP_MAX_RESIDUAL_PX (§7.1 step 6) reject the whole group's
+solve — and every frame in that group — if too few group-reference
+stars reproject onto the master reference within tolerance, or the
+mean residual is too high.
+
+A predecessor per-frame check, validate_alignment(), was removed
+rather than wired in (Issue 150): it predated AffineRigid and could
+only express a scalar translation, so it could not validate a rotated
+or scaled transform — precisely the cases most in need of validation.
+Its job is already done, and done better, by the two gates above,
+which operate on the real AffineRigid transform rather than a
+translation-only approximation
 
 ---
 
@@ -1657,7 +1681,6 @@ believed still open as of this document.
 | AutoStretch lost on Blink→Pixels tab switch | Viewer reverts to raw unstretched display                                                                 |
 | SNR estimator PSF artifact                | Worse-seeing frames produce higher SNR due to bloated star flux; excluded from rejection classification — see §6.2 |
 | `threshold_profiles` orphaned columns     | `bg_stddev_reject_sigma`/`bg_gradient_reject_sigma` may still exist on pre-cleanup databases — see §8.2   |
-| `validate_alignment()` unused in StackFrames | Defined but never called; all frames pass without this validation step — see §7.4                       |
 | Linux GTK file picker multi-select        | Silently refuses to confirm a selection containing both files and folders (e.g. Ctrl+A when a `rejected/` subfolder is present) — select files manually instead |
 | Separate RGB channel views not working correctly | Pre-existing display bug                                                                          |
 | `TRI_MAX_STARS = 30` unvalidated on sparse-star sessions | Current value works for typical sessions; not yet confirmed as a safe floor for sparse-star fields — see §7.2 |

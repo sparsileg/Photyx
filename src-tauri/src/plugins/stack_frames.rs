@@ -1824,28 +1824,7 @@ fn build_stack_keywords(
     kw
 }
 
-//  ── Alignment validation (retained for future use) ────────────────────────────
 
-#[allow(dead_code)]
-fn validate_alignment(
-    frame_stars:    &[crate::analysis::stars::StarCandidate],
-    ref_stars:      &[crate::analysis::stars::StarCandidate],
-    dx:             f32,
-    dy:             f32,
-    tolerance:      f32,
-    min_match_rate: f32,
-) -> bool {
-    let sample: Vec<_> = frame_stars.iter().take(20).collect();
-    if sample.is_empty() { return false; }
-    let matched = sample.iter().filter(|s| {
-        let pred_x = s.cx + dx;
-        let pred_y = s.cy + dy;
-        ref_stars.iter().any(|r| {
-            let d = ((r.cx - pred_x).powi(2) + (r.cy - pred_y).powi(2)).sqrt();
-            d <= tolerance
-        })
-    }).count();
-    (matched as f32 / sample.len() as f32) >= min_match_rate
-}
-
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
