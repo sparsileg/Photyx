@@ -247,13 +247,30 @@ fn execute_all(
     let chunk_len  = crate::plugins::pixel_chunking::chunk_size(ctx);
     let file_list  = ctx.file_list.clone();
 
-    let mut par_results: Vec<Result<AnalysisResult, (String, String)>> = Vec::with_capacity(total);
+    let mut par_results: Vec<AnalysisResult> = Vec::with_capacity(total);
+
+    // Issue 159: snapshot_pixel_chunk() silently drops paths with no
+    // loaded buffer or no pixel data. Detected here at the call site
+    // (rather than inside the shared helper, which StackFrames also
+    // calls) by comparing each chunk's requested paths against the
+    // paths actually returned.
+    let mut skipped: Vec<String> = Vec::new();
 
     for path_chunk in file_list.chunks(chunk_len) {
         // Sequential: clone pixel data for just this chunk before the
         // parallel pass, bounding peak memory to one chunk instead of
         // the whole session.
         let snapshots = crate::plugins::pixel_chunking::snapshot_pixel_chunk(ctx, path_chunk);
+
+        if snapshots.len() != path_chunk.len() {
+            let present: std::collections::HashSet<&str> =
+                snapshots.iter().map(|s| s.path.as_str()).collect();
+            skipped.extend(
+                path_chunk.iter()
+                    .filter(|p| !present.contains(p.as_str()))
+                    .cloned()
+            );
+        }
 
         // Keywords are small (needed for plate scale) — cloned per-frame
         // here rather than folded into the shared pixel snapshot, since
@@ -263,7 +280,7 @@ fn execute_all(
                 ctx.image_buffers.get(path).map(|buf| (path.clone(), buf.keywords.clone()))
             }).collect();
 
-        let chunk_results: Vec<Result<AnalysisResult, (String, String)>> = snapshots
+        let chunk_results: Vec<AnalysisResult> = snapshots
             .par_iter()
             .map(|snap| {
                 let channels = snap.channels;
@@ -297,7 +314,7 @@ fn execute_all(
                 info!("AnalyzeFrames: {} — done", short_name(&snap.path));
                 let n = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                 crate::set_progress("Analyzing", n, total as u32);
-                Ok(result)
+                result
             })
             .collect();
 
@@ -308,15 +325,11 @@ fn execute_all(
 
     crate::set_progress("", 0, 0);
 
-    let mut results: Vec<AnalysisResult> = Vec::with_capacity(total);
-    let mut errors:  Vec<String>         = Vec::new();
-
-    for r in par_results {
-        match r {
-            Ok(result) => results.push(result),
-            Err((path, msg)) => errors.push(format!("{}: {}", path, msg)),
-        }
-    }
+    // Issue 159: par_iter's closure can no longer fail (the old Err path
+    // was unreachable — nothing in it ever returned Err), so par_results
+    // is already the final results list. Skipped-frame reporting happens
+    // upstream, at the snapshot_pixel_chunk call site.
+    let mut results: Vec<AnalysisResult> = par_results;
 
     if results.is_empty() {
         return Err(PluginError::new(
@@ -408,20 +421,21 @@ fn execute_all(
         results.len(),
         pass_count,
         reject_count,
-        if errors.is_empty() { String::new() } else { format!(" ({} errors)", errors.len()) }
+        if skipped.is_empty() { String::new() } else { format!(" ({} skipped)", skipped.len()) }
     );
 
     info!("{}", message);
 
     Ok(PluginOutput::Data(json!({
-        "plugin":       "AnalyzeFrames",
-        "scope":        "all",
-        "frame_count":  results.len(),
-        "pass_count":   pass_count,
-        "reject_count": reject_count,
-        "errors":       errors,
-        "frames":       frame_summaries,
-        "message":      message,
+        "plugin":        "AnalyzeFrames",
+        "scope":         "all",
+        "frame_count":   results.len(),
+        "pass_count":    pass_count,
+        "reject_count":  reject_count,
+        "skipped_count": skipped.len(),
+        "skipped":       skipped.iter().map(|p| short_name(p)).collect::<Vec<_>>(),
+        "frames":        frame_summaries,
+        "message":       message,
     })))
 }
 
@@ -491,5 +505,74 @@ fn short_name(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::{BitDepth, ColorSpace, PixelData};
 
+    /// Issue 159 — snapshot_pixel_chunk() silently drops paths with no
+    /// pixel data; this exercises the call-site skip detection that
+    /// reports them instead. No real-world load path currently produces
+    /// a buffer with pixels: None while still in file_list, so this is
+    /// constructed directly rather than reproduced through the UI.
+    fn make_test_buffer(pixels: Option<PixelData>) -> ImageBuffer {
+        ImageBuffer {
+            filename:      "test.fits".to_string(),
+            width:         4,
+            height:        4,
+            display_width: 4,
+            bit_depth:     BitDepth::F32,
+            color_space:   ColorSpace::Mono,
+            channels:      1,
+            keywords:      Default::default(),
+            pixels,
+        }
+    }
+
+    #[test]
+    fn test_analyze_frames_skips_pixelless_buffer() {
+        let mut ctx = AppContext::new();
+
+        ctx.file_list = vec!["good.fits".to_string(), "bad.fits".to_string()];
+        ctx.image_buffers.insert(
+            "good.fits".to_string(),
+            make_test_buffer(Some(PixelData::F32(vec![0.1; 16]))),
+        );
+        ctx.image_buffers.insert(
+            "bad.fits".to_string(),
+            make_test_buffer(None),
+        );
+
+        let det_config = StarDetectionConfig::default();
+        let result = execute_all(&mut ctx, &det_config).unwrap();
+
+        if let PluginOutput::Data(payload) = result {
+            assert_eq!(payload["frame_count"], 1);
+            assert_eq!(payload["skipped_count"], 1);
+            assert_eq!(payload["skipped"][0], "bad.fits");
+        } else {
+            panic!("expected PluginOutput::Data");
+        }
+    }
+
+    /// A session where every frame is pixel-less must still hard-fail
+    /// via the existing NO_RESULTS guard, not just report 100% skipped.
+    #[test]
+    fn test_analyze_frames_all_pixelless_still_errors() {
+        let mut ctx = AppContext::new();
+
+        ctx.file_list = vec!["bad.fits".to_string()];
+        ctx.image_buffers.insert("bad.fits".to_string(), make_test_buffer(None));
+
+        let det_config = StarDetectionConfig::default();
+        let result = execute_all(&mut ctx, &det_config);
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code, "NO_RESULTS");
+    }
+}
+
+
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
