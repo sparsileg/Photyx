@@ -36,7 +36,6 @@
     const menuHeight = options.length * 24 + 8;
     const shouldOpenUp = openUp || rect.bottom > viewH - menuHeight || rect.top > viewH * 0.75;
     menuEl.style.left = `${rect.left}px`;
-    console.log('dropdown width prop:', width, 'rect.width:', rect.width);
     menuEl.style.width = `${width !== null ? width : rect.width}px`;
     menuEl.style.top = shouldOpenUp ? `${rect.top - menuHeight}px` : `${rect.bottom}px`;
   }

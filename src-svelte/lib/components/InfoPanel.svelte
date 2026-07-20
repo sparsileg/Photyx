@@ -170,7 +170,6 @@
   }
 
   async function showBlinkFrame(index: number) {
-    console.log('showBlinkFrame resolution:', $ui.blinkResolution);
     try {
       const dataUrl = await invoke<string>('get_blink_frame', { index, resolution: $ui.blinkResolution });
       ui.setBlinkFrame(dataUrl);

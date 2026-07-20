@@ -194,7 +194,6 @@
 
   async function apply() {
     if (!dirty || selectedId === null || hasErrors()) return;
-    console.log('apply draft:', JSON.stringify(draft));
     try {
       const profile = $thresholdProfiles.profiles.find(p => p.id === selectedId);
       if (!profile) return;
