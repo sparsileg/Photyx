@@ -1056,22 +1056,56 @@ impl PhotyxPlugin for StackFrames {
     }
 }
 
-//  ── Output normalization ──────────────────────────────────────────────────────
+//     Output normalization
 
-fn normalize_output(raw: &[f32], is_color: bool, _n_pixels: usize) -> Vec<f32> {
-    if !is_color {
-        let max_val = raw.par_iter().cloned().reduce(|| f32::NEG_INFINITY, f32::max);
-        let min_val = raw.par_iter().cloned().reduce(|| f32::INFINITY,     f32::min);
-        let range   = (max_val - min_val).max(1e-6);
-        return raw.par_iter().map(|&v| ((v - min_val) / range).clamp(0.0, 1.0)).collect();
+/// Computes low/high pixel-value bounds at the given percentiles (0–100)
+/// via partial selection — O(n) per call on a scratch clone, no full sort
+/// needed. Used by `normalize_output` (Issue 145) to derive a display range
+/// robust to a handful of extreme pixels, rather than the frame's absolute
+/// min/max.
+fn percentile_bounds(data: &[f32], low_pct: f32, high_pct: f32) -> (f32, f32) {
+    let n = data.len();
+    if n == 0 {
+        return (0.0, 1.0);
     }
+    let mut work: Vec<f32> = data.to_vec();
+    let idx_low  = (((low_pct  / 100.0) * (n - 1) as f32).round() as usize).min(n - 1);
+    let idx_high = (((high_pct / 100.0) * (n - 1) as f32).round() as usize).min(n - 1);
 
-    // Normalize all channels together using a single global min/max so that
-    // relative channel ratios are preserved. Per-channel normalization would
-    // destroy color balance by stretching each channel independently.
-    let max_val = raw.par_iter().cloned().reduce(|| f32::NEG_INFINITY, f32::max);
-    let min_val = raw.par_iter().cloned().reduce(|| f32::INFINITY,     f32::min);
-    let range   = (max_val - min_val).max(1e-6);
+    let cmp = |a: &f32, b: &f32| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal);
+    let low_val  = *work.select_nth_unstable_by(idx_low, cmp).1;
+    let high_val = *work.select_nth_unstable_by(idx_high, cmp).1;
+    (low_val, high_val)
+}
+
+/// Stretches raw stacked pixel data into the [0.0, 1.0] display range for
+/// Photyx's own preview (Issue 145). This is a display-normalized preview
+/// stretch, not linear data suitable for photometric reuse or cross-session
+/// comparison — Photyx's stack result is a quick-look validation step
+/// before real processing happens in PixInsight from the original frames,
+/// not an image intended for further downstream processing itself.
+///
+/// Bounds are the 0.1st and 99.99th percentiles rather than the frame's
+/// absolute min/max, so a handful of hot-pixel or cosmic-ray defect pixels
+/// can't single-handedly compress the rest of the frame into a sliver of
+/// the display range — the failure mode this function existed to prevent
+/// in the previous absolute-extremes version, where a single surviving
+/// defect pixel set the scale for the entire image. Values outside the
+/// percentile window (genuine bright star cores as well as defects) are
+/// pushed to the clamp bounds, which is expected.
+///
+/// `is_color` and `_n_pixels` are unused: percentile bounds are computed
+/// across the full interleaved buffer either way, matching the previous
+/// version's reasoning for the color case (a single global bound across
+/// all three channels preserves color ratios; per-channel normalization
+/// would destroy color balance) — the two branches were already doing
+/// identical work before this change, just written twice.
+fn normalize_output(raw: &[f32], _is_color: bool, _n_pixels: usize) -> Vec<f32> {
+    const NORMALIZE_LOW_PERCENTILE:  f32 = 0.1;
+    const NORMALIZE_HIGH_PERCENTILE: f32 = 99.99;
+
+    let (min_val, max_val) = percentile_bounds(raw, NORMALIZE_LOW_PERCENTILE, NORMALIZE_HIGH_PERCENTILE);
+    let range = (max_val - min_val).max(1e-6);
     raw.par_iter().map(|&v| ((v - min_val) / range).clamp(0.0, 1.0)).collect()
 }
 

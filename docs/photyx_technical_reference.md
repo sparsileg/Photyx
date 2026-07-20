@@ -1061,13 +1061,31 @@ surfaced as a line in the printed Stack Quality Summary — silent otherwise,
 so a normally-overlapped stack's summary doesn't carry a permanent "0
 pixels" line.
 
-**Output:** the per-pixel mean of accepted values, normalized
-(`normalize_output`), stored as a transient `ImageBuffer` in
-`ctx.stack_result` — no source file path, since it isn't backed by a file
-until explicitly written out. `ctx.stack_summary` and
-`ctx.stack_contributions` carry per-run and per-frame metrics respectively
-(SNR improvement estimate, alignment success rate, background uniformity,
-low-coverage pixel count, exclusion reasons).
+Output: the per-pixel mean of accepted values, stretched to the
+[0.0, 1.0] display range via normalize_output and stored as a transient
+ImageBuffer in ctx.stack_result — no source file path, since it isn't
+backed by a file until explicitly written out. This stretch uses the 0.1st
+and 99.99th percentile pixel values as its bounds (Issue 145), not the
+frame's absolute min/max — a single hot pixel or cosmic ray hit can no
+longer single-handedly set the scale and compress the rest of the frame.
+The color path applies one global bound across all three channels together,
+preserving relative channel ratios (per-channel normalization would destroy
+color balance).
+
+ctx.stack_result is a display-normalized preview, not linear data
+(Issue 145). Each run's stretch is derived independently from that run's
+own pixel population, so two stacks of the same target from different
+sessions are not on a comparable scale, and the stack's true background
+level (real sky-brightness information, discarded by the stretch's zero
+point) is not preserved. Photyx's stacking output is intended as a
+quick-look validation step — confirming the data is worth carrying forward
+— ahead of real processing in PixInsight from the original frames, not as
+an image meant for further downstream processing itself. ctx.stack_summary
+and ctx.stack_contributions carry per-run and per-frame metrics
+respectively (SNR improvement estimate, alignment success rate, background
+uniformity, low-coverage pixel count, exclusion reasons).
+
+
 
 ### 7.4 Known Limitation
 
@@ -1401,6 +1419,14 @@ against partial writes on failure.
   `BAYER_PATTERN` keyword (`analysis/debayer.rs`, Issue 122),
   defaulting to RGGB if absent (Issue 97 — this list previously named
   Nearest Neighbor, VNG, and AHD as supported, none of which exist)
+
+Note on the stack result specifically: the "normalized 0.0–1.0"
+convention above describes per-frame image_buffers data, which is a
+straightforward min/max stretch of a single frame's own raw pixel
+range.  ctx.stack_result (StackFrames' output) is normalized
+differently and for a different reason — see §7.3 — and should not be
+assumed comparable to a single frame's normalized range, or to another
+stack's.
 
 ### 9.5 Format Conversion
 
