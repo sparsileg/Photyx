@@ -1,12 +1,13 @@
 // plugins/analyze_frames.rs — AnalyzeFrames plugin
+
 // Spec §15, §7.8
 //
 // Two-pass operation:
-//   Pass 1 — run all seven metrics on every loaded frame (or current frame if scope=current)
-//   Pass 2 — compute session stats → PXFLAG (PASS/REJECT) → write keyword
+//   Pass 1 — compute four quality metrics for every loaded frame (or current frame if scope=current)
+//   Pass 2 — compute session stats → classify PASS/REJECT (in-memory only, not written to files)
 //
-// scope=current — runs all seven metrics on the current frame and prints raw results.
-//                 No session stats, no PXFLAG written.
+// scope=current — computes the four metrics for the current frame and prints raw results.
+//                 No session stats, no classification.
 
 use crate::analysis::{
     self,
@@ -70,9 +71,10 @@ impl PhotyxPlugin for AnalyzeFrames {
     fn name(&self)        -> &str { "AnalyzeFrames" }
     fn version(&self)     -> &str { "1.0.0" }
     fn description(&self) -> &str {
-        "Computes seven quality metrics for loaded frames, classifies each as \
-         PASS or REJECT, and writes PXFLAG keyword to each file. \
-         Use scope=current to inspect a single frame without writing keywords."
+        "Computes four quality metrics (background median, FWHM, eccentricity, star count) \
+         for loaded frames, classifies each as PASS or REJECT against session statistics, \
+         and records the result in the session — not written to the files on disk. \
+         Use scope=current to inspect a single frame without classification."
     }
 
     fn parameters(&self) -> Vec<ParamSpec> {
@@ -82,6 +84,27 @@ impl PhotyxPlugin for AnalyzeFrames {
                 param_type:  ParamType::String,
                 required:    false,
                 description: "Threshold profile name to use for this run (e.g. profile=Session). If omitted, uses the active profile set in Edit > Analysis Parameters.".to_string(),
+                default:     None,
+            },
+            ParamSpec {
+                name:        "scope".to_string(),
+                param_type:  ParamType::String,
+                required:    false,
+                description: "all (default) or current. all runs both passes across every loaded frame and classifies against session statistics. current inspects only the current frame and prints raw metrics, with no session stats and no classification.".to_string(),
+                default:     Some("all".to_string()),
+            },
+            ParamSpec {
+                name:        "threshold".to_string(),
+                param_type:  ParamType::Float,
+                required:    false,
+                description: "Star detection threshold (sigma above background). If omitted, uses the built-in star detection default.".to_string(),
+                default:     None,
+            },
+            ParamSpec {
+                name:        "saturation".to_string(),
+                param_type:  ParamType::Float,
+                required:    false,
+                description: "Saturation threshold (0.0–1.0) above which a pixel is excluded from star detection. If omitted, uses the built-in star detection default.".to_string(),
                 default:     None,
             },
         ]
