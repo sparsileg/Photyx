@@ -192,7 +192,20 @@ impl PhotyxPlugin for StackFrames {
 
         info!("StackFrames: output mode = {}", if is_color { "RGB (color)" } else { "Mono (grayscale)" });
 
-        let master_ref_luma  = load_debayered_luma(ctx, &snapshots[master_ref_idx])?;
+        // Issue 140: bound early so every background-median divisor in this
+        // function — master reference, cross-group references, within-group
+        // references and targets — is computed through the same estimator
+        // with the same parameters.
+        let bg_sigma_config = SigmaClipConfig::default();
+
+        let master_ref_luma_raw = load_debayered_luma(ctx, &snapshots[master_ref_idx])?;
+        let master_ref_bg      = estimate_background(&master_ref_luma_raw, &bg_sigma_config).median;
+        let master_ref_divisor = if master_ref_bg > 1e-6 { master_ref_bg } else { 1.0 };
+        // Issue 140: normalize the master reference by its own background
+        // median so compute_translation is never called with one side
+        // normalized and the other raw — the asymmetry that weakened FFT
+        // peak quality on frames with mismatched sky background.
+        let master_ref_luma: Vec<f32> = master_ref_luma_raw.iter().map(|&v| v / master_ref_divisor).collect();
         let master_ref_stars = snapshots[master_ref_idx].stars.clone();
 
         let ref_path   = snapshots[master_ref_idx].path.clone();
@@ -215,7 +228,7 @@ impl PhotyxPlugin for StackFrames {
             if g == master_group { continue; }
 
             let gref_snap = &snapshots[group_refs[g]];
-            let gref_luma = match load_debayered_luma(ctx, gref_snap) {
+            let gref_luma_raw = match load_debayered_luma(ctx, gref_snap) {
                 Ok(luma) => luma,
                 Err(e) => {
                     let msg = format!(
@@ -228,6 +241,14 @@ impl PhotyxPlugin for StackFrames {
                     continue;
                 }
             };
+            // Issue 140: normalize this group's reference by its own
+            // background median — same reasoning as the master reference
+            // above, and arguably more relevant here, since cross-group
+            // references are exactly the frames most likely to differ in
+            // sky background (different night, different conditions).
+            let gref_bg      = estimate_background(&gref_luma_raw, &bg_sigma_config).median;
+            let gref_divisor = if gref_bg > 1e-6 { gref_bg } else { 1.0 };
+            let gref_luma: Vec<f32> = gref_luma_raw.iter().map(|&v| v / gref_divisor).collect();
 
             // Diagnostic logging (galaxy-contamination investigation): dumps
             // the largest-by-pixel_count detected candidates for this
@@ -257,18 +278,6 @@ impl PhotyxPlugin for StackFrames {
                     let (x0, y0, x1, y1) = s.bbox;
                     info!("StackFrames: M_cross[{}] largest {} — star at ({:.1},{:.1}) pixel_count={} bbox=({},{})-({},{}) peak={:.3}",
                           g, i, s.cx, s.cy, s.pixel_count, x0, y0, x1, y1, s.peak);
-                }
-
-                // Explicit proximity check against the known suspect
-                // position from the earlier outlier/unmatched investigation
-                // (~1554,1469 in this group's own coordinate space).
-                for s in &gref_snap.stars {
-                    let d = ((s.cx - 1554.0).powi(2) + (s.cy - 1469.0).powi(2)).sqrt();
-                    if d < 30.0 {
-                        let (x0, y0, x1, y1) = s.bbox;
-                        info!("StackFrames: M_cross[{}] suspect-position match — star at ({:.1},{:.1}) dist_from_suspect={:.1}px pixel_count={} bbox=({},{})-({},{}) peak={:.3}",
-                              g, s.cx, s.cy, d, s.pixel_count, x0, y0, x1, y1, s.peak);
-                    }
                 }
             }
 
@@ -459,7 +468,6 @@ impl PhotyxPlugin for StackFrames {
         group_ref_luma[master_group]  = Some(master_ref_luma.clone());
         group_ref_stars[master_group] = Some(master_ref_stars.clone());
 
-        let bg_sigma_config    = SigmaClipConfig::default();
         let mut contributions: Vec<FrameContribution> = Vec::new();
         let mut total_integration = 0.0f32;
 
@@ -511,7 +519,16 @@ impl PhotyxPlugin for StackFrames {
             if group_ref_luma[snap.group].is_none() {
                 let g_ref = &snapshots[group_refs[snap.group]];
                 match load_debayered_luma(ctx, g_ref) {
-                    Ok(g_luma) => {
+                    Ok(g_luma_raw) => {
+                        // Issue 140: normalize this group's reference by its
+                        // own background median — matches the master
+                        // reference (above execute()) and cross-group
+                        // reference normalization, so every reference luma
+                        // compute_translation sees in this file now uses
+                        // the same convention as its target.
+                        let g_bg      = estimate_background(&g_luma_raw, &bg_sigma_config).median;
+                        let g_divisor = if g_bg > 1e-6 { g_bg } else { 1.0 };
+                        let g_luma: Vec<f32> = g_luma_raw.iter().map(|&v| v / g_divisor).collect();
                         group_ref_stars[snap.group] = Some(g_ref.stars.clone());
                         group_ref_luma[snap.group]  = Some(g_luma);
                     }
@@ -674,6 +691,7 @@ impl PhotyxPlugin for StackFrames {
         struct Pass2Input {
             snap_idx: usize,
             xform:    AffineRigid,
+            divisor:  f32,
         }
 
         // Pixel data is loaded lazily inside the chunk loop to avoid
@@ -682,7 +700,15 @@ impl PhotyxPlugin for StackFrames {
         let pass2_inputs: Vec<Pass2Input> = snapshots.iter().enumerate()
             .filter_map(|(i, _snap)| {
                 let xform = cached_transforms[i].clone()?;
-                Some(Pass2Input { snap_idx: i, xform })
+                // Issue 140: reuse the background-median divisor already
+                // computed and recorded in Pass 1 (contrib.background_level)
+                // instead of recomputing estimate_background a second time
+                // on the same pixel data in Pass 2.
+                let divisor = contributions.get(i)
+                    .and_then(|c| c.background_level)
+                    .map(|bg| if bg > 1e-6 { bg } else { 1.0 })
+                    .unwrap_or(1.0);
+                Some(Pass2Input { snap_idx: i, xform, divisor })
             })
             .collect();
 
@@ -732,7 +758,10 @@ impl PhotyxPlugin for StackFrames {
                 }
             }
 
-            // Parallel: background estimate and resample each frame in chunk.
+            // Parallel: resample each frame in chunk, reusing the
+            // background-median divisor Pass 1 already computed for this
+            // frame (Issue 140) rather than recomputing estimate_background
+            // a second time on identical pixel data.
             let aligned_buffers: Vec<Vec<f32>> = chunk_ok.par_iter()
                 .zip(chunk_pixels.into_par_iter())
                 .map(|(inp, frame_pixels)| {
@@ -742,13 +771,10 @@ impl PhotyxPlugin for StackFrames {
                         frame_pixels.clone()
                     };
 
-                    let bg_est   = estimate_background(&cal_luma, &bg_sigma_config);
-                    let bg_level = bg_est.median;
-                    let divisor  = if bg_level > 1e-6 { bg_level } else { 1.0 };
-
+                    let divisor = inp.divisor;
                     let accum_pixels: Vec<f32> = frame_pixels.iter().map(|&v| v / divisor).collect();
-
                     let theta = inp.xform.theta();
+
                     if is_color {
                         if theta.abs() >= MIN_ROTATION_TO_APPLY || inp.xform.a < 0.5 {
                             resample_frame_rgb_affine(&accum_pixels, width, height, &inp.xform)
