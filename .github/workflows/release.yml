@@ -73,7 +73,7 @@ jobs:
         # specifically on the rpm bundle step before assuming something
         # else broke.
 
-            - name: install Windows dependencies (vcpkg + cfitsio)
+      - name: install Windows dependencies (vcpkg + cfitsio)
         if: matrix.platform == 'windows-latest'
         run: |
           vcpkg install cfitsio
