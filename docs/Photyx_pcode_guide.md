@@ -286,8 +286,8 @@ Loops may be nested. Numeric and glob loops can be mixed. If a glob pattern matc
 for d in "J:/projects/M82/M82-ircut-sess-*"
   ClearSession
   AddFiles paths="$d/lights/*.fit"
-  AnalyzeFrames profile="Session"
-  CommitAnalysis append=.session
+  AnalyzeFrames profile="Broadband"
+  CommitAnalysis append=.reject
 EndFor
 ```
 
@@ -774,9 +774,9 @@ ListKeywords
 
 #### `AnalyzeFrames`
 
-Computes five quality metrics for loaded frames (FWHM, eccentricity, star
-count, signal weight, background median) and classifies each frame as
-PASS or REJECT using iterative sigma clipping against session statistics.
+Computes four quality metrics for loaded frames (FWHM, eccentricity,
+star count, background median) and classifies each frame as PASS or
+REJECT using iterative sigma clipping against session statistics.
 
 ```
 AnalyzeFrames [profile=<string>] [scope=all|current] [threshold=<float>] [saturation=<float>]

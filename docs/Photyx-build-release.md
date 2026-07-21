@@ -115,6 +115,59 @@ CI runner — see the Intel note below). This is also why the GitHub
 Actions workflow in §4 uses a build matrix instead of one job
 cross-compiling everything.
 
+### cfitsio linking: static on Linux/macOS, dynamic on Windows
+
+Photyx links `cfitsio` through `fitsio-sys`. Which linking strategy
+applies depends on platform, and this is enforced automatically via
+per-platform dependency tables in `src-tauri/Cargo.toml` — you don't
+need to do anything differently locally, but it's worth understanding
+if a build ever behaves unexpectedly.
+
+**Linux and macOS: static.** `fitsio-sys`'s `fitsio-src` + `src-cmake`
+features compile `cfitsio` from source as part of the Rust build, so
+the resulting binary has no runtime dependency on a system-installed
+`libcfitsio`. This was adopted specifically to solve a cross-Ubuntu-
+release SONAME mismatch (`libcfitsio9` on 22.04 vs `libcfitsio10t64`
+on 24.04/26.04) that made Tauri's `.deb` bundler's auto-declared
+dependencies wrong depending on which Ubuntu release built the package
+vs which one ran it — Tauri's `.deb` bundler only ever auto-declares
+webkit2gtk/gtk3/appindicator, never third-party libs like `cfitsio`,
+so this had to be solved at the linking level rather than the bundler
+level. Static linking also incidentally would have avoided the Windows
+pkg-config gap and the macOS Intel cross-compile issue, had it been
+tried on those platforms first — though Windows can't currently use it
+(see below).
+
+**Windows: dynamic (still).** CFITSIO's CMake build hardcodes
+`-DUSE_PTHREADS=ON` but doesn't supply the `CMAKE_INCLUDE_PATH`/
+`CMAKE_LIBRARY_PATH` pointing at a `pthreads-win32` install that its
+own `README.win` says is required — MSVC has no native `pthread.h`.
+Closing that gap would mean going deeper into `fitsio-sys` internals
+than was worthwhile so far, so Windows keeps the vcpkg + pkg-config
+dynamic-linking recipe described in the Windows section below.
+
+```toml
+# src-tauri/Cargo.toml
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+fitsio-sys = { version = "...", features = ["fitsio-src", "src-cmake"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+fitsio-sys = "..."   # dynamic, via vcpkg + pkg-config — see Windows section below
+```
+
+**Known gotcha: bzip2 duplicate symbols.** Statically-built `cfitsio`
+bundles its own bzip2 stub. The `zip` crate's default feature set pulls
+in `bzip2-sys`, and linking both together produces a duplicate-symbol
+error at link time (`bz_internal_error`). Fixed by disabling `zip`'s
+`bzip2` feature specifically:
+
+```toml
+zip = { version = "...", default-features = false, features = [...] }  # no "bzip2"
+```
+
+(Confirmed via grep that Photyx's own code has zero bzip2-zip usage, so
+disabling the feature is safe.)
+
 ### Linux (primary dev platform)
 
 System packages (Ubuntu/Debian; adjust for your distro):
@@ -123,13 +176,23 @@ System packages (Ubuntu/Debian; adjust for your distro):
 sudo apt-get update
 sudo apt-get install -y \
   libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
-  patchelf xdg-utils build-essential \
-  libcfitsio-dev
+  patchelf xdg-utils build-essential
 ```
 
 Note: some newer Debian/Ubuntu releases have renamed
 `libappindicator3-dev` to `libayatana-appindicator3-dev` — if the
 package isn't found, try that name instead.
+
+**No `libcfitsio-dev` needed.** As of the static-linking switch (see
+§2's cfitsio linking section above), `fitsio-sys` compiles `cfitsio`
+from source via CMake as part of the Rust build, so there's no system
+`cfitsio` package to install — the workspace build handles it.
+`build-essential` supplies the C compiler CMake needs; **unconfirmed
+whether a system `cmake` package is also required** on a clean
+machine — CI runners ship it preinstalled, so this hasn't been
+directly tested on a bare local machine. If a fresh Linux build fails
+looking for `cmake`, `sudo apt-get install -y cmake` is the likely
+fix.
 
 ```bash
 npm run tauri build
@@ -185,8 +248,10 @@ attempted here.
 
 ### macOS
 
-Needs: Xcode Command Line Tools, and `cfitsio` (via Homebrew: `brew
-install cfitsio`, or vcpkg).
+Needs: Xcode Command Line Tools. `cfitsio` itself no longer needs to be
+installed via Homebrew or vcpkg — as of the static-linking switch (see
+§2's cfitsio linking section above), `fitsio-sys` compiles `cfitsio`
+from source via CMake as part of the Rust build.
 
 ```bash
 npm run tauri build
@@ -352,13 +417,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: install Linux dependencies
+            - name: install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
-            patchelf xdg-utils libcfitsio-dev
+            patchelf xdg-utils
+        # No libcfitsio-dev here — cfitsio is statically linked from
+        # source (fitsio-src + src-cmake, see §2's cfitsio linking
+        # section) specifically to avoid a cross-Ubuntu-release SONAME
+        # mismatch (libcfitsio9 on 22.04 vs libcfitsio10t64 on 24.04/
+        # 26.04) that made the .deb bundler's auto-declared dependencies
+        # wrong depending on which release built vs ran the package.
         # No separate rpm/rpmbuild package needed — tauri-bundler builds
         # RPM natively in Rust. Confirmed working in CI, same run time as
         # the .deb. (One upstream caveat exists — tauri-apps/tauri#11478,
@@ -376,9 +447,10 @@ jobs:
         # Confirmed working in CI. See §2's Windows section for the full
         # reasoning (fitsio-sys has no native vcpkg-rs support on MSVC).
 
-      - name: install macOS dependencies (cfitsio via Homebrew)
-        if: matrix.platform == 'macos-latest' || matrix.platform == 'macos-15-intel'
-        run: brew install cfitsio
+      # macOS Homebrew cfitsio step removed — cfitsio is statically
+      # built from source for macOS/Linux now (fitsio-src + src-cmake,
+      # see §2's cfitsio linking section); no brew-installed library
+      # is needed at build time.
 
       - name: setup node
         uses: actions/setup-node@v6
