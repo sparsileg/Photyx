@@ -1,8 +1,8 @@
 # Photyx — Build & Release Reference
 
 Living reference for building Photyx locally, producing installers for
-Linux/Windows/macOS, and shipping releases (manually or via
-CI). Update this doc whenever the build setup changes.
+Linux/Windows/macOS, and shipping releases (manually or via CI). Update
+this doc whenever the build setup changes.
 
 ---
 
@@ -12,15 +12,15 @@ Photyx is a **Cargo workspace**, not a single crate:
 
 ```
 Photyx/                     <- workspace root Cargo.toml (members list only)
-├── Cargo.toml              <- [workspace], no [package], no version
-├── package.json            <- npm scripts, its own "version" field
-├── crates/photyx-xisf/     <- workspace member
-├── src-tauri/
-│   ├── Cargo.toml          <- [package] version — THE version, since Issue 161
-│   ├── tauri.conf.json     <- no "version" field (falls back to Cargo.toml)
-│   └── src/
-├── src-svelte/              <- SvelteKit frontend
-└── build/                   <- frontend build output (adapter-static), gitignored
+    Cargo.toml              <- [workspace], no [package], no version
+    package.json            <- npm scripts, its own "version" field
+    crates/photyx-xisf/     <- workspace member
+    src-tauri/
+        Cargo.toml          <- [package] version — THE version, since Issue 161
+        tauri.conf.json     <- no "version" field (falls back to Cargo.toml)
+        src/
+    src-svelte/              <- SvelteKit frontend
+    build/                   <- frontend build output (adapter-static), gitignored
 ```
 
 **Important consequence:** because this is a workspace, `cargo
@@ -33,7 +33,7 @@ and any script that looks for the binary.
 ### Three version numbers that must not be confused
 
 | File | Field | Who reads it |
-|---|---|---|
+| --------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src-tauri/Cargo.toml` | `[package] version` | **Source of truth.** Cargo's own build output, `getVersion()` (via Tauri's fallback), `tauri-action`'s `__VERSION__` substitution |
 | `src-tauri/tauri.conf.json` | `version` | Deliberately **absent** (Issue 161) so it falls back to Cargo.toml. Do not re-add it unless you want to fork the two apart again |
 | `package.json` | `version` | npm/Node tooling only (e.g. what `npm run tauri build`'s banner prints). Currently **not kept in sync** — cosmetic drift, harmless, but don't be surprised if it disagrees with the other two |
@@ -46,6 +46,13 @@ instead:
 - `0.11.0-rc.1` — release candidate
 - `0.11.0` — stable
 
+**Windows MSI caveat (see §2):** the Windows Installer format only
+accepts a *numeric-only* prerelease identifier (e.g. `0.11.0-1` would
+be legal for MSI; `0.11.0-beta.1` is not, since `"beta"` isn't a
+number). Rather than warp the version scheme for one installer format,
+Photyx has dropped MSI entirely and ships NSIS only on Windows — see
+§2's Windows section for the full reasoning.
+
 ---
 
 ## 1. Local development builds (no bundling)
@@ -53,29 +60,35 @@ instead:
 For day-to-day iteration you almost never need a bundled installer.
 
 **Hot-reload dev mode** (frontend + backend, auto-rebuild on save):
+
 ```bash
 npm run tauri dev
 ```
 
-**Rust-only correctness check** (fastest signal, no codegen/link, no bundling):
+**Rust-only correctness check** (fastest signal, no codegen/link, no
+bundling):
+
 ```bash
 cd src-tauri && cargo check && cd ..
 ```
-This is what you've been using between deltas in this chat — it's the
-right tool for "did I break the syntax," and it's much faster than a full
-build because it skips code generation and linking entirely.
 
-**Full compiled binary, no installer** — what you're already doing:
+This is the right tool for "did I break the syntax" — much faster than
+a full build because it skips code generation and linking entirely.
+
+**Full compiled binary, no installer:**
+
 ```bash
 npm run tauri build -- --no-bundle
 ./target/release/photyx
 ```
-This runs the real `tauri build` pipeline (frontend build → Rust release
-compile) but skips the platform-packaging step (`.deb`/`.msi`/`.dmg`/etc.),
-so you get a runnable binary fast without producing installers you don't
-need yet.
+
+This runs the real `tauri build` pipeline (frontend build, Rust
+release compile) but skips the platform-packaging step (`.deb`/`.exe`/
+`.dmg`/etc.), so you get a runnable binary fast without producing
+installers you don't need yet.
 
 **Run the test suite** (e.g. the Issue 159 unit tests):
+
 ```bash
 cd src-tauri && cargo test && cd ..
 # or a single module:
@@ -86,22 +99,26 @@ cargo test analyze_frames
 
 ## 2. Platform-specific bundled builds
 
-`tauri.conf.json`'s `bundle.targets` is already set to `"all"`, so a
-plain `npm run tauri build` on any given platform produces every
-installer type that platform supports — no extra flags needed once the
-platform's own toolchain is installed.
+`tauri.conf.json`'s `bundle.targets` is an explicit list —
+`["deb", "rpm", "appimage", "nsis", "app", "dmg"]` — rather than
+`"all"` (see the Windows section below for why `msi` was dropped). A
+plain `npm run tauri build` on any given platform still produces every
+installer type *that list* supports for that platform, with no extra
+flags needed once the platform's own toolchain is installed.
 
 **You cannot meaningfully cross-compile Windows or macOS bundles from
 Linux for this app.** Photyx links native C libraries (`cfitsio` via
 `fitsio-sys`) and Tauri bundles are platform-native installers — both
 defeat casual cross-compilation. Build Windows on a Windows machine
-(or `windows-latest` CI runner) and macOS on a Mac (or `macos-latest`
-runner).  This is also why the GitHub Actions workflow in §4 uses a
-build matrix instead of one Linux job cross-compiling everything.
+(or `windows-latest` CI runner) and macOS on a Mac (or a native-arch
+CI runner — see the Intel note below). This is also why the GitHub
+Actions workflow in §4 uses a build matrix instead of one job
+cross-compiling everything.
 
 ### Linux (primary dev platform)
 
 System packages (Ubuntu/Debian; adjust for your distro):
+
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
@@ -109,17 +126,20 @@ sudo apt-get install -y \
   patchelf xdg-utils build-essential \
   libcfitsio-dev
 ```
+
 Note: some newer Debian/Ubuntu releases have renamed
-`libappindicator3-dev` to `libayatana-appindicator3-dev` — if the package
-isn't found, try that name instead.
+`libappindicator3-dev` to `libayatana-appindicator3-dev` — if the
+package isn't found, try that name instead.
 
 ```bash
 npm run tauri build
 ```
-Produces (per `bundle.targets = "all"`) a `.deb` and an `.AppImage` under
-`src-tauri/target/release/bundle/` — remember, since this is a workspace,
-double-check whether your Cargo config puts this at the workspace root
-instead (`target/release/bundle/...`), matching §0 above.
+
+Produces a `.deb`, an `.rpm`, and an `.AppImage` under
+`target/release/bundle/` (workspace root — see §0). RPM bundling is
+native to `tauri-bundler` (no system `rpmbuild` needed); confirmed
+working in CI as of this writing, taking no extra time over the `.deb`
+build.
 
 ### Windows
 
@@ -129,15 +149,39 @@ vcpkg — matching your existing per-session vcpkg setup (`J:\vcpkg`).
 ```powershell
 # One-time (or per session, per your existing notes):
 vcpkg install cfitsio
-# Ensure VCPKG_ROOT and any fitsio-sys-specific env vars are set exactly
-# as in your current working local setup before running the build —
-# confirm the exact variable names against what already works for you
-# locally, since this wasn't independently re-verified while writing this doc.
 
 npm run tauri build
 ```
-Produces an `.msi` and/or NSIS `.exe` installer under
-`target/release/bundle/`.
+
+Produces an **NSIS `.exe` installer only** under
+`target/release/bundle/nsis/`.
+
+**Why not MSI too:** `fitsio-sys`'s build script only ever probes via
+the `pkg-config` binary — it has no native vcpkg-rs integration on
+MSVC (an open, unimplemented upstream request:
+github.com/simonrw/rust-fitsio/issues/178). So a working Windows build
+needs `pkg-config.exe` present and pointed at wherever vcpkg generated
+`cfitsio`'s `.pc` file — confirmed in CI via Chocolatey's
+`pkgconfiglite` package plus an explicit `PKG_CONFIG_PATH`:
+
+```powershell
+choco install pkgconfiglite -y
+$env:PKG_CONFIG_PATH = "C:\vcpkg\installed\x64-windows\lib\pkgconfig"
+```
+
+Separately, WiX (Tauri's MSI bundler) only accepts a *numeric-only*
+prerelease identifier in the version string — `0.11.0-beta.1` fails
+with `optional pre-release identifier in app version must be
+numeric-only`. Rather than change the version scheme project-wide just
+for one Windows installer format, `tauri.conf.json`'s `bundle.targets`
+drops `msi` entirely (§0). NSIS has no such restriction and is a
+common, legitimate installer format on its own.
+
+If you want MSI back later, the tradeoff is real: either switch the
+whole project's prerelease scheme to numeric-only tags (`0.11.0-1`
+instead of `0.11.0-beta.1`, losing the readable label), or special-case
+the version string passed to the MSI bundler specifically — not
+attempted here.
 
 ### macOS
 
@@ -147,16 +191,28 @@ install cfitsio`, or vcpkg).
 ```bash
 npm run tauri build
 ```
+
 Produces a `.app` bundle and `.dmg` under `target/release/bundle/`.
 
 **Apple Silicon vs Intel:** by default this builds for the host
 architecture only. To build both and ship separately (matching what
-the GitHub Actions matrix in §4 does): ```bash npm run tauri build --
---target aarch64-apple-darwin # Apple Silicon npm run tauri build --
---target x86_64-apple-darwin # Intel ``` There's no universal-binary
-flag built into `tauri build` — the two targets ship as separate
-`.dmg`s, which is also what the official Tauri CI example does (see
-§4).
+the GitHub Actions matrix in §4 does):
+
+```bash
+npm run tauri build -- --target aarch64-apple-darwin   # Apple Silicon
+npm run tauri build -- --target x86_64-apple-darwin     # Intel
+```
+
+**Important:** the second command above only works if you're actually
+*on* Intel hardware (or a real Intel VM). Cross-targeting x86_64 from
+an Apple Silicon Mac is a genuine cross-compile for `fitsio-sys`'s C
+dependency — Homebrew's `cfitsio` is architecture-native to whatever
+machine installed it, so `pkg-config` correctly refuses to link an
+arm64 library into an x86_64 binary. This bit the CI workflow directly
+(see §4's `macos-15-intel` matrix entry) and applies identically to a
+local build attempt. There's no universal-binary flag built into
+`tauri build` either way — the two targets always ship as separate
+`.dmg`s.
 
 ---
 
@@ -169,7 +225,7 @@ already have.
 ### Tag/version conventions
 
 - Stable: `v0.11.0` (tag) ↔ `0.11.0` (Cargo.toml)
-- Beta: `v0.11.0-beta.1` ↔ `0.11.0-beta.1`
+- Beta: `${TAG_NAME}` ↔ `0.11.0-beta.1`
 - Release candidate: `v0.11.0-rc.1` ↔ `0.11.0-rc.1`
 
 Keep the tag and `src-tauri/Cargo.toml`'s version in agreement — bump
@@ -178,6 +234,9 @@ Cargo.toml first, commit, *then* tag.
 ### Creating a release manually
 
 ```bash
+# Must execute from the repo root
+cd ~/github/Photyx
+
 # Bump the version first
 #   edit src-tauri/Cargo.toml -> version = "0.11.0-beta.1"
 git add src-tauri/Cargo.toml
@@ -185,21 +244,22 @@ git commit -m "Bump version to 0.11.0-beta.1"
 git push
 
 # Tag + release in one step (gh creates the tag if it doesn't exist)
-gh release create v0.11.0-beta.1 \
-  --title "v0.11.0-beta.1" \
+gh release create ${TAG_NAME} \
+  --title "${TAG_NAME}" \
   --notes "Beta build for external testing" \
   --prerelease
 ```
 
 `--prerelease` is what marks it as beta/RC rather than a stable
 "Latest release" — do this for every beta and RC build. Drop the flag
-only for an actual stable release.
+only for an actual stable release (see §5).
 
-**Attaching built installers** so testers can download and run directly —
-append file paths after the flags:
+**Attaching built installers** so testers can download and run
+directly — append file paths after the flags:
+
 ```bash
-gh release create v0.11.0-beta.1 \
-  --title "v0.11.0-beta.1" \
+gh release create ${TAG_NAME} \
+  --title "${TAG_NAME}" \
   --notes "Beta build for external testing" \
   --prerelease \
   target/release/bundle/deb/photyx_0.11.0-beta.1_amd64.deb \
@@ -208,16 +268,18 @@ gh release create v0.11.0-beta.1 \
 
 **Auto-generated notes** instead of writing them by hand (summarizes
 merged PRs/commits since the last tag):
+
 ```bash
-gh release create v0.11.0-beta.1 --prerelease --generate-notes
+gh release create ${TAG_NAME} --prerelease --generate-notes
 ```
 
 **Draft first, publish later** (useful if you want to review before
 testers see it):
+
 ```bash
-gh release create v0.11.0-beta.1 --prerelease --draft --notes "..."
+gh release create ${TAG_NAME} --prerelease --draft --notes "..."
 # later, once ready:
-gh release edit v0.11.0-beta.1 --draft=false
+gh release edit ${TAG_NAME} --draft=false
 ```
 
 **Web UI equivalent**, if you'd rather click through: repo →
@@ -244,10 +306,10 @@ automatically.
 
 ### Workflow file
 
-Save as `.github/workflows/release.yml`. Adjust the trigger to match
-how you want to cut releases — this example triggers on pushing a
-version tag (`v0.11.0`, `v0.11.0-beta.1`, etc.), which fits the
-tagging convention in §3:
+Save as `.github/workflows/release.yml` in your repository root.
+Adjust the trigger to match how you want to cut releases — this
+example triggers on pushing a version tag (`v0.11.0`,
+`${TAG_NAME}`, etc.), which fits the tagging convention in §3:
 
 ```yaml
 name: 'release'
@@ -268,8 +330,18 @@ jobs:
         include:
           - platform: 'macos-latest'   # Apple Silicon
             args: '--target aarch64-apple-darwin'
-          - platform: 'macos-latest'   # Intel
-            args: '--target x86_64-apple-darwin'
+          - platform: 'macos-15-intel'   # Intel — native Intel hardware, NOT a
+                                          # cross-compile from arm64. Homebrew's
+                                          # cfitsio is architecture-native to
+                                          # whatever runner installs it, so
+                                          # cross-targeting x86_64 from an arm64
+                                          # macos-latest runner fails pkg-config's
+                                          # cross-compile check. GitHub retired
+                                          # the old Intel runners (macos-13) in
+                                          # Dec 2025; macos-15-intel is the
+                                          # current replacement, planned to be
+                                          # retired itself around Aug 2027.
+            args: ''
           - platform: 'ubuntu-22.04'
             args: ''
           - platform: 'windows-latest'
@@ -287,22 +359,25 @@ jobs:
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
             patchelf xdg-utils libcfitsio-dev
+        # No separate rpm/rpmbuild package needed — tauri-bundler builds
+        # RPM natively in Rust. Confirmed working in CI, same run time as
+        # the .deb. (One upstream caveat exists — tauri-apps/tauri#11478,
+        # RPM bundling occasionally hanging on some Ubuntu 22.04 setups —
+        # not observed here, but worth knowing if a Linux job runs long.)
 
       - name: install Windows dependencies (vcpkg + cfitsio)
         if: matrix.platform == 'windows-latest'
         run: |
           vcpkg install cfitsio
+          choco install pkgconfiglite -y
           echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          echo "PKG_CONFIG_PATH=C:\vcpkg\installed\x64-windows\lib\pkgconfig" >> $env:GITHUB_ENV
         shell: pwsh
-        # NOTE: confirm this matches whatever env vars fitsio-sys actually
-        # needs on your machine (see §2 Windows section) — GitHub's
-        # windows-latest runners ship vcpkg pre-installed at
-        # $env:VCPKG_INSTALLATION_ROOT, which is a good starting point,
-        # but verify against your known-working local setup before
-        # trusting this in CI.
+        # Confirmed working in CI. See §2's Windows section for the full
+        # reasoning (fitsio-sys has no native vcpkg-rs support on MSVC).
 
       - name: install macOS dependencies (cfitsio via Homebrew)
-        if: matrix.platform == 'macos-latest'
+        if: matrix.platform == 'macos-latest' || matrix.platform == 'macos-15-intel'
         run: brew install cfitsio
 
       - name: setup node
@@ -314,7 +389,9 @@ jobs:
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          # x86_64-apple-darwin no longer needs cross-target installation
+          # here — macos-15-intel builds it natively.
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -335,8 +412,19 @@ jobs:
           releaseName: 'Photyx v__VERSION__'
           releaseBody: 'See the assets below to download and install this version.'
           releaseDraft: true
+          # github.ref_name is the pushed tag on a tag-push trigger (e.g.
+          # ${TAG_NAME}), but on a manual `gh workflow run` /
+          # workflow_dispatch run there is no tag ref — ref_name falls
+          # back to the branch name (e.g. "main"), so this check silently
+          # never matches "-beta"/"-rc" on manual runs. Trigger real
+          # releases via tag push so this evaluates correctly; treat
+          # workflow_dispatch as build-testing only, and double-check the
+          # resulting release's prerelease flag by hand if you do use it.
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
           args: ${{ matrix.args }}
+
+      # See §5 for the "fixed-name asset" steps that make stable
+      # "Latest version" download URLs possible per OS.
 ```
 
 Notes specific to this workflow:
@@ -346,33 +434,102 @@ Notes specific to this workflow:
   removed — Issue 161's fallback behavior applies here too, not just
   locally).
 - **`prerelease` is computed from the tag name** — pushing
-  `v0.11.0-beta.1` or `v0.11.0-rc.1` automatically marks the GitHub
-  release as a pre-release; a plain `v0.11.0` doesn't. Adjust the
-  `contains(...)`  condition if you land on a different naming scheme.
+  `${TAG_NAME}` or `v0.11.0-rc.1` automatically marks the GitHub
+  release as a pre-release; a plain `v0.11.0` doesn't. See §5 for how
+  this interacts with promoting a beta to a stable release.
 - **`releaseDraft: true`** — the workflow creates a draft release
   rather than publishing immediately, so you can review before testers
-  see it (`gh release edit <tag> --draft=false` to publish, matching
-  §3).
+  see it (`gh release edit <tag> --draft=false` to publish).
 - **Linux runner pinned to `ubuntu-22.04`**, not `ubuntu-latest` —
-  this matches current official Tauri guidance and avoids surprises
-  when GitHub rolls `ubuntu-latest` forward to a new default image
-  with different package names/versions available.
+  matches current official Tauri guidance and avoids surprises when
+  GitHub rolls `ubuntu-latest` forward to a new default image with
+  different package names/versions available.
 
 ### Triggering it
 
 ```bash
-# Bump version, commit, then:
-git tag v0.11.0-beta.1
-git push origin v0.11.0-beta.1
+# Bump version in Cargo.toml, commit, then:
+git tag ${TAG_NAME}
+git push origin ${TAG_NAME}
 ```
+
 The workflow picks up the tag push automatically and does the rest.
+
+If you have already created the tag and want to manually trigger the
+action:
+
+```bash
+gh workflow run release.yml
+```
+
+### Iterating using the same tag
+
+Sometimes there are errors on builds and you don't want to create a
+new tag simply because of a configuration issue in `release.yml`, or
+some other similar type of error. These are the steps to delete the
+existing tag and restart the whole process using the same tag (version
+number, essentially).
+
+```bash
+gh release list
+# note the tag name
+
+# delete remote tag
+gh release delete ${TAG_NAME} --yes --cleanup-tag
+
+# delete local tag
+git tag -d ${TAG_NAME}
+
+# verify
+gh release list
+```
+
+If that doesn't work, go one level deeper and delete by ID:
+
+```bash
+gh api repos/${REPO_OWNER}/${REPO_NAME}/releases --jq '.[] | select(.tag_name=="'"${TAG_NAME}"'") | {id, name, tag_name, draft, prerelease}'
+# note the numeric ids — there can be more than one release sharing a
+# tag_name if a draft was created separately from an already-published
+# release under the same name; delete every id that comes back
+
+gh api -X DELETE repos/${REPO_OWNER}/${REPO_NAME}/releases/<id_1>
+gh api -X DELETE repos/${REPO_OWNER}/${REPO_NAME}/releases/<id_2>
+
+# clear the tag itself — both remote and local. These are independent:
+# git tag -d only ever affects your local clone, never GitHub.
+git push origin :refs/tags/${TAG_NAME}
+git tag -d ${TAG_NAME}
+
+# verify BEFORE re-tagging — both must come back empty
+gh release list
+git ls-remote --tags origin | grep ${TAG_NAME}
+
+# re-tag from the current, correct commit and push for a fresh run
+git tag ${TAG_NAME}
+git push origin ${TAG_NAME}
+
+# confirm the tag actually points where you think before waiting on the run
+git rev-parse ${TAG_NAME}
+git rev-parse main
+```
+
+That last pair of commands is worth treating as mandatory, not
+optional — a tag can silently point at a stale commit even after
+"successful"-looking delete/recreate steps if any one of them was run
+out of order or against a local ref that hadn't been refreshed. Confirm
+the hashes actually match before assuming a re-run will use your latest
+fix.
 
 ### First-time setup gotcha
 
 The workflow's `GITHUB_TOKEN` only has **read** permissions by default
-— you'll get a "Resource not accessible by integration" error
+— you'll get a `Resource not accessible by integration` error
 otherwise. Fix once, repo-wide: **Settings → Actions → General →
-Workflow permissions → Read and write permissions**.
+Workflow permissions → Read and write permissions**. Note that a
+`GITHUB_TOKEN` is issued fresh per run using whatever this setting was
+*at the moment the run started* — if a run's failure looks like this
+error despite the setting already being correct, check whether that
+particular run actually started before you saved the setting.
 
 ### If you outgrow this later
 
@@ -387,17 +544,226 @@ Workflow permissions → Read and write permissions**.
   [Windows](https://v2.tauri.app/distribute/sign/windows/) signing if
   this becomes worth the overhead once beta testing wraps up.
 
+### Downloading a release
+
+**Via `gh` CLI** (downloads every asset from a release into your current directory):
+
+```bash
+gh release download ${TAG_NAME}
+```
+
+Or just one file, by pattern:
+
+```bash
+gh release download ${TAG_NAME} --pattern "*.deb"
+```
+
+**Via browser** — repo → **Releases** → open the release → click the
+asset filename under "Assets" to download it directly.
+
+**Via a direct link**, if you know the exact asset filename (useful
+for scripting, or testing on a different machine):
+
+```bash
+curl -LO https://github.com/sparsileg/Photyx/releases/download/v0.11.0-beta.1/photyx_0.11.0-beta.1_amd64.deb
+```
+
+Note this is `/releases/download/<tag>/<file>` — a *specific* version —
+which is different from the `/releases/latest/download/<file>` URLs
+set up in §5b. The `latest` form only resolves once a genuinely
+stable, non-prerelease, non-draft release has been published; drafts
+and prereleases are excluded from "latest" by design (see §5b).
+
+**Installing what you downloaded** (Linux `.deb` example):
+
+```bash
+sudo apt install ./photyx_0.11.0-beta.1_amd64.deb
+```
+
+---
+
+## 5. Promoting a pre-release to a full release
+
+### 5a. Beta/RC → stable
+
+The idiomatic path is to cut a **new** release under a stable version
+number, not to relabel an existing beta build as stable. Reasons:
+
+- A version string like `0.11.0-beta.3` is explicitly *not* the same
+  thing as `0.11.0` in SemVer, and tools/testers that check for a
+  prerelease suffix will keep treating it as one regardless of any
+  flag you flip on GitHub's side.
+- Relabeling an existing beta's binaries as the stable release means
+  the exact bits your beta testers exercised are no longer
+  traceable back to a specific beta tag — worth avoiding once you
+  actually care about that history.
+
+**Steps:**
+
+```bash
+cd ~/github/Photyx
+
+# 1. Bump the version, dropping the prerelease suffix entirely
+#    edit src-tauri/Cargo.toml -> version = "0.11.0"
+git add src-tauri/Cargo.toml
+git commit -m "Bump version to 0.11.0"
+git push
+
+# 2. Tag and push — no "-beta"/"-rc" in the tag this time
+git tag v0.11.0
+git push origin v0.11.0
+```
+
+The existing `release.yml` workflow handles the rest correctly with no
+changes needed: `prerelease: ${{ contains(github.ref_name, '-beta') ||
+contains(github.ref_name, '-rc') }}` evaluates to `false` for a plain
+`v0.11.0` tag, so the resulting release is created as a proper stable
+release (still as a draft, per `releaseDraft: true`).
+
+**3. Publish it** — a draft is never visible to the public or reachable
+via `/releases/latest` (see 5b) until published:
+
+```bash
+gh release edit v0.11.0 --draft=false
+```
+
+Once published, non-draft, and non-prerelease, this release
+automatically becomes GitHub's "Latest release" (unless an even more
+recent non-draft/non-prerelease release already exists — see 5b for
+how to override this explicitly if needed).
+
+**Discouraged shortcut, if you ever want it anyway:** you can directly
+flip an existing beta release to non-prerelease without cutting a new
+version, but this keeps the `-beta.N` string in both the tag and the
+version metadata baked into the binaries, which looks confusing to
+anyone downloading it later:
+
+```bash
+gh release edit v0.11.0-beta.3 --prerelease=false --draft=false --latest
+```
+
+Not recommended as your normal workflow — included here only because
+it's possible, and it's better to know that explicitly than discover it
+by accident.
+
+### 5b. Stable "Latest version" download URLs per OS
+
+GitHub provides a special, permanently-stable URL pattern for release
+assets:
+
+```
+https://github.com/<owner>/<repo>/releases/latest/download/<exact-filename>
+```
+
+This always resolves to whatever file with that *exact* filename
+exists on GitHub's current "latest" release — defined as the most
+recent published release that is **not** a draft and **not** marked
+prerelease (or whatever release you've explicitly pinned with
+`gh release edit <tag> --latest`). Critically, **this deliberately
+excludes your betas** — since every beta/RC in this workflow is both
+`draft: true` initially and always `prerelease: true`, none of them
+can ever become "latest," even after publishing. That's the correct,
+intended behavior: you don't want a stable-looking permanent URL
+quietly starting to serve beta binaries.
+
+**The catch:** this URL pattern requires an *exact* filename match,
+but Tauri's bundlers name every artifact with the version baked in
+(e.g. `photyx_0.11.0_amd64.deb`), so the filename changes on every
+release. To get a genuinely non-changing per-OS URL, the workflow needs
+to additionally publish a second copy of each artifact under a fixed,
+version-less filename.
+
+Add this as additional steps at the end of the `publish-tauri` job in
+`release.yml`, after the existing `tauri-apps/tauri-action@v1` step:
+
+```yaml
+      - name: publish fixed-name "latest" asset (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          find target -path "*bundle/deb/*.deb" -exec cp {} photyx-linux-x86_64.deb \;
+          find target -path "*bundle/rpm/*.rpm" -exec cp {} photyx-linux-x86_64.rpm \;
+          find target -path "*bundle/appimage/*.AppImage" -exec cp {} photyx-linux-x86_64.AppImage \;
+          gh release upload ${{ github.ref_name }} \
+            photyx-linux-x86_64.deb photyx-linux-x86_64.rpm photyx-linux-x86_64.AppImage \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: publish fixed-name "latest" asset (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path target -Recurse -Filter *.exe |
+            Where-Object { $_.FullName -like "*bundle*nsis*" } |
+            Select-Object -First 1
+          Copy-Item $exe.FullName photyx-windows-x86_64.exe
+          gh release upload ${{ github.ref_name }} photyx-windows-x86_64.exe --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: publish fixed-name "latest" asset (macOS)
+        if: matrix.platform == 'macos-latest' || matrix.platform == 'macos-15-intel'
+        run: |
+          ARCH_NAME="${{ matrix.platform == 'macos-latest' && 'arm64' || 'x86_64' }}"
+          find target -path "*bundle/dmg/*.dmg" -exec cp {} "photyx-macos-${ARCH_NAME}.dmg" \;
+          gh release upload ${{ github.ref_name }} "photyx-macos-${ARCH_NAME}.dmg" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+Notes on this addition:
+
+- Uses `find`/`Get-ChildItem` with a path/extension match rather than
+  hardcoded version-specific filenames, since the exact filename
+  changes every release and the aarch64 macOS build path differs from
+  the native `macos-15-intel` build path (`target/<triple>/release/...`
+  vs `target/release/...`) — matching by pattern sidesteps needing to
+  special-case that.
+- `--clobber` is required — without it, `gh release upload` refuses to
+  overwrite an asset that already has that filename, which every
+  release after the first would hit.
+- `gh` is pre-installed on all GitHub-hosted runners; `GH_TOKEN` (not
+  `GITHUB_TOKEN` — that's the variable name `gh` itself looks for) is
+  set the same way as `tauri-action`'s own auth.
+- **The Windows NSIS output path/filename pattern here is inferred
+  from Tauri's documented bundle layout, not directly confirmed
+  against a successful build log as of this writing** — verify against
+  the next clean Windows CI run and adjust the `Where-Object` filter if
+  needed.
+- This runs unconditionally on every tagged push, betas included —
+  harmless, since a beta's fixed-name assets just sit inertly on a
+  draft/prerelease release that `/releases/latest` will never resolve
+  to anyway.
+
+Once you've published a real stable release per 5a, these become your
+permanent, never-changing per-OS download links:
+
+```
+https://github.com/sparsileg/Photyx/releases/latest/download/photyx-linux-x86_64.deb
+https://github.com/sparsileg/Photyx/releases/latest/download/photyx-linux-x86_64.rpm
+https://github.com/sparsileg/Photyx/releases/latest/download/photyx-linux-x86_64.AppImage
+https://github.com/sparsileg/Photyx/releases/latest/download/photyx-windows-x86_64.exe
+https://github.com/sparsileg/Photyx/releases/latest/download/photyx-macos-arm64.dmg
+https://github.com/sparsileg/Photyx/releases/latest/download/photyx-macos-x86_64.dmg
+```
+
+Link to these from a website, README, or documentation, and they'll
+always serve whatever your most recent stable release actually is —
+no link updates needed on future releases.
+
 ---
 
 ## Quick reference
 
 | Task | Command |
-|---|---|
+| ------------------------------------- | ------------------------------------------------------ |
 | Hot-reload dev | `npm run tauri dev` |
 | Fast Rust check | `cd src-tauri && cargo check` |
 | Run tests | `cd src-tauri && cargo test` |
 | Local build, no installer | `npm run tauri build -- --no-bundle` |
 | Full bundled build (current platform) | `npm run tauri build` |
 | macOS: specific arch | `npm run tauri build -- --target aarch64-apple-darwin` |
-| Cut a release (manual) | `gh release create vX.Y.Z --prerelease --notes "..."` |
-| Cut a release (CI) | `git tag vX.Y.Z && git push origin vX.Y.Z` |
+| Cut a beta/RC release (manual) | `gh release create vX.Y.Z-beta.N --prerelease --generate-notes` |
+| Cut a beta/RC release (CI) | `git tag vX.Y.Z-beta.N && git push origin vX.Y.Z-beta.N` |
+| Promote beta → stable | Bump Cargo.toml, drop suffix, tag `vX.Y.Z`, push, then `gh release edit vX.Y.Z --draft=false` |
+| Publish a draft release | `gh release edit vTAG --draft=false` |
