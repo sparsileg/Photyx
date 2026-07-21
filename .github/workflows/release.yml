@@ -8,6 +8,14 @@ on:
 
 jobs:
   publish-tauri:
+    # cfitsio is compiled from source on every platform now (fitsio-src +
+    # src-cmake features on the fitsio-sys dependency, Cargo.toml) rather
+    # than relying on a system package — this assumes `cmake` is present
+    # on all three GitHub-hosted runner images. Standard/pre-installed on
+    # GH-hosted runners as of this writing, but not independently
+    # re-verified for this exact workflow — if a build fails looking for
+    # a CMake generator or the cmake binary itself, that's the first
+    # thing to check.
     permissions:
       contents: write
     strategy:
@@ -44,35 +52,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
-            patchelf xdg-utils libcfitsio-dev
-
-      - name: install Windows dependencies (vcpkg + cfitsio)
-        if: matrix.platform == 'windows-latest'
-        run: |
-          vcpkg install cfitsio
-          choco install pkgconfiglite -y
-          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
-          echo "PKG_CONFIG_PATH=C:\vcpkg\installed\x64-windows\lib\pkgconfig" >> $env:GITHUB_ENV
-        shell: pwsh
-        # fitsio-sys only ever probes via the `pkg-config` binary — it has
-        # no native vcpkg-rs integration on MSVC (open upstream request,
-        # never implemented: github.com/simonrw/rust-fitsio/issues/178).
-        # So installing cfitsio via vcpkg is necessary but not sufficient:
-        # windows-latest has no pkg-config.exe by default (confirmed by
-        # the exact failure this replaced: "The pkg-config command could
-        # not be found"), and even with one present, it needs to be
-        # pointed at wherever vcpkg put cfitsio's generated .pc file.
-        # pkgconfiglite is the standard Chocolatey package providing
-        # pkg-config.exe on Windows. PKG_CONFIG_PATH here assumes vcpkg's
-        # classic-mode install layout (<root>\installed\<triplet>\lib\
-        # pkgconfig) — this is the standard location but wasn't directly
-        # confirmed against a successful build; if this still fails,
-        # check the actual path vcpkg used (grep the "Installing... to"
-        # lines in the vcpkg install log for this exact run).
-
-      - name: install macOS dependencies (cfitsio via Homebrew)
-        if: matrix.platform == 'macos-latest' || matrix.platform == 'macos-15-intel'
-        run: brew install cfitsio
+            patchelf xdg-utils
+        # cfitsio is no longer a system dependency — fitsio-sys builds it
+        # from source (fitsio-src + src-cmake features in Cargo.toml),
+        # statically linked into the binary. See Cargo.toml comment.
+        #
+        # No separate rpm/rpmbuild package is needed either. tauri.conf.json's
+        # bundle.targets includes "rpm" alongside "deb" and "appimage" —
+        # tauri-bundler builds RPM natively in Rust, not by shelling out to a
+        # system rpmbuild. This job already produces target/release/bundle/rpm/
+        # with no changes required.
+        #
+        # Known upstream caveat (tauri-apps/tauri#11478, unresolved as of
+        # writing): RPM bundling has been reported to hang indefinitely
+        # on some Ubuntu 22.04 setups after the .deb finishes in seconds.
+        # No confirmed root cause or workaround yet — if a Linux job runs
+        # unusually long compared to the others, check whether it's stuck
+        # specifically on the rpm bundle step before assuming something
+        # else broke.
 
       - name: setup node
         uses: actions/setup-node@v6
@@ -106,5 +103,14 @@ jobs:
           releaseName: 'Photyx v__VERSION__'
           releaseBody: 'See the assets below to download and install this version.'
           releaseDraft: true
+          # NOTE: github.ref_name is the pushed tag on a tag-push trigger
+          # (e.g. v0.11.0-beta.1), but on a manual `gh workflow run` /
+          # workflow_dispatch run there is no tag ref — ref_name falls
+          # back to the branch name (e.g. "main"), so this check silently
+          # never matches "-beta"/"-rc" on manual runs. Trigger real
+          # releases via tag push (git tag vX.Y.Z && git push origin
+          # vX.Y.Z) so this evaluates correctly; use workflow_dispatch
+          # only for build-testing, and double-check the resulting
+          # release's prerelease flag by hand if you do.
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
           args: ${{ matrix.args }}
