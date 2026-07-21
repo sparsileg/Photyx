@@ -103,12 +103,23 @@ jobs:
         # PKG_CONFIG_PATH here assumes vcpkg's classic-mode install
         # layout (\installed\\lib\pkgconfig).
 
-      - name: stage cfitsio.dll for bundling (Windows)
+      - name: stage vcpkg runtime DLLs for bundling (Windows)
         if: matrix.platform == 'windows-latest'
         run: |
           New-Item -ItemType Directory -Force -Path src-tauri\resources | Out-Null
-          Copy-Item "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin\cfitsio.dll" src-tauri\resources\cfitsio.dll
+          Copy-Item "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin\*.dll" src-tauri\resources\
         shell: pwsh
+        # Copies EVERY dll vcpkg produced for this triplet, rather than
+        # hardcoding cfitsio.dll by name. Confirmed necessary: the
+        # cfitsio.dll built on GitHub's windows-latest runner depends on
+        # a dll named z.dll, but a local vcpkg install (different
+        # baseline/version) produces the equivalent zlib dependency named
+        # zlib1.dll instead — same underlying library, different vcpkg
+        # port revision naming it differently. Copying the whole bin/
+        # directory sidesteps needing to track that naming by hand, and
+        # protects against the same drift happening again on a future
+        # runner image update or any other transitive dependency vcpkg
+        # decides to add later (e.g. if cfitsio's feature set changes).
         # Dynamic linking (see the step above) means cfitsio.dll is never
         # part of photyx.exe itself — Tauri has to be told to bundle it as
         # a resource, via src-tauri/tauri.windows.conf.json's
