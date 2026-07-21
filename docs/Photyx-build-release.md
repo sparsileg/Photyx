@@ -387,6 +387,16 @@ on:
 
 jobs:
   publish-tauri:
+    # cfitsio is compiled from source on Linux/macOS (fitsio-src +
+    # src-cmake features on the fitsio-sys dependency, Cargo.toml,
+    # platform-gated) rather than relying on a system package — this
+    # assumes `cmake` is present on the Linux/macOS GitHub-hosted runner
+    # images. Standard/pre-installed as of this writing, but not
+    # independently re-verified for this exact workflow — if a build
+    # fails looking for a CMake generator or the cmake binary itself,
+    # that's the first thing to check. Windows stays on dynamic linking
+    # via vcpkg (see that step's own comment for why) and doesn't need
+    # cmake at all.
     permissions:
       contents: write
     strategy:
@@ -417,24 +427,30 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-            - name: install Linux dependencies
+      - name: install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
             patchelf xdg-utils
-        # No libcfitsio-dev here — cfitsio is statically linked from
-        # source (fitsio-src + src-cmake, see §2's cfitsio linking
-        # section) specifically to avoid a cross-Ubuntu-release SONAME
-        # mismatch (libcfitsio9 on 22.04 vs libcfitsio10t64 on 24.04/
-        # 26.04) that made the .deb bundler's auto-declared dependencies
-        # wrong depending on which release built vs ran the package.
-        # No separate rpm/rpmbuild package needed — tauri-bundler builds
-        # RPM natively in Rust. Confirmed working in CI, same run time as
-        # the .deb. (One upstream caveat exists — tauri-apps/tauri#11478,
-        # RPM bundling occasionally hanging on some Ubuntu 22.04 setups —
-        # not observed here, but worth knowing if a Linux job runs long.)
+        # cfitsio is no longer a system dependency — fitsio-sys builds it
+        # from source (fitsio-src + src-cmake features in Cargo.toml),
+        # statically linked into the binary. See Cargo.toml comment.
+        #
+        # No separate rpm/rpmbuild package is needed either. tauri.conf.json's
+        # bundle.targets includes "rpm" alongside "deb" and "appimage" —
+        # tauri-bundler builds RPM natively in Rust, not by shelling out to a
+        # system rpmbuild. This job already produces target/release/bundle/rpm/
+        # with no changes required.
+        #
+        # Known upstream caveat (tauri-apps/tauri#11478, unresolved as of
+        # writing): RPM bundling has been reported to hang indefinitely
+        # on some Ubuntu 22.04 setups after the .deb finishes in seconds.
+        # No confirmed root cause or workaround yet — if a Linux job runs
+        # unusually long compared to the others, check whether it's stuck
+        # specifically on the rpm bundle step before assuming something
+        # else broke.
 
       - name: install Windows dependencies (vcpkg + cfitsio)
         if: matrix.platform == 'windows-latest'
@@ -444,13 +460,51 @@ jobs:
           echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
           echo "PKG_CONFIG_PATH=C:\vcpkg\installed\x64-windows\lib\pkgconfig" >> $env:GITHUB_ENV
         shell: pwsh
-        # Confirmed working in CI. See §2's Windows section for the full
-        # reasoning (fitsio-sys has no native vcpkg-rs support on MSVC).
+        # Windows stays on dynamic linking (see Cargo.toml's fitsio-sys
+        # target-specific sections) — the fitsio-src+src-cmake static
+        # build fails on MSVC because CFITSIO's CMake build requires an
+        # external pthreads-win32 install (CMAKE_INCLUDE_PATH/
+        # CMAKE_LIBRARY_PATH pointing at it) that fitsio-sys's build.rs
+        # never supplies, and that gap wasn't resolved. This exact
+        # vcpkg+pkgconfiglite recipe is confirmed working — it got all
+        # the way to a built photyx.exe before failing at MSI bundling
+        # over the non-numeric prerelease version string, a separate,
+        # already-fixed issue (bundle.targets dropped msi).
+        #
+        # fitsio-sys only ever probes via the `pkg-config` binary — it has
+        # no native vcpkg-rs integration on MSVC (open upstream request,
+        # never implemented: github.com/simonrw/rust-fitsio/issues/178).
+        # So installing cfitsio via vcpkg is necessary but not sufficient:
+        # windows-latest has no pkg-config.exe by default, and even with
+        # one present, it needs to be pointed at wherever vcpkg put
+        # cfitsio's generated .pc file. pkgconfiglite is the standard
+        # Chocolatey package providing pkg-config.exe on Windows.
+        # PKG_CONFIG_PATH here assumes vcpkg's classic-mode install
+        # layout (\installed\\lib\pkgconfig).
 
-      # macOS Homebrew cfitsio step removed — cfitsio is statically
-      # built from source for macOS/Linux now (fitsio-src + src-cmake,
-      # see §2's cfitsio linking section); no brew-installed library
-      # is needed at build time.
+      - name: stage cfitsio.dll for bundling (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri\resources | Out-Null
+          Copy-Item "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin\cfitsio.dll" src-tauri\resources\cfitsio.dll
+        shell: pwsh
+        # Dynamic linking (see the step above) means cfitsio.dll is never
+        # part of photyx.exe itself — Tauri has to be told to bundle it as
+        # a resource, via src-tauri/tauri.windows.conf.json's
+        # bundle.resources entry ("resources/cfitsio.dll"), or NSIS ships
+        # only the exe and the app fails at runtime with "cfitsio.dll was
+        # not found". That config expects the file to already exist at
+        # src-tauri/resources/cfitsio.dll by the time tauri-action runs,
+        # which is what this step stages. Uses VCPKG_INSTALLATION_ROOT
+        # (set by the previous step) rather than a hardcoded C:\vcpkg
+        # path, since GitHub's windows-latest runners preinstall vcpkg at
+        # a path stored in that env var, not necessarily C:\vcpkg.
+        #
+        # UNVERIFIED: cfitsio.dll may itself dynamically depend on other
+        # vcpkg-built DLLs (e.g. zlib), which would need the same
+        # staging treatment. Check with a PE dependency tool (e.g.
+        # `dumpbin /dependents` or Dependencies.exe) against the actual
+        # built DLL before assuming this single-file fix is complete.
 
       - name: setup node
         uses: actions/setup-node@v6
@@ -484,19 +538,18 @@ jobs:
           releaseName: 'Photyx v__VERSION__'
           releaseBody: 'See the assets below to download and install this version.'
           releaseDraft: true
-          # github.ref_name is the pushed tag on a tag-push trigger (e.g.
-          # ${TAG_NAME}), but on a manual `gh workflow run` /
+          # NOTE: github.ref_name is the pushed tag on a tag-push trigger
+          # (e.g. v0.11.0-beta.1), but on a manual `gh workflow run` /
           # workflow_dispatch run there is no tag ref — ref_name falls
           # back to the branch name (e.g. "main"), so this check silently
           # never matches "-beta"/"-rc" on manual runs. Trigger real
-          # releases via tag push so this evaluates correctly; treat
-          # workflow_dispatch as build-testing only, and double-check the
-          # resulting release's prerelease flag by hand if you do use it.
+          # releases via tag push (git tag vX.Y.Z && git push origin
+          # vX.Y.Z) so this evaluates correctly; use workflow_dispatch
+          # only for build-testing, and double-check the resulting
+          # release's prerelease flag by hand if you do.
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
           args: ${{ matrix.args }}
 
-      # See §5 for the "fixed-name asset" steps that make stable
-      # "Latest version" download URLs possible per OS.
 ```
 
 Notes specific to this workflow:
@@ -520,7 +573,9 @@ Notes specific to this workflow:
 ### Triggering it
 
 ```bash
-# Bump version in Cargo.toml, commit, then:
+# VERY IMPORTANT!
+# Bump version in Cargo.toml and commit
+
 git tag ${TAG_NAME}
 git push origin ${TAG_NAME}
 ```
@@ -554,6 +609,9 @@ git tag -d ${TAG_NAME}
 
 # verify
 gh release list
+
+# trigger it 
+gh workflow run release.yml
 ```
 
 If that doesn't work, go one level deeper and delete by ID:
