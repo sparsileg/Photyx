@@ -32,11 +32,11 @@ and any script that looks for the binary.
 
 ### Three version numbers that must not be confused
 
-| File | Field | Who reads it |
+| File                        | Field               | Who reads it                                                                                                                                                                                  |
 | --------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src-tauri/Cargo.toml` | `[package] version` | **Source of truth.** Cargo's own build output, `getVersion()` (via Tauri's fallback), `tauri-action`'s `__VERSION__` substitution |
-| `src-tauri/tauri.conf.json` | `version` | Deliberately **absent** (Issue 161) so it falls back to Cargo.toml. Do not re-add it unless you want to fork the two apart again |
-| `package.json` | `version` | npm/Node tooling only (e.g. what `npm run tauri build`'s banner prints). Currently **not kept in sync** — cosmetic drift, harmless, but don't be surprised if it disagrees with the other two |
+| `src-tauri/Cargo.toml`      | `[package] version` | **Source of truth.** Cargo's own build output, `getVersion()` (via Tauri's fallback), `tauri-action`'s `__VERSION__` substitution                                                             |
+| `src-tauri/tauri.conf.json` | `version`           | Deliberately **absent** (Issue 161) so it falls back to Cargo.toml. Do not re-add it unless you want to fork the two apart again                                                              |
+| `package.json`              | `version`           | npm/Node tooling only (e.g. what `npm run tauri build`'s banner prints). Currently **not kept in sync** — cosmetic drift, harmless, but don't be surprised if it disagrees with the other two |
 
 **SemVer only.** Cargo enforces strict SemVer on `[package] version` —
 no bare suffixes like `0.11.0B`. Use a proper prerelease identifier
@@ -246,7 +246,7 @@ git push
 # Tag + release in one step (gh creates the tag if it doesn't exist)
 gh release create ${TAG_NAME} \
   --title "${TAG_NAME}" \
-  --notes "Beta build for external testing" \
+  ----generate-notes \
   --prerelease
 ```
 
@@ -262,8 +262,8 @@ gh release create ${TAG_NAME} \
   --title "${TAG_NAME}" \
   --notes "Beta build for external testing" \
   --prerelease \
-  target/release/bundle/deb/photyx_0.11.0-beta.1_amd64.deb \
-  target/release/bundle/appimage/photyx_0.11.0-beta.1_amd64.AppImage
+  target/release/bundle/deb/photyx_${TAG_NAME}_amd64.deb \
+  target/release/bundle/appimage/photyx_${TAG_NAME}_amd64.AppImage
 ```
 
 **Auto-generated notes** instead of writing them by hand (summarizes
@@ -755,15 +755,15 @@ no link updates needed on future releases.
 
 ## Quick reference
 
-| Task | Command |
-| ------------------------------------- | ------------------------------------------------------ |
-| Hot-reload dev | `npm run tauri dev` |
-| Fast Rust check | `cd src-tauri && cargo check` |
-| Run tests | `cd src-tauri && cargo test` |
-| Local build, no installer | `npm run tauri build -- --no-bundle` |
-| Full bundled build (current platform) | `npm run tauri build` |
-| macOS: specific arch | `npm run tauri build -- --target aarch64-apple-darwin` |
-| Cut a beta/RC release (manual) | `gh release create vX.Y.Z-beta.N --prerelease --generate-notes` |
-| Cut a beta/RC release (CI) | `git tag vX.Y.Z-beta.N && git push origin vX.Y.Z-beta.N` |
-| Promote beta → stable | Bump Cargo.toml, drop suffix, tag `vX.Y.Z`, push, then `gh release edit vX.Y.Z --draft=false` |
-| Publish a draft release | `gh release edit vTAG --draft=false` |
+| Task                                  | Command                                                                                       |
+| ------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Hot-reload dev                        | `npm run tauri dev`                                                                           |
+| Fast Rust check                       | `cd src-tauri && cargo check`                                                                 |
+| Run tests                             | `cd src-tauri && cargo test`                                                                  |
+| Local build, no installer             | `npm run tauri build -- --no-bundle`                                                          |
+| Full bundled build (current platform) | `npm run tauri build`                                                                         |
+| macOS: specific arch                  | `npm run tauri build -- --target aarch64-apple-darwin`                                        |
+| Cut a beta/RC release (manual)        | `gh release create vX.Y.Z-beta.N --prerelease --generate-notes`                               |
+| Cut a beta/RC release (CI)            | `git tag vX.Y.Z-beta.N && git push origin vX.Y.Z-beta.N`                                      |
+| Promote beta → stable                 | Bump Cargo.toml, drop suffix, tag `vX.Y.Z`, push, then `gh release edit vX.Y.Z --draft=false` |
+| Publish a draft release               | `gh release edit vTAG --draft=false`                                                          |

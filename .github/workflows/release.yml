@@ -8,14 +8,16 @@ on:
 
 jobs:
   publish-tauri:
-    # cfitsio is compiled from source on every platform now (fitsio-src +
-    # src-cmake features on the fitsio-sys dependency, Cargo.toml) rather
-    # than relying on a system package — this assumes `cmake` is present
-    # on all three GitHub-hosted runner images. Standard/pre-installed on
-    # GH-hosted runners as of this writing, but not independently
-    # re-verified for this exact workflow — if a build fails looking for
-    # a CMake generator or the cmake binary itself, that's the first
-    # thing to check.
+    # cfitsio is compiled from source on Linux/macOS (fitsio-src +
+    # src-cmake features on the fitsio-sys dependency, Cargo.toml,
+    # platform-gated) rather than relying on a system package — this
+    # assumes `cmake` is present on the Linux/macOS GitHub-hosted runner
+    # images. Standard/pre-installed as of this writing, but not
+    # independently re-verified for this exact workflow — if a build
+    # fails looking for a CMake generator or the cmake binary itself,
+    # that's the first thing to check. Windows stays on dynamic linking
+    # via vcpkg (see that step's own comment for why) and doesn't need
+    # cmake at all.
     permissions:
       contents: write
     strategy:
@@ -70,6 +72,36 @@ jobs:
         # unusually long compared to the others, check whether it's stuck
         # specifically on the rpm bundle step before assuming something
         # else broke.
+
+      - name: install Windows dependencies (vcpkg + cfitsio)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          vcpkg install cfitsio
+          choco install pkgconfiglite -y
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          echo "PKG_CONFIG_PATH=C:\vcpkg\installed\x64-windows\lib\pkgconfig" >> $env:GITHUB_ENV
+        shell: pwsh
+        # Windows stays on dynamic linking (see Cargo.toml's fitsio-sys
+        # target-specific sections) — the fitsio-src+src-cmake static
+        # build fails on MSVC because CFITSIO's CMake build requires an
+        # external pthreads-win32 install (CMAKE_INCLUDE_PATH/
+        # CMAKE_LIBRARY_PATH pointing at it) that fitsio-sys's build.rs
+        # never supplies, and that gap wasn't resolved. This exact
+        # vcpkg+pkgconfiglite recipe is confirmed working — it got all
+        # the way to a built photyx.exe before failing at MSI bundling
+        # over the non-numeric prerelease version string, a separate,
+        # already-fixed issue (bundle.targets dropped msi).
+        #
+        # fitsio-sys only ever probes via the `pkg-config` binary — it has
+        # no native vcpkg-rs integration on MSVC (open upstream request,
+        # never implemented: github.com/simonrw/rust-fitsio/issues/178).
+        # So installing cfitsio via vcpkg is necessary but not sufficient:
+        # windows-latest has no pkg-config.exe by default, and even with
+        # one present, it needs to be pointed at wherever vcpkg put
+        # cfitsio's generated .pc file. pkgconfiglite is the standard
+        # Chocolatey package providing pkg-config.exe on Windows.
+        # PKG_CONFIG_PATH here assumes vcpkg's classic-mode install
+        # layout (<root>\installed\<triplet>\lib\pkgconfig).
 
       - name: setup node
         uses: actions/setup-node@v6
