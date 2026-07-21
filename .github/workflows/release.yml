@@ -73,7 +73,7 @@ jobs:
         # specifically on the rpm bundle step before assuming something
         # else broke.
 
-      - name: install Windows dependencies (vcpkg + cfitsio)
+            - name: install Windows dependencies (vcpkg + cfitsio)
         if: matrix.platform == 'windows-latest'
         run: |
           vcpkg install cfitsio
@@ -101,7 +101,31 @@ jobs:
         # cfitsio's generated .pc file. pkgconfiglite is the standard
         # Chocolatey package providing pkg-config.exe on Windows.
         # PKG_CONFIG_PATH here assumes vcpkg's classic-mode install
-        # layout (<root>\installed\<triplet>\lib\pkgconfig).
+        # layout (\installed\\lib\pkgconfig).
+
+      - name: stage cfitsio.dll for bundling (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri\resources | Out-Null
+          Copy-Item "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin\cfitsio.dll" src-tauri\resources\cfitsio.dll
+        shell: pwsh
+        # Dynamic linking (see the step above) means cfitsio.dll is never
+        # part of photyx.exe itself — Tauri has to be told to bundle it as
+        # a resource, via src-tauri/tauri.windows.conf.json's
+        # bundle.resources entry ("resources/cfitsio.dll"), or NSIS ships
+        # only the exe and the app fails at runtime with "cfitsio.dll was
+        # not found". That config expects the file to already exist at
+        # src-tauri/resources/cfitsio.dll by the time tauri-action runs,
+        # which is what this step stages. Uses VCPKG_INSTALLATION_ROOT
+        # (set by the previous step) rather than a hardcoded C:\vcpkg
+        # path, since GitHub's windows-latest runners preinstall vcpkg at
+        # a path stored in that env var, not necessarily C:\vcpkg.
+        #
+        # UNVERIFIED: cfitsio.dll may itself dynamically depend on other
+        # vcpkg-built DLLs (e.g. zlib), which would need the same
+        # staging treatment. Check with a PE dependency tool (e.g.
+        # `dumpbin /dependents` or Dependencies.exe) against the actual
+        # built DLL before assuming this single-file fix is complete.
 
       - name: setup node
         uses: actions/setup-node@v6
