@@ -29,11 +29,23 @@ pub fn backup_database(state: State<Arc<PhotoxState>>) -> Result<String, String>
     let zip_path  = backup_dir.join(format!("photyx_backup_{}.zip", timestamp));
     let tmp_db    = backup_dir.join(format!("photyx_backup_{}.tmp.db", timestamp));
 
-    // ── Step 1: SQLite backup to temp file ───────────────────────────────────
+    // ── Step 1: VACUUM + SQLite backup to temp file ───────────────────────────
+    // Write-safety (Issue 167): this entire step holds state.db's shared
+    // Arc<Mutex<Connection>> for its full duration, so no write can land
+    // mid-checkpoint, mid-VACUUM, or mid-copy — the backup API's own
+    // consistent-snapshot guarantee is additional, not load-bearing, since
+    // nothing else can touch this connection while the lock is held.
+    //
+    // VACUUM runs against the live connection, not a copy — this compacts
+    // photyx.db itself on disk (deliberate; see Issue 167), and the backup
+    // taken immediately after is smaller as a direct consequence rather
+    // than via a separate compacted-copy path.
     {
         let db = state.db.lock().expect("db lock poisoned");
         db.execute_batch("PRAGMA wal_checkpoint(FULL);")
             .map_err(|e| format!("WAL checkpoint failed: {}", e))?;
+        db.execute_batch("VACUUM;")
+            .map_err(|e| format!("VACUUM failed: {}", e))?;
         let mut dst = rusqlite::Connection::open(&tmp_db)
             .map_err(|e| format!("Failed to create temp backup file: {}", e))?;
         let backup = rusqlite::backup::Backup::new(&db, &mut dst)
