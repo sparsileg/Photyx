@@ -1160,12 +1160,13 @@ directly.
 ### 8.2 Database Schema
 
 All tables below are created via IF NOT EXISTS in src-tauri/src/db/schema.rs
-and reflect the live, current schema (as of migration v5). schema.rs also
-contains four additional CREATE TABLE constants (algorithm_sets,
-frame_analysis_results, session_history, console_history) used only by
-migrate_v1 for fresh-install historical fidelity — those tables are created
-and then immediately dropped again by migrate_v5 for a from-scratch
-install, and are not part of the live schema. See the note below for why.
+and reflect the live, current schema, applied in a single step as schema
+version 1 (Issue 163). Prior to Issue 163, this schema was reached via
+seven incremental migrations (migrate_v1 through migrate_v7); since no
+installs predating that history exist in the wild, the chain was squashed
+into one migrate_v1 that creates this schema directly. schema.rs no longer
+contains any constants for tables outside this live set — see the note
+below for what was dropped and why.
 
 ```sql
 CREATE TABLE IF NOT EXISTS preferences (
@@ -1227,7 +1228,6 @@ CREATE TABLE IF NOT EXISTS feature_flags (
     updated_at  INTEGER NOT NULL
 );
 ```
-```
 
 **Note on Background Std Dev, Background Gradient, and SNR:** these three
 values are still computed by `AnalyzeFrames` per frame but do not drive
@@ -1241,31 +1241,29 @@ up with a reader or writer and was removed — see the note below. The
 corresponding pcode commands (`BackgroundStdDev`, `BackgroundGradient`)
 remain as deprecated stubs for script compatibility.
 
-**Note on removed tables and columns (Issue 89):** `algorithm_sets`,
+**Note on removed tables and columns (Issue 89, historical):** `algorithm_sets`,
 `frame_analysis_results` (plus its two indexes), `session_history`, and
 `console_history` were created with real design intent — algorithm-
 versioned analysis-result caching to skip redundant re-analysis,
 a session work-log, and persistent console history across restarts,
-respectively — but none was ever given a runtime reader or writer, and all
-four were dropped via migration v5. `threshold_profiles.signal_weight_reject_sigma`
-was dropped in the same migration — the last of three dead columns left
-over from the Signal Weight metric's removal; the other two,
-bg_stddev_reject_sigma` and `bg_gradient_reject_sigma`, were dropped
-earlier in migration v4. All migrations are now historically accurate as of
-this cleanup — `migrate_v1` correctly reflects the schema as it existed at
-that point in time, so a genuinely fresh install chains through the full
-migration sequence correctly instead of erroring on columns/tables the
-current canonical schema no longer creates (a real bug this cleanup found
-and fixed, previously undetectable since no fresh install had been tested
-against the schema in its pre-cleanup state).
+respectively — but none was ever given a runtime reader or writer. Along
+with `threshold_profiles`'s dead `signal_weight_reject_sigma`,
+`bg_stddev_reject_sigma`, and `bg_gradient_reject_sigma` columns (left
+over from the Signal Weight metric's removal), none of this ever existed
+as incremental migration steps to reach or undo — the schema squash
+(Issue 163) confirmed all of it dead and it is simply absent from the
+current single-step schema. This note is retained for historical context
+on why these names may look familiar from older code or discussion, not
+because any migration step still creates and drops them.
 
-**Note on crash recovery removal (Issue 107, migration v6):** the crash
+**Note on crash recovery removal (Issue 107, historical):** the crash
 recovery feature — `crash_recovery` table, `check_crash_recovery`/
 `write_crash_recovery` commands, the `crash_recovery_interval_secs`
 setting, and all frontend wrappers/UI — was removed outright rather than
-fixed, after confirming it was never relied on in practice. This is a
-distinct migration from the Issue 89 cleanup above; `crash_recovery` was
-still present at v5 and dropped in v6.
+fixed, after confirming it was never relied on in practice. As with the
+Issue 89 cleanup above, this predates the Issue 163 schema squash and no
+longer corresponds to a distinct migration step — `crash_recovery` is
+simply absent from the current single-step schema.
 
 **Note on threshold default consistency — confirmed via
 `defaults.rs`:** `DEFAULT_STAR_COUNT_SIGMA = 1.5` in
@@ -1281,7 +1279,7 @@ confirmed fixed (issue #67). `defaults.rs` bounds `star_count` to
 below; §3.13's Edit > Analysis Parameters field description had drifted
 to `0.5`–`5.0` and is corrected in this pass (Issue 97).
 
-**Note on feature_flags (Issue 130, migration v7):** unlike every other
+**Note on feature_flags (Issue 130):** unlike every other
 table in this schema, `feature_flags` has no server-side seed data and
 no fixed, backend-known list of valid keys — the frontend's
 `FEATURE_FLAGS` registry (`src-svelte/lib/settings/constants.ts`) is
@@ -1294,8 +1292,6 @@ infrastructure (Edit > Feature Preferences, §3.14) when Issue 130
 needed a UI-accessible way to hide the reference-frame badge (§3.9,
 §3.10); the mechanism itself is reusable for future flags at the cost
 of one registry entry each.
-
-### 8.3 Preferences
 
 ### 8.3 Preferences
 
