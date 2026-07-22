@@ -604,14 +604,11 @@ gh release list
 # delete remote tag
 gh release delete ${TAG_NAME} --yes --cleanup-tag
 
-# delete local tag
+# delete local tag (in case --cleanup-tag doesn't work)
 git tag -d ${TAG_NAME}
 
 # verify
 gh release list
-
-# trigger it 
-gh workflow run release.yml
 ```
 
 If that doesn't work, go one level deeper and delete by ID:
@@ -641,9 +638,12 @@ git push origin ${TAG_NAME}
 # confirm the tag actually points where you think before waiting on the run
 git rev-parse ${TAG_NAME}
 git rev-parse main
+
+# trigger it only if the git push origin command did not
+gh workflow run release.yml
 ```
 
-That last pair of commands is worth treating as mandatory, not
+That last pair of rev-parse commands is worth treating as mandatory, not
 optional — a tag can silently point at a stale commit even after
 "successful"-looking delete/recreate steps if any one of them was run
 out of order or against a local ref that hadn't been refreshed. Confirm
