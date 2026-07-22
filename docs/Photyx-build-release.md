@@ -311,7 +311,7 @@ git push
 # Tag + release in one step (gh creates the tag if it doesn't exist)
 gh release create ${TAG_NAME} \
   --title "${TAG_NAME}" \
-  ----generate-notes \
+  --generate-notes \
   --prerelease
 ```
 
@@ -643,7 +643,7 @@ git rev-parse main
 gh workflow run release.yml
 ```
 
-That last pair of rev-parse commands is worth treating as mandatory, not
+That rev-parse commands are worth treating as mandatory, not
 optional — a tag can silently point at a stale commit even after
 "successful"-looking delete/recreate steps if any one of them was run
 out of order or against a local ref that hadn't been refreshed. Confirm
