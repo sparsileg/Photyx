@@ -120,6 +120,44 @@ jobs:
         # protects against the same drift happening again on a future
         # runner image update or any other transitive dependency vcpkg
         # decides to add later (e.g. if cfitsio's feature set changes).
+
+      - name: stage MSVC redistributable DLLs for bundling (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri\resources | Out-Null
+          $crtDirs = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory -ErrorAction SilentlyContinue
+          if (-not $crtDirs) {
+            Write-Error "No MSVC redist CRT directory found — runner image layout may have changed."
+            exit 1
+          }
+          foreach ($dir in $crtDirs) {
+            Copy-Item (Join-Path $dir.FullName "vcruntime140*.dll") src-tauri\resources\ -Force
+          }
+        shell: pwsh
+        # photyx.exe and cfitsio.dll both depend on vcruntime140.dll,
+        # which is NOT part of Windows itself — it ships with the MSVC
+        # redistributable, so a user without VS/the VC++ Redistributable
+        # already installed would hit the same "DLL not found" failure
+        # we just fixed for cfitsio.dll/z.dll, just for this DLL instead.
+        # (The api-ms-win-crt-*.dll imports seen in dumpbin output are
+        # the Universal CRT, which HAS shipped as part of Windows itself
+        # since Windows 10 — those are not a real risk and don't need
+        # staging.)
+        #
+        # The redist path is intentionally NOT hardcoded to one MSVC
+        # toolset version (e.g. 14.50.35710) — that exact version number
+        # changes essentially every time GitHub updates the windows-latest
+        # runner image (confirmed via a real prior break: a runner update
+        # once shifted a VS2019 install from 14.29.30133 to 14.29.30156).
+        # The glob spans VS year/edition/toolset-version so this keeps
+        # working across future runner image updates without edits here.
+        #
+        # NOTE: -Filter cannot be combined with a wildcarded -Path in
+        # PowerShell's Get-ChildItem — it silently returns nothing rather
+        # than erroring (confirmed directly: same wildcard path with
+        # -Filter *.dll came back empty even though the files were
+        # present). Resolving the directory first via -Directory, then
+        # copying a concrete-path glob within it, avoids that gotcha.
         # Dynamic linking (see the step above) means cfitsio.dll is never
         # part of photyx.exe itself — Tauri has to be told to bundle it as
         # a resource, via src-tauri/tauri.windows.conf.json's
