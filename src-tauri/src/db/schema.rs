@@ -1,5 +1,12 @@
 // src-tauri/src/db/schema.rs
 // All CREATE TABLE statements. Each is idempotent (IF NOT EXISTS).
+//
+// This is the single, current-state schema (Issue 163). Prior to this,
+// the live schema was reached via seven incremental migrations
+// (migrate_v1 through migrate_v7); since no installs predating that
+// history exist in the wild, the incremental chain was squashed into
+// this single definition, applied as schema version 1. See
+// db/migrations.rs and TR §8.2 for details.
 
 pub const CREATE_PREFERENCES: &str = "
 CREATE TABLE IF NOT EXISTS preferences (
@@ -39,82 +46,18 @@ CREATE TABLE IF NOT EXISTS feature_flags (
     updated_at  INTEGER NOT NULL
 );";
 
-// NOTE: this constant is used only by migrate_v1 (the version 0→1 step) and
-// must reflect the schema AS IT HISTORICALLY EXISTED at that point, not the
-// current/final schema — migrate_v2 (rename snr_reject_sigma) and migrate_v4
-// (drop bg_stddev_reject_sigma/bg_gradient_reject_sigma) both depend on these
-// original columns being created here so a genuinely fresh install chains
-// through the full migration sequence correctly instead of erroring on
-// columns that were never created. Do not "clean this up" to match the
-// final schema — that was the bug (Issue 89) that broke fresh installs.
 pub const CREATE_THRESHOLD_PROFILES: &str = "
 CREATE TABLE IF NOT EXISTS threshold_profiles (
     id                          INTEGER PRIMARY KEY AUTOINCREMENT,
     name                        TEXT NOT NULL UNIQUE,
     description                 TEXT,
     bg_median_reject_sigma      REAL NOT NULL DEFAULT 2.5,
-    snr_reject_sigma            REAL NOT NULL DEFAULT 2.5,
-    bg_stddev_reject_sigma      REAL NOT NULL DEFAULT 2.5,
-    bg_gradient_reject_sigma    REAL NOT NULL DEFAULT 2.5,
     fwhm_reject_sigma           REAL NOT NULL DEFAULT 2.5,
     star_count_reject_sigma     REAL NOT NULL DEFAULT 1.5,
     eccentricity_reject_abs     REAL NOT NULL DEFAULT 0.85,
     created_at                  INTEGER NOT NULL,
     updated_at                  INTEGER NOT NULL
 );";
-
-// NOTE: historical-only, same as CREATE_THRESHOLD_PROFILES above — created
-// by migrate_v1 for fresh-install fidelity, dropped by migrate_v5. Never
-// queried or inserted into at runtime (Issue 89). Not part of the live schema.
-pub const CREATE_ALGORITHM_SETS: &str = "
-CREATE TABLE IF NOT EXISTS algorithm_sets (
-    version                         INTEGER PRIMARY KEY,
-    bg_algorithm_version            TEXT NOT NULL,
-    snr_algorithm_version           TEXT NOT NULL,
-    fwhm_algorithm_version          TEXT NOT NULL,
-    eccentricity_algorithm_version  TEXT NOT NULL,
-    star_count_algorithm_version    TEXT NOT NULL,
-    released_at                     INTEGER NOT NULL,
-    notes                           TEXT
-);";
-
-pub const CREATE_FRAME_ANALYSIS_RESULTS: &str = "
-CREATE TABLE IF NOT EXISTS frame_analysis_results (
-    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_path               TEXT NOT NULL,
-    algorithm_set_version   INTEGER NOT NULL REFERENCES algorithm_sets(version),
-    threshold_profile_id    INTEGER REFERENCES threshold_profiles(id),
-    equipment_profile_name  TEXT,
-    analyzed_at             INTEGER NOT NULL,
-    bg_median               REAL,
-    bg_stddev               REAL,
-    bg_gradient             REAL,
-    snr_estimate            REAL,
-    fwhm_median_px          REAL,
-    fwhm_median_arcsec      REAL,
-    eccentricity            REAL,
-    star_count              INTEGER,
-    session_bg_median_mean  REAL,
-    session_bg_median_sd    REAL,
-    session_fwhm_mean       REAL,
-    session_fwhm_sd         REAL,
-    session_ecc_mean        REAL,
-    session_ecc_sd          REAL,
-    session_snr_mean        REAL,
-    session_snr_sd          REAL,
-    session_stars_mean      REAL,
-    session_stars_sd        REAL,
-    pxflag                  TEXT NOT NULL DEFAULT 'PASS',
-    triggered_by            TEXT,
-    user_override           INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(file_path, algorithm_set_version)
-);";
-
-pub const CREATE_FRAME_ANALYSIS_RESULTS_IDX_PATH: &str = "
-CREATE INDEX IF NOT EXISTS idx_far_path ON frame_analysis_results(file_path);";
-
-pub const CREATE_FRAME_ANALYSIS_RESULTS_IDX_VERSION: &str = "
-CREATE INDEX IF NOT EXISTS idx_far_version ON frame_analysis_results(algorithm_set_version);";
 
 pub const CREATE_MACROS: &str = "
 CREATE TABLE IF NOT EXISTS macros (
@@ -140,52 +83,6 @@ CREATE TABLE IF NOT EXISTS macro_versions (
 pub const CREATE_MACRO_VERSIONS_IDX: &str = "
 CREATE INDEX IF NOT EXISTS idx_mv_macro ON macro_versions(macro_id, saved_at DESC);";
 
-// NOTE: historical-only — created by migrate_v1 for fresh-install fidelity,
-// dropped by migrate_v5. open_session/close_session were removed entirely
-// (Issue 89); this table has no runtime reader or writer. Not part of the
-// live schema.
-pub const CREATE_SESSION_HISTORY: &str = "
-CREATE TABLE IF NOT EXISTS session_history (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    directory       TEXT NOT NULL,
-    opened_at       INTEGER NOT NULL,
-    closed_at       INTEGER,
-    file_count      INTEGER,
-    commands_run    INTEGER DEFAULT 0
-);";
-
-// NOTE: historical-only — created by migrate_v1 for fresh-install fidelity,
-// dropped by migrate_v5. Console history is in-memory only (consoleHistory.ts);
-// this table has no runtime reader or writer. Not part of the live schema.
-pub const CREATE_CONSOLE_HISTORY: &str = "
-CREATE TABLE IF NOT EXISTS console_history (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    executed_at INTEGER NOT NULL,
-    command     TEXT NOT NULL,
-    output      TEXT,
-    success     INTEGER NOT NULL DEFAULT 1
-);";
-
-// NOTE: this constant is used only by migrate_v1 and must reflect the schema
-// AS IT HISTORICALLY EXISTED — active_directory is dropped by migrate_v3, so
-// it must be created here for a fresh install to chain through v3 correctly.
-// Same rationale as CREATE_THRESHOLD_PROFILES above; do not "clean this up"
-// to match the current live schema.
-pub const CREATE_CRASH_RECOVERY: &str = "
-CREATE TABLE IF NOT EXISTS crash_recovery (
-    id                  INTEGER PRIMARY KEY CHECK (id = 1),
-    file_list           TEXT,
-    active_directory    TEXT,
-    current_frame_index INTEGER,
-    autostretch_enabled INTEGER,
-    zoom_level          TEXT,
-    active_panel        TEXT,
-    written_at          INTEGER NOT NULL
-);";
-
-
-pub const CREATE_CRASH_RECOVERY_SEED: &str = "
-INSERT OR IGNORE INTO crash_recovery (id, written_at) VALUES (1, 0);";
-
-
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
