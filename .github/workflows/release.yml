@@ -219,3 +219,36 @@ jobs:
           # release's prerelease flag by hand if you do.
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
           args: ${{ matrix.args }}
+
+      - name: publish fixed-name "latest" asset (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          find target -path "*bundle/deb/*.deb" -exec cp {} photyx-linux-x86_64.deb \;
+          find target -path "*bundle/rpm/*.rpm" -exec cp {} photyx-linux-x86_64.rpm \;
+          find target -path "*bundle/appimage/*.AppImage" -exec cp {} photyx-linux-x86_64.AppImage \;
+          gh release upload ${{ github.ref_name }} \
+            photyx-linux-x86_64.deb photyx-linux-x86_64.rpm photyx-linux-x86_64.AppImage \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: publish fixed-name "latest" asset (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path target -Recurse -Filter *.exe |
+            Where-Object { $_.FullName -like "*bundle*nsis*" } |
+            Select-Object -First 1
+          Copy-Item $exe.FullName photyx-windows-x86_64.exe
+          gh release upload ${{ github.ref_name }} photyx-windows-x86_64.exe --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: publish fixed-name "latest" asset (macOS)
+        if: matrix.platform == 'macos-latest' || matrix.platform == 'macos-15-intel'
+        run: |
+          ARCH_NAME="${{ matrix.platform == 'macos-latest' && 'arm64' || 'x86_64' }}"
+          find target -path "*bundle/dmg/*.dmg" -exec cp {} "photyx-macos-${ARCH_NAME}.dmg" \;
+          gh release upload ${{ github.ref_name }} "photyx-macos-${ARCH_NAME}.dmg" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
