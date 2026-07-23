@@ -33,7 +33,7 @@ and any script that looks for the binary.
 ### Three version numbers that must not be confused
 
 | File                        | Field               | Who reads it                                                                                                                                                                                  |
-| ---------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| --------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src-tauri/Cargo.toml`      | `[package] version` | **Source of truth.** Cargo's own build output, `getVersion()` (via Tauri's fallback), `tauri-action`'s `__VERSION__` substitution                                                             |
 | `src-tauri/tauri.conf.json` | `version`           | Deliberately **absent** (Issue 161) so it falls back to Cargo.toml. Do not re-add it unless you want to fork the two apart again                                                              |
 | `package.json`              | `version`           | npm/Node tooling only (e.g. what `npm run tauri build`'s banner prints). Currently **not kept in sync** — cosmetic drift, harmless, but don't be surprised if it disagrees with the other two |
@@ -152,7 +152,7 @@ dynamic-linking recipe described in the Windows section below.
 fitsio-sys = { version = "...", features = ["fitsio-src", "src-cmake"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-fitsio-sys = "..."  # dynamic, via vcpkg + pkg-config — see Windows section below
+fitsio-sys = "..."   # dynamic, via vcpkg + pkg-config — see Windows section below
 ```
 
 **Known gotcha: bzip2 duplicate symbols.** Statically-built `cfitsio`
@@ -281,134 +281,76 @@ local build attempt. There's no universal-binary flag built into
 
 ---
 
-## 3. Release conventions & reference
+## 3. Delivering releases on GitHub
 
-Releases are built exclusively via **git tags** — see §4 for the only
-correct way to create one. This section covers naming conventions,
-tag-recovery when a run needs to be redone, and downloading an
-existing release. It intentionally does **not** cover creating a
-release; see the callout below.
-
-### Creating a release
-
-See §4 — releases are created exclusively by pushing a version tag,
-which triggers the CI workflow. **There is no separate manual path.**
-Any method that creates a new tag on GitHub — `gh release create`, or
-the "Draft a new release" web UI flow when picking/creating a new tag
-— fires the exact same `push: tags: v*` trigger that `release.yml`
-listens for. Running one of those alongside a normal tag-and-push means
-`gh`'s own release creation and `tauri-action`'s release creation are
-both trying to own the same tag at the same time — a race with an
-undefined outcome, not a valid alternative. Always tag and push (§4)
-and let CI create the draft; adjust the draft afterward (§4's
-"Adjusting the resulting draft release") rather than creating anything
-directly.
+Releases are built on **git tags**. `gh` (which you already use for
+issues) is the fastest way to cut one, matching the tooling you
+already have.
 
 ### Tag/version conventions
 
-- Stable: `v0.11.0` (tag) — `0.11.0` (Cargo.toml)
-- Beta: `${TAG_NAME}` — `0.11.0-beta.1`
-- Release candidate: `v0.11.0-rc.1` — `0.11.0-rc.1`
+- Stable: `v0.11.0` (tag) ↔ `0.11.0` (Cargo.toml)
+- Beta: `${TAG_NAME}` ↔ `0.11.0-beta.1`
+- Release candidate: `v0.11.0-rc.1` ↔ `0.11.0-rc.1`
 
 Keep the tag and `src-tauri/Cargo.toml`'s version in agreement — bump
 Cargo.toml first, commit, *then* tag.
 
-### Iterating using the same tag
-
-Sometimes there are errors on builds and you don't want to create a
-new tag simply because of a configuration issue in `release.yml`, or
-some other similar type of error. These are the steps to delete the
-existing tag and restart the whole process using the same tag (version
-number, essentially).
+### Creating a release manually
 
 ```bash
-gh release list
-# note the tag name
+# Must execute from the repo root
+cd ~/github/Photyx
 
-# delete remote tag
-gh release delete ${TAG_NAME} --yes --cleanup-tag
+# Bump the version first
+#   edit src-tauri/Cargo.toml -> version = "0.11.0-beta.1"
+git add src-tauri/Cargo.toml
+git commit -m "Bump version to 0.11.0-beta.1"
+git push
 
-# delete local tag (in case --cleanup-tag doesn't work)
-git tag -d ${TAG_NAME}
-
-# verify
-gh release list
+# Tag + release in one step (gh creates the tag if it doesn't exist)
+gh release create ${TAG_NAME} \
+  --title "${TAG_NAME}" \
+  --generate-notes \
+  --prerelease
 ```
 
-If that doesn't work, go one level deeper and delete by ID:
+`--prerelease` is what marks it as beta/RC rather than a stable
+"Latest release" — do this for every beta and RC build. Drop the flag
+only for an actual stable release (see §5).
+
+**Attaching built installers** so testers can download and run
+directly — append file paths after the flags:
 
 ```bash
-gh api repos/${REPO_OWNER}/${REPO_NAME}/releases --jq '.[] | select(.tag_name=="'"${TAG_NAME}"'") | {id, name, tag_name, draft, prerelease}'
-# note the numeric ids — there can be more than one release sharing a
-# tag_name if a draft was created separately from an already-published
-# release under the same name; delete every id that comes back
-
-gh api -X DELETE repos/${REPO_OWNER}/${REPO_NAME}/releases/<id_1>
-gh api -X DELETE repos/${REPO_OWNER}/${REPO_NAME}/releases/<id_2>
-
-# clear the tag itself — both remote and local. These are independent:
-# git tag -d only ever affects your local clone, never GitHub.
-git push origin :refs/tags/${TAG_NAME}
-git tag -d ${TAG_NAME}
-
-# verify BEFORE re-tagging — both must come back empty
-gh release list
-git ls-remote --tags origin | grep ${TAG_NAME}
-
-# re-tag from the current, correct commit and push for a fresh run
-git tag ${TAG_NAME}
-git push origin ${TAG_NAME}
-
-# confirm the tag actually points where you think before waiting on the run
-git rev-parse ${TAG_NAME}
-git rev-parse main
-
-# trigger it only if the git push origin command did not
-gh workflow run release.yml
+gh release create ${TAG_NAME} \
+  --title "${TAG_NAME}" \
+  --notes "Beta build for external testing" \
+  --prerelease \
+  target/release/bundle/deb/photyx_${TAG_NAME}_amd64.deb \
+  target/release/bundle/appimage/photyx_${TAG_NAME}_amd64.AppImage
 ```
 
-That rev-parse commands are worth treating as mandatory, not
-optional — a tag can silently point at a stale commit even after
-"successful"-looking delete/recreate steps if any one of them was run
-out of order or against a local ref that hadn't been refreshed. Confirm
-the hashes actually match before assuming a re-run will use your latest
-fix.
-
-### Downloading a release
-
-**Via `gh` CLI** (downloads every asset from a release into your current directory):
+**Auto-generated notes** instead of writing them by hand (summarizes
+merged PRs/commits since the last tag):
 
 ```bash
-gh release download ${TAG_NAME}
+gh release create ${TAG_NAME} --prerelease --generate-notes
 ```
 
-Or just one file, by pattern:
+**Draft first, publish later** (useful if you want to review before
+testers see it):
 
 ```bash
-gh release download ${TAG_NAME} --pattern "*.deb"
+gh release create ${TAG_NAME} --prerelease --draft --notes "..."
+# later, once ready:
+gh release edit ${TAG_NAME} --draft=false
 ```
 
-**Via browser** — repo → **Releases** → open the release → click the
-asset filename under "Assets" to download it directly.
-
-**Via a direct link**, if you know the exact asset filename (useful
-for scripting, or testing on a different machine):
-
-```bash
-curl -LO https://github.com/sparsileg/Photyx/releases/download/v0.11.0-beta.1/photyx_0.11.0-beta.1_amd64.deb
-```
-
-Note this is `/releases/download/<tag>/<file>` — a *specific* version —
-which is different from the `/releases/latest/download/<file>` URLs
-set up in §5b. The `latest` form only resolves once a genuinely
-stable, non-prerelease, non-draft release has been published; drafts
-and prereleases are excluded from "latest" by design (see §5b).
-
-**Installing what you downloaded** (Linux `.deb` example):
-
-```bash
-sudo apt install ./photyx_0.11.0-beta.1_amd64.deb
-```
+**Web UI equivalent**, if you'd rather click through: repo →
+**Releases** (right sidebar) → **Draft a new release** → pick/create
+the tag → title/notes → check **"Set as a pre-release"** for beta/RC →
+drag installer files into the assets area → **Publish release**.
 
 ---
 
@@ -538,7 +480,7 @@ jobs:
         # cfitsio's generated .pc file. pkgconfiglite is the standard
         # Chocolatey package providing pkg-config.exe on Windows.
         # PKG_CONFIG_PATH here assumes vcpkg's classic-mode install
-        # layout (\installed\<triplet>\lib\pkgconfig).
+        # layout (\installed\\lib\pkgconfig).
 
       - name: stage vcpkg runtime DLLs for bundling (Windows)
         if: matrix.platform == 'windows-latest'
@@ -695,65 +637,69 @@ action:
 gh workflow run release.yml
 ```
 
-### Adjusting the resulting draft release
-
-CI creates the release as a draft (`releaseDraft: true`) with a fixed
-placeholder body ("See the assets below..."). Once all four matrix
-legs finish — confirm every platform's installer is actually present
-before publishing, since a draft with a missing platform asset is easy
-to miss — work with that draft directly. **Never run `gh release
-create` against the same tag** (see §3's "Creating a release"
-callout) — everything below operates on the release CI already made.
-
-**Hand-write notes:**
-
-```bash
-gh release edit ${TAG_NAME} --notes "Whatever you want to say here."
-# or from a file:
-gh release edit ${TAG_NAME} --notes-file notes.md
-```
-
-**Auto-generate notes.** `gh release edit` has no `--generate-notes`
-flag — confirmed against the `gh` manual; only `gh release create`
-supports it, which isn't safe to use here. The same note-generation
-logic is available as a standalone REST endpoint that generates
-markdown *without* creating a release, callable via `gh api`:
-
-```bash
-gh api repos/${REPO_OWNER}/${REPO_NAME}/releases/generate-notes \
-  -f tag_name=${TAG_NAME} \
-  -f previous_tag_name=${PREV_TAG} \
-  --jq .body > notes.md
-
-gh release edit ${TAG_NAME} --notes-file notes.md
-```
-
-**Replace or add a single asset** without touching the rest (e.g. if
-the Windows NSIS fixed-name step's filename guess in §5b turns out
-wrong for a given runner-image update):
-
-```bash
-gh release upload ${TAG_NAME} corrected-file.exe --clobber
-```
-
-**Publish once satisfied:**
-
-```bash
-gh release edit ${TAG_NAME} --draft=false
-```
-
-**Editing via the web UI is fine here too** — opening the *existing*
-draft release and clicking "Publish release" doesn't create a new tag,
-so it doesn't hit the conflict described in §3. The conflict there is
-specifically about *creating* a release/tag through the UI (picking
-"Draft a new release" and typing a brand-new tag name), not editing or
-publishing one that already exists.
-
 ### Iterating using the same tag
 
-See §3 — the tag-delete-and-recreate recovery steps live there since
-they're conceptually about tag/version management, not the workflow
-itself.
+Sometimes there are errors on builds and you don't want to create a
+new tag simply because of a configuration issue in `release.yml`, or
+some other similar type of error. These are the steps to delete the
+existing tag and restart the whole process using the same tag (version
+number, essentially).
+
+```bash
+gh release list
+# note the tag name
+
+# delete remote tag
+gh release delete ${TAG_NAME} --yes --cleanup-tag
+
+# delete local tag (in case --cleanup-tag doesn't work)
+git tag -d ${TAG_NAME}
+
+# verify
+gh release list
+```
+
+If that doesn't work, go one level deeper and delete by ID:
+
+```bash
+gh api repos/${REPO_OWNER}/${REPO_NAME}/releases --jq '.[] | select(.tag_name=="'"${TAG_NAME}"'") | {id, name, tag_name, draft, prerelease}'
+# note the numeric ids — there can be more than one release sharing a
+# tag_name if a draft was created separately from an already-published
+# release under the same name; delete every id that comes back
+
+gh api -X DELETE repos/${REPO_OWNER}/${REPO_NAME}/releases/<id_1>
+gh api -X DELETE repos/${REPO_OWNER}/${REPO_NAME}/releases/<id_2>
+
+# clear the tag itself — both remote and local. These are independent:
+# git tag -d only ever affects your local clone, never GitHub.
+git push origin :refs/tags/${TAG_NAME}
+git tag -d ${TAG_NAME}
+
+# verify BEFORE re-tagging — both must come back empty
+gh release list
+git ls-remote --tags origin | grep ${TAG_NAME}
+
+# note that you can use the web UI to delete a release if all other
+# efforts fail
+
+# re-tag from the current, correct commit and push for a fresh run
+git tag ${TAG_NAME}
+git push origin ${TAG_NAME}
+
+# confirm the tag actually points where you think before waiting on the run
+git rev-parse ${TAG_NAME}
+git rev-parse main
+
+# trigger it only if the git push origin command did not
+gh workflow run release.yml
+```
+
+That rev-parse commands are worth treating as mandatory, not
+optional — a tag can silently point at a stale commit even after
+"successful"-looking delete/recreate steps if any one of them was run
+out of order or against a local ref that hadn't been refreshed. Confirm
+the hashes actually match before assuming a re-run will use your latest
+fix.
 
 ### First-time setup gotcha
 
@@ -778,6 +724,42 @@ particular run actually started before you saved the setting.
   [macOS](https://v2.tauri.app/distribute/sign/macos/) and
   [Windows](https://v2.tauri.app/distribute/sign/windows/) signing if
   this becomes worth the overhead once beta testing wraps up.
+
+### Downloading a release
+
+**Via `gh` CLI** (downloads every asset from a release into your current directory):
+
+```bash
+gh release download ${TAG_NAME}
+```
+
+Or just one file, by pattern:
+
+```bash
+gh release download ${TAG_NAME} --pattern "*.deb"
+```
+
+**Via browser** — repo → **Releases** → open the release → click the
+asset filename under "Assets" to download it directly.
+
+**Via a direct link**, if you know the exact asset filename (useful
+for scripting, or testing on a different machine):
+
+```bash
+curl -LO https://github.com/sparsileg/Photyx/releases/download/v0.11.0-beta.1/photyx_0.11.0-beta.1_amd64.deb
+```
+
+Note this is `/releases/download/<tag>/<file>` — a *specific* version —
+which is different from the `/releases/latest/download/<file>` URLs
+set up in §5b. The `latest` form only resolves once a genuinely
+stable, non-prerelease, non-draft release has been published; drafts
+and prereleases are excluded from "latest" by design (see §5b).
+
+**Installing what you downloaded** (Linux `.deb` example):
+
+```bash
+sudo apt install ./photyx_0.11.0-beta.1_amd64.deb
+```
 
 ---
 
@@ -954,15 +936,15 @@ no link updates needed on future releases.
 
 ## Quick reference
 
-| Task                                  | Command                                                                                         |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Hot-reload dev                        | `npm run tauri dev`                                                                              |
-| Fast Rust check                       | `cd src-tauri && cargo check`                                                                    |
-| Run tests                             | `cd src-tauri && cargo test`                                                                     |
-| Local build, no installer             | `npm run tauri build -- --no-bundle`                                                             |
-| Full bundled build (current platform) | `npm run tauri build`                                                                            |
-| macOS: specific arch                  | `npm run tauri build -- --target aarch64-apple-darwin`                                           |
-| Cut a beta/RC release                 | `git tag vX.Y.Z-beta.N && git push origin vX.Y.Z-beta.N`                                         |
-| Promote beta → stable                 | Bump Cargo.toml, drop suffix, tag `vX.Y.Z`, push, then `gh release edit vX.Y.Z --draft=false`    |
-| Adjust a draft release's notes        | `gh release edit vTAG --notes-file notes.md` (see §4)                                            |
-| Publish a draft release               | `gh release edit vTAG --draft=false`                                                             |
+| Task                                  | Command                                                                                       |
+| ------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Hot-reload dev                        | `npm run tauri dev`                                                                           |
+| Fast Rust check                       | `cd src-tauri && cargo check`                                                                 |
+| Run tests                             | `cd src-tauri && cargo test`                                                                  |
+| Local build, no installer             | `npm run tauri build -- --no-bundle`                                                          |
+| Full bundled build (current platform) | `npm run tauri build`                                                                         |
+| macOS: specific arch                  | `npm run tauri build -- --target aarch64-apple-darwin`                                        |
+| Cut a beta/RC release (manual)        | `gh release create vX.Y.Z-beta.N --prerelease --generate-notes`                               |
+| Cut a beta/RC release (CI)            | `git tag vX.Y.Z-beta.N && git push origin vX.Y.Z-beta.N`                                      |
+| Promote beta → stable                 | Bump Cargo.toml, drop suffix, tag `vX.Y.Z`, push, then `gh release edit vX.Y.Z --draft=false` |
+| Publish a draft release               | `gh release edit vTAG --draft=false`                                                          |

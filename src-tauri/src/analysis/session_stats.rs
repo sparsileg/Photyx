@@ -1,5 +1,6 @@
 // analysis/session_stats.rs — session-level statistics for AnalyzeFrames
-// PASS / REJECT classification only — no SUSPECT, no PXSCORE.
+
+// PASS / REJECT classification
 // Philosophy: remove extreme outliers only; PI weighting handles fine-grained quality.
 
 use crate::analysis::AnalysisResult;
@@ -99,10 +100,25 @@ fn bimodality_coefficient(values: &[f32]) -> Option<f32> {
 }
 
 /// Locate the deepest valley between the two largest peaks in a smoothed
-/// histogram of `values`. Returns the value at the valley midpoint.
+/// histogram of `values`. Returns the value at the valley midpoint together
+/// with the valley depth ratio: the smoothed frame count at the valley
+/// divided by the smaller of the two smoothed peak heights.
+///
+/// A genuine two-state population (e.g. clear vs. cloudy frames) leaves the
+/// valley empty or nearly so (ratio ≈ 0.0). A continuous drifting population
+/// keeps the valley populated (ratio well above zero), because frames exist
+/// at every intermediate quality level. Callers use the ratio to distinguish
+/// a real cluster gap from the artifact of valley-splitting a skewed but
+/// unimodal distribution.
+///
+/// The valley and peak *locations* use the original integer-smoothed
+/// histogram, preserving existing behaviour exactly. The depth ratio is
+/// computed from float-smoothed counts at those same indices, because
+/// integer division quantizes small per-bin counts too coarsely for a
+/// ratio test at typical session sizes (30–100 frames).
 ///
 /// `n_bins`: histogram resolution (20 is a good default for 30–100 frames).
-fn find_valley(values: &[f32], n_bins: usize) -> Option<f32> {
+fn find_valley(values: &[f32], n_bins: usize) -> Option<(f32, f32)> {
     if values.len() < 4 || n_bins < 4 {
         return None;
     }
@@ -119,7 +135,7 @@ fn find_valley(values: &[f32], n_bins: usize) -> Option<f32> {
         bins[idx.min(n_bins - 1)] += 1;
     }
 
-    // 3-point smoothing
+    // 3-point smoothing (integer — original behaviour, governs locations)
     let mut smoothed = bins.clone();
     for i in 1..n_bins - 1 {
         smoothed[i] = (bins[i - 1] + bins[i] + bins[i + 1]) / 3;
@@ -136,7 +152,25 @@ fn find_valley(values: &[f32], n_bins: usize) -> Option<f32> {
     // Deepest valley between the two peaks
     let valley_idx = (peak1..=peak2).min_by_key(|&i| smoothed[i])?;
     let valley_val = lo + (valley_idx as f32 + 0.5) * bin_width;
-    Some(valley_val)
+
+    // Float-smoothed counts at the chosen indices for the depth ratio.
+    // Edge bins are unsmoothed, matching the integer smoothing above.
+    let smooth_f = |i: usize| -> f32 {
+        if i == 0 || i == n_bins - 1 {
+            bins[i] as f32
+        } else {
+            (bins[i - 1] + bins[i] + bins[i + 1]) as f32 / 3.0
+        }
+    };
+    let smaller_peak = smooth_f(peak1).min(smooth_f(peak2));
+    let depth_ratio = if smaller_peak > f32::EPSILON {
+        smooth_f(valley_idx) / smaller_peak
+    } else {
+        // Degenerate: a "peak" with no smoothed height — no real gap exists
+        1.0
+    };
+
+    Some((valley_val, depth_ratio))
 }
 
 /// Bimodality threshold — BC above this value indicates a bimodal distribution.
@@ -144,6 +178,17 @@ const BIMODALITY_COEFFICIENT_THRESHOLD: f32 = 0.555;
 
 /// Histogram bin count used for valley detection.
 const BIMODAL_HISTOGRAM_BINS: usize = 20;
+
+/// Maximum valley depth ratio at which bimodal anchoring may engage.
+/// A genuine two-state split (clear/cloudy) leaves the histogram valley
+/// essentially empty (ratio ≈ 0.0); a populated valley means the two
+/// "clusters" are connected by a continuum, so anchoring to the upper group
+/// would punish normal frame-to-frame drift. Above this ratio we fall back
+/// to whole-population stats. Empirically: continuous-drift session IC5146
+/// 2024-12-03 measured 0.33; all genuine two-state scenarios measured 0.00,
+/// so 0.2 has wide margin on both sides rather than being fitted.
+const VALLEY_DEPTH_RATIO_MAX: f32 = 0.2;
+
 
 /// Compute mean and stddev for a metric, with optional bimodality-aware anchoring.
 ///
@@ -173,22 +218,41 @@ pub fn compute_metric_stats(
     if use_bimodal {
         if let Some(bc) = bimodality_coefficient(values) {
             if bc > BIMODALITY_COEFFICIENT_THRESHOLD {
-                if let Some(valley) = find_valley(values, BIMODAL_HISTOGRAM_BINS) {
-                    let upper: Vec<f32> = if higher_is_better {
-                        values.iter().cloned().filter(|&v| v > valley).collect()
-                    } else {
-                        values.iter().cloned().filter(|&v| v < valley).collect()
-                    };
-                    if upper.len() >= 2 {
+                if let Some((valley, depth_ratio)) = find_valley(values, BIMODAL_HISTOGRAM_BINS) {
+                    if depth_ratio > VALLEY_DEPTH_RATIO_MAX {
+                        // BC fired, but the valley is populated: the two
+                        // "clusters" are connected by a continuum (skewed
+                        // unimodal drift), not a genuine two-state split.
+                        // Anchoring here would punish normal drift — fall
+                        // back to whole-population stats.
                         tracing::info!(
-                            "BimodalStats: BC={:.3} > {:.3}, valley={:.3}, \
-                             anchoring to {} upper-cluster values",
+                            "BimodalStats: BC={:.3} > {:.3} but valley depth \
+                             ratio {:.2} > {:.2} — populated valley, treating \
+                             as unimodal (plain stats)",
                             bc,
                             BIMODALITY_COEFFICIENT_THRESHOLD,
-                            valley,
-                            upper.len(),
+                            depth_ratio,
+                            VALLEY_DEPTH_RATIO_MAX,
                         );
-                        return MetricStats::from_values(&upper);
+                    } else {
+                        let upper: Vec<f32> = if higher_is_better {
+                            values.iter().cloned().filter(|&v| v > valley).collect()
+                        } else {
+                            values.iter().cloned().filter(|&v| v < valley).collect()
+                        };
+                        if upper.len() >= 2 {
+                            tracing::info!(
+                                "BimodalStats: BC={:.3} > {:.3}, valley={:.3} \
+                                 (depth ratio {:.2}), anchoring to {} \
+                                 upper-cluster values",
+                                bc,
+                                BIMODALITY_COEFFICIENT_THRESHOLD,
+                                valley,
+                                depth_ratio,
+                                upper.len(),
+                            );
+                            return MetricStats::from_values(&upper);
+                        }
                     }
                 }
             }
@@ -627,5 +691,101 @@ mod tests {
         let (flag, _) = classify_frame(clear, &stats, &thresholds);
         assert_eq!(flag, PxFlag::Pass);
     }
+
+    #[test]
+    fn test_populated_valley_falls_back_to_plain_stats() {
+        // Regression for the IC5146 Cocoon Nebula 2024-12-03 duo-band
+        // session (real data, 65 frames): continuous right-skewed
+        // transparency drift, no cloud events (confirmed by blink).
+        // BC measured 0.5602 — marginally above the 0.555 threshold via
+        // BC's skewness blind spot — and the valley split placed only
+        // 7 of 65 frames in the "good" cluster (anchored mean 1915.4,
+        // stddev 90.4), rejecting 58/65 on StarCount at the Duo-band
+        // profile's 1.75σ. The valley depth ratio (~0.33) must trip the
+        // VALLEY_DEPTH_RATIO_MAX guard so stats fall back to the plain
+        // whole-population values, under which zero frames reject.
+        let vals: Vec<f32> = vec![
+            1671.0, 1225.0, 1788.0, 1561.0, 1365.0, 1411.0, 1219.0, 1314.0, 1193.0, 1972.0,
+            1955.0, 2022.0, 1675.0, 1558.0, 1441.0, 1572.0, 1439.0, 1388.0, 1647.0, 1824.0,
+            2014.0, 1833.0, 1632.0, 1533.0, 1584.0, 1390.0, 1316.0, 1422.0, 1191.0, 1407.0,
+            1194.0, 1413.0, 1440.0, 1354.0, 1124.0, 1249.0, 1160.0, 1189.0, 1374.0, 1535.0,
+            1431.0, 1408.0, 1320.0, 1225.0, 1371.0, 1223.0, 1340.0, 1432.0, 1317.0, 1132.0,
+            1124.0, 1355.0, 1216.0, 1180.0, 1199.0, 1342.0, 1168.0, 1004.0, 1243.0, 1290.0,
+            1251.0, 1165.0, 1204.0, 1210.0, 1093.0,
+        ];
+
+        let bimodal = compute_metric_stats(&vals, true, true);
+        let plain   = compute_metric_stats(&vals, false, true);
+
+        // Guard must have fired: bimodal-enabled stats identical to plain
+        assert!(
+            (bimodal.mean - plain.mean).abs() < 0.01
+                && (bimodal.stddev - plain.stddev).abs() < 0.01,
+            "Populated-valley session must fall back to plain stats \
+             (got mean={} stddev={}, plain mean={} stddev={})",
+            bimodal.mean, bimodal.stddev, plain.mean, plain.stddev,
+        );
+
+        // Under plain stats, no frame reaches -1.75σ (Duo-band StarCount
+        // reject threshold): worst frame (1004) sits at ≈ -1.67σ.
+        let rejects = vals.iter()
+            .filter(|&&v| (v - bimodal.mean) / bimodal.stddev <= -1.75)
+            .count();
+        assert_eq!(
+            rejects, 0,
+            "No frame in this session should reject on StarCount at 1.75σ",
+        );
+    }
+
+    #[test]
+    fn test_empty_valley_minority_good_cluster_still_anchors() {
+        // Counterpart to test_populated_valley_falls_back_to_plain_stats:
+        // the valley depth guard must NOT suppress anchoring when the
+        // split is genuine. Scenario: clouds rolled in early — only 15
+        // clear frames (~1850–1941 stars) against 50 cloudy frames
+        // (~550–648 stars). The good cluster is a 23% minority (which is
+        // exactly why a minimum-cluster-fraction guard was rejected),
+        // but the histogram valley between the clusters is empty
+        // (depth ratio 0.0), so anchoring must engage and the cloudy
+        // block must reject on StarCount.
+        let mut results: Vec<AnalysisResult> = (0..15)
+            .map(|i| make_result(&format!("clear_{i}"), 3.0, 0.5, 1850 + (i * 13) % 101, 0.05))
+            .collect();
+        results.extend(
+            (0..50).map(|i| make_result(&format!("cloudy_{i}"), 3.0, 0.5, 550 + (i * 17) % 101, 0.05)),
+        );
+
+        let refs: Vec<&AnalysisResult> = results.iter().collect();
+        let stats = compute_session_stats(&refs);
+        let thresholds = AnalysisThresholds::default();
+
+        // Anchoring must have engaged: mean near the clear cluster
+        // (~1897), nowhere near the plain whole-population mean (~899).
+        assert!(
+            stats.star_count.mean > 1800.0,
+            "Star count mean={} should be anchored to the minority clear \
+             cluster despite it being only 15 of 65 frames",
+            stats.star_count.mean,
+        );
+
+        // Cloudy frames must reject with StarCount triggered
+        let cloudy = &results[15];
+        let (flag, triggered) = classify_frame(cloudy, &stats, &thresholds);
+        assert_eq!(flag, PxFlag::Reject);
+        assert!(triggered.contains(&"StarCount".to_string()));
+
+        // A mid-cluster clear frame must pass. (Deliberately not the
+        // cluster-minimum frame: with a ~uniform jitter spread, the
+        // extreme cluster member sits near the default 1.5σ line by
+        // construction — the same property the balanced-fixture test
+        // has — and testing threshold-edge behaviour is not this
+        // test's job.)
+        let clear = &results[3]; // star_count = 1889, near cluster mean
+        let (flag, _) = classify_frame(clear, &stats, &thresholds);
+        assert_eq!(flag, PxFlag::Pass);
+    }
 }
+
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
