@@ -37,13 +37,9 @@ pub fn snapshot_pixel_chunk(ctx: &AppContext, paths: &[String]) -> Vec<FramePixe
 }
 
 /// Resolve the effective chunk size from ctx.rayon_thread_count.
-/// -1 means "use num_cpus - 1 at runtime", matching StackFrames' convention.
+/// Used by both AnalyzeFrames and CacheFrames.
 pub fn chunk_size(ctx: &AppContext) -> usize {
-    if ctx.rayon_thread_count == -1 {
-        rayon::current_num_threads()
-    } else {
-        ctx.rayon_thread_count as usize
-    }.max(1)
+    (ctx.rayon_thread_count as usize).max(1)
 }
 
 // ----------------------------------------------------------------------

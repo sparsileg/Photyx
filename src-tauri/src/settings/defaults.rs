@@ -36,7 +36,15 @@ pub const DEFAULT_BUFFER_POOL_BYTES:   i64  = 4 * 1024 * 1024 * 1024; // 4 GB
 pub const BUFFER_POOL_MIN_BYTES:       i64  = 512 * 1024 * 1024;       // 512 MB
 pub const BUFFER_POOL_MAX_BYTES:       i64  = 32 * 1024 * 1024 * 1024; // 32 GB
 
-pub const RAYON_THREAD_COUNT_DEFAULT:  i64  = -1; // -1 = num_cpus - 1 at runtime
+// Issue 171: no -1 sentinel. RAYON_THREAD_COUNT_DEFAULT is a static
+// fallback only — used if num_cpus::get() were ever to return something
+// degenerate (it can't in practice, but this keeps AppSettings::new()
+// infallible without an unwrap). The real first-run default is computed
+// in AppSettings::new() via num_cpus::get() - 1, the same call
+// get_cpu_count (commands/display.rs) uses for the frontend's Auto
+// button, so the built-in default and a manually-clicked Auto always
+// agree on a given machine.
+pub const RAYON_THREAD_COUNT_DEFAULT:  i64  = 1;
 pub const RAYON_THREAD_COUNT_MIN:      i64  = 1;
 
 // ── AutoStretch ───────────────────────────────────────────────────────────────

@@ -42,9 +42,9 @@ and any script that looks for the binary.
 no bare suffixes like `0.11.0B`. Use a proper prerelease identifier
 instead:
 
-- `0.11.0-beta` / `0.11.0-beta.1` — beta builds
-- `0.11.0-rc.1` — release candidate
-- `0.11.0` — stable
+- `1.11.0-beta` / `1.11.0-beta.1` — beta builds
+- `1.11.0-rc.1` — release candidate targeting release 1.11.0
+- `1.11.0` — stable
 
 **Windows MSI caveat (see §2):** the Windows Installer format only
 accepts a *numeric-only* prerelease identifier (e.g. `0.11.0-1` would
@@ -69,31 +69,27 @@ npm run tauri dev
 bundling):
 
 ```bash
-cd src-tauri && cargo check && cd ..
+pushd src-tauri && cargo check && popd
 ```
 
 This is the right tool for "did I break the syntax" — much faster than
 a full build because it skips code generation and linking entirely.
 
-**Full compiled binary, no installer:**
-
-```bash
-npm run tauri build -- --no-bundle
-./target/release/photyx
-```
-
-This runs the real `tauri build` pipeline (frontend build, Rust
-release compile) but skips the platform-packaging step (`.deb`/`.exe`/
-`.dmg`/etc.), so you get a runnable binary fast without producing
-installers you don't need yet.
-
 **Run the test suite** (e.g. the Issue 159 unit tests):
 
 ```bash
-cd src-tauri && cargo test && cd ..
+pushd src-tauri && cargo test && popd
 # or a single module:
 cargo test analyze_frames
 ```
+
+**Full compiled binary, no installer:**
+
+```bash
+npm run tauri build -- --no-bundle && ./target/release/photyx
+```
+
+This runs the real `tauri build` pipeline (frontend build, Rust release compile) but skips the platform-packaging step (`.deb`/`.exe`/ `.dmg`/etc.), so you get a runnable binary fast without producing installers you don't need yet.
 
 ---
 
@@ -277,7 +273,15 @@ arm64 library into an x86_64 binary. This bit the CI workflow directly
 (see §4's `macos-15-intel` matrix entry) and applies identically to a
 local build attempt. There's no universal-binary flag built into
 `tauri build` either way — the two targets always ship as separate
-`.dmg`s.
+`.dmg` files.
+
+Since the MacOS package is not signed (yet), Gatekeeper will reject it with an error. You can try this command, assuming the app was installed in the /Applications folder, to strip the qurantine attribute recursively so Gatekeeper will stop blocking it.
+
+```xattr -cr /Applications/photyx.app
+xattr -cr /Applications/photyx.app
+```
+
+
 
 ---
 

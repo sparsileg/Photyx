@@ -22,7 +22,8 @@
 
   // Fetched once on mount, deliberately independent of the draft-init
   // effect below — it must never re-run draft init or clobber an
-  // in-progress edit when it resolves. Issue 121.
+  // in-progress edit when it resolves. Issue 121. Still needed post-171:
+  // the Auto button computes cpuCount - 1 from this.
   $effect(() => {
     invoke<number>('get_cpu_count').then(n => { cpuCount = n; });
   });
@@ -30,12 +31,6 @@
   // Draft copy — edited freely; nothing is written until OK or Apply.
   // buffer_pool_memory_limit is converted to GB for display.
   let draft = $state<Record<string, number | string>>({});
-
-  // True when the "Threads − 1" checkbox is checked (auto mode). The raw
-  // draft.rayon_thread_count sentinel (-1) is what's actually compared
-  // against the store and persisted — this is purely display/interaction
-  // state, not the value that gets saved. Issue 121.
-  let rayonAuto = $state(true);
 
   // Validation errors keyed by preference key
   let errors = $state<Record<string, string>>({});
@@ -52,13 +47,11 @@
       buffer_pool_memory_limit: s.buffer_pool_memory_limit / GB,
       autostretch_shadow_clip:  s.autostretch_shadow_clip,
       autostretch_target_bg:    s.autostretch_target_bg,
-      // Keep the raw store value, including -1 — do NOT resolve "auto" to
-      // a concrete number here. buildChanged() compares this directly
-      // against the store value; resolving it early made every unrelated
-      // Apply silently pin a concrete thread count. Issue 121.
+      // rayon_thread_count is a plain explicit value now (Issue 171) — no
+      // -1 sentinel, no auto mode. The Auto button just writes a computed
+      // number into this same field, same as typing one in by hand.
       rayon_thread_count:       s.rayon_thread_count,
     };
-    rayonAuto = s.rayon_thread_count < 0;
   });
 
   function fieldMeta(key: string): PrefFieldMeta | undefined {
@@ -74,26 +67,16 @@
     return field.max;
   }
 
-  // Checked = auto (-1, sentinel, disabled field). Unchecked = manual entry,
-  // seeded with a sensible starting value rather than leaving whatever -1
-  // or stale number was last in the draft. Issue 121.
-  function toggleRayonAuto(checked: boolean) {
-    rayonAuto = checked;
-    if (checked) {
-      draft.rayon_thread_count = -1;
-    } else {
-      draft.rayon_thread_count = Math.max(1, cpuCount - 1 || 1);
-    }
+  // Sets the field to cpuCount - 1, same value the field would hold if the
+  // user typed it in manually. Issue 171: no mode, no sentinel — this is a
+  // one-shot fill, not a toggle.
+  function setAuto() {
+    draft.rayon_thread_count = Math.max(1, cpuCount - 1 || 1);
   }
 
   function validate(): boolean {
     errors = {};
     for (const field of PREF_FIELDS) {
-      // Auto mode: the field is disabled and draft.rayon_thread_count is
-      // deliberately -1 (below field.min) — not user input, skip validation
-      // entirely rather than reporting a spurious "Minimum is 1". Issue 121.
-      if (field.key === 'rayon_thread_count' && rayonAuto) continue;
-
       const raw = draft[field.key];
       if (field.type === 'integer' || field.type === 'float') {
         const v = Number(raw);
@@ -214,14 +197,6 @@
                   </div>
                 {:else if key === 'rayon_thread_count'}
                   <div class="pref-numeric-row">
-                    <label class="pref-checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={rayonAuto}
-                        onchange={(e) => toggleRayonAuto((e.target as HTMLInputElement).checked)}
-                      />
-                      Threads − 1
-                    </label>
                     <input
                       id={`pref-${key}`}
                       class="pref-input pref-input-numeric"
@@ -229,10 +204,10 @@
                       step="1"
                       min={meta.min}
                       max={effectiveMax(meta)}
-                      disabled={rayonAuto}
-                      value={rayonAuto ? '' : (draft[key] ?? meta.default)}
+                      value={draft[key] ?? meta.default}
                       oninput={(e) => draft[key] = (e.target as HTMLInputElement).value}
                     />
+                    <button class="pref-browse-btn" onclick={setAuto}>Auto</button>
                     {#if meta.unit}
                       <span class="pref-unit">{meta.unit}</span>
                     {/if}
@@ -255,14 +230,8 @@
                   </div>
                 {/if}
                 <div class="pref-helper">
-                  {#if key === 'rayon_thread_count' && rayonAuto}
-                    {cpuCount > 0
-                  ? `Auto — currently resolves to ${Math.max(1, cpuCount - 1)} thread(s) on this machine.`
-                  : 'Auto — resolving CPU count…'}
-                {:else}
                   {meta.helper}
-                {/if}
-              </div>
+                </div>
                 {#if errors[key]}
                   <div class="pref-error">{errors[key]}</div>
                 {/if}

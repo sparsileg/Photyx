@@ -91,7 +91,7 @@ impl AppSettings {
             macro_editor_font_size:       DEFAULT_MACRO_EDITOR_FONT,
             error_behavior:               DEFAULT_ERROR_BEHAVIOR.to_string(),
             buffer_pool_bytes:            DEFAULT_BUFFER_POOL_BYTES,
-            rayon_thread_count:           RAYON_THREAD_COUNT_DEFAULT,
+            rayon_thread_count:           num_cpus::get().saturating_sub(1).max(1) as i64,
             autostretch_shadow_clip:      DEFAULT_AUTOSTRETCH_SHADOW_CLIP,
             autostretch_target_bg:        DEFAULT_AUTOSTRETCH_TARGET_BG,
             active_threshold_profile_id:  None,
@@ -148,9 +148,11 @@ impl AppSettings {
                 }
                 "rayon_thread_count" => {
                     if let Ok(v) = value.parse::<i64>() {
-                        // -1 is a first-class sentinel ("auto: num_cpus - 1 at
-                        // runtime"), not a value to clamp away — Issue 121.
-                        self.rayon_thread_count = if v == -1 { -1 } else { v.max(RAYON_THREAD_COUNT_MIN) };
+                        self.rayon_thread_count = if v <= 0 {
+                            num_cpus::get().saturating_sub(1).max(1) as i64
+                        } else {
+                            v.max(RAYON_THREAD_COUNT_MIN)
+                        };
                     }
                 }
                 "autostretch_shadow_clip" => {
@@ -218,9 +220,10 @@ impl AppSettings {
             }
             "rayon_thread_count"           => {
                 if let Ok(v) = value.parse::<i64>() {
-                    // -1 is a first-class sentinel ("auto: num_cpus - 1 at
-                    // runtime"), not a value to clamp away — Issue 121.
-                    self.rayon_thread_count = if v == -1 { -1 } else { v.max(RAYON_THREAD_COUNT_MIN) };
+                    // Issue 171: no -1 sentinel — see load_from_db's matching
+                    // comment above for why an old persisted -1 is clamped
+                    // rather than treated specially.
+                    self.rayon_thread_count = v.max(RAYON_THREAD_COUNT_MIN);
                 }
             }
             "autostretch_shadow_clip"      => {

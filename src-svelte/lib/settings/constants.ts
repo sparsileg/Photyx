@@ -31,7 +31,11 @@ export const BUFFER_POOL_DEFAULT_GB = 4;
 export const BUFFER_POOL_MIN_GB = 0.5;
 export const BUFFER_POOL_MAX_GB = 32;
 
-export const RAYON_THREADS_DEFAULT = -1; // -1 = num_cpus - 1 at runtime
+// Issue 171: no sentinel. This is a plain fallback used only before the
+// settings store has loaded — the real default is computed on first run
+// in defaults.rs (num_cpus - 1) and persisted from there like any other
+// preference. Users can also reset to that value via the Auto button.
+export const RAYON_THREADS_DEFAULT = 1;
 export const RAYON_THREADS_MIN = 1;
 
 // Conversion helpers — DB stores bytes, UI shows GB
@@ -130,7 +134,7 @@ export const PREF_FIELDS: PrefFieldMeta[] = [
   {
     key: 'rayon_thread_count',
     label: 'Parallel Thread Count',
-    helper: 'Number of threads used for parallel image processing. Default uses all CPUs minus one.',
+    helper: 'Number of threads used for parallel image processing. Click Auto to set to CPU count minus one.',
     type: 'integer',
     min: RAYON_THREADS_MIN,
     default: RAYON_THREADS_DEFAULT,

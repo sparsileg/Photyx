@@ -744,11 +744,7 @@ impl PhotyxPlugin for StackFrames {
         //  ── Pass 2 — sigma-clipped accumulation (batched parallel) ────────────
 
         let sigma      = STACK_SIGMA_CLIP;
-        let n_threads  = if ctx.rayon_thread_count == -1 {
-            rayon::current_num_threads()
-        } else {
-            ctx.rayon_thread_count as usize
-        }.max(1);
+        let n_threads  = (ctx.rayon_thread_count as usize).max(1);
 
         let mut sum_buf:    Vec<f64> = vec![0.0; n_pixels * n_channels];
         let mut clip_count: Vec<u32> = vec![0;  n_pixels];
