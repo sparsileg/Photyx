@@ -78,26 +78,29 @@ export function lastResultOrThrow(job: JobResult): ScriptResult {
  *  active. Deliberately does NOT change the saved active profile —
  *  equivalent to typing `AnalyzeFrames profile="..."` by hand. Quick
  *  Launch, saved macros, RunMacro, and the console dispatch AnalyzeFrames
- *  independently of this function and are unaffected. */
+ *  independently of this function and are unaffected.
+ *
+ *  Issue 177: previously invoked `dispatch_command` directly, which is an
+ *  async Tauri command that holds the AppContext lock for the entire
+ *  plugin execute() and does not resolve until the run completes — no
+ *  progress-polling contract on that path at all, unlike console/macro
+ *  dispatch. That mismatched architecture is what caused the progress bar
+ *  and the whole UI to freeze for the run's duration. Now routed through
+ *  the same runScriptAndWait/run_script path console already uses: the
+ *  script is accepted near-instantly on its own thread, and progress
+ *  ticks via the existing poll in stores/progress.ts, exactly like
+ *  AddFiles and every other console-dispatched command. */
 export async function runAnalyzeFramesWithProfile(profileName: string) {
   notifications.running('AnalyzeFrames');
   try {
-    const response = await invoke<{
-      success: boolean;
-      output: string | null;
-      error: string | null;
-    }>('dispatch_command', {
-      request: { command: 'AnalyzeFrames', args: { profile: profileName } }
-    });
-    if (response.success) {
-      const msg = response.output ?? 'AnalyzeFrames complete';
-      pipeToConsole(msg, 'success');
-      notifications.success('AnalyzeFrames complete');
-    } else {
-      const err = response.error ?? 'AnalyzeFrames failed';
-      pipeToConsole(err, 'error');
-      notifications.error(err);
-    }
+    const job = await runScriptAndWait(
+      `AnalyzeFrames profile="${profileName}"`,
+      'analyzeFramesMenu'
+    );
+    const last = lastResultOrThrow(job);
+    const msg = last.message ?? 'AnalyzeFrames complete';
+    pipeToConsole(msg, 'success');
+    notifications.success('AnalyzeFrames complete');
   } catch (err) {
     const msg = `AnalyzeFrames error: ${err}`;
     pipeToConsole(msg, 'error');
