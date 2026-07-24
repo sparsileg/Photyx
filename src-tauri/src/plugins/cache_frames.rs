@@ -72,12 +72,36 @@ impl PhotyxPlugin for CacheFrames {
         crate::set_progress("Caching frames", 0, progress_total);
 
         for path_chunk in file_list.chunks(chunk_len) {
-            // Sequential: clone this chunk's pixel data once, reused across
-            // every requested resolution below — avoids reloading pixels
-            // twice per chunk when resolution=both (the default), while
-            // still bounding peak memory to one chunk instead of the
-            // whole session.
-            let frames = crate::plugins::pixel_chunking::snapshot_pixel_chunk(ctx, path_chunk);
+            // Sequential: read this chunk's pixel data once from disk (Issue
+            // 174 — image_buffers is metadata-only since Issue 173 and no
+            // longer holds analysis-time pixels), reused across every
+            // requested resolution below. Avoids re-reading pixels twice per
+            // chunk when resolution=both (the default), while still bounding
+            // peak memory to one chunk instead of the whole session.
+            let outcomes = crate::plugins::pixel_chunking::load_pixel_chunk(path_chunk);
+
+            // Split into decoded snapshots and disk-read failures. A frame
+            // that could not be read is absent for every requested
+            // resolution, so it is logged once here (distinguishing a
+            // missing file from an unreadable one) and counted against each
+            // resolution's failed tally below — exclude-and-continue: a
+            // blink cache missing a few frames is degraded, not corrupt, and
+            // the shortfall is surfaced in the summary line.
+            let mut frames: Vec<crate::plugins::pixel_chunking::FramePixelSnapshot> = Vec::new();
+            let mut chunk_read_failures = 0usize;
+            for outcome in outcomes {
+                match outcome {
+                    crate::plugins::pixel_chunking::LoadOutcome::Loaded(snap) => frames.push(snap),
+                    crate::plugins::pixel_chunking::LoadOutcome::Missing { path } => {
+                        chunk_read_failures += 1;
+                        info!("CacheFrames: source file missing, skipped — {}", path);
+                    }
+                    crate::plugins::pixel_chunking::LoadOutcome::Unreadable { path, error } => {
+                        chunk_read_failures += 1;
+                        info!("CacheFrames: source file unreadable, skipped — {} ({})", path, error);
+                    }
+                }
+            }
 
             for &(res_name, max_w) in resolutions {
                 let results: Vec<(String, Vec<u8>)> = frames.par_iter().filter_map(|frame| {
@@ -121,7 +145,15 @@ impl PhotyxPlugin for CacheFrames {
                     _    => { for (path, jpeg) in results { ctx.blink_cache_25.insert(path, jpeg); } }
                 }
                 *cached_counts.get_mut(res_name).unwrap() += n;
-                *failed_counts.get_mut(res_name).unwrap() += frames.len() - n;
+                // Two failure sources, both counted per resolution: frames
+                // that decoded but failed to render/encode in the par_iter
+                // above (frames.len() - n), and frames that never decoded at
+                // all because their source file was missing/unreadable
+                // (chunk_read_failures). Progress was advanced only for the
+                // decoded frames the par_iter iterated, so read failures do
+                // not touch progress_counter — total attempted still reads
+                // out correctly against progress_total.
+                *failed_counts.get_mut(res_name).unwrap() += (frames.len() - n) + chunk_read_failures;
             } // end resolution loop
             // This chunk's cloned pixel buffers (`frames`) drop here,
             // before the next chunk is loaded.

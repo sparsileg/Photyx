@@ -117,7 +117,7 @@ impl PhotyxPlugin for StackFrames {
 
         //     Light frame stacking
         let det_config = StarDetectionConfig::default();
-        let snapshots  = collect_snapshots(ctx, &det_config)?;
+        let (snapshots, read_failures) = collect_snapshots(ctx, &det_config)?;
 
         if snapshots.is_empty() {
             return Err(PluginError::new("NO_PIXELS", "No frames with pixel data available."));
@@ -483,6 +483,12 @@ impl PhotyxPlugin for StackFrames {
         group_ref_luma[master_group]  = Some(master_ref_luma.clone());
         group_ref_stars[master_group] = Some(master_ref_stars.clone());
 
+        // Issue 174: contributions stays positionally aligned with snapshots
+        // through Pass 1 / Pass 2 (several sites index it by snapshot
+        // position — see contributions.get(i) / get_mut(inp.snap_idx)), so
+        // read-failed frames are NOT seeded here. They are appended after the
+        // last positional access, just before StackSummary::compute, so the
+        // summary reflects them without disturbing the aligned region.
         let mut contributions: Vec<FrameContribution> = Vec::new();
         let mut total_integration = 0.0f32;
 
@@ -787,11 +793,15 @@ impl PhotyxPlugin for StackFrames {
 
             for inp in chunk.iter() {
                 let snap = &snapshots[inp.snap_idx];
-                let loaded = ctx.image_buffers.get(&snap.path)
-                    .and_then(|buf| buf.pixels.as_ref().map(|pixels| (buf, pixels)));
-
-                match loaded {
-                    Some((_buf, pixels)) => {
+                // Issue 174: read this frame's pixels from disk (image_buffers
+                // no longer holds them past the viewing LRU). A missing or
+                // unreadable file is excluded-and-continued via the existing
+                // BufferUnavailable pathway — the message distinguishes the
+                // two cases. The read is sequential here, outside the Rayon
+                // resample below (cfitsio is not thread-safe).
+                match read_frame_from_disk(&snap.path) {
+                    Ok(buf) if buf.pixels.is_some() => {
+                        let pixels = buf.pixels.as_ref().unwrap();
                         let px = if is_color {
                             if snap.color_space == ColorSpace::Bayer {
                                 let mono = analysis::to_f32_normalized(pixels);
@@ -805,9 +815,13 @@ impl PhotyxPlugin for StackFrames {
                         chunk_ok.push(inp);
                         chunk_pixels.push(px);
                     }
-                    None => {
+                    outcome => {
+                        let reason = match outcome {
+                            Err(e) => e.message,
+                            Ok(_)  => "decoded buffer contains no pixel data".to_string(),
+                        };
                         let msg = format!(
-                            "Frame {}: buffer unavailable during stacking — excluded", snap.index
+                            "Frame {}: {} during stacking — excluded", snap.index, reason
                         );
                         info!("{}", msg);
                         messages.push(msg);
@@ -1007,6 +1021,27 @@ impl PhotyxPlugin for StackFrames {
 
         ctx.stack_result = Some(stack_buf);
 
+        // Issue 174: append the frames that failed to read in
+        // collect_snapshots as excluded contributions. This happens after
+        // the last positional access to `contributions` (the crop loop
+        // above), so appending cannot misalign snapshot-indexed lookups. The
+        // frames carry their true file_list index and are marked
+        // BufferUnavailable, matching the exclusion reason used when a read
+        // fails in the later passes — so a source file that is missing or
+        // unreadable is surfaced in the stack summary regardless of which
+        // pass first tried to read it, never silently dropped.
+        for f in &read_failures {
+            let mut contrib = FrameContribution::new(f.index, &f.path);
+            contrib.included         = false;
+            contrib.exclusion_reason = Some(ExclusionReason::BufferUnavailable);
+            let msg = format!(
+                "Frame {}: {} — excluded from stack", f.index, f.reason
+            );
+            info!("StackFrames: {}", msg);
+            messages.push(msg);
+            contributions.push(contrib);
+        }
+
         let mut summary = StackSummary::compute(&contributions, &completed_at, low_coverage_pixels);
         summary.target              = ref_target;
         summary.filter              = ref_filter;
@@ -1107,20 +1142,51 @@ fn normalize_output(raw: &[f32], _is_color: bool, _n_pixels: usize) -> Vec<f32> 
 
 //  ── Snapshot collection ───────────────────────────────────────────────────────
 
-fn collect_snapshots(
-    ctx:        &AppContext,
-    det_config: &StarDetectionConfig,
-) -> Result<Vec<FrameSnapshot>, PluginError> {
-    let mut snapshots: Vec<FrameSnapshot> = Vec::new();
+/// A frame that could not be read from disk during collect_snapshots.
+/// Carries the true file_list index and path so execute() can seed it as an
+/// excluded contribution (ExclusionReason::BufferUnavailable) once the
+/// contributions vec exists — collect_snapshots runs before that vec is
+/// built, so it cannot record the exclusion itself.
+struct FrameReadFailure {
+    index:  usize,
+    path:   String,
+    reason: String,
+}
 
-    for (index, path) in ctx.file_list.iter().enumerate() {
-        let buf = match ctx.image_buffers.get(path) {
-            Some(b) => b,
-            None    => continue,
+fn collect_snapshots(
+    _ctx:       &AppContext,
+    det_config: &StarDetectionConfig,
+) -> Result<(Vec<FrameSnapshot>, Vec<FrameReadFailure>), PluginError> {
+    let mut snapshots: Vec<FrameSnapshot> = Vec::new();
+    let mut read_failures: Vec<FrameReadFailure> = Vec::new();
+
+    for (index, path) in _ctx.file_list.iter().enumerate() {
+        // Issue 174: read from disk instead of image_buffers. A missing or
+        // unreadable file is not silently skipped (the old `continue`) — it
+        // is recorded as a read-failure so execute() can seed it as an
+        // excluded contribution surfaced in the stack summary. Exclude-and-
+        // continue keeps a stack with a few unreadable frames useful while
+        // never producing a silently smaller result set.
+        let buf = match read_frame_from_disk(path) {
+            Ok(b)  => b,
+            Err(e) => {
+                info!("StackFrames: collect_snapshots — {} ({})", path, e.message);
+                read_failures.push(FrameReadFailure {
+                    index,
+                    path: path.clone(),
+                    reason: e.message,
+                });
+                continue;
+            }
         };
         let pixels = match &buf.pixels {
             Some(p) => p,
-            None    => continue,
+            None    => {
+                let reason = "decoded buffer contains no pixel data".to_string();
+                info!("StackFrames: collect_snapshots — {} ({})", path, reason);
+                read_failures.push(FrameReadFailure { index, path: path.clone(), reason });
+                continue;
+            }
         };
 
         let width    = buf.width  as usize;
@@ -1178,7 +1244,7 @@ fn collect_snapshots(
         assign_groups(&mut snapshots);
     }
 
-    Ok(snapshots)
+    Ok((snapshots, read_failures))
 }
 
 //  ── Group assignment ──────────────────────────────────────────────────────────
@@ -1382,9 +1448,15 @@ fn quality_score(snap: &FrameSnapshot) -> f32 {
 
 //  ── Frame pixel loading ───────────────────────────────────────────────────────
 
-fn load_frame_pixels(ctx: &AppContext, snap: &FrameSnapshot, is_color: bool) -> Result<Vec<f32>, PluginError> {
-    let buf = ctx.image_buffers.get(&snap.path)
-        .ok_or_else(|| PluginError::new("NO_BUFFER", "Frame buffer missing."))?;
+fn load_frame_pixels(_ctx: &AppContext, snap: &FrameSnapshot, is_color: bool) -> Result<Vec<f32>, PluginError> {
+    // Issue 174: pixels are read fresh from disk, not from image_buffers
+    // (which since Issue 173 holds pixels only for the small viewing LRU
+    // set). A missing or unreadable source file surfaces as a PluginError
+    // whose message distinguishes the two cases; the caller routes that into
+    // the BufferUnavailable exclusion pathway (exclude-and-continue). The
+    // read happens here, sequentially per frame, never inside a Rayon
+    // closure — cfitsio is not thread-safe.
+    let buf = read_frame_from_disk(&snap.path)?;
     let pixels = buf.pixels.as_ref()
         .ok_or_else(|| PluginError::new("NO_PIXELS", "Frame has no pixel data."))?;
 
@@ -1402,9 +1474,27 @@ fn load_frame_pixels(ctx: &AppContext, snap: &FrameSnapshot, is_color: bool) -> 
     Ok(result)
 }
 
-fn load_debayered_luma(ctx: &AppContext, snap: &FrameSnapshot) -> Result<Vec<f32>, PluginError> {
-    let buf = ctx.image_buffers.get(&snap.path)
-        .ok_or_else(|| PluginError::new("NO_BUFFER", "Frame buffer missing."))?;
+/// Issue 174: read a single frame from disk, distinguishing a missing file
+/// from an unreadable one in the error message so callers can word their
+/// diagnostics (and, for StackFrames, their BufferUnavailable exclusion
+/// reason) accordingly. Shared by load_frame_pixels and load_debayered_luma.
+fn read_frame_from_disk(path: &str) -> Result<ImageBuffer, PluginError> {
+    if !std::path::Path::new(path).exists() {
+        return Err(PluginError::new(
+            "SOURCE_FILE_MISSING",
+            &format!("source file missing: {}", path),
+        ));
+    }
+    crate::plugins::image_reader::read_image_file(path)
+        .map_err(|e| PluginError::new(
+            "SOURCE_FILE_UNREADABLE",
+            &format!("source file unreadable: {} ({})", path, e),
+        ))
+}
+
+fn load_debayered_luma(_ctx: &AppContext, snap: &FrameSnapshot) -> Result<Vec<f32>, PluginError> {
+    // Issue 174: read from disk (see read_frame_from_disk / load_frame_pixels).
+    let buf = read_frame_from_disk(&snap.path)?;
     let pixels = buf.pixels.as_ref()
         .ok_or_else(|| PluginError::new("NO_PIXELS", "Frame has no pixel data."))?;
 
