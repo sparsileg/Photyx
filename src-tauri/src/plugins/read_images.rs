@@ -7,7 +7,7 @@ use tracing::info;
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::AppContext;
 use crate::plugins::image_reader::read_image_file;
-use crate::plugins::load_common::{check_memory_limit, finalize_session_order};
+use crate::plugins::load_common::{build_blink_jpegs, finalize_session_order};
 
 pub struct ReadImages;
 
@@ -75,9 +75,8 @@ impl PhotyxPlugin for ReadImages {
             return Ok(PluginOutput::Message("No supported image files found.".to_string()));
         }
 
-        // Checked against the full candidate list, before the already-loaded
-        // filter below — matches AddFiles' conservative ordering (Issue 91).
-        check_memory_limit(ctx, &candidates)?;
+        // Memory gate retired (Issue 173): the load path no longer keeps
+        // raw pixels resident, so session size is not RAM-bounded.
 
         // Pre-filter already-loaded duplicates before the loop, matching
         // AddFiles' structure — progress below is reported against the
@@ -96,8 +95,22 @@ impl PhotyxPlugin for ReadImages {
 
         for (i, file_path) in to_load.iter().enumerate() {
             match read_image_file(file_path) {
-                Ok(buffer) => {
+                Ok(mut buffer) => {
                     info!("ReadImages: loaded {}", file_path);
+                    // Issue 173: build both blink thumbnails while the raw
+                    // pixels are in hand, then discard the pixels — only
+                    // metadata stays resident. Viewing reads from disk on
+                    // demand (ensure_pixels_resident).
+                    match build_blink_jpegs(&buffer) {
+                        Ok((b12, b25)) => {
+                            ctx.blink_cache_12.insert(file_path.clone(), b12);
+                            ctx.blink_cache_25.insert(file_path.clone(), b25);
+                        }
+                        Err(e) => {
+                            tracing::warn!("ReadImages: blink cache failed for {}: {}", file_path, e);
+                        }
+                    }
+                    buffer.pixels = None;
                     ctx.image_buffers.insert(file_path.clone(), buffer);
                     ctx.file_list.push(file_path.clone());
                     loaded += 1;
@@ -108,6 +121,9 @@ impl PhotyxPlugin for ReadImages {
                 }
             }
             crate::set_progress("Loading files", (i + 1) as u32, total_to_load);
+        }
+        if loaded > 0 {
+            ctx.blink_cache_status = crate::context::BlinkCacheStatus::Ready;
         }
 
         crate::set_progress("", 0, 0);

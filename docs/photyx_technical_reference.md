@@ -94,71 +94,96 @@ Photyx/
 └── static/css/                ← one CSS file per major UI module; static/themes/
 ```
 
-### 2.2 AppContext & Display Cache
+### 2.2 AppContext & Image Residency
 
 Session state lives in a single `AppContext` struct behind a
-`Mutex`. Raw pixel buffers are loaded once and never modified; all
-display representations are derived JPEG copies:
+`Mutex`. As of Issue 173, `image_buffers` is a **metadata registry
+with a bounded viewing LRU**: every loaded frame has an entry
+carrying its metadata (keywords, dimensions, color space, bit depth,
+channels), but raw pixels are resident (`pixels = Some(...)`) only for
+a small set of recently-viewed frames. All other entries are
+metadata-only (`pixels = None`). This removes the former hard cap where
+session size was bounded by total RAM — session size is now effectively
+unbounded, and resident memory scales with metadata plus derived JPEG
+caches plus the bounded LRU, not with raw pixel data.
 
+```
 AppContext
-├── image_buffers: HashMap   ← raw pixels, NEVER modified
-├── display_cache: HashMap>       ← display-res JPEG bytes (see note below)
-├── full_res_cache: HashMap>      ← full-resolution JPEG bytes
-├── blink_cache_12: HashMap>      ← blink-res 12.5% JPEG bytes
-└── blink_cache_25: HashMap>      ← blink-res 25% JPEG bytes
+├── image_buffers: HashMap   ← metadata always; pixels only for LRU-resident frames
+├── display_cache: HashMap>       ← display-res JPEG bytes (unused; see note)
+├── full_res_cache: HashMap>      ← full-resolution JPEG bytes, on demand
+├── blink_cache_12: HashMap>      ← blink-res 12.5% JPEG bytes (built at load)
+├── blink_cache_25: HashMap>      ← blink-res 25% JPEG bytes (built at load)
+└── pixels_lru: Vec              ← MRU-first paths whose pixels are resident
+```
 
-**`display_cache` is currently dead** (Issue 84, deferred): nothing in
-source writes to it. `start_background_cache` computes stretched
-display-resolution JPEGs for the whole session — the most expensive
-pass it runs — but uses them only as blink-thumbnail sources and
-discards the display-resolution output rather than storing it here;
-frame navigation re-renders from raw pixels on every request instead of
-reading a cached copy. Deferred rather than fixed because Stan
-navigates frames via the file browser, not keyboard/arrow stepping, so
-the cache-miss cost is low-impact under that usage pattern; revisit if
-full-resolution scaled-down frame stepping becomes a workflow.
+**Viewing LRU (Issue 173).** `pixels_lru` holds the paths of frames
+whose pixels are currently resident, most-recently-used first, capacity
+= `rayon_thread_count`. The sole sanctioned way for a viewing-path
+consumer to obtain pixels is `ensure_pixels_resident(path)`: on a hit it
+refreshes recency; on a miss it reads the frame from disk via
+`read_image_file`, installs only the pixels (the existing metadata entry
+stays authoritative — a changed-on-disk header never silently rewrites
+session metadata mid-session), and touches the LRU, evicting the
+least-recently-used frame(s) beyond capacity by setting their pixels back
+to `None`. Consumers wired to it: `get_current_frame`, `get_pixel`,
+`get_histogram`, `get_full_frame`, and both AutoStretch entry points.
+Because this runs under the `AppContext` lock, viewing-path disk reads
+are naturally serialized — which also satisfies cfitsio's
+thread-unsafety requirement for the viewing path.
 
-Design rule: display plugins read from `image_buffers` and write to
-caches; they never modify `image_buffers`. Because `AppContext` is
-behind a single Mutex, any plugin holding `&mut AppContext` for a
-long-running operation blocks all other Tauri commands — including
-frame display — for its duration. Extract owned data before any Rayon
-parallel section; `&mut AppContext` cannot be borrowed inside Rayon
-closures.
+**Hard rule:** nothing outside the viewing path may depend on pixels
+being present in `image_buffers`. Analysis and stacking must read their
+own pixel data from disk (see §6, §7 — landing under Issue 174), never
+assume LRU residency. A pass that reads pixels from `image_buffers`
+would silently process only the ~`rayon_thread_count` resident frames.
+
+**Blink caches are built during load (Issue 173).** `AddFiles`,
+`ReadImages`, and `load_file` build both blink thumbnails (12.5% / 25%)
+per frame as it is read — via `load_common::build_blink_jpegs`, which
+STF-stretches a display-resolution render and resizes directly from it —
+then discard the raw pixels. There is no post-load background cache
+pass; `blink_cache_status` is set to `Ready` at load end. (The former
+`start_background_cache` command is retired.) A blink-generation failure
+is non-fatal: the frame still loads and views, it just won't blink.
+
+**`display_cache` is unused** (Issue 84, deferred): nothing writes to
+it. Frame navigation re-renders from raw pixels (fetched on demand via
+the LRU) on each request. Candidate for removal in a later cleanup.
+
+Design rule: display plugins read pixels via `ensure_pixels_resident`
+and write to caches; they never mutate the pixels. Because `AppContext`
+is behind a single Mutex, any plugin holding `&mut AppContext` for a
+long-running operation blocks all other Tauri commands — including frame
+display — for its duration. Extract owned data before any Rayon parallel
+section; `&mut AppContext` cannot be borrowed inside Rayon closures.
 
 **Memory management (Linux):** `pin_mmap_threshold()` in `lib.rs`,
-called as the first statement of `run()`, sets glibc's mmap threshold
-to a static 1 MB via `mallopt(M_MMAP_THRESHOLD)` (gated behind
-`#[cfg(target_os = "linux")]`; a no-op elsewhere). Without this,
-glibc's dynamic threshold adaptation raises the threshold above the
-~17 MB per-frame pixel-buffer size after the first few frees, shifting
+called as the first statement of `run()`, sets glibc's mmap threshold to
+a static 1 MB via `mallopt(M_MMAP_THRESHOLD)` (gated behind
+`#[cfg(target_os = "linux")]`; a no-op elsewhere). Without this, glibc's
+dynamic threshold adaptation raises the threshold above the ~17 MB
+per-frame pixel-buffer size after the first few frees, shifting
 subsequent large allocations onto the brk heap — where freed blocks
-cannot be returned to the OS while interleaved small allocations pin
-the heap top, leaving multi-GB freed-but-resident residuals after
-`ClearSession`. With the threshold pinned, every allocation ≥ 1 MB
-gets its own mmap and is returned to the OS immediately on free.
-Related discipline: all bulk pixel-processing paths — `AnalyzeFrames`,
-`CacheFrames`, and `start_background_cache` — snapshot pixel data in
-chunks via `plugins/pixel_chunking.rs` (chunk size =
-`rayon_thread_count`), bounding peak memory to one chunk of raw
-buffers rather than a full-session clone. `start_background_cache`
-additionally takes the `AppContext` lock per chunk rather than for the
-whole build, so display commands are not starved for its duration, and
-uses the global Rayon pool like its sibling plugins.
+cannot be returned to the OS while interleaved small allocations pin the
+heap top, leaving multi-GB freed-but-resident residuals after
+`ClearSession`. With the threshold pinned, every allocation ≥ 1 MB gets
+its own mmap and is returned to the OS immediately on free. Related
+discipline: bulk pixel-processing paths snapshot pixel data in chunks
+via `plugins/pixel_chunking.rs` (chunk size = `rayon_thread_count`),
+bounding peak memory to one chunk rather than a full-session clone.
 
-`AutoStretch` operates on a dynamic display-resolution downsampled
-copy (~50x pixel-count reduction vs. the full
-buffer). `get_full_frame` encodes the full-resolution raw buffer as
-JPEG, applying the same STF stretch parameters AutoStretch computed at
-display resolution — zoom is therefore approximate at high zoom
-levels.
+`AutoStretch` operates on a dynamic display-resolution downsampled copy
+(~50x pixel-count reduction vs. the full buffer). `get_full_frame`
+encodes the full-resolution raw buffer as JPEG, applying the same STF
+stretch parameters AutoStretch computed at display resolution — zoom is
+therefore approximate at high zoom levels.
 
 Relevant constants from `settings/defaults.rs` (non-persisted runtime
 constants, not user preferences): `DISPLAY_MAX_WIDTH_PX = 1200` (the
 box-filter downsample ceiling for display resolution),
-`DETAIL_JPEG_QUALITY = 90` (shared by both the full-resolution cache and
-the display-resolution cache), `THUMBNAIL_JPEG_QUALITY = 75` (both blink
-caches, 12.5% and 25%).
+`DETAIL_JPEG_QUALITY = 90` (full-resolution cache),
+`THUMBNAIL_JPEG_QUALITY = 75` (both blink caches, 12.5% and 25%).
 
 ### 2.3 Session & File Model
 
@@ -236,7 +261,7 @@ through every plugin call.
 | `full_res_cache`            | `HashMap>`                       | Full-resolution JPEG bytes, built on demand                               |
 | `blink_cache_12`            | `HashMap>`                       | Blink cache at 12.5% resolution                                            |
 | `blink_cache_25`            | `HashMap>`                       | Blink cache at 25% resolution                                              |
-| `blink_cache_status`        | `BlinkCacheStatus` (Idle / Building / Ready)      | Background cache build status                                              |
+| `blink_cache_status`        | `BlinkCacheStatus` (Idle / Building / Ready)      | Blink cache build status; set to Ready at load end (Issue 173)             |
 | `current_frame`             | `usize`                                          | Index of the currently displayed frame                                    |
 | `variables`                 | `HashMap`                        | pcode variable store                                                       |
 | `last_histogram`            | `Option`                         | Last computed histogram, for frontend retrieval                            |
@@ -249,8 +274,8 @@ through every plugin call.
 | `outlier_frame_paths`       | `HashSet`                                | Frames excluded from session-stat recomputation in the last run            |
 | `last_session_stats`        | `Option`                           | Clean session stats from the last run (outliers excluded)                  |
 | `log_dir`                   | `Option`                                 | Configurable log directory; falls back to the Tauri app data dir if `None` |
-| `buffer_pool_bytes`         | `i64`                                            | Memory limit gating loads; mirrored from `AppSettings`                     |
-| `rayon_thread_count`        | `i64`                                            | `-1` means `num_cpus - 1` at runtime; mirrored from `AppSettings`          |
+| `pixels_lru`                | `Vec<String>`                                    | MRU-first paths whose pixels are resident; capacity `rayon_thread_count` (Issue 173) |
+| `rayon_thread_count`        | `i64`                                            | Threads for parallel ops; also the viewing-LRU capacity; mirrored from `AppSettings` |
 | `current_session_id`        | `Option`                                    | Row ID in `session_history`; set by `open_session`, cleared by `close_session` |
 | `is_imported_session`       | `bool`                                           | True when analysis results came from a JSON import, not a live run        |
 | `stack_result`               | `Option`                            | Transient StackFrames output — no source file path                        |
@@ -262,18 +287,23 @@ through every plugin call.
 - `source_directories()` / `common_parent()` — derive directory info
   from `file_list`; there is no stored directory field
 - `sync_from_settings(&AppSettings)` — refreshes the
-  AppSettings-mirrored fields (AutoStretch defaults, buffer pool
-  limit, thread count); called at startup and on every preference
-  change
+  AppSettings-mirrored fields (AutoStretch defaults, thread count);
+  called at startup and on every preference change
+- `ensure_pixels_resident(path)` — the sanctioned viewing-path pixel
+  accessor (Issue 173): reads from disk into the LRU on a miss, touches
+  recency on a hit; errors if the path is not in the session
+- `touch_pixels_lru(path)` — marks a path most-recently-used and evicts
+  pixels beyond capacity
 - `current_image()` / `current_image_mut()` — resolve
   `file_list[current_frame]` into the buffer
-- `total_memory_used()` — sums buffer sizes across `image_buffers`
-  (bytes, accounting for bit depth)
+- `total_memory_used()` — sums resident pixel-buffer sizes across
+  `image_buffers` (bytes, bit-depth aware); post-Issue-173 this reflects
+  only the bounded LRU-resident set, not the whole session
 - `clear_session()` — full reset: file list, all four caches, analysis
   state, variables, imported-session flag, and stack state all cleared
 - `remove_frame_data(path)` — removes one file's buffer, all four
-  caches, its analysis result, and its outlier flag; does **not**
-  touch `file_list` — callers remove the path themselves
+  caches, its analysis result, its outlier flag, and its LRU entry; does
+  **not** touch `file_list` — callers remove the path themselves
 - `remove_rejected_files(paths)` — the post-commit cleanup: retains
   only non-rejected paths in `file_list`, calls `remove_frame_data`
   for each rejected path, clears analysis results/outliers/session
@@ -1138,8 +1168,9 @@ dependencies, no service, just a file.
 | Data                  | Location                                | Reason                                |
 | ----------------------- | ------------------------------------------ | ---------------------------------------- |
 | Application logs       | Rolling files via tracing-appender         | Log infrastructure already correct       |
-| Image pixel data        | In-memory `AppContext.image_buffers`       | Too large; ephemeral by design           |
-| Display/blink caches    | In-memory                                  | Ephemeral; rebuilt on load                |
+| Image metadata          | In-memory `AppContext.image_buffers`       | Lightweight; ephemeral by design         |
+| Image pixel data        | On disk; read on demand into a bounded LRU | Too large to hold resident (Issue 173)   |
+| Blink caches            | In-memory; built during load               | Ephemeral; small downsampled JPEGs       |
 | STF parameters          | In-memory `AppContext.last_stf_params`     | Session-scoped; recalculated on load      |
 | PXFLAG keyword          | Written to image file headers              | Results must travel with the file         |
 
@@ -1309,7 +1340,6 @@ startup):
 - AutoStretch enabled (always off)
 - Overwrite behavior (always Prompt)
 - Format filter selection (always All Supported)
-- Rayon thread count (always `num_cpus - 1`)
 - Blink pre-cache frames (always all loaded frames)
 - Default zoom level, blink rate, channel view
 
@@ -1323,7 +1353,7 @@ startup):
 | Recent directories max      | 10                  | X           | X           | `recent_directories_max`      | 1       | 50     |
 | Backup directory            | Downloads folder    | X           | X           | `backup_directory`            | —       | —      |
 | Console history size        | 500                 | X           | X           | `console_history_size`        | 100     | 5000   |
-| Macro editor font size      | 13px                | X           | X           | `macro_editor_font_size`      | 8       | 24     |
+| Parallel thread count       | num_cpus − 1        | X           | X           | `rayon_thread_count`          | 1       | —      |
 | Buffer pool memory limit    | 4 GB                | X           | X           | `buffer_pool_memory_limit`    | 512 MB  | 32 GB  |
 | Shadow clip (AutoStretch)   | -2.8                | X           | X           | `autostretch_shadow_clip`     | -5.0    | 0.0    |
 | Target background (AutoStretch) | 0.15            | X           | X           | `autostretch_target_bg`       | 0.01    | 0.50   |
@@ -1340,7 +1370,7 @@ pass; worth a follow-up if the two are ever found to disagree.
 Not persisted (always hard-coded default): Default zoom level (Fit),
 default blink rate (0.1s/frame), default channel view (RGB), overwrite
 behavior (Prompt), AutoStretch enabled (off), blink pre-cache (all
-loaded), Rayon thread count (`num_cpus - 1`).
+loaded).
 
 Quick Launch button assignments are stored in `quick_launch_buttons`,
 not in `preferences` — the user can pin as many macros as desired;
@@ -1670,7 +1700,6 @@ believed still open as of this document.
 | Zoom approximate at high levels           | Full-res cache reuses STF params computed at display resolution, not recomputed at full res — see §2.2   |
 | `display_cache` never written (Issue 84, deferred) | `start_background_cache` computes display-resolution JPEGs but discards them; frame navigation re-renders from raw pixels every time instead of reusing a cached copy — see §2.2. Deferred: low-impact under file-browser-only navigation |
 | XISF Vector/Matrix properties             | Read as a placeholder; skipped on write                                                                    |
-| Rayon thread count not user-configurable  | Hardcoded to `num_cpus - 1`; not exposed as a preference despite `RAYON_THREAD_COUNT_MIN` existing in defaults |
 | Sidebar icon tooltips clipped by Quick Launch | CSS stacking context issue                                                                              |
 | Single-file-load blink isolation          | Files loaded via `LoadFile` are included in `ctx.file_list`, not kept separate                             |
 | AutoStretch performance in dev builds     | 3–5 seconds for a 9MP RGB frame in debug builds; near-instant in release builds                             |

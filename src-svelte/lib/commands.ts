@@ -172,21 +172,16 @@ async function addFilesFromPaths(paths: string[]) {
   );
 
   if (!result.success) {
-    const msg = result.error ?? 'AddFiles failed';
-    if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
-      notifications.alert('Too many files to load', msg, 10000);
-    } else {
-      notifications.error(msg);
-    }
+    // MEMORY_LIMIT_EXCEEDED special case removed (Issue 173): the load-time
+    // memory gate is retired, so the backend can no longer emit it.
+    notifications.error(result.error ?? 'AddFiles failed');
     return;
   }
 
   await syncSession();
 
-  // Start background blink cache build
-  invoke('start_background_cache').catch(e => {
-    console.warn('Background cache failed to start:', e);
-  });
+  // Blink caches are now built during the load itself (Issue 173) — no
+  // post-load background build to start.
 
   // Ensure current frame metadata is populated for correct zoom scaling in blink
   await displayFrame(0);

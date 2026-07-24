@@ -6,7 +6,7 @@ use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, Pl
 use crate::context::AppContext;
 use glob::glob;
 use crate::plugins::image_reader::read_image_file;
-use crate::plugins::load_common::{check_memory_limit, finalize_session_order};
+use crate::plugins::load_common::{build_blink_jpegs, finalize_session_order};
 
 pub struct AddFiles;
 
@@ -86,12 +86,8 @@ impl PhotyxPlugin for AddFiles {
             }
         }
 
-        // ── Memory estimate and limit check ───────────────────────────────────
-        // Shared with ReadImages (Issue 91) so both load paths enforce the
-        // same buffer-pool limit the same way. Checked against the full
-        // glob-expanded path list, before the already-loaded filter below —
-        // conservative on purpose (see load_common.rs).
-        check_memory_limit(ctx, &paths)?;
+        // Memory gate retired (Issue 173): the load path no longer keeps
+        // raw pixels resident, so session size is not RAM-bounded.
 
         // Filter out files already in the session
         let paths: Vec<String> = paths.into_iter()
@@ -110,7 +106,21 @@ impl PhotyxPlugin for AddFiles {
 
         for (i, path) in paths.iter().enumerate() {
             match read_image_file(path) {
-                Ok(buffer) => {
+                Ok(mut buffer) => {
+                    // Issue 173: build both blink thumbnails while the raw
+                    // pixels are in hand, then discard the pixels — only
+                    // metadata stays resident. Viewing reads from disk on
+                    // demand (ensure_pixels_resident).
+                    match build_blink_jpegs(&buffer) {
+                        Ok((b12, b25)) => {
+                            ctx.blink_cache_12.insert(path.clone(), b12);
+                            ctx.blink_cache_25.insert(path.clone(), b25);
+                        }
+                        Err(e) => {
+                            tracing::warn!("AddFiles: blink cache failed for {}: {}", path, e);
+                        }
+                    }
+                    buffer.pixels = None;
                     ctx.image_buffers.insert(path.clone(), buffer);
                     ctx.file_list.push(path.clone());
                     loaded += 1;
@@ -121,6 +131,7 @@ impl PhotyxPlugin for AddFiles {
             }
             crate::set_progress("Loading files", (i + 1) as u32, total_to_load);
         }
+        ctx.blink_cache_status = crate::context::BlinkCacheStatus::Ready;
 
         // Shared with ReadImages (Issue 91) so both load paths — and any
         // mix of the two — leave the session in identical order. See
@@ -132,26 +143,14 @@ impl PhotyxPlugin for AddFiles {
 
         info!("AddFiles: loaded {} of {} files", loaded, paths.len());
 
-        // Cumulative totals across the whole session (not just this batch),
-        // using actual loaded buffer sizes rather than the pre-load estimate
-        // above (which only ever covered the new files being added, and was
-        // extrapolated from peeking a single file's dimensions).
-        //
-        // Combined with JPEG cache bytes (display/full-res/blink) into a
-        // single total so the figure shown here matches what the
-        // buffer-pool gate in check_memory_limit now actually checks
-        // against — Issue 105. Only the raw portion gets the 2.1x peak
-        // multiplier (transient overhead during loading/analysis); cache
-        // bytes are already realized memory, not a projection, so they're
-        // added to the peak figure as-is rather than multiplied.
-        let cumulative_raw_bytes   = ctx.total_memory_used() as i64;
-        let cumulative_cache_bytes = ctx.total_cache_bytes() as i64;
-        let cumulative_total_mb    = (cumulative_raw_bytes + cumulative_cache_bytes) / (1024 * 1024);
-        let cumulative_peak_mb     = ((cumulative_raw_bytes as f64 * 2.1) as i64 + cumulative_cache_bytes) / (1024 * 1024);
+        // Issue 173: the 2.1x peak projection is gone with the memory gate —
+        // raw pixels are no longer session-resident. Resident cost is now
+        // metadata + blink caches (+ the bounded viewing LRU), reported as-is.
+        let cumulative_cache_mb = ctx.total_cache_bytes() as i64 / (1024 * 1024);
 
         let mut msg = format!(
-            "Loaded {} file(s) (~{} MB total, ~{} MB peak with analysis).",
-            loaded, cumulative_total_mb, cumulative_peak_mb
+            "Loaded {} file(s) (~{} MB resident caches).",
+            loaded, cumulative_cache_mb
         );
 
         if !glob_warnings.is_empty() {

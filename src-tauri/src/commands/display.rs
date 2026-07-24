@@ -1,19 +1,24 @@
 // commands/display.rs   Image display and pixel data Tauri command handlers
 
 use std::sync::Arc;
-use tauri::{Manager, State};
+use tauri::State;
 use crate::PhotoxState;
 use image::codecs::jpeg::JpegEncoder;
-use crate::settings::defaults::{DETAIL_JPEG_QUALITY, THUMBNAIL_JPEG_QUALITY, DISPLAY_MAX_WIDTH_PX, BLINK_WIDTH_12, BLINK_WIDTH_25};
+use crate::settings::defaults::{DETAIL_JPEG_QUALITY, DISPLAY_MAX_WIDTH_PX};
 
 #[tauri::command]
 pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {
-    let ctx = state.context.lock().expect("context lock poisoned");
+    let mut ctx = state.context.lock().expect("context lock poisoned");
 
     let path = ctx.file_list.get(ctx.current_frame)
+        .cloned()
         .ok_or_else(|| "No image loaded".to_string())?;
 
-    let buffer = ctx.image_buffers.get(path)
+    // Issue 173: the entry may be metadata-only — read pixels from disk
+    // into the viewing LRU if not resident.
+    ctx.ensure_pixels_resident(&path)?;
+
+    let buffer = ctx.image_buffers.get(&path)
         .ok_or_else(|| "Image buffer not found".to_string())?;
 
     let pixels = buffer.pixels.as_ref()
@@ -96,7 +101,12 @@ pub fn get_autostretch_frame(
     state: State<Arc<PhotoxState>>,
 ) -> Result<String, String> {
     use crate::plugins::auto_stretch::compute_autostretch_jpeg;
-    let ctx = state.context.lock().expect("context lock poisoned");
+    let mut ctx = state.context.lock().expect("context lock poisoned");
+    // Issue 173: read pixels from disk into the viewing LRU if not resident.
+    let path = ctx.file_list.get(ctx.current_frame)
+        .cloned()
+        .ok_or_else(|| "No image loaded".to_string())?;
+    ctx.ensure_pixels_resident(&path)?;
     let jpeg_bytes = compute_autostretch_jpeg(
         &ctx,
         shadow_clip.unwrap_or(ctx.autostretch_shadow_clip),
@@ -138,166 +148,24 @@ pub fn get_blink_cache_status(state: State<Arc<PhotoxState>>) -> String {
     }
 }
 
-#[tauri::command]
-pub fn start_background_cache(
-    state: State<Arc<PhotoxState>>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
-    {
-        let mut ctx = state.context.lock().expect("context lock poisoned");
-        if ctx.file_list.is_empty() { return Ok(()); }
-        ctx.blink_cache_status = crate::context::BlinkCacheStatus::Building;
-    }
-
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        use rayon::prelude::*;
-        let state_arc = app.state::<Arc<PhotoxState>>();
-
-        // Snapshot the file list and chunk size once up front. Per-chunk
-        // pixel snapshots are taken under short-lived locks inside the
-        // loop below — bounding peak memory to one chunk of raw buffers
-        // (the same pixel_chunking pattern CacheFrames and AnalyzeFrames
-        // use) instead of cloning the entire session at once, and
-        // releasing the context lock between chunks so display commands
-        // aren't starved for the duration of the build.
-        let (file_list, chunk_len) = {
-            let ctx = state_arc.context.lock().expect("context lock poisoned");
-            (ctx.file_list.clone(), crate::plugins::pixel_chunking::chunk_size(&ctx))
-        };
-
-        const MAX_DISPLAY_W: usize = DISPLAY_MAX_WIDTH_PX as usize;
-        let mut display_results: Vec<(String, Vec<u8>)> = Vec::with_capacity(file_list.len());
-
-        for path_chunk in file_list.chunks(chunk_len) {
-            // Sequential: clone this chunk's pixel data under a brief lock.
-            // FramePixelSnapshot doesn't carry the prerendered-heatmap flag,
-            // so it's side-loaded into a small per-chunk map — same pattern
-            // analyze_frames uses for keywords.
-            let (frames, prerendered_by_path) = {
-                let ctx = state_arc.context.lock().expect("context lock poisoned");
-                let frames = crate::plugins::pixel_chunking::snapshot_pixel_chunk(&ctx, path_chunk);
-                let prerendered: std::collections::HashMap<String, bool> = path_chunk.iter()
-                    .filter_map(|path| {
-                        ctx.image_buffers.get(path).map(|buf| {
-                            let is_pre = buf.keywords.get("PXTYPE")
-                                .map(|kw| kw.value == "HEATMAP")
-                                .unwrap_or(false);
-                            (path.clone(), is_pre)
-                        })
-                    })
-                    .collect();
-                (frames, prerendered)
-            };
-
-            let chunk_results: Vec<(String, Vec<u8>)> = frames.par_iter().filter_map(|snap| {
-                let src_w = snap.width;
-                let src_h = snap.height;
-                let channels = snap.channels;
-                let pixels = &snap.pixels;
-                let is_prerendered = prerendered_by_path.get(&snap.path).copied().unwrap_or(false);
-
-                let step = if src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
-                let disp_w = src_w / step;
-                let disp_h = src_h / step;
-                let pixel_count = disp_w * disp_h;
-                let is_rgb = channels == 3;
-
-                use crate::context::PixelData;
-
-                if is_prerendered && is_rgb {
-                    if let PixelData::U8(v) = pixels {
-                        let mut rgb = Vec::with_capacity(pixel_count * 3);
-                        for oy in 0..disp_h {
-                            for ox in 0..disp_w {
-                                let sy = oy * step;
-                                let sx = ox * step;
-                                let idx = (sy * src_w + sx) * 3;
-                                rgb.push(v[idx]);
-                                rgb.push(v[idx + 1]);
-                                rgb.push(v[idx + 2]);
-                            }
-                        }
-                        let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
-                        let mut buf = std::io::Cursor::new(Vec::new());
-                        JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY).encode_image(&img).ok()?;
-                        return Some((snap.path.clone(), buf.into_inner()));
-                    }
-                }
-
-                let render_channels = if is_rgb { 3 } else { 1 };
-                let (mut planes, disp_w, disp_h) = crate::render::downsample_to_planes(
-                    pixels, src_w, src_h, render_channels, MAX_DISPLAY_W,
-                );
-                let pixel_count = disp_w * disp_h;
-
-                let stf_params: Vec<(f32, f32)> = planes.iter()
-                    .map(|ch| crate::plugins::cache_frames::compute_stf_params_pub(ch))
-                    .collect();
-
-                for (ch_data, &(c0, m)) in planes.iter_mut().zip(stf_params.iter()) {
-                    let c0_range = (1.0 - c0).max(f32::EPSILON);
-                    for p in ch_data.iter_mut() {
-                        let clipped = ((*p - c0) / c0_range).clamp(0.0, 1.0);
-                        *p = crate::plugins::cache_frames::mtf_pub(m, clipped);
-                    }
-                }
-
-                let rgb = crate::render::planes_to_rgb8(&planes, pixel_count);
-
-                let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)?;
-                let mut buf = std::io::Cursor::new(Vec::new());
-                JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY).encode_image(&img).ok()?;
-                Some((snap.path.clone(), buf.into_inner()))
-            }).collect();
-
-            display_results.extend(chunk_results);
-            // This chunk's cloned pixel buffers (`frames`) drop here,
-            // before the next chunk is snapshotted.
-        }
-
-        tracing::info!("Background cache: display-resolution stretched JPEGs complete");
-
-        // Thumbnails are derived from the (much smaller) display-res JPEGs —
-        // no raw pixel data is held past this point.
-        for &(res_name, target_w) in &[("12", BLINK_WIDTH_12), ("25", BLINK_WIDTH_25)] {
-            let results: Vec<(String, Vec<u8>)> = display_results.par_iter().filter_map(|(path, jpeg_bytes)| {
-                let img = image::load_from_memory(jpeg_bytes).ok()?;
-                let src_w = img.width();
-                let src_h = img.height();
-                let target_h = (src_h as f32 * target_w as f32 / src_w as f32).round() as u32;
-                let resized = img.resize(target_w, target_h, image::imageops::FilterType::Triangle);
-                let mut buf = std::io::Cursor::new(Vec::new());
-                JpegEncoder::new_with_quality(&mut buf, THUMBNAIL_JPEG_QUALITY).encode_image(&resized).ok()?;
-                Some((path.clone(), buf.into_inner()))
-            }).collect();
-
-            {
-                let mut ctx = state_arc.context.lock().expect("context lock poisoned");
-                match res_name {
-                    "12" => { ctx.blink_cache_12.clear(); for (p, j) in results { ctx.blink_cache_12.insert(p, j); } }
-                    _    => { ctx.blink_cache_25.clear(); for (p, j) in results { ctx.blink_cache_25.insert(p, j); } }
-                }
-            }
-            tracing::info!("Background cache: {} complete", res_name);
-        }
-
-        let mut ctx = state_arc.context.lock().expect("context lock poisoned");
-        ctx.blink_cache_status = crate::context::BlinkCacheStatus::Ready;
-        tracing::info!("Background blink cache complete");
-    });
-
-    Ok(())
-}
+// start_background_cache retired under Issue 173: blink caches (both
+// resolutions) are now built during the load pass itself
+// (load_common::build_blink_jpegs, called by AddFiles/ReadImages), so
+// there is no post-load background build. get_blink_cache_status and the
+// BlinkCacheStatus enum survive — the loaders set Ready at load end.
 
 #[tauri::command]
 pub fn get_pixel(x: u32, y: u32, state: State<Arc<PhotoxState>>) -> Result<serde_json::Value, String> {
-    let ctx = state.context.lock().expect("context lock poisoned");
+    let mut ctx = state.context.lock().expect("context lock poisoned");
 
     let path = ctx.file_list.get(ctx.current_frame)
+        .cloned()
         .ok_or_else(|| "No image loaded".to_string())?;
 
-    let buffer = ctx.image_buffers.get(path)
+    // Issue 173: read pixels from disk into the viewing LRU if not resident.
+    ctx.ensure_pixels_resident(&path)?;
+
+    let buffer = ctx.image_buffers.get(&path)
         .ok_or_else(|| "Buffer not found".to_string())?;
 
     let pixels = buffer.pixels.as_ref()
@@ -388,7 +256,9 @@ pub fn get_full_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> 
     }
 
     let jpeg_bytes = {
-        let ctx = state.context.lock().expect("context lock poisoned");
+        let mut ctx = state.context.lock().expect("context lock poisoned");
+        // Issue 173: read pixels from disk into the viewing LRU if not resident.
+        ctx.ensure_pixels_resident(&path)?;
         let buffer = ctx.image_buffers.get(&path)
             .ok_or_else(|| "Buffer not found".to_string())?;
         let pixels = buffer.pixels.as_ref()
@@ -487,12 +357,16 @@ pub fn get_full_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> 
 
 #[tauri::command]
 pub fn get_histogram(state: State<Arc<PhotoxState>>) -> Result<serde_json::Value, String> {
-    let ctx = state.context.lock().expect("context lock poisoned");
+    let mut ctx = state.context.lock().expect("context lock poisoned");
 
     let path = ctx.file_list.get(ctx.current_frame)
+        .cloned()
         .ok_or_else(|| "No image loaded".to_string())?;
 
-    let buffer = ctx.image_buffers.get(path)
+    // Issue 173: read pixels from disk into the viewing LRU if not resident.
+    ctx.ensure_pixels_resident(&path)?;
+
+    let buffer = ctx.image_buffers.get(&path)
         .ok_or_else(|| "Image buffer not found".to_string())?;
 
     let pixels = buffer.pixels.as_ref()
@@ -534,7 +408,23 @@ pub fn load_file(path: String, state: State<Arc<PhotoxState>>) -> Result<String,
         if !ctx.file_list.contains(&path) {
             ctx.file_list.push(path.clone());
         }
+        // Issue 173: build blink thumbnails for this frame too, so a file
+        // opened via File > Open Image participates in blink like any
+        // batch-loaded frame. Failure is non-fatal (frame views fine, just
+        // won't blink) — matching AddFiles/ReadImages severity.
+        match crate::plugins::load_common::build_blink_jpegs(&buffer) {
+            Ok((b12, b25)) => {
+                ctx.blink_cache_12.insert(path.clone(), b12);
+                ctx.blink_cache_25.insert(path.clone(), b25);
+            }
+            Err(e) => {
+                tracing::warn!("load_file: blink cache failed for {}: {}", path, e);
+            }
+        }
         ctx.image_buffers.insert(path.clone(), buffer.clone());
+        // Issue 173: this insert carries pixels — register it in the
+        // viewing LRU so it participates in eviction accounting.
+        ctx.touch_pixels_lru(&path);
         ctx.current_frame = ctx.file_list.iter().position(|p| p == &path).unwrap_or(0);
     }
 

@@ -27,9 +27,9 @@ export const MACRO_FONT_MAX = 24;
 
 // ── Performance ───────────────────────────────────────────────────────────────
 
-export const BUFFER_POOL_DEFAULT_GB = 4;
-export const BUFFER_POOL_MIN_GB = 0.5;
-export const BUFFER_POOL_MAX_GB = 32;
+// Buffer pool constants removed (Issue 173): the load-time memory gate is
+// retired — the load path no longer keeps raw pixels resident, so session
+// size is not RAM-bounded and the preference has no meaning.
 
 // Issue 171: no sentinel. This is a plain fallback used only before the
 // settings store has loaded — the real default is computed on first run
@@ -120,17 +120,6 @@ export const PREF_FIELDS: PrefFieldMeta[] = [
     unit: 'px',
   },
   // §5.4 Performance
-  {
-    key: 'buffer_pool_memory_limit',
-    label: 'Buffer Pool Memory Limit',
-    helper: 'Maximum memory for image buffers (0.5–32 GB). Takes effect on next session.',
-    type: 'float',
-    min: BUFFER_POOL_MIN_GB,
-    max: BUFFER_POOL_MAX_GB,
-    step: 0.1,
-    default: BUFFER_POOL_DEFAULT_GB,
-    unit: 'GB',
-  },
   {
     key: 'rayon_thread_count',
     label: 'Parallel Thread Count',
@@ -247,7 +236,7 @@ export const PREF_SECTIONS: PrefSection[] = [
   },
   {
     title: 'Performance',
-    keys: ['buffer_pool_memory_limit', 'rayon_thread_count'],
+    keys: ['rayon_thread_count'],
   },
   {
     title: 'AutoStretch',

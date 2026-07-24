@@ -56,6 +56,14 @@ impl PhotyxPlugin for AutoStretch {
             .and_then(|v| v.parse::<f32>().ok())
             .unwrap_or(ctx.autostretch_shadow_clip);
 
+        // Issue 173: the current frame's entry may be metadata-only — read
+        // pixels from disk into the viewing LRU before stretching.
+        let path = ctx.file_list.get(ctx.current_frame)
+            .cloned()
+            .ok_or_else(|| PluginError::new("AUTOSTRETCH_ERROR", "No image loaded"))?;
+        ctx.ensure_pixels_resident(&path)
+            .map_err(|e| PluginError::new("AUTOSTRETCH_ERROR", &e))?;
+
         let jpeg_bytes = compute_autostretch_jpeg(ctx, shadow_clip, target_bg)
             .map_err(|e| PluginError::new("AUTOSTRETCH_ERROR", &e))?;
 

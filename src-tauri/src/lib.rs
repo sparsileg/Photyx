@@ -516,7 +516,6 @@ pub fn run() {
             commands::display::get_pixel,
             commands::display::get_stack_frame,
             commands::display::load_file,
-            commands::display::start_background_cache,
             commands::feature_flags::get_feature_flags,
             commands::feature_flags::set_feature_flag,
             commands::logging::list_log_files,

@@ -38,6 +38,10 @@ use fitsio::images::ImageType;
 
 /// Peek at a FITS file header to get dimensions without reading pixel data.
 /// Returns (width, height, channels, bytes_per_pixel).
+/// Dead code since Issue 173 (only caller was the retired memory gate in
+/// load_common.rs) — kept for now as the natural seed of a metadata-only
+/// FITS read if Issue 174's loader wants one; delete if still unused then.
+#[allow(dead_code)]
 pub fn peek_fits_dimensions(path: &str) -> Option<(u32, u32, u8, usize)> {
     let mut fitsfile = FitsFile::open(path).ok()?;
     let hdu = fitsfile.primary_hdu().ok()?;
@@ -309,6 +313,8 @@ use photyx_xisf::{XisfReader, PixelData as XisfPixelData, SampleFormat, ColorSpa
 
 /// Peek at an XISF file header to get dimensions without reading pixel data.
 /// Returns (width, height, channels, bytes_per_pixel).
+/// Dead code since Issue 173 — see peek_fits_dimensions' note.
+#[allow(dead_code)]
 pub fn peek_xisf_dimensions(path: &str) -> Option<(u32, u32, u8, usize)> {
     let reader = XisfReader::open(path).ok()?;
     if reader.image_count() == 0 { return None; }
@@ -407,6 +413,9 @@ use tiff::ColorType;
 
 /// Peek at a TIFF file header to get dimensions without reading pixel data.
 /// Returns (width, height, channels, bytes_per_pixel).
+/// Dead code since Issue 173; the entire TIFF reader is slated for
+/// deletion — do not extend.
+#[allow(dead_code)]
 pub fn peek_tiff_dimensions(path: &str) -> Option<(u32, u32, u8, usize)> {
     let file = std::fs::File::open(path).ok()?;
     let mut decoder = tiff::decoder::Decoder::new(file).ok()?;
