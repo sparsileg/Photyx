@@ -133,10 +133,15 @@ are naturally serialized — which also satisfies cfitsio's
 thread-unsafety requirement for the viewing path.
 
 **Hard rule:** nothing outside the viewing path may depend on pixels
-being present in `image_buffers`. Analysis and stacking must read their
-own pixel data from disk (see §6, §7 — landing under Issue 174), never
-assume LRU residency. A pass that reads pixels from `image_buffers`
-would silently process only the ~`rayon_thread_count` resident frames.
+being present in `image_buffers`. Analysis and stacking read their own
+pixel data from disk in thread-count-sized chunks (Issue 174 — see §6,
+§7), never assuming LRU residency. Pixel reads go through the shared
+disk loader (`plugins/pixel_chunking.rs::load_pixel_chunk` for
+AnalyzeFrames and CacheFrames, `read_frame_from_disk` for StackFrames),
+which reads each frame sequentially — the single place FITS files are
+opened for these pipelines, keeping cfitsio's non-thread-safety
+contained. Metadata reads from `image_buffers` remain fine: metadata is
+always resident post-Issue-173; the rule is specifically about pixels.
 
 **Blink caches are built during load (Issue 173).** `AddFiles`,
 `ReadImages`, and `load_file` build both blink thumbnails (12.5% / 25%)
@@ -159,19 +164,21 @@ display — for its duration. Extract owned data before any Rayon parallel
 section; `&mut AppContext` cannot be borrowed inside Rayon closures.
 
 **Memory management (Linux):** `pin_mmap_threshold()` in `lib.rs`,
-called as the first statement of `run()`, sets glibc's mmap threshold to
-a static 1 MB via `mallopt(M_MMAP_THRESHOLD)` (gated behind
-`#[cfg(target_os = "linux")]`; a no-op elsewhere). Without this, glibc's
-dynamic threshold adaptation raises the threshold above the ~17 MB
-per-frame pixel-buffer size after the first few frees, shifting
+called as the first statement of `run()`, sets glibc's mmap threshold
+to a static 1 MB via `mallopt(M_MMAP_THRESHOLD)` (gated behind
+`#[cfg(target_os = "linux")]`; a no-op elsewhere). Without this,
+glibc's dynamic threshold adaptation raises the threshold above the
+~17 MB per-frame pixel-buffer size after the first few frees, shifting
 subsequent large allocations onto the brk heap — where freed blocks
-cannot be returned to the OS while interleaved small allocations pin the
-heap top, leaving multi-GB freed-but-resident residuals after
-`ClearSession`. With the threshold pinned, every allocation ≥ 1 MB gets
-its own mmap and is returned to the OS immediately on free. Related
-discipline: bulk pixel-processing paths snapshot pixel data in chunks
-via `plugins/pixel_chunking.rs` (chunk size = `rayon_thread_count`),
-bounding peak memory to one chunk rather than a full-session clone.
+cannot be returned to the OS while interleaved small allocations pin
+the heap top, leaving multi-GB freed-but-resident residuals after
+`ClearSession`. With the threshold pinned, every allocation ≥ 1 MB
+gets its own mmap and is returned to the OS immediately on
+free. Related discipline: bulk pixel-processing paths (AnalyzeFrames,
+StackFrames, CacheFrames) read pixel data from disk in chunks via
+`plugins/pixel_chunking.rs::load_pixel_chunk` (chunk size =
+`rayon_thread_count`), bounding peak memory to one chunk rather than a
+full-session load (Issue 174).
 
 `AutoStretch` operates on a dynamic display-resolution downsampled copy
 (~50x pixel-count reduction vs. the full buffer). `get_full_frame`
@@ -256,7 +263,7 @@ through every plugin call.
 | Field                      | Type                                          | Purpose                                                                 |
 | ---------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
 | `file_list`                | `Vec`                                    | Flat list of file paths in the session                                    |
-| `image_buffers`             | `HashMap`                   | Raw pixel data, keyed by path — never modified                            |
+| `image_buffers`             | `HashMap`                   | Frame metadata registry, keyed by path (Issue 173); pixels resident only for the bounded viewing LRU set, `None` otherwise |
 | `display_cache`             | `HashMap>`                       | Display-resolution JPEG bytes                                             |
 | `full_res_cache`            | `HashMap>`                       | Full-resolution JPEG bytes, built on demand                               |
 | `blink_cache_12`            | `HashMap>`                       | Blink cache at 12.5% resolution                                            |
@@ -1046,20 +1053,24 @@ implicit in the solved translation):
 
 ### 7.3 Combination — Two-Pass Sigma-Clipped Mean
 
-**Pass 1 (Welford online mean/variance):** for every included frame, pixels
-are normalized by that frame's background median (via
+**Pass 1 (Welford online mean/variance):** for every included frame,
+pixels are normalized by that frame's background median (via
 `estimate_background`), resampled into alignment, then folded into a
-running per-pixel mean and M2 (Welford's algorithm) — avoiding the need to
-hold all aligned frames in memory simultaneously. Frames are excluded from
-Pass 1 (and the stack entirely) on filter mismatch against the master
-reference's filter, or if FFT alignment fails outright. Per-pixel standard
-deviation is derived from M2 using the unbiased sample form, `M2 / (n − 1)`,
-not the population form `M2 / n` (Issue 144) — the population form
+running per-pixel mean and M2 (Welford's algorithm) — avoiding the
+need to hold all aligned frames in memory simultaneously. Frames are
+excluded from Pass 1 (and the stack entirely) on filter mismatch
+against the master reference's filter, if FFT alignment fails
+outright, or if the source file cannot be read from disk (Issue 174 —
+missing or unreadable; recorded as `BufferUnavailable` and surfaced in
+the stack summary, so a bad file degrades the stack rather than
+aborting it or silently shrinking it).  Per-pixel standard deviation
+is derived from M2 using the unbiased sample form, `M2 / (n − 1)`, not
+the population form `M2 / n` (Issue 144) — the population form
 systematically underestimates σ, most severely at small frame counts
-(~10.6% low at n=5, ~5.1% at n=10, ~1.7% at n=30), which meant a small stack
-was effectively clipping tighter than its nominal threshold. The existing
-`count > 1` guard (below) already establishes n ≥ 2, so `n − 1` is safe
-wherever it's used.
+(~10.6% low at n=5, ~5.1% at n=10, ~1.7% at n=30), which meant a small
+stack was effectively clipping tighter than its nominal threshold. The
+existing `count > 1` guard (below) already establishes n ≥ 2, so `n −
+1` is safe wherever it's used.
 
 **Known limitation (Issue 144):** the mean and σ used to gate Pass 2 are
 computed from every included frame's pixels unconditionally — they are not
@@ -1600,7 +1611,6 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 | `set_feature_flag`                  | Upserts one feature_flags row (§8.2, §3.14) — key, enabled                                                          |
 | `set_frame_flag`                    | Updates the PASS/REJECT flag for a single frame in `ctx.analysis_results` by path; used before Commit to sync toggled flags |
 | `set_preference`                    | Upserts a single preference key/value; writes through the `AppSettings` struct                                     |
-| `start_background_cache`            | Spawns a background task that builds display-resolution JPEGs and both blink caches, snapshotting pixel data in chunks via `pixel_chunking` with a short `AppContext` lock per chunk (§2.2) |
 
 ---
 
