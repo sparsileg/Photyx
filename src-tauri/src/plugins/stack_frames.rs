@@ -1,4 +1,5 @@
 // plugins/stack_frames.rs — StackFrames built-in plugin
+
 //
 // Two-pass stacking with FFT phase correlation + triangle-based rigid
 // alignment. Designed to handle meridian-flipped sessions cleanly.
@@ -39,7 +40,6 @@
 use crate::analysis::{
     self,
     background::estimate_background,
-    debayer::{bayer_pattern_of, debayer_bilinear, BayerPattern},
     eccentricity::compute_eccentricity,
     fft_align::compute_translation,
     fwhm::compute_fwhm,
@@ -48,6 +48,11 @@ use crate::analysis::{
     stack_metrics::{ExclusionReason, FrameContribution, StackSummary},
     SigmaClipConfig, StarDetectionConfig,
 };
+// Issue 175: bayer_pattern_of/debayer_bilinear/BayerPattern removed —
+// FrameSnapshot.bayer_pattern (below) is gone. The debayer decision now
+// happens entirely on the read side (pixel_chunking::load_request, keyed
+// off the file's own color_space at read time), so this file never needs
+// to know or cache which Bayer pattern a frame uses.
 use crate::context::{AppContext, BitDepth, ColorSpace, ImageBuffer, PixelData};
 use crate::plugin::{ArgMap, ParamSpec, PhotyxPlugin, PluginError, PluginOutput};
 use crate::settings::defaults::{
@@ -80,7 +85,6 @@ struct FrameSnapshot {
     height:        usize,
     channels:      usize,
     color_space:   ColorSpace,
-    bayer_pattern: BayerPattern,
     filter:        Option<String>,
     exptime:       Option<f32>,
     fwhm:          Option<f32>,
@@ -492,6 +496,45 @@ impl PhotyxPlugin for StackFrames {
         let mut contributions: Vec<FrameContribution> = Vec::new();
         let mut total_integration = 0.0f32;
 
+        // Issue 175: per-frame pixel loads (below, replacing
+        // load_frame_pixels) move onto the background reader. The request
+        // list must include EXACTLY the frames that will reach the load —
+        // group_excluded and the filter-mismatch check below both `continue`
+        // BEFORE ever loading pixels, and both conditions are fully
+        // determined by this point (nothing computed later in this loop
+        // affects them). Requesting a load for a frame the loop will skip
+        // would desync every recv() after it, since the channel is a
+        // straight FIFO with no per-frame addressing. This precomputed
+        // needs_pixel_load mirrors the two `continue` conditions below
+        // exactly — if either of those conditions ever changes, this must
+        // change with it.
+        let needs_pixel_load: Vec<bool> = snapshots.iter().enumerate()
+            .map(|(i, snap)| {
+                if group_excluded[snap.group] {
+                    return false;
+                }
+                filters_match(ref_filter.as_deref(), snap.filter.as_deref())
+                    || i == group_refs[snap.group]
+            })
+            .collect();
+
+        let pass1_kind = if is_color {
+            crate::plugins::pixel_chunking::LoadKind::ColorNormalized
+        } else {
+            crate::plugins::pixel_chunking::LoadKind::Luma
+        };
+        let pass1_requests: Vec<crate::plugins::pixel_chunking::LoadRequest> = snapshots.iter()
+            .zip(needs_pixel_load.iter())
+            .filter(|(_, &needed)| needed)
+            .map(|(snap, _)| crate::plugins::pixel_chunking::LoadRequest {
+                path: snap.path.clone(),
+                kind: pass1_kind,
+            })
+            .collect();
+        let mut pass1_reader = crate::plugins::pixel_chunking::PixelReaderHandle::spawn_disk_reader(
+            pass1_requests, crate::plugins::pixel_chunking::PREFETCH_SEQUENTIAL_DEPTH,
+        );
+
         for (i, snap) in snapshots.iter().enumerate() {
             let mut contrib = FrameContribution::new(snap.index, &snap.path);
             contrib.filter           = snap.filter.clone();
@@ -537,11 +580,51 @@ impl PhotyxPlugin for StackFrames {
                 continue;
             }
 
-            // Load raw [0,1] pixels
-            let frame_pixels = match load_frame_pixels(ctx, snap, is_color) {
-                Ok(p) => p,
-                Err(e) => {
-                    buffer_unavailable(snap.index, &e.message, &mut messages, &mut contrib, &mut contributions);
+            // Load raw [0,1] pixels. Issue 175: sourced from pass1_reader
+            // (spawned above) instead of a synchronous load_frame_pixels
+            // call — this recv() lines up with pass1_requests 1:1 because
+            // needs_pixel_load[i] (used to build that request list) mirrors
+            // the two `continue`s above exactly, so every iteration that
+            // reaches this point has a corresponding request already
+            // in flight (or already delivered) on the reader thread.
+            let frame_pixels: Vec<f32> = match pass1_reader.recv() {
+                Some(crate::plugins::pixel_chunking::LoadOutcome::Loaded(loaded)) => {
+                    match (is_color, loaded) {
+                        (true, crate::plugins::pixel_chunking::LoadedFrame::ColorNormalized(cs)) => cs.rgb,
+                        (false, crate::plugins::pixel_chunking::LoadedFrame::Luma(ls)) => ls.luma,
+                        (_, _) => {
+                            // Unreachable in practice: pass1_kind is fixed
+                            // for the whole run and matches is_color.
+                            buffer_unavailable(
+                                snap.index,
+                                "internal error — unexpected LoadedFrame kind for this stack's color mode",
+                                &mut messages, &mut contrib, &mut contributions,
+                            );
+                            continue;
+                        }
+                    }
+                }
+                Some(crate::plugins::pixel_chunking::LoadOutcome::Missing { path }) => {
+                    buffer_unavailable(
+                        snap.index, &format!("source file missing: {}", path),
+                        &mut messages, &mut contrib, &mut contributions,
+                    );
+                    continue;
+                }
+                Some(crate::plugins::pixel_chunking::LoadOutcome::Unreadable { path, error }) => {
+                    buffer_unavailable(
+                        snap.index, &format!("source file unreadable: {} ({})", path, error),
+                        &mut messages, &mut contrib, &mut contributions,
+                    );
+                    continue;
+                }
+                None => {
+                    // Shouldn't happen — pass1_requests was built 1:1 with
+                    // the frames that reach this point, in loop order.
+                    buffer_unavailable(
+                        snap.index, "background reader closed early",
+                        &mut messages, &mut contrib, &mut contributions,
+                    );
                     continue;
                 }
             };
@@ -779,6 +862,28 @@ impl PhotyxPlugin for StackFrames {
             })
             .collect();
 
+        // Issue 175: folds Pass 2's own read step onto the shared
+        // background reader instead of the private read_frame_from_disk
+        // loop it used to run inline below. pass2_inputs' order IS the
+        // request order — no separate needs-load precomputation required
+        // here (unlike Pass 1), since pass2_inputs is already exactly the
+        // filtered set of frames this pass will read, in the order it
+        // will read them.
+        let pass2_kind = if is_color {
+            crate::plugins::pixel_chunking::LoadKind::ColorNormalized
+        } else {
+            crate::plugins::pixel_chunking::LoadKind::Luma
+        };
+        let pass2_requests: Vec<crate::plugins::pixel_chunking::LoadRequest> = pass2_inputs.iter()
+            .map(|inp| crate::plugins::pixel_chunking::LoadRequest {
+                path: snapshots[inp.snap_idx].path.clone(),
+                kind: pass2_kind,
+            })
+            .collect();
+        let mut pass2_reader = crate::plugins::pixel_chunking::PixelReaderHandle::spawn_disk_reader(
+            pass2_requests, crate::plugins::pixel_chunking::prefetch_capacity_chunked(ctx),
+        );
+
         let mut pass2_done = 0usize;
 
         for chunk in pass2_inputs.chunks(n_threads) {
@@ -793,32 +898,54 @@ impl PhotyxPlugin for StackFrames {
 
             for inp in chunk.iter() {
                 let snap = &snapshots[inp.snap_idx];
-                // Issue 174: read this frame's pixels from disk (image_buffers
-                // no longer holds them past the viewing LRU). A missing or
-                // unreadable file is excluded-and-continued via the existing
-                // BufferUnavailable pathway — the message distinguishes the
-                // two cases. The read is sequential here, outside the Rayon
-                // resample below (cfitsio is not thread-safe).
-                match read_frame_from_disk(&snap.path) {
-                    Ok(buf) if buf.pixels.is_some() => {
-                        let pixels = buf.pixels.as_ref().unwrap();
-                        let px = if is_color {
-                            if snap.color_space == ColorSpace::Bayer {
-                                let mono = analysis::to_f32_normalized(pixels);
-                                debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern)
-                            } else {
-                                analysis::to_f32_normalized(pixels)
-                            }
-                        } else {
-                            analysis::to_luminance(pixels, snap.channels)
+                // Issue 175: sourced from pass2_reader (spawned above)
+                // instead of a synchronous read_frame_from_disk call —
+                // this recv() lines up with pass2_requests 1:1 because
+                // both were built from pass2_inputs in the same order, and
+                // this loop (flattened across all chunks) visits
+                // pass2_inputs in that same order too.
+                let outcome = pass2_reader.recv();
+                match outcome {
+                    Some(crate::plugins::pixel_chunking::LoadOutcome::Loaded(loaded)) => {
+                        let px = match (is_color, loaded) {
+                            (true, crate::plugins::pixel_chunking::LoadedFrame::ColorNormalized(cs)) => Some(cs.rgb),
+                            (false, crate::plugins::pixel_chunking::LoadedFrame::Luma(ls)) => Some(ls.luma),
+                            (_, _) => None, // unreachable: pass2_kind is fixed for the whole run
                         };
-                        chunk_ok.push(inp);
-                        chunk_pixels.push(px);
+                        match px {
+                            Some(px) => {
+                                chunk_ok.push(inp);
+                                chunk_pixels.push(px);
+                            }
+                            None => {
+                                let msg = format!(
+                                    "Frame {}: internal error — unexpected LoadedFrame kind for this stack's color mode during stacking — excluded",
+                                    snap.index
+                                );
+                                info!("{}", msg);
+                                messages.push(msg);
+                                if let Some(c) = contributions.get_mut(inp.snap_idx) {
+                                    c.included         = false;
+                                    c.exclusion_reason = Some(ExclusionReason::BufferUnavailable);
+                                }
+                            }
+                        }
                     }
-                    outcome => {
-                        let reason = match outcome {
-                            Err(e) => e.message,
-                            Ok(_)  => "decoded buffer contains no pixel data".to_string(),
+                    other => {
+                        // Missing/Unreadable/None (reader closed early) all
+                        // route to the same exclude-and-continue pathway,
+                        // matching Issue 174's exclude-and-continue policy
+                        // for StackFrames — a degraded stack is still
+                        // useful.
+                        let reason = match other {
+                            Some(crate::plugins::pixel_chunking::LoadOutcome::Missing { path }) =>
+                                format!("source file missing: {}", path),
+                            Some(crate::plugins::pixel_chunking::LoadOutcome::Unreadable { path, error }) =>
+                                format!("source file unreadable: {} ({})", path, error),
+                            None =>
+                                "background reader closed early".to_string(),
+                            Some(crate::plugins::pixel_chunking::LoadOutcome::Loaded(_)) =>
+                                unreachable!("Loaded is handled in the arm above"),
                         };
                         let msg = format!(
                             "Frame {}: {} during stacking — excluded", snap.index, reason
@@ -1160,81 +1287,101 @@ fn collect_snapshots(
     let mut snapshots: Vec<FrameSnapshot> = Vec::new();
     let mut read_failures: Vec<FrameReadFailure> = Vec::new();
 
+    // Issue 175: kind=Luma — this pass only ever needed luminance (for
+    // star detection), never the raw pixel buffer, so the debayer +
+    // extract_luminance work that used to happen inline below now happens
+    // on the reader thread instead, overlapping with THIS frame's star
+    // detection on the main thread. Request order matches _ctx.file_list
+    // order 1:1, so each loop iteration's recv() corresponds to that
+    // iteration's (index, path) — the reader is never asked to reorder.
+    let requests: Vec<crate::plugins::pixel_chunking::LoadRequest> = _ctx.file_list.iter()
+        .map(|path| crate::plugins::pixel_chunking::LoadRequest {
+            path: path.clone(),
+            kind: crate::plugins::pixel_chunking::LoadKind::Luma,
+        })
+        .collect();
+    let mut reader = crate::plugins::pixel_chunking::PixelReaderHandle::spawn_disk_reader(
+        requests, crate::plugins::pixel_chunking::PREFETCH_SEQUENTIAL_DEPTH,
+    );
+
     for (index, path) in _ctx.file_list.iter().enumerate() {
-        // Issue 174: read from disk instead of image_buffers. A missing or
-        // unreadable file is not silently skipped (the old `continue`) — it
-        // is recorded as a read-failure so execute() can seed it as an
-        // excluded contribution surfaced in the stack summary. Exclude-and-
-        // continue keeps a stack with a few unreadable frames useful while
-        // never producing a silently smaller result set.
-        let buf = match read_frame_from_disk(path) {
-            Ok(b)  => b,
-            Err(e) => {
-                info!("StackFrames: collect_snapshots — {} ({})", path, e.message);
-                read_failures.push(FrameReadFailure {
-                    index,
-                    path: path.clone(),
-                    reason: e.message,
-                });
-                continue;
-            }
-        };
-        let pixels = match &buf.pixels {
-            Some(p) => p,
-            None    => {
-                let reason = "decoded buffer contains no pixel data".to_string();
+        // Issue 174 (exclude-and-continue policy unchanged by 175): a
+        // missing or unreadable file is recorded as a read-failure so
+        // execute() can seed it as an excluded contribution surfaced in
+        // the stack summary, rather than silently skipped.
+        let outcome = match reader.recv() {
+            Some(o) => o,
+            // Shouldn't happen under normal operation (one send per
+            // request, checked 1:1 against file_list above) — handled as
+            // a read failure rather than left to silently under-populate
+            // snapshots, consistent with collect_snapshots' own
+            // exclude-and-continue policy for every other failure mode.
+            None => {
+                let reason = "background reader closed early".to_string();
                 info!("StackFrames: collect_snapshots — {} ({})", path, reason);
                 read_failures.push(FrameReadFailure { index, path: path.clone(), reason });
                 continue;
             }
         };
 
-        let width    = buf.width  as usize;
-        let height   = buf.height as usize;
-        let channels = buf.channels as usize;
-
-        let bayer_pattern = bayer_pattern_of(&buf.keywords)
-            .unwrap_or(BayerPattern::RGGB);
-
-        let luma = if buf.color_space == ColorSpace::Bayer {
-            let mono = analysis::to_f32_normalized(pixels);
-            let rgb  = debayer_bilinear(&mono, width, height, bayer_pattern);
-            analysis::extract_luminance(&rgb, width, height, 3)
-        } else {
-            analysis::to_luminance(pixels, channels)
+        let snap = match outcome {
+            crate::plugins::pixel_chunking::LoadOutcome::Loaded(
+                crate::plugins::pixel_chunking::LoadedFrame::Luma(snap)
+            ) => snap,
+            crate::plugins::pixel_chunking::LoadOutcome::Loaded(_) => {
+                // Unreachable in practice: this reader was spawned with
+                // LoadKind::Luma requests only.
+                let reason = "internal error — unexpected non-Luma LoadedFrame for a Luma request".to_string();
+                info!("StackFrames: collect_snapshots — {} ({})", path, reason);
+                read_failures.push(FrameReadFailure { index, path: path.clone(), reason });
+                continue;
+            }
+            crate::plugins::pixel_chunking::LoadOutcome::Missing { path: _ } => {
+                let reason = "source file missing".to_string();
+                info!("StackFrames: collect_snapshots — {} ({})", path, reason);
+                read_failures.push(FrameReadFailure { index, path: path.clone(), reason });
+                continue;
+            }
+            crate::plugins::pixel_chunking::LoadOutcome::Unreadable { path: _, error } => {
+                info!("StackFrames: collect_snapshots — {} ({})", path, error);
+                read_failures.push(FrameReadFailure { index, path: path.clone(), reason: error });
+                continue;
+            }
         };
 
-        let mut stars    = detect_stars(&luma, width, height, det_config);
+        let width    = snap.width;
+        let height   = snap.height;
+        let channels = snap.channels;
+
+        // luma arrives pre-converted (debayered + extracted, or a
+        // straight to_luminance pass) from the reader thread. Issue 175:
+        // no bayer_pattern to derive here anymore — the debayer decision
+        // now happens entirely on the read side, keyed off the file's own
+        // color_space at read time (pixel_chunking::load_request), so
+        // FrameSnapshot no longer caches a pattern for later use.
+
+        let mut stars    = detect_stars(&snap.luma, width, height, det_config);
         let fwhm         = if stars.len() >= 5 { compute_fwhm(&stars, None).map(|r| r.fwhm_pixels) } else { None };
         let eccentricity = if stars.len() >= 5 { compute_eccentricity(&stars).map(|r| r.eccentricity) } else { None };
 
-        // Issue 143: StarCandidate.patch (the extracted pixel-region buffer)
-        // is consumed only by compute_fwhm/compute_eccentricity above —
-        // everything downstream in the stacking pipeline (triangle
-        // matching, RANSAC, M_cross verification) uses only cx/cy/peak.
-        // Dropping patch here, rather than retaining it for the life of
-        // the plugin, matters because this vector is retained per-frame
-        // for the whole session and cloned up to three more times (master
-        // reference, group references). Replacing with an empty Vec (not
-        // .clear(), which keeps the allocation) actually releases the
-        // backing memory. The StarCandidate type itself is unchanged —
-        // detect_stars is shared with the analysis pipeline, where patch
-        // is genuinely needed by its callers.
+        // Issue 143 (unchanged): StarCandidate.patch is consumed only by
+        // compute_fwhm/compute_eccentricity above — dropped here rather
+        // than retained for the life of the plugin. See original comment
+        // for the full memory-retention rationale.
         for s in stars.iter_mut() {
             s.patch = Vec::new();
         }
 
-        let filter   = buf.keywords.get("FILTER").map(|kw| kw.value.clone());
-        let exptime  = buf.keywords.get("EXPTIME").and_then(|kw| kw.value.parse::<f32>().ok());
-        let rotator  = buf.keywords.get("ROTATOR").and_then(|kw| kw.value.parse::<f32>().ok());
-        let date_obs = buf.keywords.get("DATE-OBS").and_then(|kw| parse_date_obs(&kw.value));
+        let filter   = snap.keywords.get("FILTER").map(|kw| kw.value.clone());
+        let exptime  = snap.keywords.get("EXPTIME").and_then(|kw| kw.value.parse::<f32>().ok());
+        let rotator  = snap.keywords.get("ROTATOR").and_then(|kw| kw.value.parse::<f32>().ok());
+        let date_obs = snap.keywords.get("DATE-OBS").and_then(|kw| parse_date_obs(&kw.value));
 
         snapshots.push(FrameSnapshot {
             index,
             path: path.clone(),
             width, height, channels,
-            color_space:   buf.color_space.clone(),
-            bayer_pattern,
+            color_space:   snap.color_space,
             filter, exptime, fwhm, eccentricity, rotator, stars, date_obs,
             group: 0,
         });
@@ -1448,64 +1595,61 @@ fn quality_score(snap: &FrameSnapshot) -> f32 {
 
 //  ── Frame pixel loading ───────────────────────────────────────────────────────
 
-fn load_frame_pixels(_ctx: &AppContext, snap: &FrameSnapshot, is_color: bool) -> Result<Vec<f32>, PluginError> {
-    // Issue 174: pixels are read fresh from disk, not from image_buffers
-    // (which since Issue 173 holds pixels only for the small viewing LRU
-    // set). A missing or unreadable source file surfaces as a PluginError
-    // whose message distinguishes the two cases; the caller routes that into
-    // the BufferUnavailable exclusion pathway (exclude-and-continue). The
-    // read happens here, sequentially per frame, never inside a Rayon
-    // closure — cfitsio is not thread-safe.
-    let buf = read_frame_from_disk(&snap.path)?;
-    let pixels = buf.pixels.as_ref()
-        .ok_or_else(|| PluginError::new("NO_PIXELS", "Frame has no pixel data."))?;
-
-    let result = if is_color {
-        if snap.color_space == ColorSpace::Bayer {
-            let mono = analysis::to_f32_normalized(pixels);
-            debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern)
-        } else {
-            analysis::to_f32_normalized(pixels)
-        }
-    } else {
-        analysis::to_luminance(pixels, snap.channels)
-    };
-
-    Ok(result)
-}
-
-/// Issue 174: read a single frame from disk, distinguishing a missing file
-/// from an unreadable one in the error message so callers can word their
-/// diagnostics (and, for StackFrames, their BufferUnavailable exclusion
-/// reason) accordingly. Shared by load_frame_pixels and load_debayered_luma.
-fn read_frame_from_disk(path: &str) -> Result<ImageBuffer, PluginError> {
-    if !std::path::Path::new(path).exists() {
-        return Err(PluginError::new(
-            "SOURCE_FILE_MISSING",
-            &format!("source file missing: {}", path),
-        ));
-    }
-    crate::plugins::image_reader::read_image_file(path)
-        .map_err(|e| PluginError::new(
-            "SOURCE_FILE_UNREADABLE",
-            &format!("source file unreadable: {} ({})", path, e),
-        ))
-}
+// Issue 175: read_frame_from_disk removed — it's now fully unused.
+// collect_snapshots (Pass 0), Pass 1's per-frame loads, and Pass 2's
+// per-frame loads were migrated to the shared background reader in
+// earlier Issue 175 steps; load_debayered_luma (below) — the one
+// remaining caller — now routes through pixel_chunking::load_request
+// directly instead. As of this change, pixel_chunking.rs is the only
+// place in the codebase that calls image_reader::read_image_file for
+// these pipelines — the single-reader-of-FITS-files property is now
+// structural (one module), not just conventional (one function per
+// file, trusted not to be duplicated elsewhere).
 
 fn load_debayered_luma(_ctx: &AppContext, snap: &FrameSnapshot) -> Result<Vec<f32>, PluginError> {
-    // Issue 174: read from disk (see read_frame_from_disk / load_frame_pixels).
-    let buf = read_frame_from_disk(&snap.path)?;
-    let pixels = buf.pixels.as_ref()
-        .ok_or_else(|| PluginError::new("NO_PIXELS", "Frame has no pixel data."))?;
-
-    let luma = if snap.color_space == ColorSpace::Bayer {
-        let mono = analysis::to_f32_normalized(pixels);
-        let rgb  = debayer_bilinear(&mono, snap.width, snap.height, snap.bayer_pattern);
-        analysis::extract_luminance(&rgb, snap.width, snap.height, 3)
-    } else {
-        analysis::to_luminance(pixels, snap.channels)
-    };
-    Ok(luma)
+    // Issue 175: routed through pixel_chunking::load_request — the same
+    // per-file loader PixelReaderHandle's background reader uses — rather
+    // than a second, independent copy of the debayer-or-luminance
+    // branching logic. Called synchronously here, NOT through
+    // PixelReaderHandle: this is a bounded, one-off load (at most a
+    // handful of calls per run — master reference, per-group cross-group
+    // reference, per-group Pass 1 lazy-fill — never a loop over many
+    // frames), so there's no concurrent compute to overlap the read
+    // against, and spinning up a reader thread here would be pure
+    // overhead rather than the overlap the prefetch design targets.
+    match crate::plugins::pixel_chunking::load_request(
+        &snap.path, crate::plugins::pixel_chunking::LoadKind::Luma,
+    ) {
+        crate::plugins::pixel_chunking::LoadOutcome::Loaded(
+            crate::plugins::pixel_chunking::LoadedFrame::Luma(luma_snap)
+        ) => Ok(luma_snap.luma),
+        crate::plugins::pixel_chunking::LoadOutcome::Loaded(_) => {
+            // Unreachable in practice: load_request was called with
+            // LoadKind::Luma above.
+            Err(PluginError::new(
+                "INTERNAL_ERROR",
+                "load_debayered_luma: unexpected non-Luma LoadedFrame for a Luma request",
+            ))
+        }
+        crate::plugins::pixel_chunking::LoadOutcome::Missing { path } => {
+            // Same error code + message shape read_frame_from_disk used
+            // to produce, preserved so nothing downstream that matched on
+            // e.code or logged e.message sees a behavior change — none of
+            // load_debayered_luma's three call sites branch on the code
+            // today (all three just propagate or log e.message), but
+            // matching the prior contract exactly is cheap insurance.
+            Err(PluginError::new(
+                "SOURCE_FILE_MISSING",
+                &format!("source file missing: {}", path),
+            ))
+        }
+        crate::plugins::pixel_chunking::LoadOutcome::Unreadable { path, error } => {
+            Err(PluginError::new(
+                "SOURCE_FILE_UNREADABLE",
+                &format!("source file unreadable: {} ({})", path, error),
+            ))
+        }
+    }
 }
 
 //  ── Alignment helpers ─────────────────────────────────────────────────────────

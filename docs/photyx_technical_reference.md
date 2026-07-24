@@ -134,14 +134,35 @@ thread-unsafety requirement for the viewing path.
 
 **Hard rule:** nothing outside the viewing path may depend on pixels
 being present in `image_buffers`. Analysis and stacking read their own
-pixel data from disk in thread-count-sized chunks (Issue 174 — see §6,
-§7), never assuming LRU residency. Pixel reads go through the shared
-disk loader (`plugins/pixel_chunking.rs::load_pixel_chunk` for
-AnalyzeFrames and CacheFrames, `read_frame_from_disk` for StackFrames),
-which reads each frame sequentially — the single place FITS files are
-opened for these pipelines, keeping cfitsio's non-thread-safety
-contained. Metadata reads from `image_buffers` remain fine: metadata is
-always resident post-Issue-173; the rule is specifically about pixels.
+pixel data from disk (Issue 174 — see §6, §7), never assuming LRU
+residency. As of Issue 175, all five pixel-consuming paths
+(AnalyzeFrames, CacheFrames, and StackFrames' three internal passes)
+read through a shared background prefetch reader
+(`plugins/pixel_chunking.rs::PixelReaderHandle`) instead of each
+reading synchronously in its own loop. One reader thread, spawned per
+plugin `execute()` call, works through a caller-supplied ordered
+`Vec<LoadRequest>` — each naming a path and a `LoadKind` (`Raw` for
+CacheFrames' full-`PixelData` needs, `Luma` for AnalyzeFrames/
+StackFrames Pass 0 and mono-mode per-frame loads, `ColorNormalized`
+for color-mode StackFrames per-frame loads) — performing the same
+decode/debayer/normalize conversion each caller used to do inline,
+now relocated onto the reader thread so the *next* batch's read
+overlaps with compute on the *current* one instead of blocking in
+front of it. Results arrive over a bounded
+`std::sync::mpsc::sync_channel` via `PixelReaderHandle::recv`;
+`recv()` returning `None` means the channel closed, not that every
+request was fulfilled, so a caller needing delivery guarantees
+(AnalyzeFrames, whose classification depends on the complete frame
+set) reconciles received-outcome count against its own request count
+rather than trusting `None` alone. The synchronous entry point
+`load_pixel_chunk` (Issue 174) still exists as the lower-level
+per-file primitive the reader is built on; production callers go
+through `PixelReaderHandle::spawn_disk_reader`. Exactly one reader
+thread runs at a time per plugin call — this remains the single place
+FITS files are opened for these pipelines, keeping cfitsio's
+non-thread-safety contained. Metadata reads from `image_buffers`
+remain fine: metadata is always resident post-Issue-173; the rule is
+specifically about pixels.
 
 **Blink caches are built during load (Issue 173).** `AddFiles`,
 `ReadImages`, and `load_file` build both blink thumbnails (12.5% / 25%)
@@ -175,10 +196,17 @@ the heap top, leaving multi-GB freed-but-resident residuals after
 `ClearSession`. With the threshold pinned, every allocation ≥ 1 MB
 gets its own mmap and is returned to the OS immediately on
 free. Related discipline: bulk pixel-processing paths (AnalyzeFrames,
-StackFrames, CacheFrames) read pixel data from disk in chunks via
-`plugins/pixel_chunking.rs::load_pixel_chunk` (chunk size =
-`rayon_thread_count`), bounding peak memory to one chunk rather than a
-full-session load (Issue 174).
+StackFrames, CacheFrames) read pixel data from disk via the shared
+background reader in `plugins/pixel_chunking.rs`
+(`PixelReaderHandle`, Issue 175), bounding peak memory to roughly one
+buffered batch plus one in-flight decode rather than a full-session
+load (Issue 174). Prefetch depth is capped by `PREFETCH_MAX` for the
+chunk-shaped consumers (AnalyzeFrames, CacheFrames, StackFrames Pass
+2) or the smaller `PREFETCH_SEQUENTIAL_DEPTH` for the single-frame-
+sequential ones (StackFrames Pass 0, Pass 1) — deliberately
+decoupled from `rayon_thread_count` rather than scaling with it,
+since each buffered item may be a fully decoded, debayered RGB f32
+frame (~108MB for a 3008×3008 OSC frame at full resolution).
 
 `AutoStretch` operates on a dynamic display-resolution downsampled copy
 (~50x pixel-count reduction vs. the full buffer). `get_full_frame`
@@ -738,6 +766,21 @@ Five metrics are computed per frame:
 | Eccentricity         | Absolute   | `> threshold`            | 0.85                | ✓                    |
 | Star Count           | Sigma      | `−σ` (low is worse)      | 1.5σ                | ✓                    |
 
+**Measurement-basis change (Issue 175, unvalidated as of this writing):**
+as of Issue 175, `AnalyzeFrames` debayers OSC (Bayer) frames before
+computing FWHM, eccentricity, star count, and background median — a
+change from its prior behavior of measuring directly on the raw Bayer
+mosaic. This was an unintended side effect of the pixel-loading migration
+(AnalyzeFrames was made to match StackFrames' always-debayer convention,
+without checking that AnalyzeFrames itself had never debayered), kept
+deliberately after review rather than reverted, since debayering
+plausibly removes a raw-CFA sampling artifact from the shape metrics. The
+thresholds in the table above — including the empirically-validated 1.75σ
+duo-band Star Count value (§ below) — were calibrated under the old,
+non-debayered measurement basis and have not yet been re-validated under
+the new one. Treat current thresholds as provisional for OSC sessions
+until that re-validation happens.
+
 All metrics except Background Median are derived from intensity-weighted
 second-order image moments per detected star (`analysis/fwhm.rs`,
 `analysis/eccentricity.rs`) — not Moffat PSF fitting. FWHM is
@@ -1063,14 +1106,20 @@ against the master reference's filter, if FFT alignment fails
 outright, or if the source file cannot be read from disk (Issue 174 —
 missing or unreadable; recorded as `BufferUnavailable` and surfaced in
 the stack summary, so a bad file degrades the stack rather than
-aborting it or silently shrinking it).  Per-pixel standard deviation
-is derived from M2 using the unbiased sample form, `M2 / (n − 1)`, not
-the population form `M2 / n` (Issue 144) — the population form
-systematically underestimates σ, most severely at small frame counts
-(~10.6% low at n=5, ~5.1% at n=10, ~1.7% at n=30), which meant a small
-stack was effectively clipping tighter than its nominal threshold. The
-existing `count > 1` guard (below) already establishes n ≥ 2, so `n −
-1` is safe wherever it's used.
+aborting it or silently shrinking it). Per-frame pixel loads are
+sourced from the shared background reader (§2.2, Issue 175) rather
+than a synchronous per-frame read — the reader decodes/converts frame
+N+1 while Pass 1 aligns and accumulates frame N, though the Welford
+accumulation itself stays strictly sequential across frames regardless
+of prefetch, since it's a running update over shared
+buffers. Per-pixel standard deviation is derived from M2 using the
+unbiased sample form, `M2 / (n − 1)`, not the population form `M2 / n`
+(Issue 144) — the population form systematically underestimates σ,
+most severely at small frame counts (~10.6% low at n=5, ~5.1% at n=10,
+~1.7% at n=30), which meant a small stack was effectively clipping
+tighter than its nominal threshold. The existing `count > 1` guard
+(below) already establishes n ≥ 2, so `n − 1` is safe wherever it's
+used.
 
 **Known limitation (Issue 144):** the mean and σ used to gate Pass 2 are
 computed from every included frame's pixels unconditionally — they are not
@@ -1092,14 +1141,18 @@ LINEARFIT/GESDT rejection methods); this limitation is a known consequence
 of that choice, not a bug to fix incidentally.
 
 **Pass 2 (sigma-clipped accumulation):** processed in chunks of
-`rayon_thread_count` frames at a time — pixel loading/debayering is
-sequential per chunk, background estimation and resampling are parallelized
-within the chunk, and accumulation into the running sum is sequential. A
-pixel is accepted into the final sum if it falls within `STACK_SIGMA_CLIP`
-(2.5σ, `defaults.rs`) of the Pass 1 per-pixel mean (using the luma channel's
+`rayon_thread_count` frames at a time. Pixel loading/debayering for
+each chunk is sourced from the shared background reader (§2.2, Issue
+175) rather than Pass 2's own private read loop (retired in Issue
+175), so one chunk's decode overlaps with the previous chunk's
+resample/accumulate instead of blocking in front of it; background
+estimation and resampling are parallelized within the chunk, and
+accumulation into the running sum is sequential. A pixel is accepted
+into the final sum if it falls within `STACK_SIGMA_CLIP` (2.5σ,
+`defaults.rs`) of the Pass 1 per-pixel mean (using the luma channel's
 deviation to gate all three RGB channels together, when color). The
-batched-chunk approach bounds peak Pass 2 memory to roughly one batch of
-aligned frames rather than the whole session.
+batched-chunk approach bounds peak Pass 2 memory to roughly one batch
+of aligned frames rather than the whole session.
 
 A pixel covered by fewer than two contributing frames has σ = 0 from Pass 1
 (the `count > 1` guard above), which Pass 2 treats as "cannot be clipped"

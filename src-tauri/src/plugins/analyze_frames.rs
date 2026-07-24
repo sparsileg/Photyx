@@ -249,29 +249,70 @@ fn execute_all(
 
     let mut par_results: Vec<AnalysisResult> = Vec::with_capacity(total);
 
-    for path_chunk in file_list.chunks(chunk_len) {
-        // Sequential: read this chunk's pixel data from disk (Issue 174 —
-        // image_buffers is metadata-only since Issue 173 and no longer holds
-        // analysis-time pixels), bounding peak memory to one chunk instead
-        // of the whole session. FITS reads happen here, sequentially, never
-        // inside the par_iter below (cfitsio is not thread-safe).
-        let outcomes = crate::plugins::pixel_chunking::load_pixel_chunk(path_chunk);
+    // Issue 175: LoadKind::Luma, not Raw — the reader thread now performs
+    // the debayer/luminance conversion that used to happen inline below
+    // (analysis::to_luminance(&snap.pixels, channels)), so what arrives
+    // here is already luma. The full ordered request list is known up
+    // front (one per file_list entry, same order), letting the reader
+    // start decoding ahead of the per-chunk classify loop below.
+    let requests: Vec<crate::plugins::pixel_chunking::LoadRequest> = file_list.iter()
+        .map(|path| crate::plugins::pixel_chunking::LoadRequest {
+            path: path.clone(),
+            kind: crate::plugins::pixel_chunking::LoadKind::Luma,
+        })
+        .collect();
+    let reader_capacity = crate::plugins::pixel_chunking::prefetch_capacity_chunked(ctx);
+    let mut reader = crate::plugins::pixel_chunking::PixelReaderHandle::spawn_disk_reader(
+        requests, reader_capacity,
+    );
 
-        // Issue 174: a source file that is missing or unreadable is a HARD
-        // ERROR for AnalyzeFrames — unlike StackFrames/CacheFrames, which
-        // exclude-and-continue. Session statistics (sigma clipping, PASS/
-        // REJECT thresholds) are computed across the whole frame set, so a
-        // silently or partially dropped frame would corrupt the
+    for path_chunk in file_list.chunks(chunk_len) {
+        // Sequential: drain this chunk's worth of outcomes from the
+        // background reader (Issue 175) rather than reading synchronously
+        // here. The reader has been decoding + converting to luma ahead of
+        // this loop on its own thread since spawn_disk_reader above.
+        //
+        // Issue 174 (unchanged in spirit, Issue 175 adds a completeness
+        // check on top): a source file that is missing or unreadable is a
+        // HARD ERROR for AnalyzeFrames — unlike StackFrames/CacheFrames,
+        // which exclude-and-continue. Session statistics (sigma clipping,
+        // PASS/REJECT thresholds) are computed across the whole frame set,
+        // so a silently or partially dropped frame would corrupt the
         // classification of every other frame. Abort at the first failure,
-        // naming the file and distinguishing missing from unreadable. This
-        // replaces the Issue 159 silent-skip-then-report behavior, which the
-        // Issue 173 residency redesign made untenable (post-173 the old
-        // snapshot path would have "skipped" every non-LRU-resident frame).
-        let mut snapshots: Vec<crate::plugins::pixel_chunking::FramePixelSnapshot> =
+        // naming the file and distinguishing missing from unreadable.
+        //
+        // Issue 175 addition: the background reader's recv() contract is
+        // "None means channel closed, NOT necessarily every request
+        // fulfilled" (see PixelReaderHandle::recv doc comment) — a reader
+        // that closed early for any reason (including an internal panic
+        // recv couldn't have converted, though that path is itself covered
+        // by PixelReaderHandle's own catch_unwind) must not be silently
+        // read as "this chunk is done". received is checked against
+        // path_chunk.len() below and a shortfall is a hard error, exactly
+        // like a Missing/Unreadable outcome — completeness here is not
+        // inferred from None, it's verified by count.
+        let mut snapshots: Vec<crate::plugins::pixel_chunking::LumaSnapshot> =
             Vec::with_capacity(path_chunk.len());
-        for outcome in outcomes {
+        let mut received = 0usize;
+        for _ in 0..path_chunk.len() {
+            let outcome = match reader.recv() {
+                Some(o) => o,
+                None    => break, // channel closed early — shortfall caught below
+            };
+            received += 1;
             match outcome {
-                crate::plugins::pixel_chunking::LoadOutcome::Loaded(snap) => snapshots.push(snap),
+                crate::plugins::pixel_chunking::LoadOutcome::Loaded(
+                    crate::plugins::pixel_chunking::LoadedFrame::Luma(snap)
+                ) => snapshots.push(snap),
+                crate::plugins::pixel_chunking::LoadOutcome::Loaded(_) => {
+                    // Unreachable in practice: this reader was spawned with
+                    // LoadKind::Luma requests only. Treated as unreadable
+                    // rather than left to panic if that ever changes.
+                    return Err(PluginError::new(
+                        "INTERNAL_ERROR",
+                        "AnalyzeFrames: reader returned a non-Luma LoadedFrame for a Luma request",
+                    ));
+                }
                 crate::plugins::pixel_chunking::LoadOutcome::Missing { path } => {
                     return Err(PluginError::new(
                         "SOURCE_FILE_MISSING",
@@ -286,21 +327,31 @@ fn execute_all(
                 }
             }
         }
+        if received < path_chunk.len() {
+            return Err(PluginError::new(
+                "SOURCE_READ_INCOMPLETE",
+                &format!(
+                    "Background reader closed before delivering all frames in this batch \
+                     ({} of {} received) — aborting analysis rather than computing session \
+                     statistics on a partial set.",
+                    received, path_chunk.len(),
+                ),
+            ));
+        }
 
         let chunk_results: Vec<AnalysisResult> = snapshots
             .par_iter()
             .map(|snap| {
-                let channels = snap.channels;
-                let width    = snap.width;
-                let height   = snap.height;
+                let width  = snap.width;
+                let height = snap.height;
 
-                let luma      = analysis::to_luminance(&snap.pixels, channels);
+                // luma arrives pre-converted from the reader thread (Issue
+                // 175) — no analysis::to_luminance call needed here anymore.
                 let bg_config = BackgroundConfig::default();
-                let bg        = compute_background_metrics(&luma, width, height, &bg_config);
-                let stars     = detect_stars(&luma, width, height, det_config_ref);
-                // Keywords now travel with the snapshot (Issue 174 — read
-                // from disk alongside pixels), so no separate image_buffers
-                // lookup is needed for plate scale.
+                let bg        = compute_background_metrics(&snap.luma, width, height, &bg_config);
+                let stars     = detect_stars(&snap.luma, width, height, det_config_ref);
+                // Keywords travel with the snapshot (Issue 174/175), so no
+                // separate image_buffers lookup is needed for plate scale.
                 let plate_scale   = derive_plate_scale(&snap.keywords);
                 let fwhm_result   = compute_fwhm(&stars, plate_scale);
                 let ecc_result    = compute_eccentricity(&stars);
@@ -327,8 +378,8 @@ fn execute_all(
             .collect();
 
         par_results.extend(chunk_results);
-        // This chunk's cloned pixel buffers (`snapshots`) drop here,
-        // before the next chunk is loaded.
+        // This chunk's decoded luma buffers (`snapshots`) drop here, before
+        // the next chunk is drained.
     }
 
     crate::set_progress("", 0, 0);
