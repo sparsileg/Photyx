@@ -163,21 +163,37 @@ export async function commitAnalysis(isImported: boolean) {
 
 const SUPPORTED_ADD_FILES_EXTENSIONS = ['fit', 'fits', 'fts', 'xisf', 'tif', 'tiff'];
 
-/** Core AddFiles pipeline, shared by the file-picker flow and drag-and-drop. */
+/** Core AddFiles pipeline, shared by the file-picker flow and drag-and-drop.
+ *
+ *  Issue 177 (related): previously invoked dispatch_command directly,
+ *  the same await-the-whole-execution mechanism implicated in the
+ *  AnalyzeFrames menu freeze. AddFiles' second and later invocations in
+ *  a session were observed to freeze the whole UI until the load
+ *  finished, first invocation always clean — now routed through
+ *  runScriptAndWait/run_script instead, matching the pattern already
+ *  used by ExportAnalysisReport and WriteFIT. Paths are comma-joined as
+ *  before, now wrapped in one quoted pcode string argument rather than
+ *  passed as a raw arg map entry. */
 async function addFilesFromPaths(paths: string[]) {
   const pathsArg = paths.map(p => p.replace(/\\/g, '/')).join(',');
 
   notifications.running(`AddFiles`);
 
-  const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(
-    'dispatch_command',
-    { request: { command: 'AddFiles', args: { paths: pathsArg } } }
-  );
+  let job;
+  try {
+    job = await runScriptAndWait(`AddFiles paths="${pathsArg}"`, 'addFiles');
+  } catch (e) {
+    notifications.error(`AddFiles failed: ${e}`);
+    return;
+  }
 
-  if (!result.success) {
+  let last;
+  try {
+    last = lastResultOrThrow(job);
+  } catch (e) {
     // MEMORY_LIMIT_EXCEEDED special case removed (Issue 173): the load-time
     // memory gate is retired, so the backend can no longer emit it.
-    notifications.error(result.error ?? 'AddFiles failed');
+    notifications.error(`AddFiles failed: ${e}`);
     return;
   }
 
@@ -189,8 +205,9 @@ async function addFilesFromPaths(paths: string[]) {
   // Ensure current frame metadata is populated for correct zoom scaling in blink
   await displayFrame(0);
 
-  if (result.output) notifications.success(result.output);
+  if (last.message) notifications.success(last.message);
 }
+
 
 /** Open a multi-file picker and append selected files to the session */
 export async function addFiles() {

@@ -7,91 +7,101 @@ use image::codecs::jpeg::JpegEncoder;
 use crate::settings::defaults::{DETAIL_JPEG_QUALITY, DISPLAY_MAX_WIDTH_PX};
 
 #[tauri::command]
-pub fn get_current_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {
-    let mut ctx = state.context.lock().expect("context lock poisoned");
+pub async fn get_current_frame(state: State<'_, Arc<PhotoxState>>) -> Result<String, String> {
+    // Issue 177 (related): previously a plain sync fn doing a real disk
+    // read (ensure_pixels_resident), a box-filter downsample, a JPEG
+    // encode, and a base64 encode all synchronously in the command
+    // handler itself — no async, no thread hop, no yield point at all.
+    // Whatever thread services this command ran that entire pipeline
+    // uninterrupted. Wrapped in spawn_blocking, matching dispatch_command's
+    // existing pattern, so the runtime can service other commands/polls
+    // while this runs.
+    let state: Arc<PhotoxState> = Arc::clone(&state);
+    tokio::task::spawn_blocking(move || {
+        let mut ctx = state.context.lock().expect("context lock poisoned");
 
-    let path = ctx.file_list.get(ctx.current_frame)
-        .cloned()
-        .ok_or_else(|| "No image loaded".to_string())?;
+        let path = ctx.file_list.get(ctx.current_frame)
+            .cloned()
+            .ok_or_else(|| "No image loaded".to_string())?;
 
-    // Issue 173: the entry may be metadata-only — read pixels from disk
-    // into the viewing LRU if not resident.
-    ctx.ensure_pixels_resident(&path)?;
+        // Issue 173: the entry may be metadata-only — read pixels from disk
+        // into the viewing LRU if not resident.
+        ctx.ensure_pixels_resident(&path)?;
 
-    let buffer = ctx.image_buffers.get(&path)
-        .ok_or_else(|| "Image buffer not found".to_string())?;
+        let buffer = ctx.image_buffers.get(&path)
+            .ok_or_else(|| "Image buffer not found".to_string())?;
 
-    let pixels = buffer.pixels.as_ref()
-        .ok_or_else(|| "No pixel data".to_string())?;
+        let pixels = buffer.pixels.as_ref()
+            .ok_or_else(|| "No pixel data".to_string())?;
 
-    let src_w    = buffer.width as usize;
-    let src_h    = buffer.height as usize;
-    let channels = buffer.channels as usize;
-    let is_rgb   = channels == 3 && buffer.color_space == crate::context::ColorSpace::RGB;
-    let is_prerendered = buffer.keywords.get("PXTYPE")
-        .map(|kw| kw.value == "HEATMAP")
-        .unwrap_or(false);
+        let src_w    = buffer.width as usize;
+        let src_h    = buffer.height as usize;
+        let channels = buffer.channels as usize;
+        let is_rgb   = channels == 3 && buffer.color_space == crate::context::ColorSpace::RGB;
+        let is_prerendered = buffer.keywords.get("PXTYPE")
+            .map(|kw| kw.value == "HEATMAP")
+            .unwrap_or(false);
 
-    tracing::debug!(
-        "get_current_frame: src={}x{} channels={} color_space={:?} is_rgb={}",
-        src_w, src_h, channels, buffer.color_space, is_rgb
-    );
+        tracing::debug!(
+            "get_current_frame: src={}x{} channels={} color_space={:?} is_rgb={}",
+            src_w, src_h, channels, buffer.color_space, is_rgb
+        );
 
-    const MAX_DISPLAY_W: usize = DISPLAY_MAX_WIDTH_PX as usize;
-    let step = if src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
-    let disp_w = src_w / step;
-    let disp_h = src_h / step;
-    let pixel_count = disp_w * disp_h;
+        const MAX_DISPLAY_W: usize = DISPLAY_MAX_WIDTH_PX as usize;
+        let step = if src_w > MAX_DISPLAY_W { (src_w + MAX_DISPLAY_W - 1) / MAX_DISPLAY_W } else { 1 };
+        let disp_w = src_w / step;
+        let disp_h = src_h / step;
+        let pixel_count = disp_w * disp_h;
 
-    use crate::context::PixelData;
+        use crate::context::PixelData;
 
-    // Prerendered RGB (e.g. heatmap): downsample directly, no stretch
-    if is_prerendered && is_rgb {
-        if let PixelData::U8(v) = pixels {
-            let mut rgb = Vec::with_capacity(pixel_count * 3);
-            for oy in 0..disp_h {
-                for ox in 0..disp_w {
-                    let sy = oy * step;
-                    let sx = ox * step;
-                    let idx = (sy * src_w + sx) * 3;
-                    rgb.push(v[idx]);
-                    rgb.push(v[idx + 1]);
-                    rgb.push(v[idx + 2]);
+        // Prerendered RGB (e.g. heatmap): downsample directly, no stretch
+        if is_prerendered && is_rgb {
+            if let PixelData::U8(v) = pixels {
+                let mut rgb = Vec::with_capacity(pixel_count * 3);
+                for oy in 0..disp_h {
+                    for ox in 0..disp_w {
+                        let sy = oy * step;
+                        let sx = ox * step;
+                        let idx = (sy * src_w + sx) * 3;
+                        rgb.push(v[idx]);
+                        rgb.push(v[idx + 1]);
+                        rgb.push(v[idx + 2]);
+                    }
                 }
+                let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
+                    .ok_or_else(|| "Failed to create display image".to_string())?;
+                let mut buf = std::io::Cursor::new(Vec::new());
+                JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY)
+                    .encode_image(&img)
+                    .map_err(|e| e.to_string())?;
+                use base64::Engine as _;
+                let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+                return Ok(format!("data:image/jpeg;base64,{}", b64));
             }
-            let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
-                .ok_or_else(|| "Failed to create display image".to_string())?;
-            let mut buf = std::io::Cursor::new(Vec::new());
-            JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY)
-                .encode_image(&img)
-                .map_err(|e| e.to_string())?;
-            use base64::Engine as _;
-            let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
-            return Ok(format!("data:image/jpeg;base64,{}", b64));
         }
-    }
 
-    // Normal path: render raw pixels without stretch, via the shared
-    // box-filter core (Issue 86). This also eliminates the redundant mono
-    // pass the old U16 branch used to compute and discard on every RGB frame.
-    let render_channels = if is_rgb { 3 } else { 1 };
-    let (planes, disp_w, disp_h) = crate::render::downsample_to_planes(
-        pixels, src_w, src_h, render_channels, MAX_DISPLAY_W,
-    );
-    let pixel_count = disp_w * disp_h;
-    let rgb = crate::render::planes_to_rgb8(&planes, pixel_count);
+        // Normal path: render raw pixels without stretch, via the shared
+        // box-filter core (Issue 86). This also eliminates the redundant mono
+        // pass the old U16 branch used to compute and discard on every RGB frame.
+        let render_channels = if is_rgb { 3 } else { 1 };
+        let (planes, disp_w, disp_h) = crate::render::downsample_to_planes(
+            pixels, src_w, src_h, render_channels, MAX_DISPLAY_W,
+        );
+        let pixel_count = disp_w * disp_h;
+        let rgb = crate::render::planes_to_rgb8(&planes, pixel_count);
 
-    let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
-        .ok_or_else(|| "Failed to create display image".to_string())?;
-    let mut buf = std::io::Cursor::new(Vec::new());
-    JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY)
-        .encode_image(&img)
-        .map_err(|e| e.to_string())?;
-    use base64::Engine as _;
-    let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
-    Ok(format!("data:image/jpeg;base64,{}", b64))
+        let img = image::RgbImage::from_raw(disp_w as u32, disp_h as u32, rgb)
+            .ok_or_else(|| "Failed to create display image".to_string())?;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        JpegEncoder::new_with_quality(&mut buf, DETAIL_JPEG_QUALITY)
+            .encode_image(&img)
+            .map_err(|e| e.to_string())?;
+        use base64::Engine as _;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+        Ok(format!("data:image/jpeg;base64,{}", b64))
+    }).await.map_err(|e| format!("spawn_blocking panicked: {:?}", e))?
 }
-
 
 
 #[tauri::command]
