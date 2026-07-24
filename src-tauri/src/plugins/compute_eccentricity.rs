@@ -2,13 +2,13 @@
 // Spec §7.8, §15.4
 
 use crate::analysis::{
-    self,
     eccentricity::compute_eccentricity,
     stars::detect_stars,
     StarDetectionConfig,
 };
 use crate::context::AppContext;
 use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
+use crate::plugins::pixel_chunking::{self, LoadKind, LoadedFrame, LoadOutcome};
 use serde_json::json;
 
 pub struct ComputeEccentricity;
@@ -67,34 +67,42 @@ impl PhotyxPlugin for ComputeEccentricity {
             })?;
         }
 
-        // ── Prepare image ─────────────────────────────────────────────────────
-        let img = ctx.current_image().ok_or_else(|| {
-            PluginError::new("NO_IMAGE", "No image loaded.")
-        })?;
-
-        let pixels = img.pixels.as_ref().ok_or_else(|| {
-            PluginError::new("NO_PIXELS", "Image buffer contains no pixel data.")
-        })?;
-
-        let normalized = analysis::to_f32_normalized(pixels);
-        let channels   = img.channels as usize;
-        let width      = img.width  as usize;
-        let height     = img.height as usize;
-        let path       = img.filename.clone();
-        // Issue 117: analysis_results must be keyed by the session path
-        // (matching execute_all's snap.path and file_list entries), not
-        // img.filename — image_reader sets filename to the basename only,
-        // which never matches a file_list entry and left ghost,
-        // unremovable analysis_results entries. `path` above is kept as
-        // the basename for display in the response/console message below.
+        // ── Resolve current frame's session path ─────────────────────────────
         let session_path = ctx.file_list.get(ctx.current_frame).cloned().ok_or_else(|| {
             PluginError::new("NO_IMAGE", "No current frame in session.")
         })?;
 
-        let luma = analysis::extract_luminance(&normalized, width, height, channels);
+        // ── Load luma via the shared pixel_chunking pipeline ─────────────────
+        // Same decode → debayer (if Bayer) → luminance path AnalyzeFrames uses
+        // (pixel_chunking::load_request with LoadKind::Luma), replacing a
+        // locally re-implemented normalize/extract-luminance pass over
+        // ctx.current_image().pixels that never debayered Bayer sources.
+        let snap = match pixel_chunking::load_request(&session_path, LoadKind::Luma) {
+            LoadOutcome::Loaded(LoadedFrame::Luma(snap)) => snap,
+            LoadOutcome::Loaded(_) => {
+                return Err(PluginError::new(
+                    "INTERNAL_ERROR",
+                    "ComputeEccentricity: loader returned a non-Luma LoadedFrame for a Luma request",
+                ));
+            }
+            LoadOutcome::Missing { path } => {
+                return Err(PluginError::new(
+                    "SOURCE_FILE_MISSING",
+                    &format!("Source file missing: {}", path),
+                ));
+            }
+            LoadOutcome::Unreadable { path, error } => {
+                return Err(PluginError::new(
+                    "SOURCE_FILE_UNREADABLE",
+                    &format!("Source file unreadable: {} ({})", path, error),
+                ));
+            }
+        };
+
+        let path = short_name(&snap.path).to_string();
 
         // ── Detect stars ──────────────────────────────────────────────────────
-        let stars = detect_stars(&luma, width, height, &det_config);
+        let stars = detect_stars(&snap.luma, snap.width, snap.height, &det_config);
 
         if stars.is_empty() {
             return Err(PluginError::new(
@@ -133,5 +141,11 @@ impl PhotyxPlugin for ComputeEccentricity {
     }
 }
 
+fn short_name(path: &str) -> &str {
+    path.rsplit(['/', '\\']).next().unwrap_or(path)
+}
 
+
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
