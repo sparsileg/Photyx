@@ -152,6 +152,12 @@ pub struct StarDetectionConfig {
     pub peak_radius:          u32,
     pub flood_threshold:      f32,
     pub saturation_threshold: f32,
+    /// Absolute minimum background-subtracted peak (normalized 0.0–1.0) for a
+    /// detection to count as a star, applied in addition to the sigma test.
+    /// Decouples the real-star bar from the per-frame noise estimate, which is
+    /// unstable on low-background nebula frames. Calibrated against PixInsight
+    /// SFS on the Sh2-101 duo session (Issue 181).
+    pub min_peak_significance: f32,
     pub sigma_clip:           SigmaClipConfig,
 }
 
@@ -162,6 +168,7 @@ impl Default for StarDetectionConfig {
             peak_radius:          3,
             flood_threshold:      2.0,
             saturation_threshold: 0.98,
+            min_peak_significance: 0.009,
             sigma_clip:           SigmaClipConfig::default(),
         }
     }

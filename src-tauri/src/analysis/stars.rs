@@ -107,8 +107,28 @@ pub fn detect_stars(
             flood_thresh - bg, // flood threshold in background-subtracted space
         );
 
-        if component.len() < 5 {
-            continue; // reject hot pixels and cosmic rays (fewer than 5 connected pixels)
+        // Minimum connected-component size. A real star, even a tightly-focused
+        // one, spreads its PSF across several pixels above the flood threshold;
+        // a single hot pixel or a cosmic-ray strike lights up one pixel (or a
+        // very short streak) and its immediate neighbours. Requiring at least 5
+        // connected pixels rejects those single-pixel artifacts while still
+        // admitting the smallest genuine stars, whose cores clear the flood
+        // threshold over a 2–3px radius. Kept low deliberately: raising it to
+        // cull noise is ineffective (correlated noise flood-fills into 15–30px
+        // blobs that would survive any reasonable size gate) — the
+        // min_peak_significance floor below is the correct tool for that.
+        const MIN_STAR_COMPONENT_PIXELS: usize = 5;
+        if component.len() < MIN_STAR_COMPONENT_PIXELS {
+            continue;
+        }
+
+        // Absolute minimum-peak-significance floor (Issue 181): reject
+        // detections whose background-subtracted peak is below an absolute
+        // brightness bar, in addition to the sigma test. Removes the
+        // noise-floor detections that a low per-frame sigma lets through on
+        // nebula frames.
+        if peak_val < config.min_peak_significance {
+            continue;
         }
 
         // Bounding box
