@@ -19,10 +19,17 @@
   // extra friction, but still requires a confirming click every time.
   let selectedId = $state<number | null>($thresholdProfiles.activeProfileId);
 
-  function confirm() {
+  async function confirm() {
     const profile = $thresholdProfiles.profiles.find(p => p.id === selectedId);
     if (!profile) return;
-    runAnalyzeFramesWithProfile(profile.name);
+    // Issue 177 diagnostic: previously called onclose() synchronously right
+    // after firing runAnalyzeFramesWithProfile (fire-and-forget), tearing
+    // down this full-viewport overlay at the exact moment AnalyzeFrames'
+    // compute burst begins — every other dialog in the app closes only
+    // after its async work resolves (see commitAnalysis in commands.ts).
+    // Now waits for the run to actually finish before dismissing, to test
+    // whether that mount/unmount timing was the deterministic trigger.
+    await runAnalyzeFramesWithProfile(profile.name);
     onclose();
   }
 

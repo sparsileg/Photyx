@@ -71,13 +71,83 @@ impl PhotyxPlugin for CacheFrames {
         let progress_counter = std::sync::atomic::AtomicUsize::new(0);
         crate::set_progress("Caching frames", 0, progress_total);
 
+        // Issue 175: the full ordered request list is known up front — one
+        // Raw request per file (CacheFrames needs the full PixelData for
+        // downsample_to_planes below, so LoadKind::Raw, not Luma/
+        // ColorNormalized). Spawning here lets the reader thread start
+        // decoding ahead of the render/encode loop below; by the time this
+        // loop reaches its second chunk, disk read + decode for that chunk
+        // has likely already overlapped with the previous chunk's
+        // render/encode work instead of blocking in front of it.
+        let requests: Vec<crate::plugins::pixel_chunking::LoadRequest> = file_list.iter()
+            .map(|path| crate::plugins::pixel_chunking::LoadRequest {
+                path: path.clone(),
+                kind: crate::plugins::pixel_chunking::LoadKind::Raw,
+            })
+            .collect();
+        let reader_capacity = crate::plugins::pixel_chunking::prefetch_capacity_chunked(ctx);
+        let mut reader = crate::plugins::pixel_chunking::PixelReaderHandle::spawn_disk_reader(
+            requests, reader_capacity,
+        );
+
         for path_chunk in file_list.chunks(chunk_len) {
-            // Sequential: clone this chunk's pixel data once, reused across
-            // every requested resolution below — avoids reloading pixels
-            // twice per chunk when resolution=both (the default), while
-            // still bounding peak memory to one chunk instead of the
-            // whole session.
-            let frames = crate::plugins::pixel_chunking::snapshot_pixel_chunk(ctx, path_chunk);
+            // Sequential: drain this chunk's worth of outcomes from the
+            // background reader (Issue 175) rather than reading them
+            // synchronously here — the reader has been decoding ahead of
+            // this loop on its own thread since spawn_disk_reader above.
+            // Reused across every requested resolution below, same as
+            // before: avoids re-reading pixels twice per chunk when
+            // resolution=both (the default), while still bounding peak
+            // memory to roughly one chunk (reader_capacity, Issue 175)
+            // instead of the whole session.
+            //
+            // Split into decoded snapshots and disk-read failures. A frame
+            // that could not be read is absent for every requested
+            // resolution, so it is logged once here (distinguishing a
+            // missing file from an unreadable one) and counted against each
+            // resolution's failed tally below — exclude-and-continue: a
+            // blink cache missing a few frames is degraded, not corrupt, and
+            // the shortfall is surfaced in the summary line.
+            let mut frames: Vec<crate::plugins::pixel_chunking::FramePixelSnapshot> = Vec::new();
+            let mut chunk_read_failures = 0usize;
+            let mut received = 0usize;
+            for _ in 0..path_chunk.len() {
+                let outcome = match reader.recv() {
+                    Some(o) => o,
+                    // Reader closed before delivering everything this chunk
+                    // expected — shouldn't happen (the request list was
+                    // built 1:1 from file_list), but handled as a shortfall
+                    // below rather than left to silently under-count.
+                    None => break,
+                };
+                received += 1;
+                match outcome {
+                    crate::plugins::pixel_chunking::LoadOutcome::Loaded(
+                        crate::plugins::pixel_chunking::LoadedFrame::Raw(snap)
+                    ) => frames.push(snap),
+                    crate::plugins::pixel_chunking::LoadOutcome::Loaded(_) => {
+                        // Unreachable in practice: this reader was spawned
+                        // with LoadKind::Raw requests only, so every Loaded
+                        // outcome is LoadedFrame::Raw. Guarded rather than
+                        // left to panic if that ever changes.
+                        chunk_read_failures += 1;
+                        info!("CacheFrames: internal error — unexpected non-Raw LoadedFrame for a Raw request");
+                    }
+                    crate::plugins::pixel_chunking::LoadOutcome::Missing { path } => {
+                        chunk_read_failures += 1;
+                        info!("CacheFrames: source file missing, skipped — {}", path);
+                    }
+                    crate::plugins::pixel_chunking::LoadOutcome::Unreadable { path, error } => {
+                        chunk_read_failures += 1;
+                        info!("CacheFrames: source file unreadable, skipped — {} ({})", path, error);
+                    }
+                }
+            }
+            if received < path_chunk.len() {
+                let shortfall = path_chunk.len() - received;
+                chunk_read_failures += shortfall;
+                info!("CacheFrames: background reader closed early — {} frame(s) in this chunk not received", shortfall);
+            }
 
             for &(res_name, max_w) in resolutions {
                 let results: Vec<(String, Vec<u8>)> = frames.par_iter().filter_map(|frame| {
@@ -121,7 +191,15 @@ impl PhotyxPlugin for CacheFrames {
                     _    => { for (path, jpeg) in results { ctx.blink_cache_25.insert(path, jpeg); } }
                 }
                 *cached_counts.get_mut(res_name).unwrap() += n;
-                *failed_counts.get_mut(res_name).unwrap() += frames.len() - n;
+                // Two failure sources, both counted per resolution: frames
+                // that decoded but failed to render/encode in the par_iter
+                // above (frames.len() - n), and frames that never decoded at
+                // all because their source file was missing/unreadable
+                // (chunk_read_failures). Progress was advanced only for the
+                // decoded frames the par_iter iterated, so read failures do
+                // not touch progress_counter — total attempted still reads
+                // out correctly against progress_total.
+                *failed_counts.get_mut(res_name).unwrap() += (frames.len() - n) + chunk_read_failures;
             } // end resolution loop
             // This chunk's cloned pixel buffers (`frames`) drop here,
             // before the next chunk is loaded.

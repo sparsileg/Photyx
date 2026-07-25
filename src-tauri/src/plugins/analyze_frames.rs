@@ -249,51 +249,110 @@ fn execute_all(
 
     let mut par_results: Vec<AnalysisResult> = Vec::with_capacity(total);
 
-    // Issue 159: snapshot_pixel_chunk() silently drops paths with no
-    // loaded buffer or no pixel data. Detected here at the call site
-    // (rather than inside the shared helper, which StackFrames also
-    // calls) by comparing each chunk's requested paths against the
-    // paths actually returned.
-    let mut skipped: Vec<String> = Vec::new();
+    // Issue 175: LoadKind::Luma, not Raw — the reader thread now performs
+    // the debayer/luminance conversion that used to happen inline below
+    // (analysis::to_luminance(&snap.pixels, channels)), so what arrives
+    // here is already luma. The full ordered request list is known up
+    // front (one per file_list entry, same order), letting the reader
+    // start decoding ahead of the per-chunk classify loop below.
+    let requests: Vec<crate::plugins::pixel_chunking::LoadRequest> = file_list.iter()
+        .map(|path| crate::plugins::pixel_chunking::LoadRequest {
+            path: path.clone(),
+            kind: crate::plugins::pixel_chunking::LoadKind::Luma,
+        })
+        .collect();
+    let reader_capacity = crate::plugins::pixel_chunking::prefetch_capacity_chunked(ctx);
+    let mut reader = crate::plugins::pixel_chunking::PixelReaderHandle::spawn_disk_reader(
+        requests, reader_capacity,
+    );
 
     for path_chunk in file_list.chunks(chunk_len) {
-        // Sequential: clone pixel data for just this chunk before the
-        // parallel pass, bounding peak memory to one chunk instead of
-        // the whole session.
-        let snapshots = crate::plugins::pixel_chunking::snapshot_pixel_chunk(ctx, path_chunk);
-
-        if snapshots.len() != path_chunk.len() {
-            let present: std::collections::HashSet<&str> =
-                snapshots.iter().map(|s| s.path.as_str()).collect();
-            skipped.extend(
-                path_chunk.iter()
-                    .filter(|p| !present.contains(p.as_str()))
-                    .cloned()
-            );
+        // Sequential: drain this chunk's worth of outcomes from the
+        // background reader (Issue 175) rather than reading synchronously
+        // here. The reader has been decoding + converting to luma ahead of
+        // this loop on its own thread since spawn_disk_reader above.
+        //
+        // Issue 174 (unchanged in spirit, Issue 175 adds a completeness
+        // check on top): a source file that is missing or unreadable is a
+        // HARD ERROR for AnalyzeFrames — unlike StackFrames/CacheFrames,
+        // which exclude-and-continue. Session statistics (sigma clipping,
+        // PASS/REJECT thresholds) are computed across the whole frame set,
+        // so a silently or partially dropped frame would corrupt the
+        // classification of every other frame. Abort at the first failure,
+        // naming the file and distinguishing missing from unreadable.
+        //
+        // Issue 175 addition: the background reader's recv() contract is
+        // "None means channel closed, NOT necessarily every request
+        // fulfilled" (see PixelReaderHandle::recv doc comment) — a reader
+        // that closed early for any reason (including an internal panic
+        // recv couldn't have converted, though that path is itself covered
+        // by PixelReaderHandle's own catch_unwind) must not be silently
+        // read as "this chunk is done". received is checked against
+        // path_chunk.len() below and a shortfall is a hard error, exactly
+        // like a Missing/Unreadable outcome — completeness here is not
+        // inferred from None, it's verified by count.
+        let mut snapshots: Vec<crate::plugins::pixel_chunking::LumaSnapshot> =
+            Vec::with_capacity(path_chunk.len());
+        let mut received = 0usize;
+        for _ in 0..path_chunk.len() {
+            let outcome = match reader.recv() {
+                Some(o) => o,
+                None    => break, // channel closed early — shortfall caught below
+            };
+            received += 1;
+            match outcome {
+                crate::plugins::pixel_chunking::LoadOutcome::Loaded(
+                    crate::plugins::pixel_chunking::LoadedFrame::Luma(snap)
+                ) => snapshots.push(snap),
+                crate::plugins::pixel_chunking::LoadOutcome::Loaded(_) => {
+                    // Unreachable in practice: this reader was spawned with
+                    // LoadKind::Luma requests only. Treated as unreadable
+                    // rather than left to panic if that ever changes.
+                    return Err(PluginError::new(
+                        "INTERNAL_ERROR",
+                        "AnalyzeFrames: reader returned a non-Luma LoadedFrame for a Luma request",
+                    ));
+                }
+                crate::plugins::pixel_chunking::LoadOutcome::Missing { path } => {
+                    return Err(PluginError::new(
+                        "SOURCE_FILE_MISSING",
+                        &format!("Source file missing during analysis: {}", path),
+                    ));
+                }
+                crate::plugins::pixel_chunking::LoadOutcome::Unreadable { path, error } => {
+                    return Err(PluginError::new(
+                        "SOURCE_FILE_UNREADABLE",
+                        &format!("Source file unreadable during analysis: {} ({})", path, error),
+                    ));
+                }
+            }
         }
-
-        // Keywords are small (needed for plate scale) — cloned per-frame
-        // here rather than folded into the shared pixel snapshot, since
-        // they aren't the memory concern the chunking is solving for.
-        let keywords_by_path: std::collections::HashMap<String, std::collections::HashMap<String, KeywordEntry>> =
-            path_chunk.iter().filter_map(|path| {
-                ctx.image_buffers.get(path).map(|buf| (path.clone(), buf.keywords.clone()))
-            }).collect();
+        if received < path_chunk.len() {
+            return Err(PluginError::new(
+                "SOURCE_READ_INCOMPLETE",
+                &format!(
+                    "Background reader closed before delivering all frames in this batch \
+                     ({} of {} received) — aborting analysis rather than computing session \
+                     statistics on a partial set.",
+                    received, path_chunk.len(),
+                ),
+            ));
+        }
 
         let chunk_results: Vec<AnalysisResult> = snapshots
             .par_iter()
             .map(|snap| {
-                let channels = snap.channels;
-                let width    = snap.width;
-                let height   = snap.height;
+                let width  = snap.width;
+                let height = snap.height;
 
-                let luma      = analysis::to_luminance(&snap.pixels, channels);
+                // luma arrives pre-converted from the reader thread (Issue
+                // 175) — no analysis::to_luminance call needed here anymore.
                 let bg_config = BackgroundConfig::default();
-                let bg        = compute_background_metrics(&luma, width, height, &bg_config);
-                let stars     = detect_stars(&luma, width, height, det_config_ref);
-                let empty_keywords = std::collections::HashMap::new();
-                let keywords      = keywords_by_path.get(&snap.path).unwrap_or(&empty_keywords);
-                let plate_scale   = derive_plate_scale(keywords);
+                let bg        = compute_background_metrics(&snap.luma, width, height, &bg_config);
+                let stars     = detect_stars(&snap.luma, width, height, det_config_ref);
+                // Keywords travel with the snapshot (Issue 174/175), so no
+                // separate image_buffers lookup is needed for plate scale.
+                let plate_scale   = derive_plate_scale(&snap.keywords);
                 let fwhm_result   = compute_fwhm(&stars, plate_scale);
                 let ecc_result    = compute_eccentricity(&stars);
 
@@ -319,16 +378,17 @@ fn execute_all(
             .collect();
 
         par_results.extend(chunk_results);
-        // This chunk's cloned pixel buffers (`snapshots`) drop here,
-        // before the next chunk is loaded.
+        // This chunk's decoded luma buffers (`snapshots`) drop here, before
+        // the next chunk is drained.
     }
 
     crate::set_progress("", 0, 0);
 
-    // Issue 159: par_iter's closure can no longer fail (the old Err path
-    // was unreachable — nothing in it ever returned Err), so par_results
-    // is already the final results list. Skipped-frame reporting happens
-    // upstream, at the snapshot_pixel_chunk call site.
+    // Issue 174: every frame in file_list is either analyzed or the run
+    // aborts (see the hard-error handling in the chunk loop above), so
+    // par_results is already the complete, final results list — there is no
+    // skipped-frame set to reconcile. The old Issue 159 per-chunk skip
+    // tracking is gone with the silent-skip behavior it reported.
     let mut results: Vec<AnalysisResult> = par_results;
 
     if results.is_empty() {
@@ -417,23 +477,27 @@ fn execute_all(
     ctx.last_session_stats = Some(session_stats);
 
     let message = format!(
-        "AnalyzeFrames complete: {} frames — {} PASS, {} REJECT{}",
+        "AnalyzeFrames complete: {} frames — {} PASS, {} REJECT",
         results.len(),
         pass_count,
         reject_count,
-        if skipped.is_empty() { String::new() } else { format!(" ({} skipped)", skipped.len()) }
     );
 
     info!("{}", message);
 
+    // Issue 174: skipped_count/skipped are retained as constant-empty for
+    // response-shape compatibility (any frontend or pcode reading them still
+    // gets valid 0/[]). Frames are never skipped now — a missing or
+    // unreadable source aborts the run — so these can be removed in a later
+    // cleanup once no consumer depends on them.
     Ok(PluginOutput::Data(json!({
         "plugin":        "AnalyzeFrames",
         "scope":         "all",
         "frame_count":   results.len(),
         "pass_count":    pass_count,
         "reject_count":  reject_count,
-        "skipped_count": skipped.len(),
-        "skipped":       skipped.iter().map(|p| short_name(p)).collect::<Vec<_>>(),
+        "skipped_count": 0,
+        "skipped":       Vec::<String>::new(),
         "frames":        frame_summaries,
         "message":       message,
     })))
@@ -508,67 +572,30 @@ fn short_name(path: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::{BitDepth, ColorSpace, PixelData};
 
-    /// Issue 159 — snapshot_pixel_chunk() silently drops paths with no
-    /// pixel data; this exercises the call-site skip detection that
-    /// reports them instead. No real-world load path currently produces
-    /// a buffer with pixels: None while still in file_list, so this is
-    /// constructed directly rather than reproduced through the UI.
-    fn make_test_buffer(pixels: Option<PixelData>) -> ImageBuffer {
-        ImageBuffer {
-            filename:      "test.fits".to_string(),
-            width:         4,
-            height:        4,
-            display_width: 4,
-            bit_depth:     BitDepth::F32,
-            color_space:   ColorSpace::Mono,
-            channels:      1,
-            keywords:      Default::default(),
-            pixels,
-        }
-    }
-
+    /// Issue 174 — a source file that does not exist on disk aborts the
+    /// whole analysis run rather than being silently skipped, because
+    /// session statistics (sigma clipping, PASS/REJECT thresholds) are
+    /// computed across the entire frame set and a partial set would corrupt
+    /// every frame's classification. This is the unit-level encoding of the
+    /// regression-gate clause "a deliberately-removed source file mid-run
+    /// produces a clear error, never a silently smaller result set."
+    ///
+    /// No temp file is needed: the chunk loader's existence check fires
+    /// before any decode is attempted, so a nonexistent path exercises the
+    /// SOURCE_FILE_MISSING abort directly. (The successful-analysis path is
+    /// covered end-to-end by the numerical regression gate on real data.)
     #[test]
-    fn test_analyze_frames_skips_pixelless_buffer() {
+    fn test_analyze_frames_missing_source_aborts() {
         let mut ctx = AppContext::new();
 
-        ctx.file_list = vec!["good.fits".to_string(), "bad.fits".to_string()];
-        ctx.image_buffers.insert(
-            "good.fits".to_string(),
-            make_test_buffer(Some(PixelData::F32(vec![0.1; 16]))),
-        );
-        ctx.image_buffers.insert(
-            "bad.fits".to_string(),
-            make_test_buffer(None),
-        );
-
-        let det_config = StarDetectionConfig::default();
-        let result = execute_all(&mut ctx, &det_config).unwrap();
-
-        if let PluginOutput::Data(payload) = result {
-            assert_eq!(payload["frame_count"], 1);
-            assert_eq!(payload["skipped_count"], 1);
-            assert_eq!(payload["skipped"][0], "bad.fits");
-        } else {
-            panic!("expected PluginOutput::Data");
-        }
-    }
-
-    /// A session where every frame is pixel-less must still hard-fail
-    /// via the existing NO_RESULTS guard, not just report 100% skipped.
-    #[test]
-    fn test_analyze_frames_all_pixelless_still_errors() {
-        let mut ctx = AppContext::new();
-
-        ctx.file_list = vec!["bad.fits".to_string()];
-        ctx.image_buffers.insert("bad.fits".to_string(), make_test_buffer(None));
+        ctx.file_list = vec!["/nonexistent/path/frame_174.fits".to_string()];
 
         let det_config = StarDetectionConfig::default();
         let result = execute_all(&mut ctx, &det_config);
 
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, "NO_RESULTS");
+        assert!(result.is_err(), "expected a hard error for a missing source file");
+        assert_eq!(result.unwrap_err().code, "SOURCE_FILE_MISSING");
     }
 }
 

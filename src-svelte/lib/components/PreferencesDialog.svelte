@@ -9,7 +9,6 @@
   import {
     PREF_FIELDS,
     PREF_SECTIONS,
-    GB,
     type PrefFieldMeta,
   } from '../settings/constants';
 
@@ -43,8 +42,6 @@
       backup_directory:         s.backup_directory,
       console_history_size:     s.console_history_size,
       macro_editor_font_size:   s.macro_editor_font_size,
-      // Convert bytes → GB for display
-      buffer_pool_memory_limit: s.buffer_pool_memory_limit / GB,
       autostretch_shadow_clip:  s.autostretch_shadow_clip,
       autostretch_target_bg:    s.autostretch_target_bg,
       // rayon_thread_count is a plain explicit value now (Issue 171) — no
@@ -103,11 +100,7 @@
       let draftVal: number | string = draft[field.key];
       let storeVal: number | string;
 
-      if (field.key === 'buffer_pool_memory_limit') {
-        // Convert GB back to bytes for storage
-        draftVal = Math.round(Number(draftVal) * GB);
-        storeVal = s.buffer_pool_memory_limit;
-      } else if (field.type === 'integer') {
+      if (field.type === 'integer') {
         draftVal = Math.round(Number(draftVal));
         storeVal = (s as unknown as Record<string, number | string>)[field.key];
       } else if (field.type === 'float') {

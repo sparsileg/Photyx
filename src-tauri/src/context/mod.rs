@@ -147,13 +147,18 @@ pub struct AppContext {
     /// Configurable log directory — if None, falls back to Tauri app data dir
     pub log_dir: Option<String>,
 
-    /// Buffer pool memory limit in bytes — copied from AppSettings at startup
-    /// and on preference change. Used by read plugins to gate loading.
-    pub buffer_pool_bytes: i64,
-
     /// Rayon thread count for parallel operations — copied from AppSettings at startup
-    /// and on preference change. -1 means num_cpus - 1 at runtime.
+    /// and on preference change. Always a concrete positive value (Issue 171).
     pub rayon_thread_count: i64,
+
+    /// Viewing LRU recency order (Issue 173) — paths whose image_buffers
+    /// entry currently holds pixels (`pixels = Some(...)`), most recently
+    /// used first. Everything else in image_buffers is metadata-only
+    /// (`pixels = None`). Capacity is bounded by rayon_thread_count;
+    /// eviction sets the evicted entry's pixels back to None, dropping the
+    /// allocation. Maintained exclusively via touch_pixels_lru /
+    /// remove_from_lru — never mutated directly.
+    pub pixels_lru: Vec<String>,
 
     /// Current session ID in session_history table — set by open_session, cleared by close_session
     pub current_session_id: Option<i64>,
@@ -197,15 +202,68 @@ impl AppContext {
     pub fn sync_from_settings(&mut self, settings: &crate::settings::AppSettings) {
         self.autostretch_shadow_clip = settings.autostretch_shadow_clip as f32;
         self.autostretch_target_bg   = settings.autostretch_target_bg as f32;
-        self.buffer_pool_bytes       = settings.buffer_pool_bytes;
         self.rayon_thread_count      = settings.rayon_thread_count;
+    }
+
+    /// Viewing LRU capacity (Issue 173) — how many frames may hold raw
+    /// pixels in image_buffers simultaneously. Bounded by the thread-count
+    /// preference per the Issue 170 design discussion.
+    fn pixels_lru_capacity(&self) -> usize {
+        (self.rayon_thread_count as usize).max(1)
+    }
+
+    /// Mark `path` as the most recently viewed pixel-holding frame,
+    /// evicting the least recently used frame(s) beyond capacity by
+    /// setting their image_buffers pixels back to None (Issue 173).
+    /// Call after installing pixels into a frame's buffer entry.
+    pub fn touch_pixels_lru(&mut self, path: &str) {
+        self.pixels_lru.retain(|p| p != path);
+        self.pixels_lru.insert(0, path.to_string());
+        let cap = self.pixels_lru_capacity();
+        while self.pixels_lru.len() > cap {
+            if let Some(evicted) = self.pixels_lru.pop() {
+                if let Some(buf) = self.image_buffers.get_mut(&evicted) {
+                    buf.pixels = None;
+                }
+            }
+        }
+    }
+
+    /// Remove `path` from the viewing LRU without touching its buffer —
+    /// for callers that are removing the frame's data entirely
+    /// (remove_frame_data) or clearing the session (Issue 173).
+    fn remove_from_lru(&mut self, path: &str) {
+        self.pixels_lru.retain(|p| p != path);
+    }
+
+    /// Ensure the frame at `path` has raw pixels resident in its
+    /// image_buffers entry, reading from disk if necessary (Issue 173).
+    /// This is the ONLY sanctioned way for viewing-path consumers
+    /// (get_current_frame, get_pixel, get_histogram, get_full_frame,
+    /// AutoStretch) to obtain pixel residency — analysis and stacking
+    /// must never rely on pixels being present here (Issue 170 hard rule;
+    /// they read disk directly via their own chunk loader from Issue 174).
+    /// Touches the LRU on both hit and miss. Errors if the path is not in
+    /// the session or the disk read fails.
+    pub fn ensure_pixels_resident(&mut self, path: &str) -> Result<(), String> {
+        let needs_read = match self.image_buffers.get(path) {
+            Some(buf) => buf.pixels.is_none(),
+            None => return Err(format!("Not in session: {}", path)),
+        };
+        if needs_read {
+            let fresh = crate::plugins::image_reader::read_image_file(path)?;
+            if let Some(buf) = self.image_buffers.get_mut(path) {
+                buf.pixels = fresh.pixels;
+            }
+        }
+        self.touch_pixels_lru(path);
+        Ok(())
     }
 
     pub fn new() -> Self {
         let mut ctx = Self::default();
         ctx.autostretch_shadow_clip = crate::settings::defaults::DEFAULT_AUTOSTRETCH_SHADOW_CLIP as f32;
         ctx.autostretch_target_bg   = crate::settings::defaults::DEFAULT_AUTOSTRETCH_TARGET_BG as f32;
-        ctx.buffer_pool_bytes       = crate::settings::defaults::DEFAULT_BUFFER_POOL_BYTES;
         ctx.rayon_thread_count      = crate::settings::defaults::RAYON_THREAD_COUNT_DEFAULT;
         ctx
     }
@@ -268,6 +326,7 @@ impl AppContext {
         self.stack_result = None;
         self.stack_contributions.clear();
         self.stack_summary = None;
+        self.pixels_lru.clear();
     }
 
     /// Remove all per-path cached/derived data for a single file: the raw
@@ -282,6 +341,7 @@ impl AppContext {
         self.blink_cache_25.remove(path);
         self.analysis_results.remove(path);
         self.outlier_frame_paths.remove(path);
+        self.remove_from_lru(path);
     }
 
     /// Removes a single frame (by index) from the session — e.g. after

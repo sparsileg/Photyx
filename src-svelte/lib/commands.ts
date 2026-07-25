@@ -78,26 +78,29 @@ export function lastResultOrThrow(job: JobResult): ScriptResult {
  *  active. Deliberately does NOT change the saved active profile —
  *  equivalent to typing `AnalyzeFrames profile="..."` by hand. Quick
  *  Launch, saved macros, RunMacro, and the console dispatch AnalyzeFrames
- *  independently of this function and are unaffected. */
+ *  independently of this function and are unaffected.
+ *
+ *  Issue 177: previously invoked `dispatch_command` directly, which is an
+ *  async Tauri command that holds the AppContext lock for the entire
+ *  plugin execute() and does not resolve until the run completes — no
+ *  progress-polling contract on that path at all, unlike console/macro
+ *  dispatch. That mismatched architecture is what caused the progress bar
+ *  and the whole UI to freeze for the run's duration. Now routed through
+ *  the same runScriptAndWait/run_script path console already uses: the
+ *  script is accepted near-instantly on its own thread, and progress
+ *  ticks via the existing poll in stores/progress.ts, exactly like
+ *  AddFiles and every other console-dispatched command. */
 export async function runAnalyzeFramesWithProfile(profileName: string) {
   notifications.running('AnalyzeFrames');
   try {
-    const response = await invoke<{
-      success: boolean;
-      output: string | null;
-      error: string | null;
-    }>('dispatch_command', {
-      request: { command: 'AnalyzeFrames', args: { profile: profileName } }
-    });
-    if (response.success) {
-      const msg = response.output ?? 'AnalyzeFrames complete';
-      pipeToConsole(msg, 'success');
-      notifications.success('AnalyzeFrames complete');
-    } else {
-      const err = response.error ?? 'AnalyzeFrames failed';
-      pipeToConsole(err, 'error');
-      notifications.error(err);
-    }
+    const job = await runScriptAndWait(
+      `AnalyzeFrames profile="${profileName}"`,
+      'analyzeFramesMenu'
+    );
+    const last = lastResultOrThrow(job);
+    const msg = last.message ?? 'AnalyzeFrames complete';
+    pipeToConsole(msg, 'success');
+    notifications.success('AnalyzeFrames complete');
   } catch (err) {
     const msg = `AnalyzeFrames error: ${err}`;
     pipeToConsole(msg, 'error');
@@ -160,39 +163,51 @@ export async function commitAnalysis(isImported: boolean) {
 
 const SUPPORTED_ADD_FILES_EXTENSIONS = ['fit', 'fits', 'fts', 'xisf', 'tif', 'tiff'];
 
-/** Core AddFiles pipeline, shared by the file-picker flow and drag-and-drop. */
+/** Core AddFiles pipeline, shared by the file-picker flow and drag-and-drop.
+ *
+ *  Issue 177 (related): previously invoked dispatch_command directly,
+ *  the same await-the-whole-execution mechanism implicated in the
+ *  AnalyzeFrames menu freeze. AddFiles' second and later invocations in
+ *  a session were observed to freeze the whole UI until the load
+ *  finished, first invocation always clean — now routed through
+ *  runScriptAndWait/run_script instead, matching the pattern already
+ *  used by ExportAnalysisReport and WriteFIT. Paths are comma-joined as
+ *  before, now wrapped in one quoted pcode string argument rather than
+ *  passed as a raw arg map entry. */
 async function addFilesFromPaths(paths: string[]) {
   const pathsArg = paths.map(p => p.replace(/\\/g, '/')).join(',');
 
   notifications.running(`AddFiles`);
 
-  const result = await invoke<{ success: boolean; output: string | null; error: string | null }>(
-    'dispatch_command',
-    { request: { command: 'AddFiles', args: { paths: pathsArg } } }
-  );
+  let job;
+  try {
+    job = await runScriptAndWait(`AddFiles paths="${pathsArg}"`, 'addFiles');
+  } catch (e) {
+    notifications.error(`AddFiles failed: ${e}`);
+    return;
+  }
 
-  if (!result.success) {
-    const msg = result.error ?? 'AddFiles failed';
-    if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
-      notifications.alert('Too many files to load', msg, 10000);
-    } else {
-      notifications.error(msg);
-    }
+  let last;
+  try {
+    last = lastResultOrThrow(job);
+  } catch (e) {
+    // MEMORY_LIMIT_EXCEEDED special case removed (Issue 173): the load-time
+    // memory gate is retired, so the backend can no longer emit it.
+    notifications.error(`AddFiles failed: ${e}`);
     return;
   }
 
   await syncSession();
 
-  // Start background blink cache build
-  invoke('start_background_cache').catch(e => {
-    console.warn('Background cache failed to start:', e);
-  });
+  // Blink caches are now built during the load itself (Issue 173) — no
+  // post-load background build to start.
 
   // Ensure current frame metadata is populated for correct zoom scaling in blink
   await displayFrame(0);
 
-  if (result.output) notifications.success(result.output);
+  if (last.message) notifications.success(last.message);
 }
+
 
 /** Open a multi-file picker and append selected files to the session */
 export async function addFiles() {

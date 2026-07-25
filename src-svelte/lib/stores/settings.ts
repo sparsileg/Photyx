@@ -10,22 +10,21 @@ import {
   JPEG_QUALITY_DEFAULT,
   CONSOLE_HISTORY_DEFAULT,
   MACRO_FONT_DEFAULT,
-  BUFFER_POOL_DEFAULT_GB,
   SHADOW_CLIP_DEFAULT,
   TARGET_BG_DEFAULT,
-  GB,
+  RAYON_THREADS_DEFAULT,
 } from '../settings/constants';
-
 export interface AppPreferences {
   jpeg_quality:              number;
   backup_directory:          string;
   console_history_size:      number;
   macro_editor_font_size:    number;
-  buffer_pool_memory_limit:  number;  // stored as bytes, converted to/from GB in UI
+  // buffer_pool_memory_limit removed (Issue 173): the load-time memory
+  // gate is retired; old DB rows for it are simply ignored on hydrate.
   autostretch_shadow_clip:   number;
   autostretch_target_bg:     number;
   ui_font_size:              number;  // root font size in px
-  rayon_thread_count:        number;  // -1 = num_cpus - 1 at runtime
+  rayon_thread_count:        number;  // always a concrete positive value (Issue 171)
 }
 
 const defaults: AppPreferences = {
@@ -33,11 +32,10 @@ const defaults: AppPreferences = {
   backup_directory:         '',
   console_history_size:     CONSOLE_HISTORY_DEFAULT,
   macro_editor_font_size:   MACRO_FONT_DEFAULT,
-  buffer_pool_memory_limit: BUFFER_POOL_DEFAULT_GB * GB,
   autostretch_shadow_clip:  SHADOW_CLIP_DEFAULT,
   autostretch_target_bg:    TARGET_BG_DEFAULT,
   ui_font_size:             DEFAULT_FONT_SIZE,
-  rayon_thread_count:       -1,
+  rayon_thread_count:       RAYON_THREADS_DEFAULT,
 };
 
 function createSettingsStore() {
@@ -59,8 +57,6 @@ function createSettingsStore() {
           n.console_history_size = parseInt(prefs['console_history_size'], 10) || s.console_history_size;
         if (prefs['macro_editor_font_size'])
           n.macro_editor_font_size = parseInt(prefs['macro_editor_font_size'], 10) || s.macro_editor_font_size;
-        if (prefs['buffer_pool_memory_limit'])
-          n.buffer_pool_memory_limit = parseInt(prefs['buffer_pool_memory_limit'], 10) || s.buffer_pool_memory_limit;
         if (prefs['autostretch_shadow_clip'])
           n.autostretch_shadow_clip = parseFloat(prefs['autostretch_shadow_clip']) || s.autostretch_shadow_clip;
         if (prefs['autostretch_target_bg'])

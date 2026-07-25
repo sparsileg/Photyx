@@ -32,10 +32,6 @@ pub const DEFAULT_ERROR_BEHAVIOR:      &str = "halt";  // not persisted
 
 // ── Performance ───────────────────────────────────────────────────────────────
 
-pub const DEFAULT_BUFFER_POOL_BYTES:   i64  = 4 * 1024 * 1024 * 1024; // 4 GB
-pub const BUFFER_POOL_MIN_BYTES:       i64  = 512 * 1024 * 1024;       // 512 MB
-pub const BUFFER_POOL_MAX_BYTES:       i64  = 32 * 1024 * 1024 * 1024; // 32 GB
-
 // Issue 171: no -1 sentinel. RAYON_THREAD_COUNT_DEFAULT is a static
 // fallback only — used if num_cpus::get() were ever to return something
 // degenerate (it can't in practice, but this keeps AppSettings::new()
