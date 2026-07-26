@@ -277,11 +277,9 @@ local build attempt. There's no universal-binary flag built into
 
 Since the MacOS package is not signed (yet), Gatekeeper will reject it with an error. You can try this command, assuming the app was installed in the /Applications folder, to strip the qurantine attribute recursively so Gatekeeper will stop blocking it.
 
-```xattr -cr /Applications/photyx.app
+```xattr
 xattr -cr /Applications/photyx.app
 ```
-
-
 
 ---
 
@@ -704,6 +702,8 @@ optional — a tag can silently point at a stale commit even after
 out of order or against a local ref that hadn't been refreshed. Confirm
 the hashes actually match before assuming a re-run will use your latest
 fix.
+
+Return to the ```Triggering it`` section and try to set the tag again.
 
 ### First-time setup gotcha
 
