@@ -33,7 +33,7 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
     - [LoadFile](#loadfile)
     - [CountFiles](#countfiles)
     - [FilterByKeyword](#filterbykeyword)
-    - [RejectCurrentFrame](#rejectcurrentframe)
+    - [RejectFrame](#rejectframe)
   - [Write / Export](#write--export)
     - [WriteCurrent](#writecurrent)
     - [WriteFrame](#writeframe)
@@ -482,14 +482,14 @@ FilterByKeyword name=OBJECT value="M31"
 
 ---
 
-#### `RejectCurrentFrame`
+#### `RejectFrame`
 
 Moves a single frame to a `rejected/` subfolder within its own source
 directory, removing it from the session and all caches. Defaults to
 the current frame if `index` is omitted.
 
 ```
-RejectCurrentFrame [index=<integer>] [append=<ext>]
+RejectFrame [index=<integer>] [append=<ext>]
 ```
 
 | Argument | Required | Default | Description                                                                              |
@@ -503,10 +503,10 @@ variable side effect.
 
 ```
 # Reject the current frame
-RejectCurrentFrame
+RejectFrame
 
 # Reject a specific frame by index, with a custom suffix
-RejectCurrentFrame index=12 append=cloudy
+RejectFrame index=12 append=cloudy
 ```
 
 ---

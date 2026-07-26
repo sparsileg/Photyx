@@ -345,7 +345,7 @@ impl AppContext {
     }
 
     /// Removes a single frame (by index) from the session — e.g. after
-    /// RejectCurrentFrame has already moved its file to rejected/ on disk.
+    /// RejectFrame has already moved its file to rejected/ on disk.
     /// Splices it out of file_list and clears its per-path caches/analysis
     /// data via remove_frame_data. Unlike remove_rejected_files, this does
     /// NOT clear session-wide analysis_results/last_session_stats for other
@@ -370,7 +370,7 @@ impl AppContext {
         // (e.g. a Blink-mode reject on a frame the Pixels/pcode context
         // was never looking at), current_frame must be left completely
         // alone — overwriting it here is exactly what caused a later,
-        // unrelated pcode RejectCurrentFrame call to act on the wrong file.
+        // unrelated pcode RejectFrame call to act on the wrong file.
         if new_len == 0 {
             self.current_frame = 0;
         } else if index < self.current_frame {

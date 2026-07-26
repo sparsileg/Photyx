@@ -1,4 +1,4 @@
-// plugins/reject_current_frame.rs — RejectCurrentFrame built-in plugin
+// plugins/reject_frame.rs — RejectFrame built-in plugin
 //
 // Moves a single frame to a rejected/ subfolder within its own source
 // directory, removing it from the session and all caches. Defaults to
@@ -10,10 +10,10 @@
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, ParamType, PluginOutput, PluginError};
 use crate::context::AppContext;
 
-pub struct RejectCurrentFrame;
+pub struct RejectFrame;
 
-impl PhotyxPlugin for RejectCurrentFrame {
-    fn name(&self) -> &str { "RejectCurrentFrame" }
+impl PhotyxPlugin for RejectFrame {
+    fn name(&self) -> &str { "RejectFrame" }
     fn version(&self) -> &str { "1.0.0" }
     fn description(&self) -> &str {
         "Moves a single frame to a rejected/ subfolder within its own source \
@@ -70,7 +70,7 @@ impl PhotyxPlugin for RejectCurrentFrame {
         ).map_err(|e| PluginError::new("MOVE_FAILED", &e))?;
         let new_index = ctx.remove_single_frame(idx).unwrap_or(0);
 
-        tracing::info!("RejectCurrentFrame: rejected {} (index {})", new_path, idx);
+        tracing::info!("RejectFrame: rejected {} (index {})", new_path, idx);
 
         Ok(PluginOutput::Data(serde_json::json!({
             "message":       format!("Rejected: {}", new_path),

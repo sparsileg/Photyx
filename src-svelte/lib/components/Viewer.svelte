@@ -91,7 +91,7 @@
   // as a stand-in for "this session's source width/height" — needed
   // because blink mode can land on a frame that was never individually
   // displayed via displayFrame()/loadFile() (e.g. right after
-  // RejectCurrentFrame), for which no per-path entry exists.
+  // RejectFrame), for which no per-path entry exists.
   function anySessionImageMeta() {
     const current = $session.loadedImages[$session.fileList[$session.currentFrame]];
     if (current) return current;

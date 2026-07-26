@@ -218,7 +218,7 @@ pub struct ScriptResponse {
 
 // Commands that modify the session file list or active directory.
 const SESSION_COMMANDS: &[&str] = &[
-    "addfiles", "clearsession", "commitanalysis", "filterbykeyword", "movefile", "readimages", "rejectcurrentframe", "runmacro", "setframe",
+    "addfiles", "clearsession", "commitanalysis", "filterbykeyword", "movefile", "readimages", "rejectframe", "runmacro", "setframe",
 ];
 
 // Commands that alter the pixel data currently displayed in the viewer.
@@ -229,7 +229,7 @@ const SESSION_COMMANDS: &[&str] = &[
 // updated while the displayed image silently didn't, until AutoStretch
 // happened to run and paint something.
 //
-// linearstretch/histogramequalization/backgroundextract/rejectcurrentframe
+// linearstretch/histogramequalization/backgroundextract/rejectframe
 // added in the same pass — Console.svelte was independently name-matching
 // these four commands to call ui.requestFrameRefresh() directly, a
 // parallel implementation of exactly what display_changed exists for.
@@ -241,7 +241,7 @@ const DISPLAY_COMMANDS: &[&str] = &[
     "setframe",
     "addfiles",
     "readimages",
-    "rejectcurrentframe",
+    "rejectframe",
 ];
 
 #[tauri::command]
@@ -419,7 +419,7 @@ fn register_all_plugins(registry: &PluginRegistry) {
     registry.register(Arc::new(plugins::keywords::ModifyKeyword));
     registry.register(Arc::new(plugins::list_keywords::ListKeywords));
     registry.register(Arc::new(plugins::read_images::ReadImages));
-    registry.register(Arc::new(plugins::reject_current_frame::RejectCurrentFrame));
+    registry.register(Arc::new(plugins::reject_frame::RejectFrame));
     registry.register(Arc::new(plugins::run_macro::RunMacro));
     registry.register(Arc::new(plugins::set_frame::SetFrame));
     registry.register(Arc::new(plugins::stack_frames::StackFrames));

@@ -270,7 +270,7 @@ pub fn commit_analysis_results(
 /// (e.g. suffix="reject" → "frame001.fit.reject"). A leading dot on the
 /// suffix is optional and stripped if present. Returns the new path
 /// (forward-slash normalized) on success. Shared by do_commit() (bulk,
-/// user-supplied suffix) and RejectCurrentFrame (single frame, fixed
+/// user-supplied suffix) and RejectFrame (single frame, fixed
 /// REJECT_FILE_SUFFIX constant).
 pub fn move_to_rejected(old_path: &str, suffix: &str) -> Result<String, String> {
     let suffix = suffix.trim_start_matches('.');

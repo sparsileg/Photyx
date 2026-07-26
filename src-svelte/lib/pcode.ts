@@ -93,7 +93,7 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   print:               'message (or bare: Print "hello")',
   pwd:                 '',
   readimages:          'path=',
-  rejectcurrentframe:  '[index=]  [append=]',
+  rejectframe:  '[index=]  [append=]',
   round:               '(#)',
   runmacro:            'name=',
   set:                 '<varname> = <value>',
@@ -568,16 +568,16 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'CacheFrames\nCacheFrames resolution=25',
   },
 
-  rejectcurrentframe: {
-    name:        'RejectCurrentFrame',
+  rejectframe: {
+    name:        'RejectFrame',
     description: 'Moves a single frame to a rejected/ subfolder within its own source directory and removes it from the session and all display/blink caches. Defaults to the current frame if index is not specified. Unlike CommitAnalysis, this acts on one frame ad hoc and does not require AnalyzeFrames to have been run, and does not touch session-wide analysis results or stats.',
-    syntax:      'RejectCurrentFrame [index=<integer>] [append=<string>]',
+    syntax:      'RejectFrame [index=<integer>] [append=<string>]',
     arguments: [
       { name: 'index',  type: 'integer', required: false, description: 'Zero-based frame index to reject. Defaults to the current frame if omitted.' },
       { name: 'append', type: 'string',  required: false, default: 'reject', description: 'Suffix appended after the original filename extension (e.g. append=cloudy produces frame.fit.cloudy). Leading dot is optional.' },
     ],
     output:  'Moves the file to rejected/<filename>.<suffix> and removes it from the session. Reports the new path.',
-    example: 'RejectCurrentFrame\nRejectCurrentFrame index=42\nRejectCurrentFrame append=cloudy',
+    example: 'RejectFrame\nRejectFrame index=42\nRejectFrame append=cloudy',
   },
 
   clearannotations: {

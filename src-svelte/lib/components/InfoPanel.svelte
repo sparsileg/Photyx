@@ -273,6 +273,7 @@
   async function rejectCurrentBlinkFrame() {
     if (blinkPlaying || frameCount === 0 || $ui.blinkCaching || rejecting) return;
     rejecting = true;
+    const rejectedIndex = blinkFrame;
     try {
       const result = await invoke<{
         success: boolean;
@@ -280,24 +281,27 @@
         error: string | null;
         data: { rejected_path?: string; new_index?: number; frame_count?: number } | null;
       }>('dispatch_command', {
-        request: { command: 'RejectCurrentFrame', args: { index: String(blinkFrame) } }
+        request: { command: 'RejectFrame', args: { index: String(blinkFrame) } }
       });
 
       if (!result.success) {
-        notifications.error(result.error ?? 'RejectCurrentFrame failed');
+        notifications.error(result.error ?? 'RejectFrame failed');
         return;
       }
 
       notifications.success(result.output ?? 'Frame rejected');
+      suppressBlinkFrameResetOnce = true;
       await syncSession();
 
       // Compute Blink's own next index locally rather than trusting the
       // backend's new_index — that value now only reflects ctx.current_frame
       // (the Pixels/pcode notion of "current"), which is intentionally left
       // untouched when the rejected index isn't the one it was pointing at.
-      // Blink has its own separate "what's next" question.
+      // Blink has its own separate "what's next" question: jump to the
+      // frame immediately before the one just rejected, circularly
+      // wrapping to the new last frame if index 0 was rejected.
       const newCount = result.data?.frame_count ?? 0;
-      blinkFrame = newCount === 0 ? 0 : blinkFrame % newCount;
+      blinkFrame = newCount === 0 ? 0 : (rejectedIndex - 1 + newCount) % newCount;
 
       if (newCount === 0) {
         ui.setBlinkFrame(null);
@@ -306,7 +310,7 @@
         await showBlinkFrame(blinkFrame);
       }
     } catch (e) {
-      notifications.error(`RejectCurrentFrame error: ${e}`);
+      notifications.error(`RejectFrame error: ${e}`);
     } finally {
       rejecting = false;
     }
@@ -314,15 +318,27 @@
 
   // Invalidate cache only when file list length actually changes
   let lastFileCount = $state(0);
+  // Set right before syncSession() in rejectCurrentBlinkFrame(), so this
+  // effect doesn't stomp the index that handler is about to compute
+  // itself. Without this, the Blink reject button's own "go to previous
+  // frame" logic never takes effect, because this effect always resets
+  // blinkFrame to 0 first. Only applies to reject-via-UI; a console/pcode
+  // RejectFrame still hits the defensive reset-to-0 path below,
+  // since it has no local blinkFrame bookkeeping to trust.
+  let suppressBlinkFrameResetOnce = false;
   $effect(() => {
     const count = $session.fileList.length;
     if (count !== lastFileCount) {
       const wasBlinking = lastFileCount > 0;
       lastFileCount = count;
       ui.setBlinkCached(false);
+      if (suppressBlinkFrameResetOnce) {
+        suppressBlinkFrameResetOnce = false;
+        return;
+      }
       blinkFrame = 0;
       // If we were already actively displaying a blink frame (e.g. a
-      // console/pcode RejectCurrentFrame just changed the list out from
+      // console/pcode RejectFrame just changed the list out from
       // under us), refresh what's on screen now rather than leaving the
       // pre-reject bitmap visible until the next natural lap.
       if (wasBlinking && $ui.blinkModeActive && count > 0) {

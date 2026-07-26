@@ -5,8 +5,8 @@
   import { addFiles, displayFrame } from '../../commands';
 
   const MIN_WIDTH = 280;
-  const MAX_WIDTH = 540;
-  const CHAR_WIDTH = 7.5;
+  const MAX_WIDTH = 900;
+  const CHAR_WIDTH = 9.0;
   const PADDING = 48;
 
   // Recompute panel width whenever file list changes

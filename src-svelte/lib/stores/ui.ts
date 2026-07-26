@@ -138,7 +138,7 @@ function createUIStore() {
       // Issue 116: don't stomp the Blink tab's own image with a Pixels-tab
       // reload while blink mode is active. Previously this guard existed
       // nowhere in the refresh path — not here, not in the frameRefreshToken
-      // effect that consumes it — so every existing caller (RejectCurrentFrame,
+      // effect that consumes it — so every existing caller (RejectFrame,
       // stretch-mode changes) already stomped the blink display before this fix.
       // Blink's own frame updates go through a separate path
       // (ui.setBlinkFrame) and are unaffected by this guard.
