@@ -626,8 +626,8 @@ Notes specific to this workflow:
 # VERY IMPORTANT!
 # Bump version in Cargo.toml and commit
 
-git tag ${TAG_NAME}
-git push origin ${TAG_NAME}
+git tag $TAG_NAME
+git push origin $TAG_NAME
 ```
 
 The workflow picks up the tag push automatically and does the rest.
@@ -652,10 +652,10 @@ gh release list
 # note the tag name
 
 # delete remote tag
-gh release delete ${TAG_NAME} --yes --cleanup-tag
+gh release delete $TAG_NAME --yes --cleanup-tag
 
 # delete local tag (in case --cleanup-tag doesn't work)
-git tag -d ${TAG_NAME}
+git tag -d $TAG_NAME
 
 # verify
 gh release list
@@ -688,7 +688,8 @@ git ls-remote --tags origin | grep ${TAG_NAME}
 git tag ${TAG_NAME}
 git push origin ${TAG_NAME}
 
-# confirm the tag actually points where you think before waiting on the run
+# confirm the tag actually points where you think before waiting 
+# on the run
 git rev-parse ${TAG_NAME}
 git rev-parse main
 
