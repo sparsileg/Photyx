@@ -318,17 +318,18 @@ export async function loadFile(path: string) {
 }
 
 /** Apply AutoStretch to the current frame and display the result */
-export async function applyAutoStretch(shadowClip?: number, targetBackground?: number) {
+export async function applyAutoStretch(shadowClip?: number, targetBg?: number) {
   try {
     const dataUrl = await invoke<string>('get_autostretch_frame', {
       shadowClip: shadowClip ?? null,
-      targetBackground: targetBackground ?? null,
+      targetBg: targetBg ?? null,
     });
     ui.setAutostretchFrame(dataUrl);
   } catch (e) {
     notifications.error(`AutoStretch failed: ${e}`);
   }
 }
+
 
 /** Set current frame and refresh viewer with raw (unstretched) pixels */
 export async function displayFrame(index: number) {

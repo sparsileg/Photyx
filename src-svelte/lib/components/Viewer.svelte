@@ -447,11 +447,13 @@
   let lastAutostretchUrl: string | null = null;
   $effect(() => {
     const url = $ui.autostretchImageUrl;
-    if (url) {
+    if ($ui.blinkModeActive) return;
+    if (url && url !== lastAutostretchUrl) {
       lastAutostretchUrl = url;
       drawImageFromUrl(url);
     } else if (!url) {
       lastAutostretchUrl = null;
+    } else {
     }
   });
 
@@ -489,7 +491,12 @@
     if (token > 0 && token !== lastToken) {
       lastToken = token;
       lastNeedsFullRes = false;
-      loadCurrentFrame();
+      if ($ui.stretchMode === 'stretched') {
+        applyAutoStretch($ui.shadowClip, $ui.targetBg).then(() => {
+        });
+      } else {
+        loadCurrentFrame();
+      }
     }
   });
 
@@ -500,7 +507,7 @@
     if (!hasImage) return;
     if ($ui.displayImageUrl) {
       return;
-    } else if ($ui.autostretchImageUrl) {
+    } else if ($ui.stretchMode === 'stretched') {
       return;
     } else if (full) {
       loadFullFrame();
