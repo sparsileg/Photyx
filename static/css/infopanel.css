@@ -41,6 +41,37 @@
     margin-bottom: -1px;
 }
 
+.info-panel-step-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    padding: 0 10px;
+}
+
+.info-panel-step-btn {
+    height: 34px;
+    width: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-color);
+}
+
+.info-panel-step-btn:hover:not(:disabled) {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.info-panel-step-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
 .info-panel-body {
     flex: 1 1 auto;
     overflow-y: auto;

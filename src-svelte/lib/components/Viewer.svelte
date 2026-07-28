@@ -4,6 +4,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { ui } from '../stores/ui';
+  import type { ZoomLevel } from '../stores/ui';
   import { session, currentImage } from '../stores/session';
   import { applyAutoStretch } from '../commands';
   import { DISPLAY_MAX_WIDTH_PX } from '../settings/constants';
@@ -345,7 +346,7 @@
     }
   }
 
-  function renderBitmap(bitmap: ImageBitmap) {
+function renderBitmap(bitmap: ImageBitmap) {
     if (!imageCanvas || !imageCtx) return;
     const cw = imageCanvas.width;
     const ch = imageCanvas.height;
@@ -410,7 +411,6 @@
   async function loadCurrentFrame() {
     try {
       const result = await invoke<string>('get_current_frame');
-      resetPan();
       await drawImageFromUrl(result);
     } catch (e) {
       console.error('get_current_frame error:', e);
@@ -421,7 +421,6 @@
   async function loadFullFrame() {
     try {
       const result = await invoke<string>('get_full_frame');
-      resetPan();
       await drawImageFromUrl(result);
     } catch (e) {
       console.error('get_full_frame error:', e);
@@ -490,10 +489,11 @@
     const token = $ui.frameRefreshToken;
     if (token > 0 && token !== lastToken) {
       lastToken = token;
-      lastNeedsFullRes = false;
+      lastNeedsFullRes = needsFullRes;
       if ($ui.stretchMode === 'stretched') {
-        applyAutoStretch($ui.shadowClip, $ui.targetBg).then(() => {
-        });
+        applyAutoStretch($ui.shadowClip, $ui.targetBg);
+      } else if (needsFullRes) {
+        loadFullFrame();
       } else {
         loadCurrentFrame();
       }
@@ -517,8 +517,11 @@
   });
 
   // Redraw and reset pan when zoom changes
+  let lastZoomLevel: ZoomLevel | null = null;
   $effect(() => {
-    const _ = $ui.zoomLevel;
+    const zoom = $ui.zoomLevel;
+    if (zoom === lastZoomLevel) return;
+    lastZoomLevel = zoom;
     resetPan();
     if (currentBitmap && hasImage) {
       renderBitmap(currentBitmap);

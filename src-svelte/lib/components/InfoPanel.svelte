@@ -1,4 +1,5 @@
 <!-- InfoPanel.svelte — Pixel tracking, metadata, histogram, blink. Spec §8.8 -->
+
 <script lang="ts">
   import { tick, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
@@ -364,20 +365,16 @@
   }
 
   let histStats = $state<HistStats | null>(null);
-  let histogramLoading = $state(false);
 
   async function updateHistogram() {
     if (activeTab !== 'histogram' || !$currentImage) return;
-    histogramLoading = true;
     try {
       const data = await invoke<HistStats>('get_histogram');
       histStats = data;
-      histogramLoading = false;
       await tick();
       drawHistogram(data);
     } catch (e) {
       console.error('get_histogram error:', e);
-      histogramLoading = false;
     }
   }
 
@@ -507,6 +504,20 @@
     redrawWithHover(null);
   }
 
+  function stepFullBack() {
+    const count = $session.fileList.length;
+    if (count === 0) return;
+    suppressTabResetOnce = true;
+    displayFrame((($session.currentFrame - 1) + count) % count);
+  }
+
+  function stepFullForward() {
+    const count = $session.fileList.length;
+    if (count === 0) return;
+    suppressTabResetOnce = true;
+    displayFrame(($session.currentFrame + 1) % count);
+  }
+
   // Update histogram when tab changes or frame changes
   let lastFrameToken = 0;
   $effect(() => {
@@ -514,6 +525,7 @@
     const frame = $ui.frameRefreshToken;
     if (frame !== lastFrameToken && frame > 0) {
       lastFrameToken = frame;
+      updatePixelTracking(mousePixel);
       if (suppressTabResetOnce) {
         suppressTabResetOnce = false;
       } else if (activeTab !== 'pixels') {
@@ -536,7 +548,21 @@
         onclick={() => activeTab = tab as any}
         >{tab.charAt(0).toUpperCase() + tab.slice(1)}</div>
       {/each}
+    <div class="info-panel-step-group">
+      <button
+        class="info-panel-step-btn"
+        disabled={frameCount === 0}
+        onclick={stepFullBack}
+        title="Previous frame"
+        >←</button>
+      <button
+        class="info-panel-step-btn"
+        disabled={frameCount === 0}
+        onclick={stepFullForward}
+        title="Next frame"
+        >→</button>
     </div>
+  </div>
 
   <!-- Pixel Tracking -->
   {#if activeTab === 'pixels'}
@@ -627,22 +653,18 @@
   {:else if activeTab === 'histogram'}
     <div class="info-panel-body active" id="ip-histogram">
       {#if $currentImage}
-        {#if histogramLoading}
-          <div class="histogram-label">Computing histogram…</div>
-        {:else}
-          <canvas
-            id="mini-histogram"
-            bind:this={histogramCanvas}
-            width="400"
-            height="80"
-            onmousemove={onHistogramMouseMove}
-            onmouseleave={onHistogramMouseLeave}
-            ></canvas>
-          {/if}
-        {:else}
-          <div class="histogram-label">No image loaded</div>
-        {/if}
-      </div>
+        <canvas
+          id="mini-histogram"
+          bind:this={histogramCanvas}
+          width="400"
+          height="80"
+          onmousemove={onHistogramMouseMove}
+          onmouseleave={onHistogramMouseLeave}
+          ></canvas>
+      {:else}
+        <div class="histogram-label">No image loaded</div>
+      {/if}
+    </div>
 
     <!-- Blink -->
   {:else if activeTab === 'blink'}
