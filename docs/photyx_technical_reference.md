@@ -1425,11 +1425,17 @@ startup):
 | Quick Launch bar visible    | true                | X           | (internal)  | `quick_launch_visible`        | —       | —      |
 
 Last-used directory is populated automatically (not a user-facing
-preference toggle — "Persisted" but not "User Pref" in the table above,
-same category as theme). Its exact write path and relationship to the
-separate `recent_directories` table (§8.2 — multiple directories with
-usage counts, a different mechanism) was not traced source-side in this
-pass; worth a follow-up if the two are ever found to disagree.
+preference toggle — "Persisted" but not "User Pref" in the table
+above, same category as theme). Written and read in `addFiles()`
+(`src-svelte/lib/commands.ts`, Issue 185): read before opening the
+file picker to seed `defaultPath`, written after a confirmed selection
+to the directory of the first selected file — so the picker reopens
+where the user last picked files from. Deliberately picker-only:
+`ReadImages` (console/macro directory loads) does not touch this
+preference, so a scripted batch job doesn't perturb what the picker
+defaults to next.  Distinct from the separate `recent_directories`
+table (§8.2 — multiple directories with usage counts), which remains
+unwired to any call site; see Issue 166.
 
 Not persisted (always hard-coded default): Default zoom level (Fit),
 default blink rate (0.1s/frame), default channel view (RGB), overwrite

@@ -4,6 +4,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { get } from 'svelte/store';
 import { open } from '@tauri-apps/plugin-dialog';
+import { db } from './db';
 import { notifications } from './stores/notifications';
 import { session } from './stores/session';
 import { ui } from './stores/ui';
@@ -209,13 +210,24 @@ async function addFilesFromPaths(paths: string[]) {
 }
 
 
-/** Open a multi-file picker and append selected files to the session */
+/** Open a multi-file picker and append selected files to the session.
+ * Uses last_directory to open, if possible
+ */
 export async function addFiles() {
+  let defaultPath: string | undefined;
+  try {
+    const prefs = await db.getAllPreferences();
+    defaultPath = prefs['last_directory'] || undefined;
+  } catch (e) {
+    console.error('Failed to load last_directory preference:', e);
+  }
+
   let selected;
   try {
     selected = await open({
       directory: false,
       multiple: true,
+      defaultPath,
       filters: [{
         name: 'Supported Images',
         extensions: SUPPORTED_ADD_FILES_EXTENSIONS,
@@ -229,6 +241,17 @@ export async function addFiles() {
   if (!selected || (Array.isArray(selected) && selected.length === 0)) return;
 
   const paths = Array.isArray(selected) ? selected : [selected];
+
+  const firstPath = paths[0].replace(/\\/g, '/');
+  const lastSlash = firstPath.lastIndexOf('/');
+  if (lastSlash > 0) {
+    try {
+      await db.setPreference('last_directory', firstPath.slice(0, lastSlash));
+    } catch (e) {
+      console.error('Failed to save last_directory preference:', e);
+    }
+  }
+
   await addFilesFromPaths(paths);
 }
 
