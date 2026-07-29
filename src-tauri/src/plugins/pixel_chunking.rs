@@ -31,16 +31,18 @@
 // shared reader). Each applies its own failure policy to
 // LoadOutcome::Missing / ::Unreadable — see load_request's doc comment.
 
-use crate::analysis::debayer::{bayer_pattern_of, debayer_bilinear, BayerPattern};
-use crate::analysis::{extract_luminance, to_f32_normalized, to_luminance};
+use crate::analysis::debayer::{bayer_pattern_of, debayer_bilinear, debayer_to_luma, BayerPattern};
+use crate::analysis::{to_f32_normalized, to_luminance};
 use crate::context::{AppContext, ColorSpace, ImageBuffer, KeywordEntry, PixelData};
 use crate::plugins::image_reader::read_image_file;
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 // ── Snapshot types ──────────────────────────────────────────────────────────
 
@@ -200,10 +202,14 @@ pub(crate) fn load_request(path: &str, kind: LoadKind) -> LoadOutcome {
         return LoadOutcome::Missing { path: path.to_string() };
     }
 
+    // TEMPORARY (prefetch timing investigation) — remove after.
+    let decode_start = Instant::now();
     let buf = match read_image_file(path) {
         Ok(b)  => b,
         Err(e) => return LoadOutcome::Unreadable { path: path.to_string(), error: e },
     };
+    // TEMPORARY (prefetch timing investigation) — remove after.
+    let decode_ms = decode_start.elapsed().as_millis();
 
     if buf.pixels.is_none() {
         return LoadOutcome::Unreadable {
@@ -238,14 +244,38 @@ pub(crate) fn load_request(path: &str, kind: LoadKind) -> LoadOutcome {
         LoadKind::Luma => {
             let ImageBuffer { keywords, pixels, .. } = buf;
             let pixels = pixels.unwrap();
+            // TEMPORARY (prefetch timing investigation) — remove after.
+            let convert_start = Instant::now();
+            let mut normalize_us = 0u128;
+            let mut debayer_us   = 0u128;
+            let mut luma_us      = 0u128;
             let luma = if is_bayer {
                 let pattern = bayer_pattern_of(&keywords).unwrap_or(BayerPattern::RGGB);
-                let mono    = to_f32_normalized(&pixels);
-                let rgb     = debayer_bilinear(&mono, width, height, pattern);
-                extract_luminance(&rgb, width, height, 3)
+
+                let t = Instant::now();
+                let mono = to_f32_normalized(&pixels);
+                normalize_us = t.elapsed().as_micros();
+
+                let t = Instant::now();
+                let out = debayer_to_luma(&mono, width, height, pattern);
+                debayer_us = t.elapsed().as_micros();
+
+                out
             } else {
                 to_luminance(&pixels, channels)
             };
+            // TEMPORARY (prefetch timing investigation) — remove after.
+            let convert_ms = convert_start.elapsed().as_millis();
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true).append(true)
+                .open("/tmp/photyx_prefetch_timing.txt")
+            {
+                let _ = writeln!(
+                    f,
+                    "PERFILE path={} is_bayer={} decode_ms={} convert_ms={} normalize_us={} debayer_us={} luma_us={}",
+                    path, is_bayer, decode_ms, convert_ms, normalize_us, debayer_us, luma_us
+                );
+            }
             LoadedFrame::Luma(LumaSnapshot {
                 path: path.to_string(), width, height, channels, color_space, keywords, luma,
             })
@@ -364,6 +394,11 @@ impl PixelReaderHandle {
         let stop_reader = Arc::clone(&stop);
 
         let handle = thread::spawn(move || {
+            // TEMPORARY (prefetch timing investigation) — remove after.
+            let mut decode_busy   = Duration::ZERO;
+            let mut send_blocked  = Duration::ZERO;
+            let mut frames_done   = 0u32;
+
             for req in requests {
                 // Acquire pairs with the Release store in Drop, so this
                 // early-out is a guaranteed observation of a shutdown
@@ -388,6 +423,7 @@ impl PixelReaderHandle {
                 // panic on ordinary decode failures (read_image_file
                 // returns Result) — this is the backstop for an
                 // unexpected panic inside decode/conversion.
+                let decode_start = Instant::now();
                 let outcome = match std::panic::catch_unwind(
                     std::panic::AssertUnwindSafe(|| load_one(&req))
                 ) {
@@ -397,13 +433,31 @@ impl PixelReaderHandle {
                         error: "reader thread panicked while decoding this frame".to_string(),
                     },
                 };
+                decode_busy += decode_start.elapsed();
+                frames_done += 1;
 
-                if tx.send(outcome).is_err() {
+                let send_start = Instant::now();
+                let send_result = tx.send(outcome);
+                send_blocked += send_start.elapsed();
+
+                if send_result.is_err() {
                     // Receiver dropped — consumer is gone. Expected
                     // shutdown path (see PixelReaderHandle::drop), not an
                     // error to log.
                     break;
                 }
+            }
+
+            // TEMPORARY (prefetch timing investigation) — remove after.
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true).append(true)
+                .open("/tmp/photyx_prefetch_timing.txt")
+            {
+                let _ = writeln!(
+                    f,
+                    "READER frames={} decode_busy_ms={} send_blocked_ms={}",
+                    frames_done, decode_busy.as_millis(), send_blocked.as_millis()
+                );
             }
             // Normal completion: `tx` drops here, closing the channel.
             // The consumer's next recv() returns None — no separate

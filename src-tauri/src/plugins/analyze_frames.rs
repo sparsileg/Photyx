@@ -25,6 +25,8 @@ use crate::context::{AppContext, ImageBuffer, KeywordEntry};
 use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
 use rayon::prelude::*;
 use serde_json::json;
+use std::io::Write;
+use std::time::{Duration, Instant};
 use tracing::info;
 
 pub struct AnalyzeFrames;
@@ -266,6 +268,10 @@ fn execute_all(
         requests, reader_capacity,
     );
 
+    // TEMPORARY (prefetch timing investigation) — remove after.
+    let mut recv_wait    = Duration::ZERO;
+    let mut compute_time = Duration::ZERO;
+
     for path_chunk in file_list.chunks(chunk_len) {
         // Sequential: drain this chunk's worth of outcomes from the
         // background reader (Issue 175) rather than reading synchronously
@@ -295,7 +301,12 @@ fn execute_all(
             Vec::with_capacity(path_chunk.len());
         let mut received = 0usize;
         for _ in 0..path_chunk.len() {
-            let outcome = match reader.recv() {
+            // TEMPORARY (prefetch timing investigation) — remove after.
+            let recv_start = Instant::now();
+            let recv_result = reader.recv();
+            recv_wait += recv_start.elapsed();
+
+            let outcome = match recv_result {
                 Some(o) => o,
                 None    => break, // channel closed early — shortfall caught below
             };
@@ -339,25 +350,40 @@ fn execute_all(
             ));
         }
 
+        // TEMPORARY (prefetch timing investigation) — remove after.
+        let compute_start = Instant::now();
+        // into_par_iter, not par_iter: each closure owns its snapshot and
+        // releases the luma buffer as soon as star detection is done, so
+        // the chunk's ~15 buffers are unmapped across workers and across
+        // the compute window. Holding them all to the end of the loop
+        // instead produced one synchronized munmap burst per chunk
+        // boundary — with M_MMAP_THRESHOLD at 1 MB every buffer is its own
+        // mapping, and unmapping them together stalls every core with TLB
+        // shootdowns while the reader is mid-decode.
         let chunk_results: Vec<AnalysisResult> = snapshots
-            .par_iter()
+            .into_par_iter()
             .map(|snap| {
-                let width  = snap.width;
-                let height = snap.height;
+                let crate::plugins::pixel_chunking::LumaSnapshot {
+                    path, width, height, keywords, luma, ..
+                } = snap;
 
                 // luma arrives pre-converted from the reader thread (Issue
                 // 175) — no analysis::to_luminance call needed here anymore.
                 let bg_config = BackgroundConfig::default();
-                let bg        = compute_background_metrics(&snap.luma, width, height, &bg_config);
-                let stars     = detect_stars(&snap.luma, width, height, det_config_ref);
+                let bg        = compute_background_metrics(&luma, width, height, &bg_config);
+                let stars     = detect_stars(&luma, width, height, det_config_ref);
+                drop(luma);
+
                 // Keywords travel with the snapshot (Issue 174/175), so no
                 // separate image_buffers lookup is needed for plate scale.
-                let plate_scale   = derive_plate_scale(&snap.keywords);
+                let plate_scale   = derive_plate_scale(&keywords);
                 let fwhm_result   = compute_fwhm(&stars, plate_scale);
                 let ecc_result    = compute_eccentricity(&stars);
 
+                info!("AnalyzeFrames: {} — done", short_name(&path));
+
                 let result = AnalysisResult {
-                    filename:          snap.path.clone(),
+                    filename:          path,
                     background_median: Some(bg.median),
                     fwhm:              fwhm_result.as_ref().map(|r| r.fwhm_pixels),
                     eccentricity:      ecc_result.as_ref().map(|r| r.eccentricity),
@@ -370,19 +396,31 @@ fn execute_all(
                     is_reference: false,
                 };
 
-                info!("AnalyzeFrames: {} — done", short_name(&snap.path));
                 let n = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                 crate::set_progress("Analyzing", n, total as u32);
                 result
             })
             .collect();
 
+        // TEMPORARY (prefetch timing investigation) — remove after.
+        compute_time += compute_start.elapsed();
+
         par_results.extend(chunk_results);
-        // This chunk's decoded luma buffers (`snapshots`) drop here, before
-        // the next chunk is drained.
     }
 
     crate::set_progress("", 0, 0);
+
+    // TEMPORARY (prefetch timing investigation) — remove after.
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true).append(true)
+        .open("/tmp/photyx_prefetch_timing.txt")
+    {
+        let _ = writeln!(
+            f,
+            "CONSUMER frames={} recv_wait_ms={} compute_ms={}",
+            total, recv_wait.as_millis(), compute_time.as_millis()
+        );
+    }
 
     // Issue 174: every frame in file_list is either analyzed or the run
     // aborts (see the hard-error handling in the chunk loop above), so
