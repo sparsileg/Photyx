@@ -800,21 +800,6 @@ centroid) could feed a future FWHM/Eccentricity/PSF-residual pass. See
 issue #70. It does not run today and does not gate anything described
 in this section.
 
-**SNR** is computed and displayed as a diagnostic value only — it does
-**not** drive classification. Cross-session analysis confirmed a PSF
-artifact: worse-seeing frames produce *higher* SNR due to bloated star
-flux, and SNR never uniquely drove a rejection that FWHM or Star Count
-didn't already catch.
-
-**Removed metrics:** Background Std Dev (r = 0.92–0.999 correlated
-with Background Median) and Background Gradient (sign reversal is
-session-dependent) were dropped as rejection metrics. Both
-corresponding pcode commands remain as deprecated stubs for script
-compatibility. Their values live only in `ctx.analysis_results`
-(in-memory, per frame) and the JSON export — `frame_analysis_results`,
-the table originally intended to persist them, was never wired up with
-a reader or writer and was dropped via migration v5 (§8.2); no database
-table persists these two metrics today.
 
 ### 6.3 Classification
 
@@ -1323,18 +1308,6 @@ CREATE TABLE IF NOT EXISTS feature_flags (
     updated_at  INTEGER NOT NULL
 );
 ```
-
-**Note on Background Std Dev, Background Gradient, and SNR:** these three
-values are still computed by `AnalyzeFrames` per frame but do not drive
-classification — Background Std Dev and Background Gradient were dropped as
-rejection metrics (highly correlated with Background Median), and SNR is
-retained as a diagnostic value only. They live only in `ctx.analysis_results`
-(in-memory) and the JSON export — no database table persists them.
-`frame_analysis_results`, which was designed to do exactly that (algorithm-
-versioned, keyed by `(file_path, algorithm_set_version)`), was never wired
-up with a reader or writer and was removed — see the note below. The
-corresponding pcode commands (`BackgroundStdDev`, `BackgroundGradient`)
-remain as deprecated stubs for script compatibility.
 
 **Note on removed tables and columns (Issue 89, historical):** `algorithm_sets`,
 `frame_analysis_results` (plus its two indexes), `session_history`, and
