@@ -1405,7 +1405,7 @@ startup):
 - Overwrite behavior (always Prompt)
 - Format filter selection (always All Supported)
 - Blink pre-cache frames (always all loaded frames)
-- Default zoom level, blink rate, channel view
+- Default zoom level, blink rate
 
 ### 8.4 Settings Reference
 
@@ -1536,12 +1536,41 @@ against partial writes on failure.
 - Color modes: Monochrome (1 channel), RGB (3 channel)
 - U32 data is downconverted to U16 on load (high 16 bits retained)
 - CFA (Bayer) files load and display as mono by default; debayering is
-  on-demand via `DebayerImage`, which always uses bilinear interpolation
-  (`debayer_bilinear()`) — no other algorithm exists in source and none
-  is selectable; the Bayer pattern is read from the `BAYERPAT`/
-  `BAYER_PATTERN` keyword (`analysis/debayer.rs`, Issue 122),
-  defaulting to RGGB if absent (Issue 97 — this list previously named
-  Nearest Neighbor, VNG, and AHD as supported, none of which exist)
+  on-demand via `DebayerImage`, which always uses bilinear
+  interpolation (`debayer_bilinear()`) — no other algorithm exists in
+  source and none is selectable; the Bayer pattern is read from the
+  `BAYERPAT`/ `BAYER_PATTERN` keyword (`analysis/debayer.rs`, Issue
+  122), defaulting to RGGB if absent (Issue 97 — this list previously
+  named Nearest Neighbor, VNG, and AHD as supported, none of which
+  exist)
+- `analysis/debayer.rs` also provides `debayer_to_luma()` (Issue 186),
+  used only by `pixel_chunking.rs`'s `LoadKind::Luma` path
+  (AnalyzeFrames/StackFrames Pass 0 on Bayer frames). It is not a
+  second debayering algorithm — it computes each pixel's R/G/B from a
+  3x3 window directly on the source and combines to luminance
+  immediately, rather than materializing a full interleaved RGB frame
+  via `debayer_bilinear()` only to collapse it back with
+  `extract_luminance()`. Proven bit-identical to that two-call
+  sequence (equivalence tests, `debayer.rs`), not an approximation.
+  `DebayerImage` and color-mode `StackFrames` are unaffected — both
+  still go through `debayer_bilinear()`, since both need materialized
+  RGB.
+
+**Historical bug (found and fixed, Issue 186):**
+`debayer_bilinear()`'s green-pixel axis logic
+(`red_is_horizontal_at_green()`) had the R/B axis backwards for the
+BGGR and GBRG patterns — correct only for RGGB and GRBG. For BGGR/GBRG
+frames, every green pixel's R and B channel were computed from
+zero-initialized memory, producing R = B = 0 at every green pixel —
+corrupting half of every debayered image on those two patterns,
+silently, since the only prior test used a flat image (where zeros
+still average out to a plausible-looking result). No-op fix for RGGB
+(the only pattern in use in this codebase's own test data) — no
+threshold or metric re-validation triggered. Anyone whose sensor uses
+BGGR or GBRG and has debayered output (via `DebayerImage`, color-mode
+`StackFrames`, or pre-Issue-186 `AnalyzeFrames`/mono `StackFrames` on
+Bayer frames) predating this fix should treat that output as
+unreliable and re-derive it.
 
 Note on the stack result specifically: the "normalized 0.0–1.0"
 convention above describes per-frame image_buffers data, which is a
@@ -1763,19 +1792,11 @@ believed still open as of this document.
 | Issue                                   | Notes                                                                                          |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | cfitsio parallel loading crashes          | Thread-safety issue — sequential FITS loading is used instead                                          |
-| Blink UI jitter                           | Suspected Tauri WebView compositor artifact on Windows                                                   |
 | Full-res frames are JPEG, not lossless    | Disclosed via a disclaimer bar; pixel readout still uses the raw buffer, not the JPEG                     |
 | AppContext mutex serializes long operations | A long-running plugin holding `&mut AppContext` blocks all other commands, including frame display, for its duration — see §2.2 |
 | Zoom approximate at high levels           | Full-res cache reuses STF params computed at display resolution, not recomputed at full res — see §2.2   |
 | `display_cache` never written (Issue 84, deferred) | `start_background_cache` computes display-resolution JPEGs but discards them; frame navigation re-renders from raw pixels every time instead of reusing a cached copy — see §2.2. Deferred: low-impact under file-browser-only navigation |
 | XISF Vector/Matrix properties             | Read as a placeholder; skipped on write                                                                    |
 | Sidebar icon tooltips clipped by Quick Launch | CSS stacking context issue                                                                              |
-| Single-file-load blink isolation          | Files loaded via `LoadFile` are included in `ctx.file_list`, not kept separate                             |
-| AutoStretch performance in dev builds     | 3–5 seconds for a 9MP RGB frame in debug builds; near-instant in release builds                             |
-| AutoStretch lost on Blink→Pixels tab switch | Viewer reverts to raw unstretched display                                                                 |
-| SNR estimator PSF artifact                | Worse-seeing frames produce higher SNR due to bloated star flux; excluded from rejection classification — see §6.2 |
-| `threshold_profiles` orphaned columns     | `bg_stddev_reject_sigma`/`bg_gradient_reject_sigma` may still exist on pre-cleanup databases — see §8.2   |
 | Linux GTK file picker multi-select        | Silently refuses to confirm a selection containing both files and folders (e.g. Ctrl+A when a `rejected/` subfolder is present) — select files manually instead |
-| Separate RGB channel views not working correctly | Pre-existing display bug                                                                          |
 | `TRI_MAX_STARS = 30` unvalidated on sparse-star sessions | Current value works for typical sessions; not yet confirmed as a safe floor for sparse-star fields — see §7.2 |
-| DebayerImage doesn't invalidate blink caches (Issue 158, deferred) | `debayer_current_frame()` clears `display_cache`/`full_res_cache` for the mutated frame but leaves `blink_cache_12`/`blink_cache_25` holding the pre-debayer mono thumbnails; Blink can show stale mono thumbnails until the session is cleared or the frame is reloaded. Only affects the pre-stack manual-debayer path — `debayer_stack()` mutates `ctx.stack_result` directly, which isn't in `file_list` and has no blink cache entry. Deferred: narrow, manual-preview-only trigger |

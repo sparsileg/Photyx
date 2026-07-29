@@ -1,6 +1,9 @@
 # Photyx pcode Scripting Guide
 
-pcode is the macro language built into Photyx. It is line-oriented: each line is either a command, a variable assignment, a flow-control statement, or a comment. Macros are saved in the Photyx database and can be run from the console, the Quick Launch bar, or via `RunMacro`.
+pcode is the macro language built into Photyx. It is line-oriented:
+each line is either a command, a variable assignment, a flow-control
+statement, or a comment. Macros are saved in the Photyx database and
+can be run from the console, the Quick Launch bar, or via `RunMacro`.
 
 ---
 
@@ -9,7 +12,8 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
 - [Basics](#basics)
   - [Comments](#comments)
   - [Command syntax](#command-syntax)
-  - [Running a macro from the console](#running-a-macro-from-the-console)
+  - [Running a macro from the
+    console](#running-a-macro-from-the-console)
 - [Variables](#variables)
   - [Arithmetic](#arithmetic)
   - [String concatenation](#string-concatenation)
@@ -17,9 +21,12 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
   - [System-set variables](#system-set-variables)
 - [Flow Control](#flow-control)
     - [Conditionals](#conditionals)
-    - [Loops — iterating over a numeric range](#loops--iterating-over-a-numeric-range)
-    - [Loops — iterating over a glob pattern](#loops--iterating-over-a-glob-pattern)
-    - [Loops — iterating over all session files](#loops--iterating-over-all-session-files)
+    - [Loops — iterating over a numeric
+      range](#loops--iterating-over-a-numeric-range)
+    - [Loops — iterating over a glob
+      pattern](#loops--iterating-over-a-glob-pattern)
+    - [Loops — iterating over all session
+      files](#loops--iterating-over-all-session-files)
 - [Error Handling](#error-handling)
 - [Console Output](#console-output)
   - [Print](#print)
@@ -60,7 +67,8 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
     - [ContourHeatmap](#contourheatmap)
     - [BackgroundMedian](#backgroundmedian)
     - [BackgroundStdDev (deprecated)](#backgroundstddev-deprecated)
-    - [BackgroundGradient (deprecated)](#backgroundgradient-deprecated)
+    - [BackgroundGradient
+      (deprecated)](#backgroundgradient-deprecated)
   - [Image Processing](#image-processing)
     - [AutoStretch](#autostretch)
     - [DebayerImage](#debayerimage)
@@ -86,15 +94,22 @@ pcode is the macro language built into Photyx. It is line-oriented: each line is
     - [For / EndFor](#for--endfor)
   - [Console Built-ins](#console-built-ins)
 - [Complete Examples](#complete-examples)
-  - [Batch format conversion: FITS → XISF](#batch-format-conversion-fits--xisf)
-  - [Quality analysis and review workflow](#quality-analysis-and-review-workflow)
-  - [Filter session by keyword then write](#filter-session-by-keyword-then-write)
+  - [Batch format conversion: FITS →
+    XISF](#batch-format-conversion-fits--xisf)
+  - [Quality analysis and review
+    workflow](#quality-analysis-and-review-workflow)
+  - [Filter session by keyword then
+    write](#filter-session-by-keyword-then-write)
   - [Per-frame FWHM report with log](#per-frame-fwhm-report-with-log)
-  - [Numeric loop: step through frames by index](#numeric-loop-step-through-frames-by-index)
-  - [Conditional processing based on keyword](#conditional-processing-based-on-keyword)
-  - [Heatmap generation with file capture](#heatmap-generation-with-file-capture)
+  - [Numeric loop: step through frames by
+    index](#numeric-loop-step-through-frames-by-index)
+  - [Conditional processing based on
+    keyword](#conditional-processing-based-on-keyword)
+  - [Heatmap generation with file
+    capture](#heatmap-generation-with-file-capture)
   - [Full stack pipeline](#full-stack-pipeline)
-  - [Session and project analysis workflow](#session-and-project-analysis-workflow)
+  - [Session and project analysis
+    workflow](#session-and-project-analysis-workflow)
   - [Calling a sub-macro](#calling-a-sub-macro)
 
 ---
@@ -116,7 +131,9 @@ AddFiles paths="/data/lights/frame001.fit"   # inline comments are not supported
 CommandName arg1=value arg2="string value"
 ```
 
-Arguments are named. Argument names are case-insensitive. String values containing spaces must be enclosed in double quotes. Boolean arguments accept `true` or `false`.
+Arguments are named. Argument names are case-insensitive. String
+values containing spaces must be enclosed in double quotes. Boolean
+arguments accept `true` or `false`.
 
 ### Running a macro from the console
 
@@ -140,13 +157,17 @@ Set label = "Frame " + $count
 Print $label
 ```
 
-- Variable names are case-insensitive when read (`$fwhm` and `$FWHM` refer to the same value).
-- String literals on the right-hand side of `Set` must use **double quotes**.
-- Variables persist for the lifetime of the script execution and are visible to any macro called via `RunMacro`.
+- Variable names are case-insensitive when read (`$fwhm` and `$FWHM`
+  refer to the same value).
+- String literals on the right-hand side of `Set` must use **double
+  quotes**.
+- Variables persist for the lifetime of the script execution and are
+  visible to any macro called via `RunMacro`.
 
 ### Arithmetic
 
-`+`, `-`, `*`, `/`, `^` (exponentiation) are supported. Parentheses group sub-expressions.
+`+`, `-`, `*`, `/`, `^` (exponentiation) are supported. Parentheses
+group sub-expressions.
 
 ```
 Set area   = 3.14159 * $r ^ 2
@@ -163,15 +184,15 @@ Set path = "/data/" + $target + "/lights"
 
 ### Math functions
 
-| Function    | Description              |
+| Function | Description |
 | ----------- | ------------------------ |
-| `sqrt(x)`   | Square root              |
-| `abs(x)`    | Absolute value            |
-| `round(x)`  | Round to nearest integer |
-| `floor(x)`  | Round down               |
-| `ceil(x)`   | Round up                 |
-| `min(x, y)` | Smaller of two values    |
-| `max(x, y)` | Larger of two values     |
+| `sqrt(x)` | Square root |
+| `abs(x)` | Absolute value |
+| `round(x)` | Round to nearest integer |
+| `floor(x)` | Round down |
+| `ceil(x)` | Round up |
+| `min(x, y)` | Smaller of two values |
+| `max(x, y)` | Larger of two values |
 
 ```
 Set sigma = sqrt(($x - $mean) ^ 2)
@@ -180,11 +201,11 @@ Set clipped = min($value, 65535)
 
 ### Path functions
 
-| Function        | Description                                                        |
+| Function | Description |
 | ---------------- | ------------------------------------------------------------------- |
-| `basename($path)` | Filename portion of a path, leading directories stripped          |
-| `dirof($path)`     | Directory portion of a path, filename stripped                    |
-| `stripext($path)`  | Strips a trailing suffix appended after a known image extension (`.fit`, `.fits`, `.fts`, `.xisf`) — e.g. the `.session`/`.project` suffix added by `CommitAnalysis` |
+| `basename($path)` | Filename portion of a path, leading directories stripped |
+| `dirof($path)` | Directory portion of a path, filename stripped |
+| `stripext($path)` | Strips a trailing suffix appended after a known image extension (`.fit`, `.fits`, `.fts`, `.xisf`) — e.g. the `.session`/`.project` suffix added by `CommitAnalysis` |
 
 ```
 Set name   = basename($f)
@@ -197,18 +218,18 @@ Set clean  = stripext($f)
 
 Several commands automatically store their results in variables.
 
-| Variable         | Set by                                       |
+| Variable | Set by |
 | ---------------- | --------------------------------------------- |
-| `$fwhm`          | `ComputeFWHM`                                |
-| `$eccentricity`  | `ComputeEccentricity`                        |
-| `$starcount`     | `CountStars`                                 |
-| `$filecount`     | `CountFiles`                                 |
-| `$matchcount`    | `CountMatches`                               |
-| `$STACKED`       | `WriteFIT stack=true`, `WriteXISF stack=true` |
-| `$NEW_FILE`      | `ContourHeatmap`, `CopyFile`, `MoveFile`     |
-| `$LOAD_FILE_PATH` | `LoadFile`                                  |
+| `$fwhm` | `ComputeFWHM` |
+| `$eccentricity` | `ComputeEccentricity` |
+| `$starcount` | `CountStars` |
+| `$filecount` | `CountFiles` |
+| `$matchcount` | `CountMatches` |
+| `$STACKED` | `WriteFIT stack=true`, `WriteXISF stack=true` |
+| `$NEW_FILE` | `ContourHeatmap`, `CopyFile`, `MoveFile` |
+| `$LOAD_FILE_PATH` | `LoadFile` |
 | `$<KEYWORDNAME>` | `GetKeyword name=<KEYWORDNAME>` (uppercased; falls back to `default=` if given and the keyword is not found) |
-| `$<name>`        | `GetSystemPath name=<name>` (e.g. `name=downloads` stores `$downloads`) |
+| `$<name>` | `GetSystemPath name=<name>` (e.g. `name=downloads` stores `$downloads`) |
 
 Example — reading a keyword into a variable:
 
@@ -231,7 +252,11 @@ Else
 EndIf
 ```
 
-The `Else` branch is optional. `If` blocks may be nested. Supported comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`. String comparisons are case-insensitive. Equality is always `==` — a single `=` is assignment syntax used by `Set`, not a valid condition operator.
+The `Else` branch is optional. `If` blocks may be nested. Supported
+comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`. String
+comparisons are case-insensitive. Equality is always `==` — a single
+`=` is assignment syntax used by `Set`, not a valid condition
+operator.
 
 ```
 If $fwhm > 3.0
@@ -255,7 +280,8 @@ For varname = N To M
 EndFor
 ```
 
-The loop variable steps from N to M inclusive. Both bounds can be variables or expressions.
+The loop variable steps from N to M inclusive. Both bounds can be
+variables or expressions.
 
 ```
 Set frames = 10
@@ -266,7 +292,10 @@ EndFor
 
 ### Loops — iterating over a glob pattern
 
-`for <var> in "<pattern>"` expands a glob pattern and iterates over each matched path, binding it to the loop variable. The variable holds the full matched path as a string. Patterns may include wildcards in any path segment.
+`for <var> in "<pattern>"` expands a glob pattern and iterates over
+each matched path, binding it to the loop variable. The variable holds
+the full matched path as a string. Patterns may include wildcards in
+any path segment.
 
 ```
 for <var> in "<glob_pattern>"
@@ -280,7 +309,10 @@ for d in "J:/projects/M82/M82-*-sess-*"
 EndFor
 ```
 
-Loops may be nested. Numeric and glob loops can be mixed. If a glob pattern matches nothing, a warning is reported and the loop body simply doesn't execute — the script continues normally rather than halting.
+Loops may be nested. Numeric and glob loops can be mixed. If a glob
+pattern matches nothing, a warning is reported and the loop body
+simply doesn't execute — the script continues normally rather than
+halting.
 
 ```
 for d in "J:/projects/M82/M82-ircut-sess-*"
@@ -308,7 +340,8 @@ EndFor
 
 ## Error Handling
 
-By default, pcode halts on the first error. A failed command stops the script and reports the error to the console.
+By default, pcode halts on the first error. A failed command stops the
+script and reports the error to the console.
 
 Use `Assert` to add explicit checks:
 
@@ -316,7 +349,9 @@ Use `Assert` to add explicit checks:
 Assert expression="$filecount > 0"
 ```
 
-`Assert` halts execution with an `ASSERT_FAILED` error if the condition is false. It is silent on pass in both Trace and No Trace modes.
+`Assert` halts execution with an `ASSERT_FAILED` error if the
+condition is false. It is silent on pass in both Trace and No Trace
+modes.
 
 ---
 
@@ -335,7 +370,11 @@ Print $x + 1
 
 ### Log
 
-Writes all console output accumulated since the last `Log` call to a file. Each `Log` call resets the accumulation point, so multiple `Log` calls within a single macro can direct different segments of output to different files. Useful for recording analysis results from batch runs.
+Writes all console output accumulated since the last `Log` call to a
+file. Each `Log` call resets the accumulation point, so multiple `Log`
+calls within a single macro can direct different segments of output to
+different files. Useful for recording analysis results from batch
+runs.
 
 ```
 Log path="/logs/session.log"
@@ -367,13 +406,17 @@ Log path="/logs/starcounts.log"
 
 ## Trace Mode
 
-The **Trace / No Trace** toggle in the console header controls verbosity. In Trace mode, each command and its resolved arguments are echoed before execution. In No Trace mode, only output explicitly produced by `Print` or a command's result message is shown.
+The **Trace / No Trace** toggle in the console header controls
+verbosity. In Trace mode, each command and its resolved arguments are
+echoed before execution. In No Trace mode, only output explicitly
+produced by `Print` or a command's result message is shown.
 
 ---
 
 ## Command Reference
 
-Commands are grouped by function. Arguments in `[brackets]` are optional.
+Commands are grouped by function. Arguments in `[brackets]` are
+optional.
 
 ---
 
@@ -381,18 +424,18 @@ Commands are grouped by function. Arguments in `[brackets]` are optional.
 
 #### `AddFiles`
 
-Appends one or more files to the current session. Accepts explicit file
-paths, glob patterns, or a mix of both in a comma-separated list. Files
-already loaded are skipped. Use `ClearSession` first to start a fresh
-session.
+Appends one or more files to the current session. Accepts explicit
+file paths, glob patterns, or a mix of both in a comma-separated
+list. Files already loaded are skipped. Use `ClearSession` first to
+start a fresh session.
 
 ```
 AddFiles paths=<path|glob>[,<path|glob>...]
 ```
 
-| Argument | Required | Description                                             |
+| Argument | Required | Description |
 | -------- | -------- | ------------------------------------------------------- |
-| `paths`  | Yes      | Comma-separated list of file paths and/or glob patterns |
+| `paths` | Yes | Comma-separated list of file paths and/or glob patterns |
 
 Glob wildcards: `*` matches any sequence of characters, `?` matches a
 single character, `[...]` matches a character class. Glob patterns can
@@ -410,15 +453,16 @@ AddFiles paths="/data/M31/lights/*.fit,/data/M31/extra/frame099.fit"
 
 #### `ReadImages`
 
-Loads a single image file or all supported images in a directory into the session. Files already loaded are skipped.
+Loads a single image file or all supported images in a directory into
+the session. Files already loaded are skipped.
 
 ```
 ReadImages path=<path>
 ```
 
-| Argument | Required | Description                 |
+| Argument | Required | Description |
 | -------- | -------- | ---------------------------- |
-| `path`   | Yes      | Path to a file or directory |
+| `path` | Yes | Path to a file or directory |
 
 ```
 ReadImages path="/home/stan/lights"
@@ -439,11 +483,14 @@ ClearSession
 
 #### `LoadFile`
 
-Loads a single file for temporary display without adding it to the session file list. Stores the path in `$LOAD_FILE_PATH`. This command is used from `File > Load Single Image`.
+Loads a single file for display, adding it to the session file list
+(by design — this is not an isolated preview). Stores the path in
+`$LOAD_FILE_PATH`. This command is used from `File > Load Single
+Image`.
 
-| Argument | Required | Description       |
+| Argument | Required | Description |
 | -------- | -------- | ------------------ |
-| `path`   | Yes      | Full path to file |
+| `path` | Yes | Full path to file |
 
 ```
 LoadFile path="/data/heatmaps/fwhm_heatmap.xisf"
@@ -453,7 +500,8 @@ LoadFile path="/data/heatmaps/fwhm_heatmap.xisf"
 
 #### `CountFiles`
 
-Stores the number of files currently loaded in the session in `$filecount`.
+Stores the number of files currently loaded in the session in
+`$filecount`.
 
 ```
 CountFiles
@@ -464,16 +512,18 @@ Print $filecount
 
 #### `FilterByKeyword`
 
-Filters the session file list to only those frames where the specified keyword matches the given value. Non-matching frames are removed from the session.
+Filters the session file list to only those frames where the specified
+keyword matches the given value. Non-matching frames are removed from
+the session.
 
 ```
 FilterByKeyword name=<string> value=<string>
 ```
 
-| Argument | Required | Description                       |
+| Argument | Required | Description |
 | -------- | -------- | ---------------------------------- |
-| `name`   | Yes      | Keyword name to filter on         |
-| `value`  | Yes      | Value to match (case-insensitive) |
+| `name` | Yes | Keyword name to filter on |
+| `value` | Yes | Value to match (case-insensitive) |
 
 ```
 FilterByKeyword name=FILTER value=Ha
@@ -492,10 +542,10 @@ the current frame if `index` is omitted.
 RejectFrame [index=<integer>] [append=<ext>]
 ```
 
-| Argument | Required | Default | Description                                                                              |
+| Argument | Required | Default | Description |
 | -------- | -------- | ------- | ------------------------------------------------------------------------------------------ |
-| `index`  | No       | current frame | Zero-based frame index to reject                                                    |
-| `append` | No       |         | Suffix appended after the original filename extension (e.g. `append=cloudy` → `frame.fit.cloudy`). Leading dot is optional. |
+| `index` | No | current frame | Zero-based frame index to reject |
+| `append` | No | | Suffix appended after the original filename extension (e.g. `append=cloudy` → `frame.fit.cloudy`). Leading dot is optional. |
 
 Unlike `CopyFile`, `MoveFile`, and `ContourHeatmap`, this command does
 **not** store its output path in `$NEW_FILE` — it has no system-set
@@ -515,7 +565,13 @@ RejectFrame index=12 append=cloudy
 
 #### `WriteCurrent`
 
-Writes all buffered images back to their source paths. For `.fit`/`.fits`/`.fts` files this rewrites **keywords only** — the pixel data on disk is untouched, which makes this the standard way to persist keyword changes across a whole session without a full rewrite. For `.xisf` and `.tiff` files it performs a full rewrite (pixels and keywords together), since those formats don't support in-place keyword patching. Uses an atomic temp-rename for XISF/TIFF.
+Writes all buffered images back to their source paths. For
+`.fit`/`.fits`/`.fts` files this rewrites **keywords only** — the
+pixel data on disk is untouched, which makes this the standard way to
+persist keyword changes across a whole session without a full
+rewrite. For `.xisf` and `.tiff` files it performs a full rewrite
+(pixels and keywords together), since those formats don't support
+in-place keyword patching. Uses an atomic temp-rename for XISF/TIFF.
 
 ```
 WriteCurrent
@@ -525,7 +581,10 @@ WriteCurrent
 
 #### `WriteFrame`
 
-Writes the currently active frame only back to its source path, using an atomic temp-rename. Unlike `WriteCurrent`, this always performs a full pixel + keyword rewrite regardless of format — including `.fit` files.
+Writes the currently active frame only back to its source path, using
+an atomic temp-rename. Unlike `WriteCurrent`, this always performs a
+full pixel + keyword rewrite regardless of format — including `.fit`
+files.
 
 ```
 WriteFrame
@@ -535,17 +594,21 @@ WriteFrame
 
 #### `WriteFIT`
 
-Writes all session files to a destination directory in FITS format. Use `stack=true` to write the transient stack result as a single file. The `.fit` extension is appended automatically for session-frame output. When `stack=true`, stores the output path in `$STACKED`.
+Writes all session files to a destination directory in FITS
+format. Use `stack=true` to write the transient stack result as a
+single file. The `.fit` extension is appended automatically for
+session-frame output. When `stack=true`, stores the output path in
+`$STACKED`.
 
 ```
 WriteFIT destination=<path> [overwrite=<bool>] [stack=<bool>]
 ```
 
-| Argument      | Required | Default | Description                                                                          |
+| Argument | Required | Default | Description |
 | ------------- | -------- | ------- | -------------------------------------------------------------------------------------- |
-| `destination` | Yes      |         | Output directory (session frames) or file path (stack=true)                          |
-| `overwrite`   | No       | `false` | Overwrite existing files                                                             |
-| `stack`       | No       | `false` | Write the transient stack result as a single FITS file instead of all session frames |
+| `destination` | Yes | | Output directory (session frames) or file path (stack=true) |
+| `overwrite` | No | `false` | Overwrite existing files |
+| `stack` | No | `false` | Write the transient stack result as a single FITS file instead of all session frames |
 
 ```
 WriteFIT destination="/data/output" overwrite=true
@@ -557,16 +620,17 @@ Print $STACKED
 
 #### `WriteTIFF`
 
-Writes all session files to a destination directory in TIFF format with AstroTIFF keyword embedding.
+Writes all session files to a destination directory in TIFF format
+with AstroTIFF keyword embedding.
 
 ```
 WriteTIFF destination=<path> [overwrite=<bool>]
 ```
 
-| Argument      | Required | Default | Description                  |
+| Argument | Required | Default | Description |
 | ------------- | -------- | ------- | ------------------------------ |
-| `destination` | Yes      |         | Directory to write files to  |
-| `overwrite`   | No       | `false` | Overwrite existing files     |
+| `destination` | Yes | | Directory to write files to |
+| `overwrite` | No | `false` | Overwrite existing files |
 
 ```
 WriteTIFF destination="/data/Output" overwrite=true
@@ -576,18 +640,23 @@ WriteTIFF destination="/data/Output" overwrite=true
 
 #### `WriteXISF`
 
-Writes all session files to a destination directory in XISF format. Use `stack=true` to export the transient stack result instead, using the auto-derived filename pattern `Photyx_stack_OBJECT_FILTER_INTEGRATIONTIME_DTG.xisf` (e.g. `Photyx_stack_M64_ircut_24000s_20260528113121Z.xisf`). When `stack=true`, stores the output path in `$STACKED`.
+Writes all session files to a destination directory in XISF
+format. Use `stack=true` to export the transient stack result instead,
+using the auto-derived filename pattern
+`Photyx_stack_OBJECT_FILTER_INTEGRATIONTIME_DTG.xisf`
+(e.g. `Photyx_stack_M64_ircut_24000s_20260528113121Z.xisf`). When
+`stack=true`, stores the output path in `$STACKED`.
 
 ```
 WriteXISF destination=<path> [overwrite=<bool>] [compress=<bool>] [stack=<bool>]
 ```
 
-| Argument      | Required | Default | Description                                        |
+| Argument | Required | Default | Description |
 | ------------- | -------- | ------- | ---------------------------------------------------- |
-| `destination` | Yes      |         | Directory to write files to                        |
-| `overwrite`   | No       | `false` | Overwrite existing files                           |
-| `compress`    | No       | `false` | Apply LZ4HC compression with byte shuffling        |
-| `stack`       | No       | `false` | Write the transient stack result instead of frames |
+| `destination` | Yes | | Directory to write files to |
+| `overwrite` | No | `false` | Overwrite existing files |
+| `compress` | No | `false` | Apply LZ4HC compression with byte shuffling |
+| `stack` | No | `false` | Write the transient stack result instead of frames |
 
 ```
 WriteXISF destination="/data/output" overwrite=true compress=false
@@ -599,17 +668,20 @@ Print $STACKED
 
 #### `CopyFile`
 
-Copies a file to a destination directory. Uses the current frame if no source is specified. Stores the destination path in `$NEW_FILE`. The source file and session are unchanged. Fails with an error if a file already exists at the destination, unless `overwrite=true`.
+Copies a file to a destination directory. Uses the current frame if no
+source is specified. Stores the destination path in `$NEW_FILE`. The
+source file and session are unchanged. Fails with an error if a file
+already exists at the destination, unless `overwrite=true`.
 
 ```
 CopyFile destination=<path> [source=<path>] [overwrite=<bool>]
 ```
 
-| Argument      | Required | Default | Description                                                |
+| Argument | Required | Default | Description |
 | ------------- | -------- | ------- | ------------------------------------------------------------ |
-| `destination` | Yes      |         | Destination directory path (created automatically if needed) |
-| `source`      | No       |         | Source file path (default: current frame)                  |
-| `overwrite`   | No       | `false` | Overwrite an existing file at the destination                |
+| `destination` | Yes | | Destination directory path (created automatically if needed) |
+| `source` | No | | Source file path (default: current frame) |
+| `overwrite` | No | `false` | Overwrite an existing file at the destination |
 
 For example, to back up every frame in the session before processing:
 
@@ -625,17 +697,28 @@ EndFor
 
 #### `MoveFile`
 
-Moves a file to a destination. Uses the current frame if no source is specified. If the destination is an existing directory (or ends with a path separator), the file is moved into it preserving its filename. Otherwise the destination is treated as a full file path, allowing rename-during-move (`mv` semantics). The destination parent directory is created automatically if needed. Stores the destination path in `$NEW_FILE`. Removes the file from the session file list if it was a session file. Fails with an error if a file already exists at the destination, unless `overwrite=true`. Cross-filesystem moves (e.g. external drive to local disk) use an atomic copy-to-temp-then-rename sequence, so an interrupted move never leaves a partial file at the destination name.
+Moves a file to a destination. Uses the current frame if no source is
+specified. If the destination is an existing directory (or ends with a
+path separator), the file is moved into it preserving its
+filename. Otherwise the destination is treated as a full file path,
+allowing rename-during-move (`mv` semantics). The destination parent
+directory is created automatically if needed. Stores the destination
+path in `$NEW_FILE`. Removes the file from the session file list if it
+was a session file. Fails with an error if a file already exists at
+the destination, unless `overwrite=true`. Cross-filesystem moves
+(e.g. external drive to local disk) use an atomic
+copy-to-temp-then-rename sequence, so an interrupted move never leaves
+a partial file at the destination name.
 
 ```
 MoveFile destination=<path> [source=<path>] [overwrite=<bool>]
 ```
 
-| Argument      | Required | Default | Description                                                                |
+| Argument | Required | Default | Description |
 | ------------- | -------- | ------- | ----------------------------------------------------------------------------- |
-| `destination` | Yes      |         | Destination directory path, or full destination file path for rename-during-move |
-| `source`      | No       |         | Source file path (default: current frame). May be a file outside the session |
-| `overwrite`   | No       | `false` | Overwrite an existing file at the destination                                |
+| `destination` | Yes | | Destination directory path, or full destination file path for rename-during-move |
+| `source` | No | | Source file path (default: current frame). May be a file outside the session |
+| `overwrite` | No | `false` | Overwrite an existing file at the destination |
 
 ```
 MoveFile destination="/data/Rejects"
@@ -658,12 +741,12 @@ Adds or replaces a FITS keyword on loaded images.
 AddKeyword name=<string> value=<string> [comment=<string>] [scope=all|current]
 ```
 
-| Argument  | Required | Default | Description                     |
+| Argument | Required | Default | Description |
 | --------- | -------- | ------- | -------------------------------- |
-| `name`    | Yes      |         | Keyword name (max 8 characters) |
-| `value`   | Yes      |         | Keyword value                   |
-| `comment` | No       |         | FITS comment                    |
-| `scope`   | No       | `all`   | `all` frames or `current` only  |
+| `name` | Yes | | Keyword name (max 8 characters) |
+| `value` | Yes | | Keyword value |
+| `comment` | No | | FITS comment |
+| `scope` | No | `all` | `all` frames or `current` only |
 
 ```
 AddKeyword name=TELESCOP value="Celestron EdgeHD 8" comment="Telescope used"
@@ -680,12 +763,12 @@ Changes the value of an existing FITS keyword.
 ModifyKeyword name=<string> value=<string> [comment=<string>] [scope=all|current]
 ```
 
-| Argument  | Required | Default | Description                     |
+| Argument | Required | Default | Description |
 | --------- | -------- | ------- | -------------------------------- |
-| `name`    | Yes      |         | Keyword name to modify          |
-| `value`   | Yes      |         | New keyword value               |
-| `comment` | No       |         | New comment                     |
-| `scope`   | No       | `all`   | `all` frames or `current` only  |
+| `name` | Yes | | Keyword name to modify |
+| `value` | Yes | | New keyword value |
+| `comment` | No | | New comment |
+| `scope` | No | `all` | `all` frames or `current` only |
 
 ```
 ModifyKeyword name=OBJECT value="M31 Andromeda" scope=all
@@ -701,10 +784,10 @@ Removes a FITS keyword from loaded images.
 DeleteKeyword name=<string> [scope=all|current]
 ```
 
-| Argument | Required | Default | Description                    |
+| Argument | Required | Default | Description |
 | -------- | -------- | ------- | -------------------------------- |
-| `name`   | Yes      |         | Keyword name to delete         |
-| `scope`  | No       | `all`   | `all` frames or `current` only |
+| `name` | Yes | | Keyword name to delete |
+| `scope` | No | `all` | `all` frames or `current` only |
 
 ```
 DeleteKeyword name=EXPTIME scope=all
@@ -720,11 +803,11 @@ Copies a keyword value from one keyword name to another.
 CopyKeyword from=<string> to=<string> [scope=all|current]
 ```
 
-| Argument | Required | Default | Description                    |
+| Argument | Required | Default | Description |
 | -------- | -------- | ------- | -------------------------------- |
-| `from`   | Yes      |         | Source keyword name            |
-| `to`     | Yes      |         | Destination keyword name       |
-| `scope`  | No       | `all`   | `all` frames or `current` only |
+| `from` | Yes | | Source keyword name |
+| `to` | Yes | | Destination keyword name |
+| `scope` | No | `all` | `all` frames or `current` only |
 
 ```
 CopyKeyword from=EXPTIME to=EXPOSURE
@@ -735,18 +818,23 @@ CopyKeyword from=EXPTIME to=EXPOSURE scope=current
 
 #### `GetKeyword`
 
-Retrieves a FITS keyword value from the current frame and stores it in `$<NAME>` (uppercased). If the keyword is not found and `default=` is given, the default value is stored instead of halting the script — useful for optional keywords that may be missing on older or third-party captures.
+Retrieves a FITS keyword value from the current frame and stores it in
+`$<NAME>` (uppercased). If the keyword is not found and `default=` is
+given, the default value is stored instead of halting the script —
+useful for optional keywords that may be missing on older or
+third-party captures.
 
 ```
 GetKeyword name=<string> [default=<string>]
 ```
 
-| Argument  | Required | Description                                                                                                                                                |
+| Argument | Required | Description |
 | --------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`    | Yes      | Keyword name to retrieve                                                                                                                                  |
-| `default` | No       | Fallback value if the keyword is not found on the current frame, instead of halting the script (e.g. `default=""` or `default="NULL"`). Does not apply to no-frame-loaded errors. |
+| `name` | Yes | Keyword name to retrieve |
+| `default` | No | Fallback value if the keyword is not found on the current frame, instead of halting the script (e.g. `default=""` or `default="NULL"`). Does not apply to no-frame-loaded errors. |
 
-**Side effect:** Stores result in `$<NAME>`. For example, `GetKeyword name=FILTER` stores the value in `$FILTER`.
+**Side effect:** Stores result in `$<NAME>`. For example, `GetKeyword
+name=FILTER` stores the value in `$FILTER`.
 
 ```
 GetKeyword name=FILTER
@@ -762,7 +850,8 @@ EndIf
 
 #### `ListKeywords`
 
-Lists all FITS header keywords for the current frame, sorted alphabetically. Also opens the Keyword Editor panel.
+Lists all FITS header keywords for the current frame, sorted
+alphabetically. Also opens the Keyword Editor panel.
 
 ```
 ListKeywords
@@ -782,12 +871,12 @@ REJECT using iterative sigma clipping against session statistics.
 AnalyzeFrames [profile=<string>] [scope=all|current] [threshold=<float>] [saturation=<float>]
 ```
 
-| Argument     | Required | Default | Description                                                                                                      |
+| Argument | Required | Default | Description |
 | ------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
-| `profile`    | No       |         | Threshold profile name to use for this run. If omitted, uses the active profile set in Edit > Analysis Parameters. The active profile is not permanently changed. |
-| `scope`      | No       | `all`   | `all` runs the full two-pass session analysis (session stats, PASS/REJECT classification, reference-frame selection). `current` runs the same five metrics on only the current frame and prints raw values — no session stats or classification. |
-| `threshold`  | No       | `5.0`   | Star detection threshold in units of background std dev                                                          |
-| `saturation` | No       | `0.98`  | Saturation threshold — stars at or above this value are rejected from detection                                  |
+| `profile` | No | | Threshold profile name to use for this run. If omitted, uses the active profile set in Edit > Analysis Parameters. The active profile is not permanently changed. |
+| `scope` | No | `all` | `all` runs the full two-pass session analysis (session stats, PASS/REJECT classification, reference-frame selection). `current` runs the same five metrics on only the current frame and prints raw values — no session stats or classification. |
+| `threshold` | No | `5.0` | Star detection threshold in units of background std dev |
+| `saturation` | No | `0.98` | Saturation threshold — stars at or above this value are rejected from detection |
 
 ```
 AnalyzeFrames
@@ -796,14 +885,16 @@ AnalyzeFrames profile="Project"
 AnalyzeFrames scope=current
 ```
 
-Results are visible in the Analysis Results and Analysis Graph views. See
-`ShowAnalysisGraph` and `ShowAnalysisResults`.
+Results are visible in the Analysis Results and Analysis Graph
+views. See `ShowAnalysisGraph` and `ShowAnalysisResults`.
 
 ---
 
 #### `CommitAnalysis`
 
-Moves all REJECT frames to a `rejected/` subfolder within each frame's source directory and removes them from the session. Pass frames remain loaded. Optionally appends a suffix to each moved filename.
+Moves all REJECT frames to a `rejected/` subfolder within each frame's
+source directory and removes them from the session. Pass frames remain
+loaded. Optionally appends a suffix to each moved filename.
 
 ```
 CommitAnalysis [append=<ext>]
@@ -822,7 +913,9 @@ CommitAnalysis append=.session
 
 #### `ExportAnalysisReport`
 
-Exports the current analysis results as a Photyx session JSON file. If `path` is omitted, a filename is derived from the first frame and written to the system Downloads folder.
+Exports the current analysis results as a Photyx session JSON file. If
+`path` is omitted, a filename is derived from the first frame and
+written to the system Downloads folder.
 
 ```
 ExportAnalysisReport [path=<path>]
@@ -841,17 +934,20 @@ ExportAnalysisReport path="D:/projects/M64/M64_sess_20241112_analysis.json"
 
 #### `ComputeFWHM`
 
-Computes the median Full Width at Half Maximum for detected stars in the current frame, reported in pixels (and arcseconds when `FOCALLEN`, `INSTRUME`, and `XBINNING` keywords are present) and displays per-star circle annotations on the viewer overlay.
+Computes the median Full Width at Half Maximum for detected stars in
+the current frame, reported in pixels (and arcseconds when `FOCALLEN`,
+`INSTRUME`, and `XBINNING` keywords are present) and displays per-star
+circle annotations on the viewer overlay.
 
 ```
 ComputeFWHM [threshold=<float>] [peak_radius=<int>] [saturation=<float>]
 ```
 
-| Argument      | Required | Default | Description                                                |
+| Argument | Required | Default | Description |
 | ------------- | -------- | ------- | -------------------------------------------------------------- |
-| `threshold`   | No       | `5.0`   | Star detection threshold in units of background std dev       |
-| `peak_radius` | No       | `3`     | Radius in pixels for the local-maximum test                   |
-| `saturation`  | No       | `0.98`  | Stars at or above this peak value are rejected as saturated   |
+| `threshold` | No | `5.0` | Star detection threshold in units of background std dev |
+| `peak_radius` | No | `3` | Radius in pixels for the local-maximum test |
+| `saturation` | No | `0.98` | Stars at or above this peak value are rejected as saturated |
 
 **Side effect:** Stores mean FWHM in `$fwhm`.
 
@@ -864,17 +960,18 @@ Print $fwhm
 
 #### `ComputeEccentricity`
 
-Computes mean star eccentricity for the current frame. Values near 0 = round stars; values near 1 = elongated stars.
+Computes mean star eccentricity for the current frame. Values near 0 =
+round stars; values near 1 = elongated stars.
 
 ```
 ComputeEccentricity [threshold=<float>] [peak_radius=<int>] [saturation=<float>]
 ```
 
-| Argument      | Required | Default | Description                                              |
+| Argument | Required | Default | Description |
 | ------------- | -------- | ------- | ------------------------------------------------------------ |
-| `threshold`   | No       | `5.0`   | Star detection threshold in units of background std dev     |
-| `peak_radius` | No       | `3`     | Radius in pixels for the local-maximum test                 |
-| `saturation`  | No       | `0.98`  | Stars at or above this peak value are rejected as saturated |
+| `threshold` | No | `5.0` | Star detection threshold in units of background std dev |
+| `peak_radius` | No | `3` | Radius in pixels for the local-maximum test |
+| `saturation` | No | `0.98` | Stars at or above this peak value are rejected as saturated |
 
 **Side effect:** Stores result in `$eccentricity`.
 
@@ -887,20 +984,21 @@ Print $eccentricity
 
 #### `CountStars`
 
-Counts the number of detected stars in the current frame using peak-finding on a sigma-clipped, background-subtracted image.
+Counts the number of detected stars in the current frame using
+peak-finding on a sigma-clipped, background-subtracted image.
 
 ```
 CountStars [threshold=<float>] [peak_radius=<int>] [flood_threshold=<float>] [saturation=<float>] [sigma=<float>] [iterations=<int>]
 ```
 
-| Argument          | Required | Default | Description                                                    |
+| Argument | Required | Default | Description |
 | ----------------- | -------- | ------- | ------------------------------------------------------------------ |
-| `threshold`       | No       | `5.0`   | Detection threshold in units of background std dev                |
-| `peak_radius`     | No       | `3`     | Radius in pixels for the local-maximum test                       |
-| `flood_threshold` | No       | `2.0`   | Flood-fill lower bound in units of background std dev             |
-| `saturation`      | No       | `0.98`  | Stars at or above this peak value are rejected as saturated       |
-| `sigma`           | No       | `3.0`   | Sigma-clipping threshold used for background estimation           |
-| `iterations`      | No       | `5`     | Maximum sigma-clipping iterations for background estimation       |
+| `threshold` | No | `5.0` | Detection threshold in units of background std dev |
+| `peak_radius` | No | `3` | Radius in pixels for the local-maximum test |
+| `flood_threshold` | No | `2.0` | Flood-fill lower bound in units of background std dev |
+| `saturation` | No | `0.98` | Stars at or above this peak value are rejected as saturated |
+| `sigma` | No | `3.0` | Sigma-clipping threshold used for background estimation |
+| `iterations` | No | `5` | Maximum sigma-clipping iterations for background estimation |
 
 **Side effect:** Stores result in `$starcount`.
 
@@ -913,7 +1011,8 @@ Print $starcount
 
 #### `GetHistogram`
 
-Computes the histogram and basic statistics (median, std dev, clipping %) for the current frame. RGB frames get per-channel statistics.
+Computes the histogram and basic statistics (median, std dev, clipping
+%) for the current frame. RGB frames get per-channel statistics.
 
 ```
 GetHistogram
@@ -923,18 +1022,22 @@ GetHistogram
 
 #### `ContourHeatmap`
 
-Generates a false-color spatial FWHM heatmap for the current frame: stars are detected, per-star FWHM is measured, values are interpolated across an adaptive grid, and the result is rendered with contour lines. Writes the result as an XISF file named `<source_stem>_heatmap.xisf` in the source file's directory.
+Generates a false-color spatial FWHM heatmap for the current frame:
+stars are detected, per-star FWHM is measured, values are interpolated
+across an adaptive grid, and the result is rendered with contour
+lines. Writes the result as an XISF file named
+`<source_stem>_heatmap.xisf` in the source file's directory.
 
 ```
 ContourHeatmap [palette=viridis|plasma|coolwarm] [contour_levels=<int>] [threshold=<float>] [saturation=<float>]
 ```
 
-| Argument         | Required | Default   | Description                                          |
+| Argument | Required | Default | Description |
 | ---------------- | -------- | --------- | ------------------------------------------------------- |
-| `palette`        | No       | `viridis` | Color palette                                        |
-| `contour_levels` | No       | `10`      | Number of contour levels (minimum 2)                 |
-| `threshold`      | No       | `5.0`     | Star detection threshold in units of background std dev |
-| `saturation`     | No       | `0.98`    | Stars at or above this peak value are rejected as saturated |
+| `palette` | No | `viridis` | Color palette |
+| `contour_levels` | No | `10` | Number of contour levels (minimum 2) |
+| `threshold` | No | `5.0` | Star detection threshold in units of background std dev |
+| `saturation` | No | `0.98` | Stars at or above this peak value are rejected as saturated |
 
 **Side effect:** Stores output file path in `$NEW_FILE`.
 
@@ -946,17 +1049,20 @@ ContourHeatmap palette=plasma contour_levels=12
 
 #### `BackgroundMedian`
 
-Computes the sigma-clipped background median for the current frame. This is one of the five metrics `AnalyzeFrames` computes internally for every frame; running it standalone is useful for inspecting or tuning background estimation on a single frame.
+Computes the sigma-clipped background median for the current
+frame. This is one of the five metrics `AnalyzeFrames` computes
+internally for every frame; running it standalone is useful for
+inspecting or tuning background estimation on a single frame.
 
 ```
 BackgroundMedian [sigma=<float>] [iterations=<int>] [grid=<int>]
 ```
 
-| Argument     | Required | Default | Description                                        |
+| Argument | Required | Default | Description |
 | ------------ | -------- | ------- | ------------------------------------------------------ |
-| `sigma`      | No       | `3.0`   | Sigma-clipping threshold in std dev units              |
-| `iterations` | No       | `5`     | Maximum sigma-clipping iterations                      |
-| `grid`       | No       | `4`     | Grid divisions per axis used internally for gradient estimation |
+| `sigma` | No | `3.0` | Sigma-clipping threshold in std dev units |
+| `iterations` | No | `5` | Maximum sigma-clipping iterations |
+| `grid` | No | `4` | Grid divisions per axis used internally for gradient estimation |
 
 ```
 BackgroundMedian
@@ -967,7 +1073,13 @@ BackgroundMedian sigma=2.5 iterations=8
 
 #### `BackgroundStdDev` (deprecated)
 
-**Deprecated but fully operational.** Computes the sigma-clipped background standard deviation for the current frame. No longer used by `AnalyzeFrames` — dropped because it correlated 0.92–0.999 with `BackgroundMedian` and added no discriminating signal. Retained for pcode script compatibility and standalone use; it still runs the full computation and returns real results, it just isn't part of the standard analysis pipeline.
+**Deprecated but fully operational.** Computes the sigma-clipped
+background standard deviation for the current frame. No longer used by
+`AnalyzeFrames` — dropped because it correlated 0.92–0.999 with
+`BackgroundMedian` and added no discriminating signal. Retained for
+pcode script compatibility and standalone use; it still runs the full
+computation and returns real results, it just isn't part of the
+standard analysis pipeline.
 
 ```
 BackgroundStdDev [sigma=<float>] [iterations=<int>] [grid=<int>]
@@ -983,7 +1095,11 @@ BackgroundStdDev
 
 #### `BackgroundGradient` (deprecated)
 
-**Deprecated but fully operational.** Computes a background gradient estimate for the current frame. No longer used by `AnalyzeFrames` — dropped due to session-dependent sign reversal that made it unreliable as a rejection criterion. Retained for pcode script compatibility and standalone use.
+**Deprecated but fully operational.** Computes a background gradient
+estimate for the current frame. No longer used by `AnalyzeFrames` —
+dropped due to session-dependent sign reversal that made it unreliable
+as a rejection criterion. Retained for pcode script compatibility and
+standalone use.
 
 ```
 BackgroundGradient [sigma=<float>] [iterations=<int>] [grid=<int>]
@@ -1001,16 +1117,18 @@ BackgroundGradient
 
 #### `AutoStretch`
 
-Applies an automatic stretch to the current frame for display using the PixInsight-compatible Auto-STF algorithm. The raw pixel buffer is not modified.
+Applies an automatic stretch to the current frame for display using
+the PixInsight-compatible Auto-STF algorithm. The raw pixel buffer is
+not modified.
 
 ```
 AutoStretch [shadowClip=<float>] [targetBackground=<float>]
 ```
 
-| Argument           | Required | Default | Description                          |
+| Argument | Required | Default | Description |
 | ------------------ | -------- | ------- | -------------------------------------- |
-| `shadowClip`       | No       | `-2.8`  | Shadow clipping point in sigma units |
-| `targetBackground` | No       | `0.15`  | Target background level (0.0–1.0)    |
+| `shadowClip` | No | `-2.8` | Shadow clipping point in sigma units |
+| `targetBackground` | No | `0.15` | Target background level (0.0–1.0) |
 
 ```
 AutoStretch shadowClip=-2.8 targetBackground=0.25
@@ -1020,19 +1138,28 @@ AutoStretch shadowClip=-2.8 targetBackground=0.25
 
 #### `DebayerImage`
 
-Debayers a Bayer CFA image to interleaved RGB using bilinear interpolation. Operates on the transient stack result if one exists; otherwise operates on the current session frame. The Bayer pattern is always read from the `BAYERPAT` (or `BAYER_PATTERN`) keyword, defaulting to RGGB if neither is present — there is currently no way to override the pattern or interpolation method from pcode.
+Debayers a Bayer CFA image to interleaved RGB using bilinear
+interpolation. Operates on the transient stack result if one exists;
+otherwise operates on the current session frame. The Bayer pattern is
+always read from the `BAYERPAT` (or `BAYER_PATTERN`) keyword,
+defaulting to RGGB if neither is present — there is currently no way
+to override the pattern or interpolation method from pcode.
 
 ```
 DebayerImage
 ```
 
-Takes no arguments. Frames that are already RGB are left unchanged (reported, not an error).
+Takes no arguments. Frames that are already RGB are left unchanged
+(reported, not an error).
 
 ```
 DebayerImage
 ```
 
-> **Note:** Earlier documentation described `pattern=` and `method=` arguments; these do not exist in the current implementation. See the open issue tracking whether pattern override support is worth adding.
+> **Note:** Earlier documentation described `pattern=` and `method=`
+> arguments; these do not exist in the current implementation. See the
+> open issue tracking whether pattern override support is worth
+> adding.
 
 ---
 
@@ -1040,13 +1167,18 @@ DebayerImage
 
 #### `StackFrames`
 
-Stacks all session frames into a single result image using meridian-flip-aware group reference selection, FFT phase-correlation + triangle rigid alignment, and two-pass sigma-clipped mean combination. Color-aware: if the reference frame is Bayer or RGB, the stack accumulates all three channels.
+Stacks all session frames into a single result image using
+meridian-flip-aware group reference selection, FFT phase-correlation +
+triangle rigid alignment, and two-pass sigma-clipped mean
+combination. Color-aware: if the reference frame is Bayer or RGB, the
+stack accumulates all three channels.
 
 ```
 StackFrames
 ```
 
-Takes no arguments — calibration is applied separately before frames are loaded into the session, not as part of this command.
+Takes no arguments — calibration is applied separately before frames
+are loaded into the session, not as part of this command.
 
 ```
 StackFrames
@@ -1056,16 +1188,18 @@ StackFrames
 
 #### `CommitStretch`
 
-Permanently applies the Auto-STF stretch to the stack result pixel buffer. After committing, the stack buffer holds non-linear (stretched) data. Use `WriteXISF stack=true` to export.
+Permanently applies the Auto-STF stretch to the stack result pixel
+buffer. After committing, the stack buffer holds non-linear
+(stretched) data. Use `WriteXISF stack=true` to export.
 
 ```
 CommitStretch [shadow_clip=<float>] [target_bg=<float>]
 ```
 
-| Argument      | Required | Description                                          |
+| Argument | Required | Description |
 | ------------- | -------- | ------------------------------------------------------- |
-| `shadow_clip` | No       | Shadow clipping factor (default: current context value) |
-| `target_bg`   | No       | Target background value 0.0–1.0 (default: current context value) |
+| `shadow_clip` | No | Shadow clipping factor (default: current context value) |
+| `target_bg` | No | Target background value 0.0–1.0 (default: current context value) |
 
 ```
 CommitStretch shadow_clip=-3.5 target_bg=0.10
@@ -1075,7 +1209,8 @@ CommitStretch shadow_clip=-3.5 target_bg=0.10
 
 #### `ClearStack`
 
-Discards the transient stack result and per-frame contribution data, returning the viewer to the normal session image.
+Discards the transient stack result and per-frame contribution data,
+returning the viewer to the normal session image.
 
 ```
 ClearStack
@@ -1102,15 +1237,16 @@ SetFrame index=0
 
 #### `CacheFrames`
 
-Pre-renders all loaded images to blink-resolution JPEGs, required before using `BlinkSequence`.
+Pre-renders all loaded images to blink-resolution JPEGs, required
+before using `BlinkSequence`.
 
 ```
 CacheFrames [resolution=<12|25>]
 ```
 
-| Argument     | Required | Default | Description                                                          |
+| Argument | Required | Default | Description |
 | ------------ | -------- | ------- | ------------------------------------------------------------------------ |
-| `resolution` | No       |         | `12` (12.5%) or `25` (25%). If omitted, both resolutions are cached. |
+| `resolution` | No | | `12` (12.5%) or `25` (25%). If omitted, both resolutions are cached. |
 
 ```
 CacheFrames
@@ -1188,7 +1324,8 @@ Print "FWHM: " + $fwhm
 
 #### `Assert`
 
-Halts execution with an error if the condition is false. Silent on pass.
+Halts execution with an error if the condition is false. Silent on
+pass.
 
 ```
 Assert expression=<condition>
@@ -1203,15 +1340,18 @@ Assert expression="$fwhm < 5.0"
 
 #### `CountMatches`
 
-Counts filesystem entries (files or directories) matching a glob pattern and stores the result in `$matchcount`. Useful for conditionally executing a block only when matching entries exist, without loading them into the session.
+Counts filesystem entries (files or directories) matching a glob
+pattern and stores the result in `$matchcount`. Useful for
+conditionally executing a block only when matching entries exist,
+without loading them into the session.
 
 ```
 CountMatches pattern=<glob>
 ```
 
-| Argument  | Required | Description                                                                            |
+| Argument | Required | Description |
 | --------- | -------- | --------------------------------------------------------------------------------------- |
-| `pattern` | Yes      | Glob pattern to match. Supports `*`, `?`, and `[...]` wildcards anywhere in the path. |
+| `pattern` | Yes | Glob pattern to match. Supports `*`, `?`, and `[...]` wildcards anywhere in the path. |
 
 ```
 CountMatches pattern="$project/*-duo-*"
@@ -1224,15 +1364,16 @@ EndIf
 
 #### `GetSystemPath`
 
-Retrieves a well-known system directory path and stores it in a variable named after the requested path.
+Retrieves a well-known system directory path and stores it in a
+variable named after the requested path.
 
 ```
 GetSystemPath name=<downloads|documents|desktop|temp|home|log|db>
 ```
 
-| Argument | Required | Description                                                                                                    |
+| Argument | Required | Description |
 | -------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| `name`   | Yes      | System path to retrieve: `downloads`, `documents`, `desktop`, `temp`, `home`, `log`, or `db`. Result stored in `$<name>`. `log` respects a configured log-directory override if one is set, otherwise the OS-default Photyx log directory. `db` is the directory containing `photyx.db`, not the file itself. |
+| `name` | Yes | System path to retrieve: `downloads`, `documents`, `desktop`, `temp`, `home`, `log`, or `db`. Result stored in `$<name>`. `log` respects a configured log-directory override if one is set, otherwise the OS-default Photyx log directory. `db` is the directory containing `photyx.db`, not the file itself. |
 
 ```
 GetSystemPath name=downloads
@@ -1253,7 +1394,8 @@ Print $db
 
 #### `RunMacro`
 
-Executes a saved macro by name from the database. Inner command output and `Print` statements appear in the console line by line.
+Executes a saved macro by name from the database. Inner command output
+and `Print` statements appear in the console line by line.
 
 ```
 RunMacro name=<string>
@@ -1267,16 +1409,18 @@ RunMacro name="my-workflow"
 
 #### `Log`
 
-Writes all console output accumulated since the last `Log` call to a file. This means you specify the Log file *after* the commands whose output you want captured.
+Writes all console output accumulated since the last `Log` call to a
+file. This means you specify the Log file *after* the commands whose
+output you want captured.
 
 ```
 Log path=<path> [append=<bool>]
 ```
 
-| Argument | Required | Default | Description                                |
+| Argument | Required | Default | Description |
 | -------- | -------- | ------- | -------------------------------------------- |
-| `path`   | Yes      |         | Output file path                           |
-| `append` | No       | `false` | Append to existing file instead of erasing |
+| `path` | Yes | | Output file path |
+| `append` | No | `false` | Append to existing file instead of erasing |
 
 ```
 Log path="/logs/session.log" append=true
@@ -1292,7 +1436,8 @@ Conditional execution. See [Flow Control](#flow-control).
 
 #### `For / EndFor`
 
-Two loop forms — numeric range and glob iterator — both closed with `EndFor`. Loops may be nested and mixed.
+Two loop forms — numeric range and glob iterator — both closed with
+`EndFor`. Loops may be nested and mixed.
 
 **Numeric range:**
 ```
@@ -1314,15 +1459,16 @@ See [Flow Control](#flow-control) for full details and examples.
 
 ### Console Built-ins
 
-These commands are available in the interactive console but have no effect inside a saved macro.
+These commands are available in the interactive console but have no
+effect inside a saved macro.
 
-| Command          | Description                                              |
+| Command | Description |
 | ---------------- | ---------------------------------------------------------- |
-| `Help`           | Opens help for a specific command, or lists all commands |
-| `Help <command>` | Shows syntax and examples for that command               |
-| `Clear`          | Clears the console output buffer                         |
-| `Version`        | Prints Photyx and pcode version information               |
-| `pwd`            | Lists unique source directories of all loaded files       |
+| `Help` | Opens help for a specific command, or lists all commands |
+| `Help <command>` | Shows syntax and examples for that command |
+| `Clear` | Clears the console output buffer |
+| `Version` | Prints Photyx and pcode version information |
+| `pwd` | Lists unique source directories of all loaded files |
 
 ---
 
@@ -1355,7 +1501,8 @@ AnalyzeFrames
 ShowAnalysisResults
 ```
 
-After reviewing results and committing, pass frames remain loaded and are ready to stack.
+After reviewing results and committing, pass frames remain loaded and
+are ready to stack.
 
 ---
 
@@ -1454,12 +1601,12 @@ Print "Stack complete."
 
 ### Session and project analysis workflow
 
-This example runs a two-pass analysis across a multi-session project. The
-first pass analyzes each session independently using forgiving
-session-level thresholds, moving the worst outliers to `rejected/`
-subfolders. The second pass loads all surviving frames together and applies
-stricter project-level thresholds to select the best material for
-stacking.
+This example runs a two-pass analysis across a multi-session
+project. The first pass analyzes each session independently using
+forgiving session-level thresholds, moving the worst outliers to
+`rejected/` subfolders. The second pass loads all surviving frames
+together and applies stricter project-level thresholds to select the
+best material for stacking.
 
 ```
 # ── Pass 1: session-level rejection ─────────────────────────────────────────
@@ -1490,9 +1637,9 @@ CommitAnalysis append=.project
 ShowAnalysisResults
 ```
 
-After reviewing the Analysis Results table, click **Commit Results** to
-finalize project-level rejections. Pass frames remain loaded and are ready
-for stacking.
+After reviewing the Analysis Results table, click **Commit Results**
+to finalize project-level rejections. Pass frames remain loaded and
+are ready for stacking.
 
 ---
 
@@ -1504,4 +1651,5 @@ RunMacro name="load-and-check"
 RunMacro name="analyze-and-report"
 ```
 
-This allows building libraries of composable macros pinned to the Quick Launch bar.
+This allows building libraries of composable macros pinned to the
+Quick Launch bar.
