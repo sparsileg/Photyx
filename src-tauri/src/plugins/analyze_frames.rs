@@ -25,8 +25,6 @@ use crate::context::{AppContext, ImageBuffer, KeywordEntry};
 use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
 use rayon::prelude::*;
 use serde_json::json;
-use std::io::Write;
-use std::time::{Duration, Instant};
 use tracing::info;
 
 pub struct AnalyzeFrames;
@@ -268,45 +266,12 @@ fn execute_all(
         requests, reader_capacity,
     );
 
-    // TEMPORARY (prefetch timing investigation) — remove after.
-    let mut recv_wait    = Duration::ZERO;
-    let mut compute_time = Duration::ZERO;
-
     for path_chunk in file_list.chunks(chunk_len) {
-        // Sequential: drain this chunk's worth of outcomes from the
-        // background reader (Issue 175) rather than reading synchronously
-        // here. The reader has been decoding + converting to luma ahead of
-        // this loop on its own thread since spawn_disk_reader above.
-        //
-        // Issue 174 (unchanged in spirit, Issue 175 adds a completeness
-        // check on top): a source file that is missing or unreadable is a
-        // HARD ERROR for AnalyzeFrames — unlike StackFrames/CacheFrames,
-        // which exclude-and-continue. Session statistics (sigma clipping,
-        // PASS/REJECT thresholds) are computed across the whole frame set,
-        // so a silently or partially dropped frame would corrupt the
-        // classification of every other frame. Abort at the first failure,
-        // naming the file and distinguishing missing from unreadable.
-        //
-        // Issue 175 addition: the background reader's recv() contract is
-        // "None means channel closed, NOT necessarily every request
-        // fulfilled" (see PixelReaderHandle::recv doc comment) — a reader
-        // that closed early for any reason (including an internal panic
-        // recv couldn't have converted, though that path is itself covered
-        // by PixelReaderHandle's own catch_unwind) must not be silently
-        // read as "this chunk is done". received is checked against
-        // path_chunk.len() below and a shortfall is a hard error, exactly
-        // like a Missing/Unreadable outcome — completeness here is not
-        // inferred from None, it's verified by count.
         let mut snapshots: Vec<crate::plugins::pixel_chunking::LumaSnapshot> =
             Vec::with_capacity(path_chunk.len());
         let mut received = 0usize;
         for _ in 0..path_chunk.len() {
-            // TEMPORARY (prefetch timing investigation) — remove after.
-            let recv_start = Instant::now();
-            let recv_result = reader.recv();
-            recv_wait += recv_start.elapsed();
-
-            let outcome = match recv_result {
+            let outcome = match reader.recv() {
                 Some(o) => o,
                 None    => break, // channel closed early — shortfall caught below
             };
@@ -350,16 +315,7 @@ fn execute_all(
             ));
         }
 
-        // TEMPORARY (prefetch timing investigation) — remove after.
-        let compute_start = Instant::now();
-        // into_par_iter, not par_iter: each closure owns its snapshot and
-        // releases the luma buffer as soon as star detection is done, so
-        // the chunk's ~15 buffers are unmapped across workers and across
-        // the compute window. Holding them all to the end of the loop
-        // instead produced one synchronized munmap burst per chunk
-        // boundary — with M_MMAP_THRESHOLD at 1 MB every buffer is its own
-        // mapping, and unmapping them together stalls every core with TLB
-        // shootdowns while the reader is mid-decode.
+
         let chunk_results: Vec<AnalysisResult> = snapshots
             .into_par_iter()
             .map(|snap| {
@@ -402,33 +358,12 @@ fn execute_all(
             })
             .collect();
 
-        // TEMPORARY (prefetch timing investigation) — remove after.
-        compute_time += compute_start.elapsed();
-
         par_results.extend(chunk_results);
     }
 
     crate::set_progress("", 0, 0);
 
-    // TEMPORARY (prefetch timing investigation) — remove after.
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true).append(true)
-        .open("/tmp/photyx_prefetch_timing.txt")
-    {
-        let _ = writeln!(
-            f,
-            "CONSUMER frames={} recv_wait_ms={} compute_ms={}",
-            total, recv_wait.as_millis(), compute_time.as_millis()
-        );
-    }
-
-    // Issue 174: every frame in file_list is either analyzed or the run
-    // aborts (see the hard-error handling in the chunk loop above), so
-    // par_results is already the complete, final results list — there is no
-    // skipped-frame set to reconcile. The old Issue 159 per-chunk skip
-    // tracking is gone with the silent-skip behavior it reported.
     let mut results: Vec<AnalysisResult> = par_results;
-
     if results.is_empty() {
         return Err(PluginError::new(
             "NO_RESULTS",

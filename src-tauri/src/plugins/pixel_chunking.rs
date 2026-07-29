@@ -36,13 +36,11 @@ use crate::analysis::{to_f32_normalized, to_luminance};
 use crate::context::{AppContext, ColorSpace, ImageBuffer, KeywordEntry, PixelData};
 use crate::plugins::image_reader::read_image_file;
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
 
 // ── Snapshot types ──────────────────────────────────────────────────────────
 
@@ -202,14 +200,10 @@ pub(crate) fn load_request(path: &str, kind: LoadKind) -> LoadOutcome {
         return LoadOutcome::Missing { path: path.to_string() };
     }
 
-    // TEMPORARY (prefetch timing investigation) — remove after.
-    let decode_start = Instant::now();
     let buf = match read_image_file(path) {
         Ok(b)  => b,
         Err(e) => return LoadOutcome::Unreadable { path: path.to_string(), error: e },
     };
-    // TEMPORARY (prefetch timing investigation) — remove after.
-    let decode_ms = decode_start.elapsed().as_millis();
 
     if buf.pixels.is_none() {
         return LoadOutcome::Unreadable {
@@ -244,38 +238,13 @@ pub(crate) fn load_request(path: &str, kind: LoadKind) -> LoadOutcome {
         LoadKind::Luma => {
             let ImageBuffer { keywords, pixels, .. } = buf;
             let pixels = pixels.unwrap();
-            // TEMPORARY (prefetch timing investigation) — remove after.
-            let convert_start = Instant::now();
-            let mut normalize_us = 0u128;
-            let mut debayer_us   = 0u128;
-            let mut luma_us      = 0u128;
             let luma = if is_bayer {
                 let pattern = bayer_pattern_of(&keywords).unwrap_or(BayerPattern::RGGB);
-
-                let t = Instant::now();
-                let mono = to_f32_normalized(&pixels);
-                normalize_us = t.elapsed().as_micros();
-
-                let t = Instant::now();
-                let out = debayer_to_luma(&mono, width, height, pattern);
-                debayer_us = t.elapsed().as_micros();
-
-                out
+                let mono    = to_f32_normalized(&pixels);
+                debayer_to_luma(&mono, width, height, pattern)
             } else {
                 to_luminance(&pixels, channels)
             };
-            // TEMPORARY (prefetch timing investigation) — remove after.
-            let convert_ms = convert_start.elapsed().as_millis();
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true).append(true)
-                .open("/tmp/photyx_prefetch_timing.txt")
-            {
-                let _ = writeln!(
-                    f,
-                    "PERFILE path={} is_bayer={} decode_ms={} convert_ms={} normalize_us={} debayer_us={} luma_us={}",
-                    path, is_bayer, decode_ms, convert_ms, normalize_us, debayer_us, luma_us
-                );
-            }
             LoadedFrame::Luma(LumaSnapshot {
                 path: path.to_string(), width, height, channels, color_space, keywords, luma,
             })
@@ -394,36 +363,11 @@ impl PixelReaderHandle {
         let stop_reader = Arc::clone(&stop);
 
         let handle = thread::spawn(move || {
-            // TEMPORARY (prefetch timing investigation) — remove after.
-            let mut decode_busy   = Duration::ZERO;
-            let mut send_blocked  = Duration::ZERO;
-            let mut frames_done   = 0u32;
-
             for req in requests {
-                // Acquire pairs with the Release store in Drop, so this
-                // early-out is a guaranteed observation of a shutdown
-                // requested before this file started, not incidental.
-                // Checked before each file — catches cancellation between
-                // files, not mid-read on the current file (cancellation
-                // is per-file granularity; see the module-level note in
-                // the Issue 175 design doc for why finer granularity
-                // wasn't worth threading into the format decoders).
                 if stop_reader.load(Ordering::Acquire) {
                     break;
                 }
 
-                // A decode that PANICS (as opposed to returning Err) must
-                // not silently vanish and let the consumer misread the
-                // resulting channel-close as normal completion —
-                // AnalyzeFrames' hard-error contract specifically depends
-                // on not confusing "reader died mid-run" with "reader
-                // finished". catch_unwind converts a panic into
-                // Unreadable so it flows through each consumer's normal
-                // failure policy instead. load_one should never actually
-                // panic on ordinary decode failures (read_image_file
-                // returns Result) — this is the backstop for an
-                // unexpected panic inside decode/conversion.
-                let decode_start = Instant::now();
                 let outcome = match std::panic::catch_unwind(
                     std::panic::AssertUnwindSafe(|| load_one(&req))
                 ) {
@@ -433,31 +377,13 @@ impl PixelReaderHandle {
                         error: "reader thread panicked while decoding this frame".to_string(),
                     },
                 };
-                decode_busy += decode_start.elapsed();
-                frames_done += 1;
 
-                let send_start = Instant::now();
-                let send_result = tx.send(outcome);
-                send_blocked += send_start.elapsed();
-
-                if send_result.is_err() {
+                if tx.send(outcome).is_err() {
                     // Receiver dropped — consumer is gone. Expected
                     // shutdown path (see PixelReaderHandle::drop), not an
                     // error to log.
                     break;
                 }
-            }
-
-            // TEMPORARY (prefetch timing investigation) — remove after.
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true).append(true)
-                .open("/tmp/photyx_prefetch_timing.txt")
-            {
-                let _ = writeln!(
-                    f,
-                    "READER frames={} decode_busy_ms={} send_blocked_ms={}",
-                    frames_done, decode_busy.as_millis(), send_blocked.as_millis()
-                );
             }
             // Normal completion: `tx` drops here, closing the channel.
             // The consumer's next recv() returns None — no separate
@@ -467,27 +393,12 @@ impl PixelReaderHandle {
         Self { receiver: Some(rx), stop, handle: Some(handle) }
     }
 
-    /// Production entry point: spawns with the real disk-reading loader
-    /// (load_request), so callers only need to supply the request list
-    /// and a capacity — see prefetch_capacity_chunked /
-    /// PREFETCH_SEQUENTIAL_DEPTH for how to pick the latter.
+
     pub fn spawn_disk_reader(requests: Vec<LoadRequest>, capacity: usize) -> Self {
         Self::spawn(requests, capacity, |req| load_request(&req.path, req.kind))
     }
 
-    /// Blocking receive of the next loaded frame, or `None` once the
-    /// channel is closed.
-    ///
-    /// IMPORTANT: `None` means "the channel is closed", NOT "every
-    /// requested frame was fulfilled". On normal completion these
-    /// coincide (the reader sends an outcome for every request, then
-    /// closes). But a caller that needs to guarantee completeness
-    /// (AnalyzeFrames, whose Issue 174 contract is a hard abort on any
-    /// missing/unreadable frame — a partial set corrupts session
-    /// statistics for every other frame) must NOT infer completeness from
-    /// `None` alone. It must count received outcomes against its own
-    /// request count and treat a shortfall as failure, independent of
-    /// whatever caused it.
+
     pub fn recv(&mut self) -> Option<LoadOutcome> {
         self.receiver.as_ref().and_then(|r| r.recv().ok())
     }
@@ -495,27 +406,11 @@ impl PixelReaderHandle {
 
 impl Drop for PixelReaderHandle {
     fn drop(&mut self) {
-        // 1. Signal stop first. Release pairs with the reader's Acquire
-        //    load. Catches the reader before its NEXT read if it is not
-        //    currently blocked inside send().
-        self.stop.store(true, Ordering::Release);
-
+        // 1. Signal stop first.
         // 2. Drop the receiver. This is the step that actually unblocks a
-        //    reader thread already parked inside a blocking send() on a
-        //    full channel — step 1 alone cannot do that, since the stop
-        //    flag is only checked between reads, not while blocked inside
-        //    send(). Order matters: this must happen here, explicitly,
-        //    before the join() below — not left to implicit field-drop
-        //    order.
-        self.receiver.take();
-
         // 3. Join. After steps 1+2, the reader thread is guaranteed to
-        //    observe either the stop flag (if it was between reads) or a
-        //    send() Err (if it was blocked on a full channel) on its very
-        //    next check — so this join cannot hang. A reader panic is
-        //    logged, never propagated or acted on further here — nothing
-        //    panic-prone runs after join() so a Drop invoked during an
-        //    unwind can't double-panic into an abort.
+        self.stop.store(true, Ordering::Release);
+        self.receiver.take();
         if let Some(h) = self.handle.take() {
             if h.join().is_err() {
                 tracing::error!("PixelReaderHandle: reader thread panicked during shutdown");
@@ -607,12 +502,6 @@ mod reader_tests {
         }, Duration::from_secs(5));
     }
 
-    /// The specific deadlock case Drop must handle: capacity=1 with 3+
-    /// requests, dropped before any recv(). A synchronization barrier
-    /// (rather than timing) guarantees the reader has reached the
-    /// blocked-inside-send() state before drop() runs — without it, this
-    /// test would be racy and might never actually exercise the failure
-    /// mode it claims to cover.
     #[test]
     fn test_deadlock_case_reader_blocked_in_send() {
         with_timeout(|| {
