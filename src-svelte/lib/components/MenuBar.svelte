@@ -49,6 +49,7 @@
     case 'backup-database':     backupDatabase(); break;
     case 'close-session':       closeSession(); break;
     case 'contour-plot':        runContourHeatmap(); break;
+    case 'documentation':       openDocumentation(); break;
     case 'exit':                getCurrentWindow().close(); break;
     case 'export-analysis-results': exportSessionJson(); break;
     case 'feature-preferences': ui.openFeaturePreferences(); break;
@@ -151,6 +152,14 @@
       pipeToConsole(`Saved FITS: ${destPath}`, 'success');
     } catch (e) {
       notifications.error(`Save failed: ${e}`);
+    }
+  }
+
+  async function openDocumentation() {
+    try {
+      await invoke('open_documentation');
+    } catch (e) {
+      notifications.error(`Failed to open documentation: ${e}`);
     }
   }
 

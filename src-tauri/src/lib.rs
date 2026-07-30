@@ -518,6 +518,7 @@ pub fn run() {
             commands::display::load_file,
             commands::feature_flags::get_feature_flags,
             commands::feature_flags::set_feature_flag,
+            commands::help::open_documentation,
             commands::logging::list_log_files,
             commands::logging::read_log_file,
             commands::macros::delete_macro,

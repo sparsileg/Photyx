@@ -5,10 +5,13 @@ pub mod analysis;
 pub mod backup;
 pub mod display;
 pub mod feature_flags;
+pub mod help;
 pub mod logging;
 pub mod macros;
 pub mod preferences;
 pub mod session;
 pub mod threshold_profiles;
 
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------

@@ -33,7 +33,18 @@ nav:
   - Your First Session: 1-your-first-session.md
   - Automating with Pcode: 2-automating-with-pcode.md
   - Macros and Multiple Sessions: 3-multi-session-project.md
-  - pcode Scripting Guide: reference/pcode-guide.md
+  - Command Reference:
+      - Overview: reference/index.md
+      - Language Basics: reference/language-basics.md
+      - Session Commands: reference/session-commands.md
+      - Write & Export Commands: reference/write-export-commands.md
+      - Keyword Commands: reference/keyword-commands.md
+      - Analysis Commands: reference/analysis-commands.md
+      - Image Processing: reference/image-processing.md
+      - Stacking Commands: reference/stacking-commands.md
+      - Display & Navigation: reference/display-navigation.md
+      - Scripting Utilities: reference/scripting-utilities.md
+      - Complete Examples: reference/examples.md
 
 markdown_extensions:
   - tables
