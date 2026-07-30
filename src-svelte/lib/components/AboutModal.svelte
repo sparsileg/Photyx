@@ -44,35 +44,50 @@
 
       <p class="about-text">
         Photyx is a high-performance desktop application for
-        astrophotographers and researchers who demand speed,
-        precision, and control. It reads, displays, and processes
-        astronomical image files in FITS, XISF, and TIFF formats,
-        applying PixInsight-compatible Auto-STF stretching for
-        immediate visual assessment of linear data. A fast blink
-        engine enables rapid sequential comparison of image sets for
-        focus, tracking, and quality evaluation. Photyx automates
-        frame triage through its AnalyzeFrames engine, which computes
-        four quality metrics per frame — background median, FWHM,
-        eccentricity, and star count — classifying each
-        frame as PASS or REJECT. Results are visualized in
-        the Analysis Graph and Analysis Results table for session-wide
-        review.  All operations are scriptable through pcode, a
-        purpose-built macro language that supports variables,
+        astrophotographers. It is primarily designed to prepare raw
+        subs from an imaging session so only the "good" ones can be
+        fed into an application such as PixInsight or Siril for
+        additional processing. Photyx can quickly identify and reject
+        frames from an imaging session that are negative outliers. In
+        other words, the frames are of such poor quality that they
+        would degrade the final product.
+      </p>
+
+      <p class="about-text">
+        Photyx reads, displays, and processes astronomical image files
+        in FITS and XISF formats. A fast blink engine enables rapid
+        sequential comparison of image sets for focus, tracking, and
+        quality evaluation, with the ability to reject bad frames at
+        the press of a button. A highly optimized (fast, unlimited
+        number of frames) analysis algorithm applies four rejection
+        metrics, using configurable profiles, that span the
+        rejection-relevant dimensions. Analysis results are displayed
+        via a table or graphically. The user can decide whether to
+        accept the results or not. If the results are accepted, the
+        rejected frames are renamed and moved to a separate folder.
+      </p>
+
+      <p class="about-text">
+        Additional features include configurable auto-stretching,
+        batch keyword editing, fast non-calibrated stacking for
+        validation, and more.  All operations are scriptable through
+        pcode, a purpose-built macro language that supports variables,
         conditionals, loops, and saved macros, accessible
-        interactively via the console, from the macro editor, or
-        through an external REST API. Photyx is built on Tauri,
-        Svelte, and Rust, targeting Windows, macOS, and Linux.
+        interactively via the console, from the macro editor, or the
+        Quick Launch bar.
+      </p>
+
+      <p class="about-text">
+        Photyx will eventually deliver cross-platform native
+        performance for Windows, Linux, and MacOS.
       </p>
 
       <div class="about-divider"></div>
 
-      <div class="about-stack">
-        <span>Tauri v2</span>
-        <span>·</span>
-        <span>Svelte</span>
-        <span>·</span>
-        <span>Rust</span>
-      </div>
+      <p class="about-text">
+        Testers needed. Questions or suggestions to
+        photyx@sparsile.org.
+      </p>
 
       <div class="about-copy">
         © 2026 Photyx Development Team. All rights reserved.

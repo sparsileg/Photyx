@@ -1,0 +1,729 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Help documentation for Photyx">
+      
+      
+      
+      
+      
+      
+      <link rel="icon" href="../assets/photyx_icon_1024.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.4">
+    
+    
+      
+        <title>Analysis Commands - Photyx Help</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.8608ea7d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+        <script src="https://unpkg.com/iframe-worker/shim"></script>
+      
+    
+    
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+   <link href="../assets/stylesheets/glightbox.min.css" rel="stylesheet"/><style>
+    html.glightbox-open { overflow: initial; height: 100%; }
+    .gslide-title { margin-top: 0px; user-select: text; }
+    .gslide-desc { color: #666; user-select: text; }
+    .gslide-image img { background: white; }
+    .gscrollbar-fixer { padding-right: 15px; }
+    .gdesc-inner { font-size: 0.75rem; }
+    body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color);}
+    body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color);}
+    body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color);}</style> <script src="../assets/javascripts/glightbox.min.js"></script></head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="deep-purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#analysis-commands" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../index.html" title="Photyx Help" class="md-header__button md-logo" aria-label="Photyx Help" data-md-component="logo">
+      
+  <img src="../assets/photyx_icon_1024.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Photyx Help
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Analysis Commands
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../index.html" title="Photyx Help" class="md-nav__button md-logo" aria-label="Photyx Help" data-md-component="logo">
+      
+  <img src="../assets/photyx_icon_1024.png" alt="logo">
+
+    </a>
+    Photyx Help
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index.html" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../1-your-first-session.html" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Your First Session
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../2-automating-with-pcode.html" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Automating with Pcode
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../3-multi-session-project.html" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Macros and Multiple Sessions
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pcode-guide.md" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    pcode Scripting Guide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="analysis-commands">Analysis Commands<a class="headerlink" href="#analysis-commands" title="Permanent link">&para;</a></h1>
+<p>Commands for computing per-frame quality metrics, classifying frames
+as PASS/REJECT, and exporting or committing the results.</p>
+<hr />
+<h2 id="analyzeframes"><code>AnalyzeFrames</code><a class="headerlink" href="#analyzeframes" title="Permanent link">&para;</a></h2>
+<p>Computes four quality metrics for loaded frames (FWHM, eccentricity,
+star count, background median) and classifies each frame as PASS or
+REJECT using iterative sigma clipping against session statistics.</p>
+<div class="highlight"><pre><span></span><code>AnalyzeFrames [profile=&lt;string&gt;] [scope=all|current] [threshold=&lt;float&gt;] [saturation=&lt;float&gt;]
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>profile</code></td>
+<td>No</td>
+<td></td>
+<td>Threshold profile name to use for this run. If omitted, uses the active profile set in Edit &gt; Analysis Parameters. The active profile is not permanently changed.</td>
+</tr>
+<tr>
+<td><code>scope</code></td>
+<td>No</td>
+<td><code>all</code></td>
+<td><code>all</code> runs the full two-pass session analysis (session stats, PASS/REJECT classification, reference-frame selection). <code>current</code> runs the same five metrics on only the current frame and prints raw values — no session stats or classification.</td>
+</tr>
+<tr>
+<td><code>threshold</code></td>
+<td>No</td>
+<td><code>5.0</code></td>
+<td>Star detection threshold in units of background std dev</td>
+</tr>
+<tr>
+<td><code>saturation</code></td>
+<td>No</td>
+<td><code>0.98</code></td>
+<td>Saturation threshold — stars at or above this value are rejected from detection</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code>AnalyzeFrames
+AnalyzeFrames profile=&quot;Session&quot;
+AnalyzeFrames profile=&quot;Project&quot;
+AnalyzeFrames scope=current
+</code></pre></div>
+<p>Results are visible in the Analysis Results and Analysis Graph
+views. See <a href="display-navigation.html#showanalysisgraph"><code>ShowAnalysisGraph</code></a>
+and <a href="display-navigation.html#showanalysisresults"><code>ShowAnalysisResults</code></a>.</p>
+<hr />
+<h2 id="commitanalysis"><code>CommitAnalysis</code><a class="headerlink" href="#commitanalysis" title="Permanent link">&para;</a></h2>
+<p>Moves all REJECT frames to a <code>rejected/</code> subfolder within each frame's
+source directory and removes them from the session. Pass frames remain
+loaded. Optionally appends a suffix to each moved filename.</p>
+<div class="highlight"><pre><span></span><code>CommitAnalysis [append=&lt;ext&gt;]
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>append</code></td>
+<td>No</td>
+<td></td>
+<td>Suffix appended after the original filename extension (e.g. <code>append=.session</code> → <code>frame.fit.session</code>). Leading dot is optional. Defaults to no suffix.</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code>CommitAnalysis
+CommitAnalysis append=.session
+</code></pre></div>
+<hr />
+<h2 id="exportanalysisreport"><code>ExportAnalysisReport</code><a class="headerlink" href="#exportanalysisreport" title="Permanent link">&para;</a></h2>
+<p>Exports the current analysis results as a Photyx session JSON file. If
+<code>path</code> is omitted, a filename is derived from the first frame and
+written to the system Downloads folder.</p>
+<div class="highlight"><pre><span></span><code>ExportAnalysisReport [path=&lt;path&gt;]
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>path</code></td>
+<td>No</td>
+<td>Full destination path for the JSON file. If omitted, written to the Downloads folder with an auto-derived filename.</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code>ExportAnalysisReport
+ExportAnalysisReport path=&quot;D:/projects/M64/M64_sess_20241112_analysis.json&quot;
+</code></pre></div>
+<hr />
+<h2 id="computefwhm"><code>ComputeFWHM</code><a class="headerlink" href="#computefwhm" title="Permanent link">&para;</a></h2>
+<p>Computes the median Full Width at Half Maximum for detected stars in
+the current frame, reported in pixels (and arcseconds when <code>FOCALLEN</code>,
+<code>INSTRUME</code>, and <code>XBINNING</code> keywords are present) and displays per-star
+circle annotations on the viewer overlay.</p>
+<div class="highlight"><pre><span></span><code>ComputeFWHM [threshold=&lt;float&gt;] [peak_radius=&lt;int&gt;] [saturation=&lt;float&gt;]
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>threshold</code></td>
+<td>No</td>
+<td><code>5.0</code></td>
+<td>Star detection threshold in units of background std dev</td>
+</tr>
+<tr>
+<td><code>peak_radius</code></td>
+<td>No</td>
+<td><code>3</code></td>
+<td>Radius in pixels for the local-maximum test</td>
+</tr>
+<tr>
+<td><code>saturation</code></td>
+<td>No</td>
+<td><code>0.98</code></td>
+<td>Stars at or above this peak value are rejected as saturated</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Side effect:</strong> Stores mean FWHM in <code>$fwhm</code>.</p>
+<div class="highlight"><pre><span></span><code>ComputeFWHM
+Print $fwhm
+</code></pre></div>
+<hr />
+<h2 id="computeeccentricity"><code>ComputeEccentricity</code><a class="headerlink" href="#computeeccentricity" title="Permanent link">&para;</a></h2>
+<p>Computes mean star eccentricity for the current frame. Values near 0 =
+round stars; values near 1 = elongated stars.</p>
+<div class="highlight"><pre><span></span><code>ComputeEccentricity [threshold=&lt;float&gt;] [peak_radius=&lt;int&gt;] [saturation=&lt;float&gt;]
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>threshold</code></td>
+<td>No</td>
+<td><code>5.0</code></td>
+<td>Star detection threshold in units of background std dev</td>
+</tr>
+<tr>
+<td><code>peak_radius</code></td>
+<td>No</td>
+<td><code>3</code></td>
+<td>Radius in pixels for the local-maximum test</td>
+</tr>
+<tr>
+<td><code>saturation</code></td>
+<td>No</td>
+<td><code>0.98</code></td>
+<td>Stars at or above this peak value are rejected as saturated</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Side effect:</strong> Stores result in <code>$eccentricity</code>.</p>
+<div class="highlight"><pre><span></span><code>ComputeEccentricity
+Print $eccentricity
+</code></pre></div>
+<hr />
+<h2 id="countstars"><code>CountStars</code><a class="headerlink" href="#countstars" title="Permanent link">&para;</a></h2>
+<p>Counts the number of detected stars in the current frame using
+peak-finding on a sigma-clipped, background-subtracted image.</p>
+<div class="highlight"><pre><span></span><code>CountStars [threshold=&lt;float&gt;] [peak_radius=&lt;int&gt;] [flood_threshold=&lt;float&gt;] [saturation=&lt;float&gt;] [sigma=&lt;float&gt;] [iterations=&lt;int&gt;]
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>threshold</code></td>
+<td>No</td>
+<td><code>5.0</code></td>
+<td>Detection threshold in units of background std dev</td>
+</tr>
+<tr>
+<td><code>peak_radius</code></td>
+<td>No</td>
+<td><code>3</code></td>
+<td>Radius in pixels for the local-maximum test</td>
+</tr>
+<tr>
+<td><code>flood_threshold</code></td>
+<td>No</td>
+<td><code>2.0</code></td>
+<td>Flood-fill lower bound in units of background std dev</td>
+</tr>
+<tr>
+<td><code>saturation</code></td>
+<td>No</td>
+<td><code>0.98</code></td>
+<td>Stars at or above this peak value are rejected as saturated</td>
+</tr>
+<tr>
+<td><code>sigma</code></td>
+<td>No</td>
+<td><code>3.0</code></td>
+<td>Sigma-clipping threshold used for background estimation</td>
+</tr>
+<tr>
+<td><code>iterations</code></td>
+<td>No</td>
+<td><code>5</code></td>
+<td>Maximum sigma-clipping iterations for background estimation</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Side effect:</strong> Stores result in <code>$starcount</code>.</p>
+<div class="highlight"><pre><span></span><code>CountStars
+Print $starcount
+</code></pre></div>
+<hr />
+<h2 id="gethistogram"><code>GetHistogram</code><a class="headerlink" href="#gethistogram" title="Permanent link">&para;</a></h2>
+<p>Computes the histogram and basic statistics (median, std dev, clipping
+%) for the current frame. RGB frames get per-channel statistics.</p>
+<div class="highlight"><pre><span></span><code>GetHistogram
+</code></pre></div>
+<hr />
+<h2 id="contourheatmap"><code>ContourHeatmap</code><a class="headerlink" href="#contourheatmap" title="Permanent link">&para;</a></h2>
+<p>Generates a false-color spatial FWHM heatmap for the current frame:
+stars are detected, per-star FWHM is measured, values are interpolated
+across an adaptive grid, and the result is rendered with contour
+lines. Writes the result as an XISF file named
+<code>&lt;source_stem&gt;_heatmap.xisf</code> in the source file's directory.</p>
+<div class="highlight"><pre><span></span><code>ContourHeatmap [palette=viridis|plasma|coolwarm] [contour_levels=&lt;int&gt;] [threshold=&lt;float&gt;] [saturation=&lt;float&gt;]
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>palette</code></td>
+<td>No</td>
+<td><code>viridis</code></td>
+<td>Color palette</td>
+</tr>
+<tr>
+<td><code>contour_levels</code></td>
+<td>No</td>
+<td><code>10</code></td>
+<td>Number of contour levels (minimum 2)</td>
+</tr>
+<tr>
+<td><code>threshold</code></td>
+<td>No</td>
+<td><code>5.0</code></td>
+<td>Star detection threshold in units of background std dev</td>
+</tr>
+<tr>
+<td><code>saturation</code></td>
+<td>No</td>
+<td><code>0.98</code></td>
+<td>Stars at or above this peak value are rejected as saturated</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Side effect:</strong> Stores output file path in <code>$NEW_FILE</code>.</p>
+<div class="highlight"><pre><span></span><code>ContourHeatmap palette=plasma contour_levels=12
+</code></pre></div>
+<hr />
+<h2 id="backgroundmedian"><code>BackgroundMedian</code><a class="headerlink" href="#backgroundmedian" title="Permanent link">&para;</a></h2>
+<p>Computes the sigma-clipped background median for the current
+frame. This is one of the five metrics <code>AnalyzeFrames</code> computes
+internally for every frame; running it standalone is useful for
+inspecting or tuning background estimation on a single frame.</p>
+<div class="highlight"><pre><span></span><code>BackgroundMedian [sigma=&lt;float&gt;] [iterations=&lt;int&gt;] [grid=&lt;int&gt;]
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sigma</code></td>
+<td>No</td>
+<td><code>3.0</code></td>
+<td>Sigma-clipping threshold in std dev units</td>
+</tr>
+<tr>
+<td><code>iterations</code></td>
+<td>No</td>
+<td><code>5</code></td>
+<td>Maximum sigma-clipping iterations</td>
+</tr>
+<tr>
+<td><code>grid</code></td>
+<td>No</td>
+<td><code>4</code></td>
+<td>Grid divisions per axis used internally for gradient estimation</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code>BackgroundMedian
+BackgroundMedian sigma=2.5 iterations=8
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.instant", "navigation.top", "navigation.expand", "navigation.footer", "toc.integrate", "toc.follow", "search.highlight", "search.suggest", "content.code.copy", "content.tabs.link", "content.tooltips", "navigation.sections", "navigation.indexes"], "search": "../assets/javascripts/workers/search.f8cc74c7.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f1b6f286.min.js"></script>
+      
+    
+  <script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(() => { lightbox.reload() });
+</script></body>
+</html>

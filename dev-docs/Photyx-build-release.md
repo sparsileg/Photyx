@@ -32,11 +32,11 @@ and any script that looks for the binary.
 
 ### Three version numbers that must not be confused
 
-| File | Field | Who reads it |
+| File                        | Field               | Who reads it                                                                                                                                                                                  |
 | --------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src-tauri/Cargo.toml` | `[package] version` | **Source of truth.** Cargo's own build output, `getVersion()` (via Tauri's fallback), `tauri-action`'s `__VERSION__` substitution |
-| `src-tauri/tauri.conf.json` | `version` | Deliberately **absent** (Issue 161) so it falls back to Cargo.toml. Do not re-add it unless you want to fork the two apart again |
-| `package.json` | `version` | npm/Node tooling only (e.g. what `npm run tauri build`'s banner prints). Currently **not kept in sync** — cosmetic drift, harmless, but don't be surprised if it disagrees with the other two |
+| `src-tauri/Cargo.toml`      | `[package] version` | **Source of truth.** Cargo's own build output, `getVersion()` (via Tauri's fallback), `tauri-action`'s `__VERSION__` substitution                                                             |
+| `src-tauri/tauri.conf.json` | `version`           | Deliberately **absent** (Issue 161) so it falls back to Cargo.toml. Do not re-add it unless you want to fork the two apart again                                                              |
+| `package.json`              | `version`           | npm/Node tooling only (e.g. what `npm run tauri build`'s banner prints). Currently **not kept in sync** — cosmetic drift, harmless, but don't be surprised if it disagrees with the other two |
 
 **SemVer only.** Cargo enforces strict SemVer on `[package] version` —
 no bare suffixes like `0.11.0B`. Use a proper prerelease identifier
@@ -310,7 +310,7 @@ Cargo.toml first, commit, *then* tag.
 cd ~/github/Photyx
 
 # Bump the version first
-#   edit src-tauri/Cargo.toml -> version = "0.11.0-beta.1"
+# edit src-tauri/Cargo.toml -> version = "0.11.0-beta.1"
 git add src-tauri/Cargo.toml
 git commit -m "Bump version to 0.11.0-beta.1"
 git push
@@ -322,12 +322,15 @@ gh release create ${TAG_NAME} \
   --prerelease
 ```
 
+### Creating a Beta or Release Candidate
+
 `--prerelease` is what marks it as beta/RC rather than a stable
 "Latest release" — do this for every beta and RC build. Drop the flag
 only for an actual stable release (see §5).
 
-**Attaching built installers** so testers can download and run
-directly — append file paths after the flags:
+### Attach Build Installers
+
+So testers can download and run directly — append file paths after the flags:
 
 ```bash
 gh release create ${TAG_NAME} \
@@ -338,15 +341,18 @@ gh release create ${TAG_NAME} \
   target/release/bundle/appimage/photyx_${TAG_NAME}_amd64.AppImage
 ```
 
-**Auto-generated notes** instead of writing them by hand (summarizes
-merged PRs/commits since the last tag):
+### Automatically Generate Notes
+
+Instead of writing notes by hand, the ```---generate-notes``` option summarizes
+merged PRs/commits since the last tag.
 
 ```bash
 gh release create ${TAG_NAME} --prerelease --generate-notes
 ```
 
-**Draft first, publish later** (useful if you want to review before
-testers see it):
+### Draft First, Publish Later
+
+Useful if you want to review before testers see it.
 
 ```bash
 gh release create ${TAG_NAME} --prerelease --draft --notes "..."
@@ -378,234 +384,12 @@ automatically.
 
 ### Workflow file
 
-Save as `.github/workflows/release.yml` in your repository root.
-Adjust the trigger to match how you want to cut releases — this
-example triggers on pushing a version tag (`v0.11.0`, `${TAG_NAME}`,
-etc.), which fits the tagging convention in §3:
+The workflow file is named ```release.yml``` and is saved in your
+repository root. See the Appendix for an example. Adjust the trigger
+to match how you want to cut releases — this example triggers on
+pushing a version tag (`v0.11.0`, `${TAG_NAME}`, etc.), which fits the
+tagging convention in §3:
 
-```yaml
-name: 'release'
-
-on:
-  workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
-
-jobs:
-  publish-tauri:
-    # cfitsio is compiled from source on Linux/macOS (fitsio-src +
-    # src-cmake features on the fitsio-sys dependency, Cargo.toml,
-    # platform-gated) rather than relying on a system package — this
-    # assumes `cmake` is present on the Linux/macOS GitHub-hosted runner
-    # images. Standard/pre-installed as of this writing, but not
-    # independently re-verified for this exact workflow — if a build
-    # fails looking for a CMake generator or the cmake binary itself,
-    # that's the first thing to check. Windows stays on dynamic linking
-    # via vcpkg (see that step's own comment for why) and doesn't need
-    # cmake at all.
-    permissions:
-      contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'macos-latest'   # Apple Silicon
-            args: '--target aarch64-apple-darwin'
-          - platform: 'macos-15-intel'   # Intel — native Intel hardware, NOT a
-                                          # cross-compile from arm64. Homebrew's
-                                          # cfitsio is architecture-native to
-                                          # whatever runner installs it, so
-                                          # cross-targeting x86_64 from an arm64
-                                          # macos-latest runner fails pkg-config's
-                                          # cross-compile check. GitHub retired
-                                          # the old Intel runners (macos-13) in
-                                          # Dec 2025; macos-15-intel is the
-                                          # current replacement, planned to be
-                                          # retired itself around Aug 2027.
-            args: ''
-          - platform: 'ubuntu-22.04'
-            args: ''
-          - platform: 'windows-latest'
-            args: ''
-
-    runs-on: ${{ matrix.platform }}
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
-            patchelf xdg-utils
-        # cfitsio is no longer a system dependency — fitsio-sys builds it
-        # from source (fitsio-src + src-cmake features in Cargo.toml),
-        # statically linked into the binary. See Cargo.toml comment.
-        #
-        # No separate rpm/rpmbuild package is needed either. tauri.conf.json's
-        # bundle.targets includes "rpm" alongside "deb" and "appimage" —
-        # tauri-bundler builds RPM natively in Rust, not by shelling out to a
-        # system rpmbuild. This job already produces target/release/bundle/rpm/
-        # with no changes required.
-        #
-        # Known upstream caveat (tauri-apps/tauri#11478, unresolved as of
-        # writing): RPM bundling has been reported to hang indefinitely
-        # on some Ubuntu 22.04 setups after the .deb finishes in seconds.
-        # No confirmed root cause or workaround yet — if a Linux job runs
-        # unusually long compared to the others, check whether it's stuck
-        # specifically on the rpm bundle step before assuming something
-        # else broke.
-
-      - name: install Windows dependencies (vcpkg + cfitsio)
-        if: matrix.platform == 'windows-latest'
-        run: |
-          vcpkg install cfitsio
-          choco install pkgconfiglite -y
-          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
-          echo "PKG_CONFIG_PATH=C:\vcpkg\installed\x64-windows\lib\pkgconfig" >> $env:GITHUB_ENV
-        shell: pwsh
-        # Windows stays on dynamic linking (see Cargo.toml's fitsio-sys
-        # target-specific sections) — the fitsio-src+src-cmake static
-        # build fails on MSVC because CFITSIO's CMake build requires an
-        # external pthreads-win32 install (CMAKE_INCLUDE_PATH/
-        # CMAKE_LIBRARY_PATH pointing at it) that fitsio-sys's build.rs
-        # never supplies, and that gap wasn't resolved. This exact
-        # vcpkg+pkgconfiglite recipe is confirmed working — it got all
-        # the way to a built photyx.exe before failing at MSI bundling
-        # over the non-numeric prerelease version string, a separate,
-        # already-fixed issue (bundle.targets dropped msi).
-        #
-        # fitsio-sys only ever probes via the `pkg-config` binary — it has
-        # no native vcpkg-rs integration on MSVC (open upstream request,
-        # never implemented: github.com/simonrw/rust-fitsio/issues/178).
-        # So installing cfitsio via vcpkg is necessary but not sufficient:
-        # windows-latest has no pkg-config.exe by default, and even with
-        # one present, it needs to be pointed at wherever vcpkg put
-        # cfitsio's generated .pc file. pkgconfiglite is the standard
-        # Chocolatey package providing pkg-config.exe on Windows.
-        # PKG_CONFIG_PATH here assumes vcpkg's classic-mode install
-        # layout (\installed\\lib\pkgconfig).
-
-      - name: stage vcpkg runtime DLLs for bundling (Windows)
-        if: matrix.platform == 'windows-latest'
-        run: |
-          New-Item -ItemType Directory -Force -Path src-tauri\resources | Out-Null
-          Copy-Item "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin\*.dll" src-tauri\resources\
-        shell: pwsh
-        # Copies EVERY dll vcpkg produced for this triplet, rather than
-        # hardcoding cfitsio.dll by name. Confirmed necessary: the
-        # cfitsio.dll built on GitHub's windows-latest runner depends on
-        # a dll named z.dll, but a local vcpkg install (different
-        # baseline/version) produces the equivalent zlib dependency named
-        # zlib1.dll instead — same underlying library, different vcpkg
-        # port revision naming it differently. Copying the whole bin/
-        # directory sidesteps needing to track that naming by hand, and
-        # protects against the same drift happening again on a future
-        # runner image update or any other transitive dependency vcpkg
-        # decides to add later (e.g. if cfitsio's feature set changes).
-
-      - name: stage MSVC redistributable DLLs for bundling (Windows)
-        if: matrix.platform == 'windows-latest'
-        run: |
-          New-Item -ItemType Directory -Force -Path src-tauri\resources | Out-Null
-          $crtDirs = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory -ErrorAction SilentlyContinue
-          if (-not $crtDirs) {
-            Write-Error "No MSVC redist CRT directory found — runner image layout may have changed."
-            exit 1
-          }
-          foreach ($dir in $crtDirs) {
-            Copy-Item (Join-Path $dir.FullName "vcruntime140*.dll") src-tauri\resources\ -Force
-          }
-        shell: pwsh
-        # photyx.exe and cfitsio.dll both depend on vcruntime140.dll,
-        # which is NOT part of Windows itself — it ships with the MSVC
-        # redistributable, so a user without VS/the VC++ Redistributable
-        # already installed would hit the same "DLL not found" failure
-        # we just fixed for cfitsio.dll/z.dll, just for this DLL instead.
-        # (The api-ms-win-crt-*.dll imports seen in dumpbin output are
-        # the Universal CRT, which HAS shipped as part of Windows itself
-        # since Windows 10 — those are not a real risk and don't need
-        # staging.)
-        #
-        # The redist path is intentionally NOT hardcoded to one MSVC
-        # toolset version (e.g. 14.50.35710) — that exact version number
-        # changes essentially every time GitHub updates the windows-latest
-        # runner image (confirmed via a real prior break: a runner update
-        # once shifted a VS2019 install from 14.29.30133 to 14.29.30156).
-        # The glob spans VS year/edition/toolset-version so this keeps
-        # working across future runner image updates without edits here.
-        #
-        # NOTE: -Filter cannot be combined with a wildcarded -Path in
-        # PowerShell's Get-ChildItem — it silently returns nothing rather
-        # than erroring (confirmed directly: same wildcard path with
-        # -Filter *.dll came back empty even though the files were
-        # present). Resolving the directory first via -Directory, then
-        # copying a concrete-path glob within it, avoids that gotcha.
-        # Dynamic linking (see the step above) means cfitsio.dll is never
-        # part of photyx.exe itself — Tauri has to be told to bundle it as
-        # a resource, via src-tauri/tauri.windows.conf.json's
-        # bundle.resources entry ("resources/cfitsio.dll"), or NSIS ships
-        # only the exe and the app fails at runtime with "cfitsio.dll was
-        # not found". That config expects the file to already exist at
-        # src-tauri/resources/cfitsio.dll by the time tauri-action runs,
-        # which is what this step stages. Uses VCPKG_INSTALLATION_ROOT
-        # (set by the previous step) rather than a hardcoded C:\vcpkg
-        # path, since GitHub's windows-latest runners preinstall vcpkg at
-        # a path stored in that env var, not necessarily C:\vcpkg.
-        #
-        # UNVERIFIED: cfitsio.dll may itself dynamically depend on other
-        # vcpkg-built DLLs (e.g. zlib), which would need the same
-        # staging treatment. Check with a PE dependency tool (e.g.
-        # `dumpbin /dependents` or Dependencies.exe) against the actual
-        # built DLL before assuming this single-file fix is complete.
-
-      - name: setup node
-        uses: actions/setup-node@v6
-        with:
-          node-version: lts/*
-          cache: 'npm'
-
-      - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          # x86_64-apple-darwin no longer needs cross-target installation
-          # here — macos-15-intel builds it natively.
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          # Photyx is a Cargo workspace — target/ lives at the repo root,
-          # not inside src-tauri/. This differs from Tauri's default
-          # single-crate template (which uses 'src-tauri -> target').
-          workspaces: '. -> target'
-
-      - name: install frontend dependencies
-        run: npm install
-
-      - uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: v__VERSION__
-          releaseName: 'Photyx v__VERSION__'
-          releaseBody: 'See the assets below to download and install this version.'
-          releaseDraft: true
-          # NOTE: github.ref_name is the pushed tag on a tag-push trigger
-          # (e.g. v0.11.0-beta.1), but on a manual `gh workflow run` /
-          # workflow_dispatch run there is no tag ref — ref_name falls
-          # back to the branch name (e.g. "main"), so this check silently
-          # never matches "-beta"/"-rc" on manual runs. Trigger real
-          # releases via tag push (git tag vX.Y.Z && git push origin
-          # vX.Y.Z) so this evaluates correctly; use workflow_dispatch
-          # only for build-testing, and double-check the resulting
-          # release's prerelease flag by hand if you do.
-          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-          args: ${{ matrix.args }}
-```
 
 Notes specific to this workflow:
 
@@ -865,43 +649,10 @@ release. To get a genuinely non-changing per-OS URL, the workflow
 needs to additionally publish a second copy of each artifact under a
 fixed, version-less filename.
 
-Add this as additional steps at the end of the `publish-tauri` job in
-`release.yml`, after the existing `tauri-apps/tauri-action@v1` step:
+This section is added as as additional steps at the end of the
+`publish-tauri` job in `release.yml`, after the existing
+`tauri-apps/tauri-action@v1` step. See the Appendix for an example.
 
-```yaml
-      - name: publish fixed-name "latest" asset (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          find target -path "*bundle/deb/*.deb" -exec cp {} photyx-linux-x86_64.deb \;
-          find target -path "*bundle/rpm/*.rpm" -exec cp {} photyx-linux-x86_64.rpm \;
-          find target -path "*bundle/appimage/*.AppImage" -exec cp {} photyx-linux-x86_64.AppImage \;
-          gh release upload ${{ github.ref_name }} \
-            photyx-linux-x86_64.deb photyx-linux-x86_64.rpm photyx-linux-x86_64.AppImage \
-            --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: publish fixed-name "latest" asset (Windows)
-        if: matrix.platform == 'windows-latest'
-        shell: pwsh
-        run: |
-          $exe = Get-ChildItem -Path target -Recurse -Filter *.exe |
-            Where-Object { $_.FullName -like "*bundle*nsis*" } |
-            Select-Object -First 1
-          Copy-Item $exe.FullName photyx-windows-x86_64.exe
-          gh release upload ${{ github.ref_name }} photyx-windows-x86_64.exe --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: publish fixed-name "latest" asset (macOS)
-        if: matrix.platform == 'macos-latest' || matrix.platform == 'macos-15-intel'
-        run: |
-          ARCH_NAME="${{ matrix.platform == 'macos-latest' && 'arm64' || 'x86_64' }}"
-          find target -path "*bundle/dmg/*.dmg" -exec cp {} "photyx-macos-${ARCH_NAME}.dmg" \;
-          gh release upload ${{ github.ref_name }} "photyx-macos-${ARCH_NAME}.dmg" --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
 
 Notes on this addition:
 
@@ -947,15 +698,284 @@ link updates needed on future releases.
 
 ## Quick reference
 
-| Task | Command |
+| Task                                  | Command                                                                                       |
 | ------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Hot-reload dev | `npm run tauri dev` |
-| Fast Rust check | `cd src-tauri && cargo check` |
-| Run tests | `cd src-tauri && cargo test` |
-| Local build, no installer | `npm run tauri build -- --no-bundle` |
-| Full bundled build (current platform) | `npm run tauri build` |
-| macOS: specific arch | `npm run tauri build -- --target aarch64-apple-darwin` |
-| Cut a beta/RC release (manual) | `gh release create vX.Y.Z-beta.N --prerelease --generate-notes` |
-| Cut a beta/RC release (CI) | `git tag vX.Y.Z-beta.N && git push origin vX.Y.Z-beta.N` |
-| Promote beta → stable | Bump Cargo.toml, drop suffix, tag `vX.Y.Z`, push, then `gh release edit vX.Y.Z --draft=false` |
-| Publish a draft release | `gh release edit vTAG --draft=false` |
+| Hot-reload dev                        | `npm run tauri dev`                                                                           |
+| Fast Rust check                       | `cd src-tauri && cargo check`                                                                 |
+| Run tests                             | `cd src-tauri && cargo test`                                                                  |
+| Local build, no installer             | `npm run tauri build -- --no-bundle`                                                          |
+| Full bundled build (current platform) | `npm run tauri build`                                                                         |
+| macOS: specific arch                  | `npm run tauri build -- --target aarch64-apple-darwin`                                        |
+| Cut a beta/RC release (manual)        | `gh release create vX.Y.Z-beta.N --prerelease --generate-notes`                               |
+| Cut a beta/RC release (CI)            | `git tag vX.Y.Z-beta.N && git push origin vX.Y.Z-beta.N`                                      |
+| Promote beta → stable                 | Bump Cargo.toml, drop suffix, tag `vX.Y.Z`, push, then `gh release edit vX.Y.Z --draft=false` |
+| Publish a draft release               | `gh release edit vTAG --draft=false`                                                          |
+
+
+## Appendix - `release.yml`
+
+
+```yaml
+name: 'release'
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-tauri:
+    # cfitsio is compiled from source on Linux/macOS (fitsio-src +
+    # src-cmake features on the fitsio-sys dependency, Cargo.toml,
+    # platform-gated) rather than relying on a system package — this
+    # assumes `cmake` is present on the Linux/macOS GitHub-hosted runner
+    # images. Standard/pre-installed as of this writing, but not
+    # independently re-verified for this exact workflow — if a build
+    # fails looking for a CMake generator or the cmake binary itself,
+    # that's the first thing to check. Windows stays on dynamic linking
+    # via vcpkg (see that step's own comment for why) and doesn't need
+    # cmake at all.
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'   # Apple Silicon
+            args: '--target aarch64-apple-darwin'
+          - platform: 'macos-15-intel'   # Intel — native Intel hardware, NOT a
+                                          # cross-compile from arm64. Homebrew's
+                                          # cfitsio is architecture-native to
+                                          # whatever runner installs it, so
+                                          # cross-targeting x86_64 from an arm64
+                                          # macos-latest runner fails pkg-config's
+                                          # cross-compile check. GitHub retired
+                                          # the old Intel runners (macos-13) in
+                                          # Dec 2025; macos-15-intel is the
+                                          # current replacement, planned to be
+                                          # retired itself around Aug 2027.
+            args: ''
+          - platform: 'ubuntu-22.04'
+            args: ''
+          - platform: 'windows-latest'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf xdg-utils
+        # cfitsio is no longer a system dependency — fitsio-sys builds it
+        # from source (fitsio-src + src-cmake features in Cargo.toml),
+        # statically linked into the binary. See Cargo.toml comment.
+        #
+        # No separate rpm/rpmbuild package is needed either. tauri.conf.json's
+        # bundle.targets includes "rpm" alongside "deb" and "appimage" —
+        # tauri-bundler builds RPM natively in Rust, not by shelling out to a
+        # system rpmbuild. This job already produces target/release/bundle/rpm/
+        # with no changes required.
+        #
+        # Known upstream caveat (tauri-apps/tauri#11478, unresolved as of
+        # writing): RPM bundling has been reported to hang indefinitely
+        # on some Ubuntu 22.04 setups after the .deb finishes in seconds.
+        # No confirmed root cause or workaround yet — if a Linux job runs
+        # unusually long compared to the others, check whether it's stuck
+        # specifically on the rpm bundle step before assuming something
+        # else broke.
+
+      - name: install Windows dependencies (vcpkg + cfitsio)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          vcpkg install cfitsio
+          choco install pkgconfiglite -y
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          echo "PKG_CONFIG_PATH=C:\vcpkg\installed\x64-windows\lib\pkgconfig" >> $env:GITHUB_ENV
+        shell: pwsh
+        # Windows stays on dynamic linking (see Cargo.toml's fitsio-sys
+        # target-specific sections) — the fitsio-src+src-cmake static
+        # build fails on MSVC because CFITSIO's CMake build requires an
+        # external pthreads-win32 install (CMAKE_INCLUDE_PATH/
+        # CMAKE_LIBRARY_PATH pointing at it) that fitsio-sys's build.rs
+        # never supplies, and that gap wasn't resolved. This exact
+        # vcpkg+pkgconfiglite recipe is confirmed working — it got all
+        # the way to a built photyx.exe before failing at MSI bundling
+        # over the non-numeric prerelease version string, a separate,
+        # already-fixed issue (bundle.targets dropped msi).
+        #
+        # fitsio-sys only ever probes via the `pkg-config` binary — it has
+        # no native vcpkg-rs integration on MSVC (open upstream request,
+        # never implemented: github.com/simonrw/rust-fitsio/issues/178).
+        # So installing cfitsio via vcpkg is necessary but not sufficient:
+        # windows-latest has no pkg-config.exe by default, and even with
+        # one present, it needs to be pointed at wherever vcpkg put
+        # cfitsio's generated .pc file. pkgconfiglite is the standard
+        # Chocolatey package providing pkg-config.exe on Windows.
+        # PKG_CONFIG_PATH here assumes vcpkg's classic-mode install
+        # layout (\installed\\lib\pkgconfig).
+
+      - name: stage vcpkg runtime DLLs for bundling (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri\resources | Out-Null
+          Copy-Item "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin\*.dll" src-tauri\resources\
+        shell: pwsh
+        # Copies EVERY dll vcpkg produced for this triplet, rather than
+        # hardcoding cfitsio.dll by name. Confirmed necessary: the
+        # cfitsio.dll built on GitHub's windows-latest runner depends on
+        # a dll named z.dll, but a local vcpkg install (different
+        # baseline/version) produces the equivalent zlib dependency named
+        # zlib1.dll instead — same underlying library, different vcpkg
+        # port revision naming it differently. Copying the whole bin/
+        # directory sidesteps needing to track that naming by hand, and
+        # protects against the same drift happening again on a future
+        # runner image update or any other transitive dependency vcpkg
+        # decides to add later (e.g. if cfitsio's feature set changes).
+
+      - name: stage MSVC redistributable DLLs for bundling (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri\resources | Out-Null
+          $crtDirs = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory -ErrorAction SilentlyContinue
+          if (-not $crtDirs) {
+            Write-Error "No MSVC redist CRT directory found — runner image layout may have changed."
+            exit 1
+          }
+          foreach ($dir in $crtDirs) {
+            Copy-Item (Join-Path $dir.FullName "vcruntime140*.dll") src-tauri\resources\ -Force
+          }
+        shell: pwsh
+        # photyx.exe and cfitsio.dll both depend on vcruntime140.dll,
+        # which is NOT part of Windows itself — it ships with the MSVC
+        # redistributable, so a user without VS/the VC++ Redistributable
+        # already installed would hit the same "DLL not found" failure
+        # we just fixed for cfitsio.dll/z.dll, just for this DLL instead.
+        # (The api-ms-win-crt-*.dll imports seen in dumpbin output are
+        # the Universal CRT, which HAS shipped as part of Windows itself
+        # since Windows 10 — those are not a real risk and don't need
+        # staging.)
+        #
+        # The redist path is intentionally NOT hardcoded to one MSVC
+        # toolset version (e.g. 14.50.35710) — that exact version number
+        # changes essentially every time GitHub updates the windows-latest
+        # runner image (confirmed via a real prior break: a runner update
+        # once shifted a VS2019 install from 14.29.30133 to 14.29.30156).
+        # The glob spans VS year/edition/toolset-version so this keeps
+        # working across future runner image updates without edits here.
+        #
+        # NOTE: -Filter cannot be combined with a wildcarded -Path in
+        # PowerShell's Get-ChildItem — it silently returns nothing rather
+        # than erroring (confirmed directly: same wildcard path with
+        # -Filter *.dll came back empty even though the files were
+        # present). Resolving the directory first via -Directory, then
+        # copying a concrete-path glob within it, avoids that gotcha.
+        # Dynamic linking (see the step above) means cfitsio.dll is never
+        # part of photyx.exe itself — Tauri has to be told to bundle it as
+        # a resource, via src-tauri/tauri.windows.conf.json's
+        # bundle.resources entry ("resources/cfitsio.dll"), or NSIS ships
+        # only the exe and the app fails at runtime with "cfitsio.dll was
+        # not found". That config expects the file to already exist at
+        # src-tauri/resources/cfitsio.dll by the time tauri-action runs,
+        # which is what this step stages. Uses VCPKG_INSTALLATION_ROOT
+        # (set by the previous step) rather than a hardcoded C:\vcpkg
+        # path, since GitHub's windows-latest runners preinstall vcpkg at
+        # a path stored in that env var, not necessarily C:\vcpkg.
+        #
+        # UNVERIFIED: cfitsio.dll may itself dynamically depend on other
+        # vcpkg-built DLLs (e.g. zlib), which would need the same
+        # staging treatment. Check with a PE dependency tool (e.g.
+        # `dumpbin /dependents` or Dependencies.exe) against the actual
+        # built DLL before assuming this single-file fix is complete.
+
+      - name: setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: 'npm'
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # x86_64-apple-darwin no longer needs cross-target installation
+          # here — macos-15-intel builds it natively.
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          # Photyx is a Cargo workspace — target/ lives at the repo root,
+          # not inside src-tauri/. This differs from Tauri's default
+          # single-crate template (which uses 'src-tauri -> target').
+          workspaces: '. -> target'
+
+      - name: install frontend dependencies
+        run: npm install
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'Photyx v__VERSION__'
+          releaseBody: 'See the assets below to download and install this version.'
+          releaseDraft: true
+          # NOTE: github.ref_name is the pushed tag on a tag-push trigger
+          # (e.g. v0.11.0-beta.1), but on a manual `gh workflow run` /
+          # workflow_dispatch run there is no tag ref — ref_name falls
+          # back to the branch name (e.g. "main"), so this check silently
+          # never matches "-beta"/"-rc" on manual runs. Trigger real
+          # releases via tag push (git tag vX.Y.Z && git push origin
+          # vX.Y.Z) so this evaluates correctly; use workflow_dispatch
+          # only for build-testing, and double-check the resulting
+          # release's prerelease flag by hand if you do.
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          args: ${{ matrix.args }}
+```
+
+## Appendix - `Latest Release`
+
+This section is added as as additional steps at the end of the
+`publish-tauri` job in `release.yml`, after the existing
+`tauri-apps/tauri-action@v1` step.
+
+```yaml
+      - name: publish fixed-name "latest" asset (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          find target -path "*bundle/deb/*.deb" -exec cp {} photyx-linux-x86_64.deb \;
+          find target -path "*bundle/rpm/*.rpm" -exec cp {} photyx-linux-x86_64.rpm \;
+          find target -path "*bundle/appimage/*.AppImage" -exec cp {} photyx-linux-x86_64.AppImage \;
+          gh release upload ${{ github.ref_name }} \
+            photyx-linux-x86_64.deb photyx-linux-x86_64.rpm photyx-linux-x86_64.AppImage \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: publish fixed-name "latest" asset (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path target -Recurse -Filter *.exe |
+            Where-Object { $_.FullName -like "*bundle*nsis*" } |
+            Select-Object -First 1
+          Copy-Item $exe.FullName photyx-windows-x86_64.exe
+          gh release upload ${{ github.ref_name }} photyx-windows-x86_64.exe --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: publish fixed-name "latest" asset (macOS)
+        if: matrix.platform == 'macos-latest' || matrix.platform == 'macos-15-intel'
+        run: |
+          ARCH_NAME="${{ matrix.platform == 'macos-latest' && 'arm64' || 'x86_64' }}"
+          find target -path "*bundle/dmg/*.dmg" -exec cp {} "photyx-macos-${ARCH_NAME}.dmg" \;
+          gh release upload ${{ github.ref_name }} "photyx-macos-${ARCH_NAME}.dmg" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```

@@ -1,0 +1,682 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Help documentation for Photyx">
+      
+      
+      
+      
+      
+      
+      <link rel="icon" href="../assets/photyx_icon_1024.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.4">
+    
+    
+      
+        <title>Language Basics - Photyx Help</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.8608ea7d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+        <script src="https://unpkg.com/iframe-worker/shim"></script>
+      
+    
+    
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+   <link href="../assets/stylesheets/glightbox.min.css" rel="stylesheet"/><style>
+    html.glightbox-open { overflow: initial; height: 100%; }
+    .gslide-title { margin-top: 0px; user-select: text; }
+    .gslide-desc { color: #666; user-select: text; }
+    .gslide-image img { background: white; }
+    .gscrollbar-fixer { padding-right: 15px; }
+    .gdesc-inner { font-size: 0.75rem; }
+    body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color);}
+    body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color);}
+    body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color);}</style> <script src="../assets/javascripts/glightbox.min.js"></script></head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="deep-purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#language-basics" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../index.html" title="Photyx Help" class="md-header__button md-logo" aria-label="Photyx Help" data-md-component="logo">
+      
+  <img src="../assets/photyx_icon_1024.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Photyx Help
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Language Basics
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../index.html" title="Photyx Help" class="md-nav__button md-logo" aria-label="Photyx Help" data-md-component="logo">
+      
+  <img src="../assets/photyx_icon_1024.png" alt="logo">
+
+    </a>
+    Photyx Help
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../index.html" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../1-your-first-session.html" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Your First Session
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../2-automating-with-pcode.html" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Automating with Pcode
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../3-multi-session-project.html" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Macros and Multiple Sessions
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pcode-guide.md" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    pcode Scripting Guide
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="language-basics">Language Basics<a class="headerlink" href="#language-basics" title="Permanent link">&para;</a></h1>
+<p>pcode is line-oriented: each line is either a command, a variable
+assignment, a flow-control statement, or a comment. Macros are saved
+in the Photyx database and can be run from the console, the Quick
+Launch bar, or via <code>RunMacro</code>.</p>
+<hr />
+<h2 id="basics">Basics<a class="headerlink" href="#basics" title="Permanent link">&para;</a></h2>
+<h3 id="comments">Comments<a class="headerlink" href="#comments" title="Permanent link">&para;</a></h3>
+<p>Any line beginning with <code>#</code> is ignored.</p>
+<div class="highlight"><pre><span></span><code># This is a comment
+AddFiles paths=&quot;/data/lights/frame001.fit&quot;   # inline comments are not supported
+</code></pre></div>
+<h3 id="command-syntax">Command syntax<a class="headerlink" href="#command-syntax" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>CommandName arg1=value arg2=&quot;string value&quot;
+</code></pre></div>
+<p>Arguments are named. Argument names are case-insensitive. String
+values containing spaces must be enclosed in double quotes. Boolean
+arguments accept <code>true</code> or <code>false</code>.</p>
+<h3 id="running-a-macro-from-the-console">Running a macro from the console<a class="headerlink" href="#running-a-macro-from-the-console" title="Permanent link">&para;</a></h3>
+<p>Type the macro name directly after <code>RunMacro</code>:</p>
+<div class="highlight"><pre><span></span><code>RunMacro name=&quot;my-workflow&quot;
+</code></pre></div>
+<p>Or open it in the Macro Editor and click <strong>Run</strong>.</p>
+<hr />
+<h2 id="variables">Variables<a class="headerlink" href="#variables" title="Permanent link">&para;</a></h2>
+<p>Variables are set with <code>Set</code> and referenced with a <code>$</code> prefix.</p>
+<div class="highlight"><pre><span></span><code>Set count = 10
+Set label = &quot;Frame &quot; + $count
+Print $label
+</code></pre></div>
+<ul>
+<li>Variable names are case-insensitive when read (<code>$fwhm</code> and <code>$FWHM</code>
+  refer to the same value).</li>
+<li>String literals on the right-hand side of <code>Set</code> must use <strong>double
+  quotes</strong>.</li>
+<li>Variables persist for the lifetime of the script execution and are
+  visible to any macro called via <code>RunMacro</code>.</li>
+</ul>
+<h3 id="arithmetic">Arithmetic<a class="headerlink" href="#arithmetic" title="Permanent link">&para;</a></h3>
+<p><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>^</code> (exponentiation) are supported. Parentheses
+group sub-expressions.</p>
+<div class="highlight"><pre><span></span><code>Set area   = 3.14159 * $r ^ 2
+Set scaled = ($raw - $min) / ($max - $min)
+</code></pre></div>
+<h3 id="string-concatenation">String concatenation<a class="headerlink" href="#string-concatenation" title="Permanent link">&para;</a></h3>
+<p>The <code>+</code> operator concatenates when either operand is non-numeric.</p>
+<div class="highlight"><pre><span></span><code>Set path = &quot;/data/&quot; + $target + &quot;/lights&quot;
+</code></pre></div>
+<h3 id="math-functions">Math functions<a class="headerlink" href="#math-functions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sqrt(x)</code></td>
+<td>Square root</td>
+</tr>
+<tr>
+<td><code>abs(x)</code></td>
+<td>Absolute value</td>
+</tr>
+<tr>
+<td><code>round(x)</code></td>
+<td>Round to nearest integer</td>
+</tr>
+<tr>
+<td><code>floor(x)</code></td>
+<td>Round down</td>
+</tr>
+<tr>
+<td><code>ceil(x)</code></td>
+<td>Round up</td>
+</tr>
+<tr>
+<td><code>min(x, y)</code></td>
+<td>Smaller of two values</td>
+</tr>
+<tr>
+<td><code>max(x, y)</code></td>
+<td>Larger of two values</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code>Set sigma = sqrt(($x - $mean) ^ 2)
+Set clipped = min($value, 65535)
+</code></pre></div>
+<h3 id="path-functions">Path functions<a class="headerlink" href="#path-functions" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>basename($path)</code></td>
+<td>Filename portion of a path, leading directories stripped</td>
+</tr>
+<tr>
+<td><code>dirof($path)</code></td>
+<td>Directory portion of a path, filename stripped</td>
+</tr>
+<tr>
+<td><code>stripext($path)</code></td>
+<td>Strips a trailing suffix appended after a known image extension (<code>.fit</code>, <code>.fits</code>, <code>.fts</code>, <code>.xisf</code>) — e.g. the <code>.session</code>/<code>.project</code> suffix added by <code>CommitAnalysis</code></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code>Set name   = basename($f)
+Set dir    = dirof($f)
+Set parent = dirof(dirof($f))
+Set clean  = stripext($f)
+</code></pre></div>
+<h3 id="system-set-variables">System-set variables<a class="headerlink" href="#system-set-variables" title="Permanent link">&para;</a></h3>
+<p>Several commands automatically store their results in variables.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Set by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$fwhm</code></td>
+<td><code>ComputeFWHM</code></td>
+</tr>
+<tr>
+<td><code>$eccentricity</code></td>
+<td><code>ComputeEccentricity</code></td>
+</tr>
+<tr>
+<td><code>$starcount</code></td>
+<td><code>CountStars</code></td>
+</tr>
+<tr>
+<td><code>$filecount</code></td>
+<td><code>CountFiles</code></td>
+</tr>
+<tr>
+<td><code>$matchcount</code></td>
+<td><code>CountMatches</code></td>
+</tr>
+<tr>
+<td><code>$STACKED</code></td>
+<td><code>WriteFIT stack=true</code>, <code>WriteXISF stack=true</code></td>
+</tr>
+<tr>
+<td><code>$NEW_FILE</code></td>
+<td><code>ContourHeatmap</code>, <code>CopyFile</code>, <code>MoveFile</code></td>
+</tr>
+<tr>
+<td><code>$LOAD_FILE_PATH</code></td>
+<td><code>LoadFile</code></td>
+</tr>
+<tr>
+<td><code>$&lt;KEYWORDNAME&gt;</code></td>
+<td><code>GetKeyword name=&lt;KEYWORDNAME&gt;</code> (uppercased; falls back to <code>default=</code> if given and the keyword is not found)</td>
+</tr>
+<tr>
+<td><code>$&lt;name&gt;</code></td>
+<td><code>GetSystemPath name=&lt;name&gt;</code> (e.g. <code>name=downloads</code> stores <code>$downloads</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Example — reading a keyword into a variable:</p>
+<div class="highlight"><pre><span></span><code>GetKeyword name=FILTER
+Print $FILTER
+</code></pre></div>
+<hr />
+<h2 id="flow-control">Flow Control<a class="headerlink" href="#flow-control" title="Permanent link">&para;</a></h2>
+<h3 id="conditionals">Conditionals<a class="headerlink" href="#conditionals" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>If &lt;expression&gt;
+  ...
+Else
+  ...
+EndIf
+</code></pre></div>
+<p>The <code>Else</code> branch is optional. <code>If</code> blocks may be nested. Supported
+comparison operators: <code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>. String
+comparisons are case-insensitive. Equality is always <code>==</code> — a single
+<code>=</code> is assignment syntax used by <code>Set</code>, not a valid condition
+operator.</p>
+<div class="highlight"><pre><span></span><code>If $fwhm &gt; 3.0
+  Print &quot;Poor focus — skipping&quot;
+Else
+  Print &quot;Focus acceptable&quot;
+EndIf
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>If $FILTER == &quot;Ha&quot;
+  Print &quot;Narrowband session&quot;
+EndIf
+</code></pre></div>
+<h3 id="loops-iterating-over-a-numeric-range">Loops — iterating over a numeric range<a class="headerlink" href="#loops-iterating-over-a-numeric-range" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>For varname = N To M
+  ...
+EndFor
+</code></pre></div>
+<p>The loop variable steps from N to M inclusive. Both bounds can be
+variables or expressions.</p>
+<div class="highlight"><pre><span></span><code>Set frames = 10
+For i = 1 To $frames
+  Print &quot;Processing frame &quot; + $i
+EndFor
+</code></pre></div>
+<h3 id="loops-iterating-over-a-glob-pattern">Loops — iterating over a glob pattern<a class="headerlink" href="#loops-iterating-over-a-glob-pattern" title="Permanent link">&para;</a></h3>
+<p><code>for &lt;var&gt; in "&lt;pattern&gt;"</code> expands a glob pattern and iterates over
+each matched path, binding it to the loop variable. The variable holds
+the full matched path as a string. Patterns may include wildcards in
+any path segment.</p>
+<div class="highlight"><pre><span></span><code>for &lt;var&gt; in &quot;&lt;glob_pattern&gt;&quot;
+  ...
+EndFor
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>for d in &quot;J:/projects/M82/M82-*-sess-*&quot;
+  Print $d
+EndFor
+</code></pre></div>
+<p>Loops may be nested. Numeric and glob loops can be mixed. If a glob
+pattern matches nothing, a warning is reported and the loop body
+simply doesn't execute — the script continues normally rather than
+halting.</p>
+<div class="highlight"><pre><span></span><code>for d in &quot;J:/projects/M82/M82-ircut-sess-*&quot;
+  ClearSession
+  AddFiles paths=&quot;$d/lights/*.fit&quot;
+  AnalyzeFrames profile=&quot;Broadband&quot;
+  CommitAnalysis append=.reject
+EndFor
+</code></pre></div>
+<h3 id="loops-iterating-over-all-session-files">Loops — iterating over all session files<a class="headerlink" href="#loops-iterating-over-all-session-files" title="Permanent link">&para;</a></h3>
+<p>This is the standard way to process all frames in a session.</p>
+<div class="highlight"><pre><span></span><code>CountFiles
+For i = 0 to $filecount - 1
+  SetFrame index=$i
+  ComputeFWHM
+  Print $fwhm
+EndFor
+</code></pre></div>
+<hr />
+<h2 id="error-handling">Error Handling<a class="headerlink" href="#error-handling" title="Permanent link">&para;</a></h2>
+<p>By default, pcode halts on the first error. A failed command stops the
+script and reports the error to the console.</p>
+<p>Use <code>Assert</code> to add explicit checks:</p>
+<div class="highlight"><pre><span></span><code>Assert expression=&quot;$filecount &gt; 0&quot;
+</code></pre></div>
+<p><code>Assert</code> halts execution with an <code>ASSERT_FAILED</code> error if the
+condition is false. It is silent on pass in both Trace and No Trace
+modes.</p>
+<hr />
+<h2 id="console-output">Console Output<a class="headerlink" href="#console-output" title="Permanent link">&para;</a></h2>
+<h3 id="print">Print<a class="headerlink" href="#print" title="Permanent link">&para;</a></h3>
+<p>Outputs an evaluated expression to the console:</p>
+<div class="highlight"><pre><span></span><code>Print &quot;Hello world&quot;
+Print $fwhm
+Print &quot;FWHM: &quot; + $fwhm
+Print $x + 1
+</code></pre></div>
+<h3 id="log">Log<a class="headerlink" href="#log" title="Permanent link">&para;</a></h3>
+<p>Writes all console output accumulated since the last <code>Log</code> call to a
+file. Each <code>Log</code> call resets the accumulation point, so multiple <code>Log</code>
+calls within a single macro can direct different segments of output to
+different files. Useful for recording analysis results from batch
+runs.</p>
+<div class="highlight"><pre><span></span><code>Log path=&quot;/logs/session.log&quot;
+Log path=&quot;/logs/session.log&quot; append=true
+</code></pre></div>
+<div class="highlight"><pre><span></span><code># First segment goes to the FWHM log
+CountFiles
+For i = 0 to $filecount - 1
+  SetFrame index=$i
+  ComputeFWHM
+  Print $fwhm
+EndFor
+Log path=&quot;/logs/fwhm.log&quot;
+
+
+# Second segment goes to the star count log
+CountFiles
+For i = 0 to $filecount - 1
+  SetFrame index=$i
+  CountStars
+  Print $starcount
+EndFor
+Log path=&quot;/logs/starcounts.log&quot;
+</code></pre></div>
+<hr />
+<h2 id="trace-mode">Trace Mode<a class="headerlink" href="#trace-mode" title="Permanent link">&para;</a></h2>
+<p>The <strong>Trace / No Trace</strong> toggle in the console header controls
+verbosity. In Trace mode, each command and its resolved arguments are
+echoed before execution. In No Trace mode, only output explicitly
+produced by <code>Print</code> or a command's result message is shown.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.instant", "navigation.top", "navigation.expand", "navigation.footer", "toc.integrate", "toc.follow", "search.highlight", "search.suggest", "content.code.copy", "content.tabs.link", "content.tooltips", "navigation.sections", "navigation.indexes"], "search": "../assets/javascripts/workers/search.f8cc74c7.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f1b6f286.min.js"></script>
+      
+    
+  <script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(() => { lightbox.reload() });
+</script></body>
+</html>

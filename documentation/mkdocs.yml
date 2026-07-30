@@ -1,0 +1,60 @@
+site_name:  Photyx Help
+site_description: Help documentation for Photyx
+docs_dir: docs
+site_dir: site
+use_directory_urls: false
+
+theme:
+  name: material
+  logo: assets/photyx_icon_1024.png
+  favicon: assets/photyx_icon_1024.png
+  font: false
+  palette:
+    scheme: slate
+    primary: black
+    accent: deep purple
+  features:
+    - navigation.instant
+    - navigation.top
+    - navigation.expand
+    - navigation.footer
+    - toc.integrate
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.tabs.link
+    - content.tooltips
+    - navigation.sections
+    - navigation.indexes
+
+nav:
+  - Home: index.md
+  - Your First Session: 1-your-first-session.md
+  - Automating with Pcode: 2-automating-with-pcode.md
+  - Macros and Multiple Sessions: 3-multi-session-project.md
+  - pcode Scripting Guide: reference/pcode-guide.md
+
+markdown_extensions:
+  - tables
+  - toc:
+      permalink: true
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.critic
+  - pymdownx.arithmatex
+
+plugins:
+  - search:
+      lang: en
+      separator: '[\s\-]+'
+  - offline
+  - awesome-pages
+  - glightbox
