@@ -356,6 +356,21 @@ pub(crate) fn update_fits_keywords(path: &str, buffer: &ImageBuffer) -> Result<(
 
 /// Create a new FITS file from scratch with pixel data and keywords.
 pub(crate) fn write_fits_new(out_path: &str, buffer: &ImageBuffer) -> Result<(), String> {
+    let pixels = buffer.pixels.as_ref()
+        .ok_or_else(|| "No pixel data".to_string())?;
+    write_fits_new_with_pixels(out_path, buffer, pixels)
+}
+
+/// Same as `write_fits_new`, but pixel-source-agnostic — callers can supply
+/// freshly-read pixels instead of buffer.pixels (None outside the bounded
+/// viewing LRU as of Issue 173). `write_fits_new` above is a thin wrapper
+/// over this for its one remaining call shape (buffer's own resident
+/// pixels, e.g. WriteFIT's stack-export path).
+pub(crate) fn write_fits_new_with_pixels(
+    out_path: &str,
+    buffer:   &ImageBuffer,
+    pixels:   &PixelData,
+) -> Result<(), String> {
     let image_type = match buffer.bit_depth {
         BitDepth::U8  => ImageType::UnsignedByte,
         BitDepth::U16 => ImageType::Short,
@@ -377,9 +392,6 @@ pub(crate) fn write_fits_new(out_path: &str, buffer: &ImageBuffer) -> Result<(),
 
     let hdu = fitsfile.hdu(0)
         .map_err(|e| format!("Cannot access primary HDU: {}", e))?;
-
-    let pixels = buffer.pixels.as_ref()
-        .ok_or_else(|| "No pixel data".to_string())?;
 
     let n_pixels = buffer.width as usize * buffer.height as usize;
     let channels = buffer.channels as usize;
@@ -433,4 +445,6 @@ pub(crate) fn write_fits_new(out_path: &str, buffer: &ImageBuffer) -> Result<(),
 }
 
 
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------

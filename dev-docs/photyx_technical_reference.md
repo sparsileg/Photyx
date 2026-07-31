@@ -139,30 +139,45 @@ residency. As of Issue 175, all five pixel-consuming paths
 (AnalyzeFrames, CacheFrames, and StackFrames' three internal passes)
 read through a shared background prefetch reader
 (`plugins/pixel_chunking.rs::PixelReaderHandle`) instead of each
-reading synchronously in its own loop. One reader thread, spawned per
-plugin `execute()` call, works through a caller-supplied ordered
-`Vec<LoadRequest>` — each naming a path and a `LoadKind` (`Raw` for
-CacheFrames' full-`PixelData` needs, `Luma` for AnalyzeFrames/
-StackFrames Pass 0 and mono-mode per-frame loads, `ColorNormalized`
-for color-mode StackFrames per-frame loads) — performing the same
-decode/debayer/normalize conversion each caller used to do inline,
-now relocated onto the reader thread so the *next* batch's read
-overlaps with compute on the *current* one instead of blocking in
-front of it. Results arrive over a bounded
-`std::sync::mpsc::sync_channel` via `PixelReaderHandle::recv`;
-`recv()` returning `None` means the channel closed, not that every
-request was fulfilled, so a caller needing delivery guarantees
-(AnalyzeFrames, whose classification depends on the complete frame
-set) reconciles received-outcome count against its own request count
-rather than trusting `None` alone. The synchronous entry point
-`load_pixel_chunk` (Issue 174) still exists as the lower-level
-per-file primitive the reader is built on; production callers go
-through `PixelReaderHandle::spawn_disk_reader`. Exactly one reader
-thread runs at a time per plugin call — this remains the single place
-FITS files are opened for these pipelines, keeping cfitsio's
+reading synchronously in its own loop.
+
+One reader thread, spawned per plugin `execute()` call, works through
+a caller-supplied ordered `Vec<LoadRequest>` — each naming a path and
+a `LoadKind` (`Raw` for CacheFrames' full-`PixelData` needs, `Luma`
+for AnalyzeFrames/ StackFrames Pass 0 and mono-mode per-frame loads,
+`ColorNormalized` for color-mode StackFrames per-frame loads) —
+performing the same decode/debayer/normalize conversion each caller
+used to do inline, now relocated onto the reader thread so the *next*
+batch's read overlaps with compute on the *current* one instead of
+blocking in front of it.
+
+Results arrive over a bounded `std::sync::mpsc::sync_channel` via
+`PixelReaderHandle::recv`; `recv()` returning `None` means the channel
+closed, not that every request was fulfilled, so a caller needing
+delivery guarantees (AnalyzeFrames, whose classification depends on
+the complete frame set) reconciles received-outcome count against its
+own request count rather than trusting `None` alone. The synchronous
+entry point `load_pixel_chunk` (Issue 174) still exists as the
+lower-level per-file primitive the reader is built on; production
+callers go through `PixelReaderHandle::spawn_disk_reader`. Exactly one
+reader thread runs at a time per plugin call — this remains the single
+place FITS files are opened for these pipelines, keeping cfitsio's
 non-thread-safety contained. Metadata reads from `image_buffers`
 remain fine: metadata is always resident post-Issue-173; the rule is
 specifically about pixels.
+
+`WriteCurrent`, `WriteXISF`, and `WriteFrame` also read pixels fresh
+from disk on write — via a direct, one-off `pixel_chunking::load_request`
+call per frame rather than the shared reader thread, since these
+rewrites are rare and don't benefit from prefetch overlap (Issues 194,
+195). The exemption differs by plugin and format: `WriteCurrent`'s
+FITS branch (`.fit`/`.fits`/`.fts`) never touches pixels at all — it
+rewrites header keywords only (`update_fits_keywords`), pixel data on
+disk untouched — so it has no dependency on LRU residency. `WriteFrame`
+has no such exemption on FITS: it performs a full pixel + keyword
+rewrite for every format it handles, including FITS
+(`write_fits_new_with_pixels`), so its FITS branch reads fresh from
+disk exactly like its XISF branch does.
 
 **Blink caches are built during load (Issue 173).** `AddFiles`,
 `ReadImages`, and `load_file` build both blink thumbnails (12.5% / 25%)

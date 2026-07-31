@@ -5,7 +5,7 @@
 use tracing::info;
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
-use super::write_fits::write_fits_new;
+use super::write_fits::write_fits_new_with_pixels;
 use super::write_tiff::write_tiff_file;
 use super::atomic_write::atomic_write;
 
@@ -32,14 +32,38 @@ impl PhotyxPlugin for WriteFrame {
             "fit" | "fits" | "fts" => {
                 let buffer = ctx.image_buffers.get(&path)
                     .ok_or_else(|| PluginError::new("NO_BUFFER", "Image buffer not found."))?;
-                atomic_write(&path, |tmp| write_fits_new(tmp, buffer))
+                let pixels = match super::pixel_chunking::load_request(&path, super::pixel_chunking::LoadKind::Raw) {
+                    super::pixel_chunking::LoadOutcome::Loaded(super::pixel_chunking::LoadedFrame::Raw(snap)) => snap.pixels,
+                    super::pixel_chunking::LoadOutcome::Loaded(_) => {
+                        return Err(PluginError::new("READ_ERROR", "unexpected LoadedFrame kind for a Raw request"));
+                    }
+                    super::pixel_chunking::LoadOutcome::Missing { .. } => {
+                        return Err(PluginError::new("READ_ERROR", "source file missing"));
+                    }
+                    super::pixel_chunking::LoadOutcome::Unreadable { error, .. } => {
+                        return Err(PluginError::new("READ_ERROR", &error));
+                    }
+                };
+                atomic_write(&path, |tmp| write_fits_new_with_pixels(tmp, buffer, &pixels))
                     .map_err(|e| PluginError::new("WRITE_ERROR", &e))?;
                 info!("WriteFrame: updated FITS {}", path);
             }
             "xisf" => {
                 let buffer = ctx.image_buffers.get(&path)
                     .ok_or_else(|| PluginError::new("NO_BUFFER", "Image buffer not found."))?;
-                let xisf_image = super::write_xisf::buffer_to_xisf_image(buffer)
+                let pixels = match super::pixel_chunking::load_request(&path, super::pixel_chunking::LoadKind::Raw) {
+                    super::pixel_chunking::LoadOutcome::Loaded(super::pixel_chunking::LoadedFrame::Raw(snap)) => snap.pixels,
+                    super::pixel_chunking::LoadOutcome::Loaded(_) => {
+                        return Err(PluginError::new("READ_ERROR", "unexpected LoadedFrame kind for a Raw request"));
+                    }
+                    super::pixel_chunking::LoadOutcome::Missing { .. } => {
+                        return Err(PluginError::new("READ_ERROR", "source file missing"));
+                    }
+                    super::pixel_chunking::LoadOutcome::Unreadable { error, .. } => {
+                        return Err(PluginError::new("READ_ERROR", &error));
+                    }
+                };
+                let xisf_image = super::write_xisf::build_xisf_image(buffer, pixels)
                     .map_err(|e| PluginError::new("CONVERT_ERROR", &e))?;
                 let options = photyx_xisf::WriteOptions {
                     codec:           photyx_xisf::Codec::None,
@@ -74,4 +98,6 @@ impl PhotyxPlugin for WriteFrame {
     }
 }
 
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------
