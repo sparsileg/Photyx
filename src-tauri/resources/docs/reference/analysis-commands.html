@@ -759,7 +759,7 @@ REJECT using iterative sigma clipping against session statistics.</p>
 <td><code>scope</code></td>
 <td>No</td>
 <td><code>all</code></td>
-<td><code>all</code> runs the full two-pass session analysis (session stats, PASS/REJECT classification, reference-frame selection). <code>current</code> runs the same five metrics on only the current frame and prints raw values — no session stats or classification.</td>
+<td><code>all</code> runs the full two-pass session analysis (session stats, PASS/REJECT classification, reference-frame selection). <code>current</code> runs the same four metrics on only the current frame and prints raw values — no session stats or classification.</td>
 </tr>
 <tr>
 <td><code>threshold</code></td>
@@ -1034,7 +1034,7 @@ lines. Writes the result as an XISF file named
 <hr />
 <h2 id="backgroundmedian"><code>BackgroundMedian</code><a class="headerlink" href="#backgroundmedian" title="Permanent link">&para;</a></h2>
 <p>Computes the sigma-clipped background median for the current
-frame. This is one of the five metrics <code>AnalyzeFrames</code> computes
+frame. This is one of the four metrics <code>AnalyzeFrames</code> computes
 internally for every frame; running it standalone is useful for
 inspecting or tuning background estimation on a single frame.</p>
 <div class="highlight"><pre><span></span><code>BackgroundMedian [sigma=&lt;float&gt;] [iterations=&lt;int&gt;] [grid=&lt;int&gt;]
@@ -1069,6 +1069,7 @@ inspecting or tuning background estimation on a single frame.</p>
 </tr>
 </tbody>
 </table>
+<p><strong>Side effect:</strong> Stores result in <code>$backgroundmedian</code>.</p>
 <div class="highlight"><pre><span></span><code>BackgroundMedian
 BackgroundMedian sigma=2.5 iterations=8
 </code></pre></div>

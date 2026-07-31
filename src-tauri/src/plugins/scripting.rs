@@ -1,5 +1,5 @@
 // plugins/scripting.rs — Scripting and utility plugins
-// Covers: GetKeyword, MoveFile, Print, Assert, CountFiles
+// Covers: MoveFile, CopyFile, CountFiles, CountMatches, GetSystemPath, LoadFile
 // Spec §7.8, §7.12
 
 use std::path::Path;
@@ -7,74 +7,6 @@ use std::sync::Arc;
 
 use crate::context::AppContext;
 use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
-
-// ── GetKeyword ────────────────────────────────────────────────────────────────
-
-/// Retrieves a keyword value from the current frame and stores it as a variable.
-/// Usage: GetKeyword name=PXFLAG
-/// Result is stored in $PXFLAG (uppercase of the name arg) in AppContext.variables.
-pub struct GetKeyword;
-
-impl PhotyxPlugin for GetKeyword {
-    fn name(&self)        -> &str { "GetKeyword" }
-    fn version(&self)     -> &str { "1.1.0" }
-    fn description(&self) -> &str { "Retrieves a FITS keyword value from the current frame into a script variable" }
-
-    fn parameters(&self) -> Vec<ParamSpec> {
-        vec![
-            ParamSpec {
-                name:        "name".to_string(),
-                param_type:  ParamType::String,
-                required:    true,
-                description: "Keyword name to retrieve".to_string(),
-                default:     None,
-            },
-            ParamSpec {
-                name:        "default".to_string(),
-                param_type:  ParamType::String,
-                required:    false,
-                description: "Fallback value to use if the keyword is not found on the current frame, \
-                              instead of halting the script (e.g. default=\"\" or default=\"NULL\"). \
-                              Does not apply to no-frame-loaded or no-buffer errors.".to_string(),
-                default:     None,
-            },
-        ]
-    }
-
-    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        let name = args.get("name")
-            .ok_or_else(|| PluginError::missing_arg("name"))?
-            .trim()
-            .to_uppercase();
-
-        let file_path = ctx.file_list
-            .get(ctx.current_frame)
-            .cloned()
-            .ok_or_else(|| PluginError::new("NO_FRAME", "GetKeyword: no current frame"))?;
-
-        let buffer = ctx.image_buffers.get(&file_path)
-            .ok_or_else(|| PluginError::new("NO_BUFFER", "GetKeyword: no image buffer for current frame"))?;
-
-        let entry = buffer.keywords.iter()
-            .find(|(k, _)| k.to_uppercase() == name)
-            .map(|(_, v)| v);
-
-        let value = match entry {
-            Some(kw) => kw.value.trim().to_string(),
-            None => match args.get("default") {
-                Some(default) => default.clone(),
-                None => return Err(PluginError::new(
-                    "NOT_FOUND",
-                    &format!("GetKeyword: keyword '{}' not found in current frame", name),
-                )),
-            },
-        };
-
-        ctx.variables.insert(name.clone(), value.clone());
-
-        Ok(PluginOutput::Value(value))
-    }
-}
 
 // ── MoveFile ──────────────────────────────────────────────────────────────────
 
@@ -522,7 +454,6 @@ pub fn register_all(registry: &crate::plugin::registry::PluginRegistry) {
     registry.register(Arc::new(CopyFile));
     registry.register(Arc::new(CountFiles));
     registry.register(Arc::new(CountMatches));
-    registry.register(Arc::new(GetKeyword));
     registry.register(Arc::new(GetSystemPath));
     registry.register(Arc::new(LoadFile));
     registry.register(Arc::new(MoveFile));

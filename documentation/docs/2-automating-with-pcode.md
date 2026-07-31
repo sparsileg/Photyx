@@ -41,7 +41,9 @@ Print $filecount
 
 ## 3. Reproduce Tutorial 1 as a Script
 
-Everything you did by hand in Tutorial 1 can be typed as one block:
+Everything you did by using the Photyx user interface in Tutorial 1
+can be typed as one block. Remember to use files that you can delete
+after this tutorial.
 
 ```
 ClearSession
@@ -63,12 +65,15 @@ StackFrames
 ```
 
 Notice `CommitAnalysis` is the scripted equivalent of clicking Commit
-Results, and it takes the same `.reject` suffix you saw appear on
-rejected filenames in Tutorial 1.
+Results. In this example it takes the same `.reject` suffix you saw
+appear on rejected filenames in Tutorial 1, but you can use any suffix
+you want. Notice that any rejected images were moved to a `rejected`
+subfolder.
 
 ## 4. Introduce Variables
 
-Variables are set with `Set` and read back with a `$` prefix:
+Variables are set with `Set` and read back with a `$` prefix. The
+`Clear` command deletes the existing lines in the console.
 
 ```
 Set targetName = "M31"
@@ -84,7 +89,9 @@ naturally into the larger string.
 ## 5. Introduce a Loop
 
 Here's a per-frame FWHM report — measuring focus quality frame by
-frame and printing each result:
+frame and printing each result. Loops can be tricky to enter by
+hand. Just remember to use `Shift-Enter` for each new line in a
+loop. Then hit `Enter` after the `EndFor`.
 
 ```
 ReadImages path="<your session directory>"
@@ -94,7 +101,7 @@ For i = 0 To $filecount - 1
   SetFrame index=$i
   GetKeyword name=DATE-OBS
   ComputeFWHM
-  Print $DATE-OBS + "  FWHM=" + $fwhm
+  Print ${DATE-OBS} + "  FWHM=" + $fwhm
 EndFor
 
 Log path="<your log folder>/fwhm_report.log"

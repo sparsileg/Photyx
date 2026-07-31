@@ -416,6 +416,7 @@ fn register_all_plugins(registry: &PluginRegistry) {
     registry.register(Arc::new(plugins::keywords::AddKeyword));
     registry.register(Arc::new(plugins::keywords::CopyKeyword));
     registry.register(Arc::new(plugins::keywords::DeleteKeyword));
+    registry.register(Arc::new(plugins::keywords::GetKeyword));
     registry.register(Arc::new(plugins::keywords::ModifyKeyword));
     registry.register(Arc::new(plugins::list_keywords::ListKeywords));
     registry.register(Arc::new(plugins::read_images::ReadImages));

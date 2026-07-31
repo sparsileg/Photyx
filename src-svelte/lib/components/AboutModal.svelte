@@ -43,43 +43,40 @@
       <div class="about-divider"></div>
 
       <p class="about-text">
-        Photyx is a high-performance desktop application for
-        astrophotographers. It is primarily designed to prepare raw
-        subs from an imaging session so only the "good" ones can be
-        fed into an application such as PixInsight or Siril for
-        additional processing. Photyx can quickly identify and reject
-        frames from an imaging session that are negative outliers. In
-        other words, the frames are of such poor quality that they
-        would degrade the final product.
+        Photyx is a high-performance frame triage tool for
+        astrophotographers. It sits between an imaging session and
+        processing in PixInsight or Siril, quickly separating the
+        frames worth stacking from the ones that would only drag down
+        the final result — clouds rolling through, a tracking hiccup,
+        a stretch of bad seeing. Fed subs from every session in a
+        project, Photyx finds the negative outliers and clears them
+        out before they ever reach your stack.
       </p>
-
       <p class="about-text">
         Photyx reads, displays, and processes astronomical image files
         in FITS and XISF formats. A fast blink engine enables rapid
         sequential comparison of image sets for focus, tracking, and
         quality evaluation, with the ability to reject bad frames at
-        the press of a button. A highly optimized (fast, unlimited
-        number of frames) analysis algorithm applies four rejection
-        metrics, using configurable profiles, that span the
-        rejection-relevant dimensions. Analysis results are displayed
-        via a table or graphically. The user can decide whether to
-        accept the results or not. If the results are accepted, the
-        rejected frames are renamed and moved to a separate folder.
+        the press of a button. A highly optimized analysis engine —
+        fast regardless of session size — applies four quality metrics
+        through configurable threshold profiles, covering the
+        dimensions that matter for rejection. Results are shown as a
+        sortable table or plotted graphically, and nothing is final
+        until you accept it: confirmed rejects are renamed and moved
+        to a separate folder.
       </p>
-
       <p class="about-text">
         Additional features include configurable auto-stretching,
-        batch keyword editing, fast non-calibrated stacking for
-        validation, and more.  All operations are scriptable through
-        pcode, a purpose-built macro language that supports variables,
-        conditionals, loops, and saved macros, accessible
-        interactively via the console, from the macro editor, or the
-        Quick Launch bar.
+        batch keyword editing, and fast non-calibrated stacking for
+        validation. Every operation is scriptable through pcode, a
+        purpose-built macro language supporting variables,
+        conditionals, loops, and saved macros — accessible from the
+        console, the macro editor, or the Quick Launch bar.
       </p>
-
       <p class="about-text">
-        Photyx will eventually deliver cross-platform native
-        performance for Windows, Linux, and MacOS.
+        Photyx delivers native performance on Windows and Debian-based
+        Linux. Testers are needed for other Linux distributions and
+        macOS.
       </p>
 
       <div class="about-divider"></div>

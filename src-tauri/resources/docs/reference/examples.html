@@ -771,7 +771,7 @@ For i = 0 To $filecount - 1
   SetFrame index=$i
   GetKeyword name=DATE-OBS
   ComputeFWHM
-  Print $DATE-OBS + &quot;  FWHM=&quot; + $fwhm
+  Print ${DATE-OBS} + &quot;  FWHM=&quot; + $fwhm
 EndFor
 
 Log path=&quot;/logs/fwhm_report.log&quot;

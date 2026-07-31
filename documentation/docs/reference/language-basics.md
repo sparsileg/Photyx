@@ -56,6 +56,13 @@ Print $label
   quotes**.
 - Variables persist for the lifetime of the script execution and are
   visible to any macro called via `RunMacro`.
+- The bare `$name` form only matches `[A-Za-z0-9_]` — it stops at the
+  first character outside that set. Keyword names containing other
+  characters, most commonly a hyphen (e.g. `DATE-OBS`), need the
+  braced form instead: `${DATE-OBS}`. Without braces, `$date-obs` is
+  read as *subtract the identifier `obs` from `$date`*, not as a
+  single variable reference, since `-` is also the subtraction
+  operator.
 
 ### Arithmetic
 

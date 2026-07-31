@@ -515,6 +515,15 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#getsystempath-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      GetSystemPath names
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -889,6 +898,13 @@ Print $label
   quotes</strong>.</li>
 <li>Variables persist for the lifetime of the script execution and are
   visible to any macro called via <code>RunMacro</code>.</li>
+<li>The bare <code>$name</code> form only matches <code>[A-Za-z0-9_]</code> — it stops at the
+  first character outside that set. Keyword names containing other
+  characters, most commonly a hyphen (e.g. <code>DATE-OBS</code>), need the
+  braced form instead: <code>${DATE-OBS}</code>. Without braces, <code>$date-obs</code> is
+  read as <em>subtract the identifier <code>obs</code> from <code>$date</code></em>, not as a
+  single variable reference, since <code>-</code> is also the subtraction
+  operator.</li>
 </ul>
 <h3 id="arithmetic">Arithmetic<a class="headerlink" href="#arithmetic" title="Permanent link">&para;</a></h3>
 <p><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>^</code> (exponentiation) are supported. Parentheses
@@ -993,6 +1009,10 @@ Set clean  = stripext($f)
 <td><code>CountStars</code></td>
 </tr>
 <tr>
+<td><code>$backgroundmedian</code></td>
+<td><code>BackgroundMedian</code></td>
+</tr>
+<tr>
 <td><code>$filecount</code></td>
 <td><code>CountFiles</code></td>
 </tr>
@@ -1022,9 +1042,65 @@ Set clean  = stripext($f)
 </tr>
 </tbody>
 </table>
-<p>Example — reading a keyword into a variable:</p>
+<p>Example   reading a keyword into a variable:</p>
 <div class="highlight"><pre><span></span><code>GetKeyword name=FILTER
 Print $FILTER
+</code></pre></div>
+<h3 id="getsystempath-names">GetSystemPath names<a class="headerlink" href="#getsystempath-names" title="Permanent link">&para;</a></h3>
+<p><code>GetSystemPath name=&lt;name&gt;</code> accepts one of seven values, each storing
+the result in a variable named after it (<code>$&lt;name&gt;</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Variable</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>downloads</code></td>
+<td><code>$downloads</code></td>
+<td>System Downloads folder</td>
+</tr>
+<tr>
+<td><code>documents</code></td>
+<td><code>$documents</code></td>
+<td>System Documents folder</td>
+</tr>
+<tr>
+<td><code>desktop</code></td>
+<td><code>$desktop</code></td>
+<td>System Desktop folder</td>
+</tr>
+<tr>
+<td><code>temp</code></td>
+<td><code>$temp</code></td>
+<td>System temp directory</td>
+</tr>
+<tr>
+<td><code>home</code></td>
+<td><code>$home</code></td>
+<td>Current user's home directory</td>
+</tr>
+<tr>
+<td><code>log</code></td>
+<td><code>$log</code></td>
+<td>Log directory   respects a configured log-directory override if one is set, otherwise the OS-default Photyx log directory</td>
+</tr>
+<tr>
+<td><code>db</code></td>
+<td><code>$db</code></td>
+<td>Directory containing <code>photyx.db</code>, not the file itself</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code>GetSystemPath name=downloads
+Print $downloads
+ExportAnalysisReport path=&quot;$downloads/M82-Project-Analysis.json&quot;
+
+GetSystemPath name=log
+Print $log
 </code></pre></div>
 <hr />
 <h2 id="flow-control">Flow Control<a class="headerlink" href="#flow-control" title="Permanent link">&para;</a></h2>

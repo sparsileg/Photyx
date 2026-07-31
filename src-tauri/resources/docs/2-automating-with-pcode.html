@@ -765,7 +765,9 @@ arguments. <code>CountFiles</code> happens to take none.</p>
 <div class="highlight"><pre><span></span><code>Print $filecount
 </code></pre></div>
 <h2 id="3-reproduce-tutorial-1-as-a-script">3. Reproduce Tutorial 1 as a Script<a class="headerlink" href="#3-reproduce-tutorial-1-as-a-script" title="Permanent link">&para;</a></h2>
-<p>Everything you did by hand in Tutorial 1 can be typed as one block:</p>
+<p>Everything you did by using the Photyx user interface in Tutorial 1
+can be typed as one block. Remember to use files that you can delete
+after this tutorial.</p>
 <div class="highlight"><pre><span></span><code>ClearSession
 AddFiles paths=&quot;&lt;your session directory&gt;/*.fit&quot;
 
@@ -781,10 +783,13 @@ continue the same script to commit and stack:</p>
 StackFrames
 </code></pre></div>
 <p>Notice <code>CommitAnalysis</code> is the scripted equivalent of clicking Commit
-Results, and it takes the same <code>.reject</code> suffix you saw appear on
-rejected filenames in Tutorial 1.</p>
+Results. In this example it takes the same <code>.reject</code> suffix you saw
+appear on rejected filenames in Tutorial 1, but you can use any suffix
+you want. Notice that any rejected images were moved to a <code>rejected</code>
+subfolder.</p>
 <h2 id="4-introduce-variables">4. Introduce Variables<a class="headerlink" href="#4-introduce-variables" title="Permanent link">&para;</a></h2>
-<p>Variables are set with <code>Set</code> and read back with a <code>$</code> prefix:</p>
+<p>Variables are set with <code>Set</code> and read back with a <code>$</code> prefix. The
+<code>Clear</code> command deletes the existing lines in the console.</p>
 <div class="highlight"><pre><span></span><code>Set targetName = &quot;M31&quot;
 Set label = &quot;Session: &quot; + $targetName
 Print $label
@@ -795,7 +800,9 @@ when either side isn't purely numeric, so <code>$targetName</code> slots
 naturally into the larger string.</p>
 <h2 id="5-introduce-a-loop">5. Introduce a Loop<a class="headerlink" href="#5-introduce-a-loop" title="Permanent link">&para;</a></h2>
 <p>Here's a per-frame FWHM report — measuring focus quality frame by
-frame and printing each result:</p>
+frame and printing each result. Loops can be tricky to enter by
+hand. Just remember to use <code>Shift-Enter</code> for each new line in a
+loop. Then hit <code>Enter</code> after the <code>EndFor</code>.</p>
 <div class="highlight"><pre><span></span><code>ReadImages path=&quot;&lt;your session directory&gt;&quot;
 
 CountFiles
@@ -803,7 +810,7 @@ For i = 0 To $filecount - 1
   SetFrame index=$i
   GetKeyword name=DATE-OBS
   ComputeFWHM
-  Print $DATE-OBS + &quot;  FWHM=&quot; + $fwhm
+  Print ${DATE-OBS} + &quot;  FWHM=&quot; + $fwhm
 EndFor
 
 Log path=&quot;&lt;your log folder&gt;/fwhm_report.log&quot;

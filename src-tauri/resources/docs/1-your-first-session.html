@@ -340,18 +340,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#8-read-analysis-graph" class="md-nav__link">
+  <a href="#8-toggle-a-flag" class="md-nav__link">
     <span class="md-ellipsis">
-      8. Read Analysis Graph
+      8. Toggle a Flag
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#9-toggle-a-flag" class="md-nav__link">
+  <a href="#9-read-analysis-graph" class="md-nav__link">
     <span class="md-ellipsis">
-      9. Toggle a Flag
+      9. Read Analysis Graph
     </span>
   </a>
   
@@ -802,55 +802,94 @@ changes in the next step.</p>
 <li><strong>File browser:</strong> <code>Session &gt; Add Files…</code> (or Ctrl+O), then select
   roughly half of your frames.</li>
 <li><strong>Drag-and-drop:</strong> drag the remaining files directly from your
-  operating system's file browser into the Photyx window to add them
+  operating system's file explorer into the Photyx window to add them
   to the same session.</li>
 </ul>
-<p>Either way, watch the toolbar — it updates to show
-<code>N files · M directories</code> once your frames are loaded.</p>
+<p>Either way, watch the toolbar — it updates to show <code>N files · M
+directories</code> once your frames are loaded. Note that after the first
+set of files is loaded, subsequent loads do not show progress
+updates. This is a known issue.</p>
 <blockquote>
 <p><strong>Note:</strong> Photyx works best with FITS (<code>.fit</code>/<code>.fits</code>/<code>.fts</code>) files.
 XISF is also fully supported if that's what your capture software
 produces.</p>
 </blockquote>
+<p>The set of files loaded is known as a <code>session</code>.</p>
 <h2 id="3-view-a-frame">3. View a Frame<a class="headerlink" href="#3-view-a-frame" title="Permanent link">&para;</a></h2>
-<p>Click through a few frames using the viewer's navigation controls.
-Try zooming in on a star field. Then apply <strong>AutoStretch</strong> to bring
-out detail in an otherwise flat-looking linear image — this only
-changes the display, not your underlying pixel data.</p>
+<p>Click the <code>Linear</code> button on the top toolbar to autostretch the
+current image. Adjust the Black and Background (BG) sliders to adjust
+the stretch. This only changes the display, not your underlying pixel
+data.</p>
+<p>Click through a few frames using the viewer's navigation arrows,
+located near the bottom right of the viewer. Try zooming in on a star
+field.</p>
+<p><strong>NOTE</strong> that the display image is a raw compressed JPEG image that is
+ uncalibrated and not debayered. You will definitely see artifacts in
+ the raw subs.</p>
 <h2 id="4-blink-for-a-quick-review">4. Blink for a Quick Review<a class="headerlink" href="#4-blink-for-a-quick-review" title="Permanent link">&para;</a></h2>
-<p>Open the <strong>Blink</strong> tab and press play. Blink rapidly cycles through
-your frames at reduced resolution so you can eyeball focus, tracking,
-and cloud drift across the whole session in seconds — well before
-running any formal analysis. Try stepping frame-by-frame as well as
-continuous playback, and adjust the Min Delay if it's cycling too fast
-or slow to follow.</p>
+<p>Open the <strong>Blink</strong> tab in the bottom <strong>Info Panel</strong> and press
+play. Blink rapidly cycles through your frames at reduced resolution
+so you can eyeball focus, tracking, and cloud drift across the whole
+session in seconds — well before running any formal analysis. Try
+stepping frame-by-frame as well as continuous playback, and adjust the
+Min Delay if it's cycling too fast or slow to follow.</p>
+<p><strong>Tip</strong>: You can manually reject frames while in Blink mode. Clearing
+out extreme outliers by eye before running Analyze Frames gives the
+statistical analysis a cleaner population to work from — and produces
+better results.</p>
 <h2 id="5-tag-the-session-with-a-keyword">5. Tag the Session with a Keyword<a class="headerlink" href="#5-tag-the-session-with-a-keyword" title="Permanent link">&para;</a></h2>
 <p>The Keyword Editor panel is great for looking at one frame's header,
 but it can only edit one file at a time. To add a keyword across an
-entire session at once, use the console instead.</p>
-<p>Open the console (the collapsible panel at the bottom of the viewer)
-and run:</p>
-<div class="highlight"><pre><span></span><code>AddKeyword name=FILTER value=duo comment=&quot;Tutorial test tag&quot; scope=all
-WriteCurrent
+entire session at once, use the console instead. Later you will learn
+how to write and save macros for operations you repeat regularly.</p>
+<p>Maximize the console (the collapsible panel at the bottom of the
+viewer) by clicking on the line that says "PCODE CONSOLE" and typing:</p>
+<p>In the console, type <code>ListKeywords</code>. This will retrieve all the FIT
+keywords from the currently displayed image and print them to the
+screen and in a scrollable popup window.</p>
+<p>In the console, type (note the autocomplete while typing):</p>
+<div class="highlight"><pre><span></span><code>help AddKeyword
 </code></pre></div>
-<p><code>scope=all</code> applies the keyword to every loaded frame in one command.
-<code>WriteCurrent</code> writes the change back to your files — for FITS files
-this only rewrites header keywords, the pixel data on disk is
-untouched.</p>
+<p>Click the <code>X</code> to close the help window.</p>
+<p>When typing a command at the console, hit <code>&lt;TAB&gt;</code> to auto-complete. Once
+you've typed enough characters to get a unique string, hitting <code>&lt;TAB&gt;</code>
+will display the possible command arguments.</p>
+<div class="highlight"><pre><span></span><code>AddKeyword name=FILTER value=&quot;duo&quot; comment=&quot;Tutorial test tag&quot; scope=all
+WriteCurrent
+ListKeywords
+</code></pre></div>
+<p><code>scope=all</code> applies the keyword to every loaded frame in one command
+and is the default value.  <code>WriteCurrent</code> writes the change back to
+your files — for FITS files this only rewrites header keywords, the
+pixel data on disk is untouched.</p>
+<p><strong>TIP</strong>: Use double-quotes around an argument that has spaces in
+it. It's a good habit to just wrap everything in double quotes even if
+you don't have to. The keyword name is always upper case, but the
+value and comment can be mixed case.</p>
 <blockquote>
 <p>This keyword isn't required by anything downstream in this
 tutorial — it's here so you get comfortable with the console before
 Tutorial 2. We'll remove it again in the final step.</p>
 </blockquote>
+<p>Clear the console by either clicking the <code>Clear</code> at the top right of
+the console or typing <code>Clear</code> in the console. Minimize the console by
+clicking on the title bar.</p>
 <h2 id="6-run-analyze-frames">6. Run Analyze Frames<a class="headerlink" href="#6-run-analyze-frames" title="Permanent link">&para;</a></h2>
 <p>Open <code>Analyze &gt; Analyze Frames</code>. You'll be prompted to pick a
 threshold profile — choose <strong>Default</strong> for this run and confirm.</p>
 <p>Photyx computes four quality metrics per frame — background median,
 FWHM, eccentricity, and star count — and classifies every frame as
-<strong>PASS</strong> or <strong>REJECT</strong> relative to the rest of <em>this</em> session. A frame
-that would pass in bright moonlight might reject in a darker session,
-and that's intentional: classification is always session-relative,
-never an absolute standard.</p>
+PASS or REJECT relative to the rest of this session. Three of the four
+(background median, FWHM, star count) are session-relative by design:
+a frame is judged against the statistics of the frames around it, not
+against a fixed number. Eccentricity is the exception — it rejects on
+an absolute value, regardless of session. Because most of the
+classification depends on what else is in the pool, commit the results
+of Analyze Frames only when you're processing all the frames of a
+project under the same filter — mixing in a partial or wrong-filter
+set skews the very statistics every frame is being judged against.</p>
+<p>When the analysis is complete, it will print the number of frames that
+passed and the number that were rejected in the console.</p>
 <h2 id="7-read-analysis-results">7. Read Analysis Results<a class="headerlink" href="#7-read-analysis-results" title="Permanent link">&para;</a></h2>
 <p>Open <code>Analyze &gt; Analysis Results</code>. You'll see a sortable table:
 filename, the four metrics, PXFLAG (PASS/REJECT), and a rejection
@@ -883,49 +922,50 @@ category.</p>
 </tbody>
 </table>
 <p>A frame can show more than one badge if more than one metric fired.</p>
-<h2 id="8-read-analysis-graph">8. Read Analysis Graph<a class="headerlink" href="#8-read-analysis-graph" title="Permanent link">&para;</a></h2>
-<p>Open <code>Analyze &gt; Analysis Graph</code> for the same results, visually. Each
-dot is a frame — white for PASS, colored per the table above for
-REJECT — plotted against sigma bands with the reject threshold lines
-drawn in. Click any dot to jump straight to that frame in the viewer.</p>
-<h2 id="9-toggle-a-flag">9. Toggle a Flag<a class="headerlink" href="#9-toggle-a-flag" title="Permanent link">&para;</a></h2>
+<h2 id="8-toggle-a-flag">8. Toggle a Flag<a class="headerlink" href="#8-toggle-a-flag" title="Permanent link">&para;</a></h2>
 <p>Right-click any row in Analysis Results. If it's a REJECT, you'll see
 "Set to PASS" — if it's a PASS, "Set to REJECT." Try toggling one.</p>
 <p>Nothing is written to disk yet — this is a local, reversible override
 that only takes effect when you commit.</p>
+<h2 id="9-read-analysis-graph">9. Read Analysis Graph<a class="headerlink" href="#9-read-analysis-graph" title="Permanent link">&para;</a></h2>
+<p>Open <code>Analyze &gt; Analysis Graph</code> for the same results, visually. Each
+dot is a frame — white for PASS, colored per the table above for
+REJECT — plotted against sigma bands with the reject threshold lines
+drawn in.</p>
+<p>Select the metric that is displayed using the dropdown at the top of
+the graph. You can select a second metric to display over the
+first. Click any dot to jump straight to that frame in the viewer.</p>
 <h2 id="10-commit-results">10. Commit Results<a class="headerlink" href="#10-commit-results" title="Permanent link">&para;</a></h2>
 <p>Click <strong>Commit Results</strong>. Here's exactly what happens:</p>
 <ul>
-<li>Any toggle you made in step 9 is applied first</li>
-<li>Every frame still flagged REJECT is moved into a <code>rejected/</code>
+<li>Every frame flagged as REJECT is moved into a <code>rejected/</code>
   subfolder inside its own source directory, with <code>.reject</code> appended
-  to the filename (e.g. <code>frame001.fit.reject</code>)</li>
+  to the filename (e.g. <code>frame001.fit.reject</code>) and is removed from the
+  session.</li>
 <li>This is a <strong>move, not a delete</strong> — nothing is destroyed</li>
 <li>PASS frames stay loaded and the session stays open, ready for the
   next step</li>
 </ul>
 <h2 id="11-stack-the-surviving-frames">11. Stack the Surviving Frames<a class="headerlink" href="#11-stack-the-surviving-frames" title="Permanent link">&para;</a></h2>
-<p>Open the Stacking Workspace (<code>Analyze</code> menu) and run a stack on your
-remaining PASS frames.</p>
+<p>Open the Stacking Workspace (<code>Analyze</code> menu) and press the <code>Stack</code>
+button on the top toolbar to stack all the PASS frames.</p>
 <p>At a high level, Photyx groups frames by imaging session/rotation,
 aligns each frame to a reference using star matching, and combines
 them with a sigma-clipped mean — outlier pixels (satellite trails,
 cosmic ray hits) are automatically excluded from the final result on a
 per-pixel basis.</p>
-<blockquote>
-<p><em>Reviewer note for Stan: I don't have exact button/control labels
-for the Stacking Workspace UI in the reference docs — please correct
-this step with the real control names before publishing.</em></p>
-</blockquote>
+<p><strong>NOTE*: This is a fast, rudimentary stack. The final product does not
+use calibration frames and white balance is not applied. The stacked
+product should only be used for a quick visual validation of the
+session images. The stacked image is </strong>NOT** production quality.</p>
 <h2 id="12-view-and-export-the-stack">12. View and Export the Stack<a class="headerlink" href="#12-view-and-export-the-stack" title="Permanent link">&para;</a></h2>
-<p>Preview the stretched result in the Stacking Workspace. When you're
-happy with it, export it from the console:</p>
-<div class="highlight"><pre><span></span><code>WriteXISF destination=&quot;&lt;your output folder&gt;&quot; stack=true
-Print &quot;Stack written to: &quot; + $STACKED
-</code></pre></div>
+<p>Preview the stretched result in the Stacking Workspace. If you wish,
+you can commit the stretch and export the using using the <code>Stacking
+Workspace</code> UI. Close the <code>Stacking Workspace</code> when finished.</p>
 <h2 id="13-clean-up-the-test-keyword">13. Clean Up the Test Keyword<a class="headerlink" href="#13-clean-up-the-test-keyword" title="Permanent link">&para;</a></h2>
 <p>Back in the console, remove the <code>FILTER</code> keyword you added in step 5:</p>
-<div class="highlight"><pre><span></span><code>DeleteKeyword name=FILTER scope=all
+<div class="highlight"><pre><span></span><code>help DeleteKeyword
+DeleteKeyword name=FILTER scope=all
 WriteCurrent
 </code></pre></div>
 <p>Your files are now back to their original header state.</p>
