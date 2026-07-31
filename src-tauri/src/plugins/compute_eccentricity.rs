@@ -122,7 +122,7 @@ impl PhotyxPlugin for ComputeEccentricity {
             ar.eccentricity = Some(result.eccentricity);
             ar.star_count   = Some(result.star_count as u32);
         }
-        ctx.variables.insert("eccentricity".to_string(), result.eccentricity.to_string());
+        ctx.variables.insert("ECCENTRICITY".to_string(), result.eccentricity.to_string());
 
         // ── Build response ────────────────────────────────────────────────────
         let message = format!(
