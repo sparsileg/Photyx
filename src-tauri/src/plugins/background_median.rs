@@ -1,6 +1,6 @@
 // plugins/background_median.rs — BackgroundMedian plugin
 // Spec §15.4, §7.8
-//
+
 // Thin plugin wrapper over analysis::background::compute_background_metrics.
 // Populates background_median in the AnalysisResult for the current frame.
 
@@ -143,10 +143,12 @@ impl PhotyxPlugin for BackgroundMedianPlugin {
         ]
     }
 
-    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
+fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
         let (metrics, path) = run_and_store(ctx, args)?;
 
         let median_adu = (metrics.median * 65535.0).round() as u32;
+
+        ctx.variables.insert("BACKGROUNDMEDIAN".to_string(), metrics.median.to_string());
 
         Ok(PluginOutput::Data(json!({
             "plugin":                "BackgroundMedian",
@@ -214,4 +216,6 @@ impl PhotyxPlugin for BackgroundGradientPlugin {
 }
 
 
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------

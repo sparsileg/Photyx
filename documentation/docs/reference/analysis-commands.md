@@ -18,7 +18,7 @@ AnalyzeFrames [profile=<string>] [scope=all|current] [threshold=<float>] [satura
 | Argument | Required | Default | Description |
 | ------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
 | `profile` | No | | Threshold profile name to use for this run. If omitted, uses the active profile set in Edit > Analysis Parameters. The active profile is not permanently changed. |
-| `scope` | No | `all` | `all` runs the full two-pass session analysis (session stats, PASS/REJECT classification, reference-frame selection). `current` runs the same five metrics on only the current frame and prints raw values — no session stats or classification. |
+| `scope` | No | `all` | `all` runs the full two-pass session analysis (session stats, PASS/REJECT classification, reference-frame selection). `current` runs the same four metrics on only the current frame and prints raw values — no session stats or classification. |
 | `threshold` | No | `5.0` | Star detection threshold in units of background std dev |
 | `saturation` | No | `0.98` | Saturation threshold — stars at or above this value are rejected from detection |
 
@@ -195,7 +195,7 @@ ContourHeatmap palette=plasma contour_levels=12
 ## `BackgroundMedian`
 
 Computes the sigma-clipped background median for the current
-frame. This is one of the five metrics `AnalyzeFrames` computes
+frame. This is one of the four metrics `AnalyzeFrames` computes
 internally for every frame; running it standalone is useful for
 inspecting or tuning background estimation on a single frame.
 
@@ -208,6 +208,8 @@ BackgroundMedian [sigma=<float>] [iterations=<int>] [grid=<int>]
 | `sigma` | No | `3.0` | Sigma-clipping threshold in std dev units |
 | `iterations` | No | `5` | Maximum sigma-clipping iterations |
 | `grid` | No | `4` | Grid divisions per axis used internally for gradient estimation |
+
+**Side effect:** Stores result in `$backgroundmedian`.
 
 ```
 BackgroundMedian

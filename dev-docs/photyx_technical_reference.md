@@ -772,7 +772,7 @@ thresholds.
 
 ### 6.2 Metrics
 
-Five metrics are computed per frame:
+Four metrics are computed per frame:
 
 | Metric             | Type      | Direction            | Default Reject | Drives Rejection |
 | --------------------- | ----------- | ----------------------- | ----------------- | ------------------- |

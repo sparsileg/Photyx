@@ -116,6 +116,7 @@ Several commands automatically store their results in variables.
 | `$fwhm` | `ComputeFWHM` |
 | `$eccentricity` | `ComputeEccentricity` |
 | `$starcount` | `CountStars` |
+| `$backgroundmedian` | `BackgroundMedian` |
 | `$filecount` | `CountFiles` |
 | `$matchcount` | `CountMatches` |
 | `$STACKED` | `WriteFIT stack=true`, `WriteXISF stack=true` |
@@ -124,11 +125,35 @@ Several commands automatically store their results in variables.
 | `$<KEYWORDNAME>` | `GetKeyword name=<KEYWORDNAME>` (uppercased; falls back to `default=` if given and the keyword is not found) |
 | `$<name>` | `GetSystemPath name=<name>` (e.g. `name=downloads` stores `$downloads`) |
 
-Example — reading a keyword into a variable:
+Example   reading a keyword into a variable:
 
 ```
 GetKeyword name=FILTER
 Print $FILTER
+```
+
+### GetSystemPath names
+
+`GetSystemPath name=<name>` accepts one of seven values, each storing
+the result in a variable named after it (`$<name>`):
+
+| Name | Variable | Description |
+| ----------- | ------------- | ----------------------------------------------------------------------------------------- |
+| `downloads` | `$downloads` | System Downloads folder |
+| `documents` | `$documents` | System Documents folder |
+| `desktop` | `$desktop` | System Desktop folder |
+| `temp` | `$temp` | System temp directory |
+| `home` | `$home` | Current user's home directory |
+| `log` | `$log` | Log directory   respects a configured log-directory override if one is set, otherwise the OS-default Photyx log directory |
+| `db` | `$db` | Directory containing `photyx.db`, not the file itself |
+
+```
+GetSystemPath name=downloads
+Print $downloads
+ExportAnalysisReport path="$downloads/M82-Project-Analysis.json"
+
+GetSystemPath name=log
+Print $log
 ```
 
 ---

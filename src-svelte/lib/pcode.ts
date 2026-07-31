@@ -385,7 +385,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   analyzeframes: {
     name:        'AnalyzeFrames',
-    description: 'Computes five quality metrics for loaded frames (FWHM, eccentricity, star count, signal weight, background median). With scope=all (default), classifies each frame as PASS or REJECT via iterative sigma clipping across the session. With scope=current, runs the same metrics on only the current frame and reports raw values — no session stats or classification.',
+    description: 'Computes four quality metrics for loaded frames (FWHM, eccentricity, star count, signal weight, background median). With scope=all (default), classifies each frame as PASS or REJECT via iterative sigma clipping across the session. With scope=current, runs the same metrics on only the current frame and reports raw values — no session stats or classification.',
     syntax:      'AnalyzeFrames [profile=<name>] [scope=all|current] [threshold=<float>] [saturation=<float>]',
     arguments: [
       { name: 'profile',    type: 'string', required: false, description: 'Threshold profile name to use for this run (e.g. profile=Session). If omitted, uses the active profile set in Edit > Analysis Parameters.' },
@@ -474,16 +474,16 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'ContourHeatmap palette=plasma contour_levels=12',
   },
 
-  backgroundmedian: {
+    backgroundmedian: {
     name:        'BackgroundMedian',
-    description: 'Computes the sigma-clipped background median for the current frame. This is one of the five metrics AnalyzeFrames computes internally for every frame; running it standalone is useful for inspecting or tuning background estimation on a single frame.',
+    description: 'Computes the sigma-clipped background median for the current frame. This is one of the four metrics AnalyzeFrames computes internally for every frame; running it standalone is useful for inspecting or tuning background estimation on a single frame.',
     syntax:      'BackgroundMedian [sigma=<float>] [iterations=<int>] [grid=<int>]',
     arguments: [
       { name: 'sigma',      type: 'float',   required: false, default: '3.0', description: 'Sigma-clipping threshold in std dev units' },
       { name: 'iterations', type: 'integer', required: false, default: '5',   description: 'Maximum sigma-clipping iterations' },
       { name: 'grid',       type: 'integer', required: false, default: '4',   description: 'Grid divisions per axis used internally for gradient estimation' },
     ],
-    output:  'Reports the background median for the current frame.',
+    output:  'Reports the background median for the current frame. Stores result in $backgroundmedian.',
     example: 'BackgroundMedian\nBackgroundMedian sigma=2.5 iterations=8',
   },
 
