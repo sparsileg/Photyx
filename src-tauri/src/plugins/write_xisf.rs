@@ -175,10 +175,20 @@ fn write_stack_result(
 }
 
 pub(crate) fn buffer_to_xisf_image(buffer: &crate::context::ImageBuffer) -> Result<XisfImage, String> {
-    let pixels = match buffer.pixels.as_ref().ok_or("No pixel data")? {
-        PixelData::U8(v)  => XisfPixelData::U8(v.clone()),
-        PixelData::U16(v) => XisfPixelData::U16(v.clone()),
-        PixelData::F32(v) => XisfPixelData::F32(v.clone()),
+    let pixels = buffer.pixels.clone().ok_or("No pixel data")?;
+    build_xisf_image(buffer, pixels)
+}
+
+/// Pixel-source-agnostic version — callers can supply freshly-read pixels
+/// instead of buffer.pixels (which may be None outside the viewing LRU).
+pub(crate) fn build_xisf_image(
+    buffer: &crate::context::ImageBuffer,
+    pixels: PixelData,
+) -> Result<XisfImage, String> {
+    let pixels = match pixels {
+        PixelData::U8(v)  => XisfPixelData::U8(v),
+        PixelData::U16(v) => XisfPixelData::U16(v),
+        PixelData::F32(v) => XisfPixelData::F32(v),
     };
 
     let sample_format = match buffer.bit_depth {
@@ -215,4 +225,7 @@ pub(crate) fn buffer_to_xisf_image(buffer: &crate::context::ImageBuffer) -> Resu
     })
 }
 
+
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------

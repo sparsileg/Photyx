@@ -51,7 +51,25 @@ impl PhotyxPlugin for WriteCurrent {
                         Some(b) => b,
                         None => { errors += 1; continue; }
                     };
-                    let xisf_image = match super::write_xisf::buffer_to_xisf_image(buffer) {
+                    let pixels = match super::pixel_chunking::load_request(&path, super::pixel_chunking::LoadKind::Raw) {
+                        super::pixel_chunking::LoadOutcome::Loaded(super::pixel_chunking::LoadedFrame::Raw(snap)) => snap.pixels,
+                        super::pixel_chunking::LoadOutcome::Loaded(_) => {
+                            warn!("WriteCurrent: XISF read error {}: unexpected LoadedFrame kind for a Raw request", path);
+                            errors += 1;
+                            continue;
+                        }
+                        super::pixel_chunking::LoadOutcome::Missing { .. } => {
+                            warn!("WriteCurrent: XISF read error {}: source file missing", path);
+                            errors += 1;
+                            continue;
+                        }
+                        super::pixel_chunking::LoadOutcome::Unreadable { error, .. } => {
+                            warn!("WriteCurrent: XISF read error {}: {}", path, error);
+                            errors += 1;
+                            continue;
+                        }
+                    };
+                    let xisf_image = match super::write_xisf::build_xisf_image(buffer, pixels) {
                         Ok(img) => img,
                         Err(e) => {
                             warn!("WriteCurrent: XISF convert error {}: {}", path, e);
