@@ -67,8 +67,8 @@ StackFrames
 Notice `CommitAnalysis` is the scripted equivalent of clicking Commit
 Results. In this example it takes the same `.reject` suffix you saw
 appear on rejected filenames in Tutorial 1, but you can use any suffix
-you want. Notice that any rejected images were moved to a `rejected`
-subfolder.
+you want. Notice that rejected images were moved to a `rejected`
+subfolder in the file's parent directory.
 
 ## 4. Introduce Variables
 
@@ -104,7 +104,9 @@ For i = 0 To $filecount - 1
   Print ${DATE-OBS} + "  FWHM=" + $fwhm
 EndFor
 
-Log path="<your log folder>/fwhm_report.log"
+GetSystemPath name=downloads
+Set Logfile = $downloads + "/fwhm_report.log"
+Log path=$Logfile
 ```
 
 `For i = 0 To $filecount - 1` steps through every loaded frame by
@@ -134,8 +136,30 @@ valid condition operator.
 
 Open the Macro Editor from the Icon Sidebar. Paste in your FWHM report
 script (with the conditional from step 6 added), give it a name — for
-example `fwhm-report` — and save it. Saving keeps a version history,
-so you can always roll back to an earlier draft later.
+example `fwhm-report` — and save it. Remember that since the keyword
+name `DATE-OBS` has a non-alphanumeric character, we must wrap it with
+braces so that the `-` is not evaluated.
+
+Here's the entire script
+
+```
+CountFiles
+For i = 0 To $filecount - 1
+  SetFrame index=$i
+  GetKeyword name=DATE-OBS
+  ComputeFWHM
+  if $fwhm > 3.0
+    Print "Poor focus - skipping"
+  else
+    print "Focus acceptable"
+  EndIf
+  Print ${DATE-OBS} + "  FWHM=" + $fwhm
+EndFor
+
+GetSystemPath name=downloads
+Set logfile = $downloads + "/fwhm_report.log"
+Log path=$logfile
+```
 
 ## 8. Run It Two More Ways
 
@@ -152,6 +176,9 @@ other two ways to run a saved macro:
 
   `RunMacro` is also how one macro calls another — useful once you
   start building a library of small, reusable scripts.
+
+  When you use `RunMacro` from the console, you don't get any progress
+  reporting until it is completely done. Be patient!
 
 ## 9. Pin It to Quick Launch
 

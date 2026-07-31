@@ -337,27 +337,27 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-set-a-project-variable" class="md-nav__link">
+  <a href="#3-set-project-variables" class="md-nav__link">
     <span class="md-ellipsis">
-      3. Set a Project Variable
+      3. Set Project Variables
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-load-all-sessions-with-one-glob" class="md-nav__link">
+  <a href="#4-load-each-filter-group-with-its-own-glob" class="md-nav__link">
     <span class="md-ellipsis">
-      4. Load All Sessions with One Glob
+      4. Load Each Filter Group with Its Own Glob
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-run-analyze-frames-on-the-combined-pool" class="md-nav__link">
+  <a href="#5-run-analyze-frames-on-each-combined-pool" class="md-nav__link">
     <span class="md-ellipsis">
-      5. Run Analyze Frames on the Combined Pool
+      5. Run Analyze Frames on Each Combined Pool
     </span>
   </a>
   
@@ -382,9 +382,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#8-stack-the-combined-set" class="md-nav__link">
+  <a href="#8-stack-each-filter-group" class="md-nav__link">
     <span class="md-ellipsis">
-      8. Stack the Combined Set
+      8. Stack Each Filter Group
     </span>
   </a>
   
@@ -412,6 +412,15 @@
   <a href="#11-wrap-up" class="md-nav__link">
     <span class="md-ellipsis">
       11. Wrap-Up
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-example-multi-session-multi-filter-macro" class="md-nav__link">
+    <span class="md-ellipsis">
+      12. Example Multi-Session, Multi-Filter Macro
     </span>
   </a>
   
@@ -763,97 +772,342 @@ through analyzing <em>one</em> session. This tutorial combines <em>all</em> of t
 into a single pool before analyzing and stacking — different frames
 compete against each other for PASS/REJECT purposes, not just against
 their own night.</p>
+<p>Real multi-session projects often mix filters, too — a target imaged
+with a duo-narrowband filter on some nights and a broadband filter on
+others. Frames shot through different filters shouldn't be combined
+into one analysis or stacking pass: they have different threshold
+profiles, and <code>StackFrames</code> will only combine frames that match its
+reference frame's filter — anything else is silently excluded from the
+stack rather than an error. This tutorial handles that by processing
+each filter as its own pass throughout, matching the way you'd script
+a real mixed-filter project.</p>
 <h2 id="2-the-folder-hierarchy-this-tutorial-assumes">2. The Folder Hierarchy This Tutorial Assumes<a class="headerlink" href="#2-the-folder-hierarchy-this-tutorial-assumes" title="Permanent link">&para;</a></h2>
 <p>This tutorial assumes a project laid out as one parent folder
 containing one subfolder per imaging session, each with its own
-<code>lights/</code> folder inside:</p>
-<div class="highlight"><pre><span></span><code>M82/
-├── M82-ircut-sess-01/
-│   └── lights/
-│       ├── frame001.fit
-│       └── ...
-├── M82-ircut-sess-02/
-│   └── lights/
-│       └── ...
-└── M82-ircut-sess-03/
-    └── lights/
-        └── ...
+<code>data/lights/</code> folder inside:</p>
+<div class="highlight"><pre><span></span><code>NGC7380-Wizard-Nebula/
+    NGC7380-duo-sess-20240611/
+        data/
+            lights/
+                frame001.fit
+                ...
+    NGC7380-duo-sess-20240612/
+        data/
+            lights/
+                frame001.fit
+                ...
+    NGC7380-duo-sess-20241005/
+        data/
+            lights/
+                frame001.fit
+                ...
+    NGC7380-ircut-sess-20240911/
+        data/
+            lights/
+                frame001.fit
+                ...
 </code></pre></div>
-<p>If your own folder structure looks different, adjust the glob pattern
-in step 4 to match.</p>
-<h2 id="3-set-a-project-variable">3. Set a Project Variable<a class="headerlink" href="#3-set-a-project-variable" title="Permanent link">&para;</a></h2>
-<p>Rather than repeating the full project path in every command, set it
-once at the top of the script:</p>
-<div class="highlight"><pre><span></span><code>Set project = &quot;J:/projects/M82&quot;
-# Linux/Mac equivalent: Set project = &quot;/data/projects/M82&quot;
+<p>Three nights were shot with a duo-narrowband filter, one with an ircut
+(broadband) filter — the session folder names carry the filter and
+date so a glob pattern can select all the duo-band sessions separate
+from the broadband filter session. If your own folder structure looks
+different, adjust the glob patterns in step 4 to match.</p>
+<h2 id="3-set-project-variables">3. Set Project Variables<a class="headerlink" href="#3-set-project-variables" title="Permanent link">&para;</a></h2>
+<p>Rather than repeating the full project path and target name in every
+command, set them once at the top of the script:</p>
+<div class="highlight"><pre><span></span><code>Set project = &quot;J:/Projects/NGC7380-Wizard-Nebula&quot;
+# alternate Linux/MacOS path might be: &quot;/Astro/Projects/NGC7380-Wizard-Nebula&quot;
+Set tgt = &quot;NGC7380&quot;
 </code></pre></div>
-<p>Every path from here on can reference <code>$project</code> instead of the full
-string.</p>
-<h2 id="4-load-all-sessions-with-one-glob">4. Load All Sessions with One Glob<a class="headerlink" href="#4-load-all-sessions-with-one-glob" title="Permanent link">&para;</a></h2>
-<p><code>AddFiles</code> accepts glob patterns, including wildcards in the middle of
-a path — not just at the end. This lets one command pull frames from
-every session folder in the project at once:</p>
+<p>Any command from here on can reference <code>$project</code> or <code>$tgt</code>.</p>
+<h2 id="4-load-each-filter-group-with-its-own-glob">4. Load Each Filter Group with Its Own Glob<a class="headerlink" href="#4-load-each-filter-group-with-its-own-glob" title="Permanent link">&para;</a></h2>
+<p><code>AddFiles</code>/<code>ReadImages</code> accept glob patterns, including wildcards in
+the middle of a path — not just at the end. This lets one command pull
+frames from every session folder matching a given filter, across the
+whole project, at once. Because this project mixes filters, load and
+process the duo sessions and the ircut sessions as separate passes
+rather than combining everything into one glob:</p>
 <div class="highlight"><pre><span></span><code>ClearSession
-AddFiles paths=&quot;$project/M82-*-sess-*/lights/*.fit&quot;
+ReadImages path=&quot;$project/*-duo-*/data/lights&quot;
 
 CountFiles
 Assert expression=&quot;$filecount &gt; 0&quot;
-Print &quot;Loaded &quot; + $filecount + &quot; frames across all sessions&quot;
+Print &quot;Loaded &quot; + $filecount + &quot; duo frames across all duo sessions&quot;
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>ClearSession
+ReadImages path=&quot;$project/*-ircut-*/data/lights&quot;
+
+CountFiles
+Assert expression=&quot;$filecount &gt; 0&quot;
+Print &quot;Loaded &quot; + $filecount + &quot; ircut frames across all ircut sessions&quot;
 </code></pre></div>
 <p><code>Assert</code> halts the script with a clear error if the glob matched
 nothing — worth having in any script that depends on files actually
-being found, rather than silently continuing with zero frames.</p>
-<h2 id="5-run-analyze-frames-on-the-combined-pool">5. Run Analyze Frames on the Combined Pool<a class="headerlink" href="#5-run-analyze-frames-on-the-combined-pool" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>AnalyzeFrames profile=&quot;Project&quot;
+being found, rather than silently continuing with zero frames. Note
+each pass starts with <code>ClearSession</code> — the duo pass and the ircut pass
+never share a session pool.</p>
+<p>Another way of approaching the problem of zero files is to put a
+conditional check after the <code>CountFiles</code> command and process that set
+of files only if there is more than one. This way you can handle cases
+where files don't exist, but you you just skipping processing, rather
+halting the macro.</p>
+<div class="highlight"><pre><span></span><code>ClearSession
+ReadImages path=&quot;$project/*-ircut-*/data/lights&quot;
+
+CountFiles
+if $filecount &gt; 0
+  Print &quot;Loaded &quot; + $filecount + &quot; ircut frames across all ircut sessions&quot;
+EndIf
+</code></pre></div>
+<h2 id="5-run-analyze-frames-on-each-combined-pool">5. Run Analyze Frames on Each Combined Pool<a class="headerlink" href="#5-run-analyze-frames-on-each-combined-pool" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>AnalyzeFrames profile=&quot;Duo-band&quot;
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>AnalyzeFrames profile=&quot;Broadband&quot;
 </code></pre></div>
 <p>This is the same <code>AnalyzeFrames</code> command from Tutorials 1 and 2 — the
-difference is entirely in what's loaded. Because every frame from
-every session is in the session pool together, PASS/REJECT is decided
-relative to the combined population, not any single night.</p>
+difference is entirely in what's loaded and which profile applies.
+Because every frame from every session <em>of that filter</em> is in the
+session pool together, PASS/REJECT is decided relative to that
+filter's combined population, not any single night — and not against
+frames shot through a different filter, which would skew the
+statistics.</p>
 <blockquote>
-<p>Use (or create) a threshold profile named to reflect this run — the
-<code>"Project"</code> name here is just an example; name your own profile
-however makes sense for your workflow.</p>
+<p>Use (or create) threshold profiles named to reflect each filter —
+<code>"Duo-band"</code> and <code>"Broadband"</code> here are just examples; name your own
+profiles however makes sense for your workflow.</p>
 </blockquote>
 <h2 id="6-review-results">6. Review Results<a class="headerlink" href="#6-review-results" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>ShowAnalysisResults
 </code></pre></div>
 <p>This opens the same Analysis Results table from Tutorial 1 — sort it,
 inspect category badges, and confirm the classifications make sense
-before committing. Nothing has been written to disk yet.</p>
+before committing. Run this after each filter's <code>AnalyzeFrames</code> call,
+since the session pool (and therefore the results table) reflects only
+whichever filter you most recently analyzed. Nothing has been written
+to disk yet.</p>
 <h2 id="7-commit-results">7. Commit Results<a class="headerlink" href="#7-commit-results" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>CommitAnalysis append=.project
+</code></pre></div>
+<p>Alternatively, if you don't use the <code>append</code> paremeter, the suffix
+will default to <code>.reject</code>.</p>
+<div class="highlight"><pre><span></span><code>CommitAnalysis
 </code></pre></div>
 <p>Just like Tutorial 1, REJECT frames move to a <code>rejected/</code> subfolder
 within their own original session directory (not a single combined
 rejected folder) — each frame's rejection travels back to where it
 came from. The <code>.project</code> suffix on the moved filename distinguishes
 this pass from any other rejection pass you might run later.</p>
-<h2 id="8-stack-the-combined-set">8. Stack the Combined Set<a class="headerlink" href="#8-stack-the-combined-set" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>StackFrames
+<p>Run this once per filter pass, right after that filter's own
+<code>ShowAnalysisResults</code> review — committing the duo pass doesn't touch
+the ircut frames, and vice versa, since each pass loaded its own
+separate session pool.</p>
+<h2 id="8-stack-each-filter-group">8. Stack Each Filter Group<a class="headerlink" href="#8-stack-each-filter-group" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>ClearSession
+ReadImages path=&quot;$project/*-duo-*/data/lights&quot;
+StackFrames
 </code></pre></div>
-<p>All surviving frames — regardless of which night they came from — are
-aligned and combined into one stack. Photyx's rotational grouping
-handles frames from different nights automatically, so you don't need
-to do anything special here even if your equipment was rotated or
-re-polar-aligned between sessions.</p>
+<div class="highlight"><pre><span></span><code>ClearSession
+ReadImages path=&quot;$project/*-ircut-*/data/lights&quot;
+StackFrames
+</code></pre></div>
+<p>All surviving frames <em>within a filter group</em> — regardless of which
+night they came from — are registered and combined into one stack.
+Photyx's rotational grouping handles frames from different nights
+automatically, so you don't need to do anything special here even if
+your equipment was rotated or re-polar-aligned between sessions. Keep
+the duo and ircut stacks as two separate <code>StackFrames</code> runs — combining
+frames from two different filters into a single stack isn't meaningful
+data, and <code>StackFrames</code> will exclude the mismatched frames from the
+stack anyway rather than blend them.</p>
+<p><strong>REMEMBER</strong>: A Photyx-stacked image is not useful for production
+quality results. It is only to be used for visual validation.</p>
 <h2 id="9-stretch-and-commit-the-stretch">9. Stretch and Commit the Stretch<a class="headerlink" href="#9-stretch-and-commit-the-stretch" title="Permanent link">&para;</a></h2>
+<p>If you want to preserve the non-linear stack, you can specify the
+stretch parameters and save the stretch into the file. Normally we
+don't recommend this - simply leave it linear for import back into
+Photyx or other programs for viewing.</p>
 <div class="highlight"><pre><span></span><code>CommitStretch shadow_clip=-3.5 target_bg=0.10
 </code></pre></div>
 <p>Unlike Tutorial 1's default preview stretch, here we're specifying
 exact values — useful once you have a stretch you like and want a
-repeatable result rather than an auto-computed one each time.</p>
+repeatable result rather than an auto-computed one each time. Run this
+once per filter's stack, right after that filter's <code>StackFrames</code> call,
+before moving on to the next filter's session load.</p>
 <h2 id="10-write-the-result">10. Write the Result<a class="headerlink" href="#10-write-the-result" title="Permanent link">&para;</a></h2>
+<p>We don't want the stacked image to be inserted into the session so it
+is tagged as a <code>stack</code>. To write it out to storage, you need to
+specify specifically that is the stacked image.</p>
 <div class="highlight"><pre><span></span><code>WriteXISF destination=&quot;$project/stacked&quot; stack=true
-Print &quot;Stack complete: &quot; + $STACKED
+Print &quot;Duo stack complete: &quot; + $STACKED
 </code></pre></div>
+<div class="highlight"><pre><span></span><code>WriteXISF destination=&quot;$project/stacked&quot; stack=true
+Print &quot;Ircut stack complete: &quot; + $STACKED
+</code></pre></div>
+<p>Each <code>WriteXISF stack=true</code> call exports whichever filter's stack is
+currently held in <code>ctx.stack_result</code> — run it immediately after that
+filter's own <code>CommitStretch</code>, before starting the next filter's
+session load, or you'll overwrite the stack you meant to export.</p>
 <h2 id="11-wrap-up">11. Wrap-Up<a class="headerlink" href="#11-wrap-up" title="Permanent link">&para;</a></h2>
 <p>This workflow is worth the extra setup specifically when you have
-<em>multiple nights</em> of the same target and want them evaluated and
-combined together. If you're only ever working with a single session
-at a time, Tutorial 1's simpler workflow — run once per session — is
-all you need, and is a good default until a project genuinely spans
-more than one night.</p>
+<em>multiple nights</em> of the same target and want them evaluated to reject
+bad frames and combined together for visual inspection. It's worth the
+filter-by-filter structure shown here as soon as a project spans more
+than one filter. If you're only ever working with a single session at
+a time, Tutorial 1's simpler workflow — run once per session — is all
+you need, and is a good default until a project genuinely spans more
+than one night.</p>
+<h2 id="12-example-multi-session-multi-filter-macro">12. Example Multi-Session, Multi-Filter Macro<a class="headerlink" href="#12-example-multi-session-multi-filter-macro" title="Permanent link">&para;</a></h2>
+<p>The steps above walked through each piece individually. Here's a
+complete, ready-to-adapt macro that combines analysis (with an
+OBJECT-keyword safety check), export, and stacking for both filter
+groups in one script — the kind of macro you'd save to the Macro
+Library and pin to Quick Launch for a project you'll revisit as new
+sessions are added. With a new project, simply edit the macro and
+change the <code>project</code> and <code>tgt</code> variables.</p>
+<div class="highlight"><pre><span></span><code># ── Configuration ─────────────────────────────────────────────────────────────
+# Set this to the top-level project directory before running.
+Set project = &quot;/Astro/Projects/NGC7380-Wizard-Nebula&quot;
+Set tgt = &quot;NGC7380&quot;
+Set doCommit = &quot;No&quot;
+
+# ── Resolve system paths ───────────────────────────────────────────────────────
+GetSystemPath name=downloads
+
+# ── Pass 1: filtering outliers — duo sessions ───────────────────────────
+
+# are there any `duo` imaging sessions?
+CountMatches pattern=&quot;$project/*-duo-*&quot;
+
+If $matchcount &gt; 0
+  ClearSession
+  AddFiles paths=&quot;$project/*-duo-*/data/lights/*.fit&quot;
+
+  # insert FILTER keyword, if necessary, for follow-on processing
+  GetKeyword name=FILTER default=&quot;NULL&quot;
+  if $FILTER == &quot;NULL&quot;
+    print &quot;Adding FILTER keyword to duo frames&quot;
+    AddKeyword name=FILTER value=&quot;duo&quot; comment=&quot;insertion via macro&quot;
+    WriteCurrent
+  EndIf
+
+  # insert OBJECT keyword if necessary
+  GetKeyword name=OBJECT default=&quot;NULL&quot;
+  if $OBJECT == &quot;NULL&quot;
+    print &quot;Adding OBJECT keyword to duo frames&quot;
+    AddKeyword name=OBJECT value=$tgt comment=&quot;insertion via macro&quot;
+    WriteCurrent
+  endif
+
+  CountFiles
+  if $filecount &gt; 0
+    Print &quot;Duo project pool: &quot; + $filecount + &quot; frames&quot;
+    AnalyzeFrames profile=&quot;Duo-band&quot;
+    ExportAnalysisReport path=&quot;$downloads/Project-Duo-Analysis.json&quot;
+    if $doCommit == &quot;Yes&quot;
+      CommitAnalysis append=.project
+    EndIf
+    Print &quot;Duo project analysis complete.&quot;
+  EndIf
+EndIf
+
+# ── Stack duo sessions ────────────────────────────────────────────────────────
+
+CountMatches pattern=&quot;$project/*-duo-*&quot;
+If $matchcount &gt; 0
+  CountFiles
+  if $filecount &gt; 0
+    Print &quot;Stacking duo frames: &quot; + $filecount + &quot; frames&quot;
+    StackFrames
+    WriteXISF destination=&quot;$downloads&quot; stack=true
+    Print &quot;Duo stack saved: &quot; + $STACKED
+    ClearStack
+  Endif
+EndIf
+
+# ── Pass 2: filtering outliers — ircut sessions ─────────────────────────
+
+# are there any &#39;ircut&#39; imaging sessions?
+CountMatches pattern=&quot;$project/*-ircut-*&quot;
+
+If $matchcount &gt; 0
+  ClearSession
+  AddFiles paths=&quot;$project/*-ircut-*/data/lights/*.fit&quot;
+
+  # insert FILTER keyword, if necessary, for follow-on processing
+  GetKeyword name=FILTER default=&quot;NULL&quot;
+  if $FILTER == &quot;NULL&quot;
+    print &quot;Adding FILTER keyword to ircut frames&quot;
+    AddKeyword name=FILTER value=&quot;ircut&quot; comment=&quot;insertion via macro&quot;
+    WriteCurrent
+  EndIf
+
+
+  # insert OBJECT keyword if necessary
+  GetKeyword name=OBJECT default=&quot;NULL&quot;
+  if $OBJECT == &quot;NULL&quot;
+    print &quot;Adding OBJECT keyword to ircut frames&quot;
+    AddKeyword name=OBJECT value=$tgt comment=&quot;insertion via macro&quot;
+    WriteCurrent
+  endif
+
+  CountFiles
+  if $filecount &gt; 0
+    Print &quot;Ircut project pool: &quot; + $filecount + &quot; frames&quot;
+    AnalyzeFrames profile=&quot;Broadband&quot;
+    ExportAnalysisReport path=&quot;$downloads/Project-Ircut-Analysis.json&quot;
+    if $doCommit == &quot;Yes&quot;
+      CommitAnalysis append=.project
+    EndIf
+    Print &quot;Ircut project analysis complete.&quot;
+  EndIf
+EndIf
+
+# ── Stack ircut sessions ──────────────────────────────────────────────────────
+
+CountMatches pattern=&quot;$project/*-ircut-*&quot;
+If $matchcount &gt; 0
+  CountFiles
+  if $filecount &gt; 0
+    Print &quot;Stacking ircut frames: &quot; + $filecount + &quot; frames&quot;
+    StackFrames
+    WriteXISF destination=&quot;$downloads&quot; stack=true
+    Print &quot;Ircut stack saved: &quot; + $STACKED
+    ClearStack
+  EndIf
+EndIf
+
+ClearSession
+Print &quot;Done with rejection and stacking&quot;
+</code></pre></div>
+<p>A few things worth noting about this macro compared to the
+step-by-step version above:</p>
+<ul>
+<li><strong><code>CountMatches</code> guards each pass.</strong> If a project only has one
+  filter (or a filter's sessions haven't been shot yet), the
+  corresponding <code>If $matchcount &gt; 0</code> block is skipped entirely rather
+  than failing on an empty glob — useful for a macro you'll re-run as
+  a project grows.</li>
+<li><strong>The OBJECT-keyword check is a one-time safety net.</strong> <code>GetKeyword
+  name=OBJECT default="NULL"</code> won't halt the script if the keyword is
+  missing (unlike omitting <code>default=</code>); the <code>If $OBJECT == "NULL"</code>
+  block then backfills it from <code>$tgt</code> and persists it with
+  <code>WriteCurrent</code> — useful if some capture software didn't set OBJECT
+  automatically. Once the keyword exists, this block is a no-op on
+  future runs.</li>
+<li><strong><code>CommitAnalysis</code> is guarded by a global variable.</strong> As written,
+  this macro exports an analysis report for review but stops short of
+  actually moving REJECT frames unless the <code>$doCommit</code> variable is set
+  to "Yes". This is a deliberate "look before you commit" default
+  worth keeping until you've reviewed <code>Project-Duo-Analysis.json</code> /
+  <code>Project-Ircut-Analysis.json</code> from a real run. Set <code>doCommit =
+  "Yes"</code> once you're ready to commit automatically.</li>
+<li><strong>Stacking a large number of frames can result in a small cropped
+  image.</strong> The Photyx stacking algorithm tried to autocrop stacking
+  artifacts from the edges, but is not a sophisticated
+  algorithm. Stacking a large number of frames that might vary
+  significantly in position might result in a stacked image that is
+  small and not very useful.</li>
+</ul>
 
 
 

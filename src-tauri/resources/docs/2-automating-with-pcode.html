@@ -785,8 +785,8 @@ StackFrames
 <p>Notice <code>CommitAnalysis</code> is the scripted equivalent of clicking Commit
 Results. In this example it takes the same <code>.reject</code> suffix you saw
 appear on rejected filenames in Tutorial 1, but you can use any suffix
-you want. Notice that any rejected images were moved to a <code>rejected</code>
-subfolder.</p>
+you want. Notice that rejected images were moved to a <code>rejected</code>
+subfolder in the file's parent directory.</p>
 <h2 id="4-introduce-variables">4. Introduce Variables<a class="headerlink" href="#4-introduce-variables" title="Permanent link">&para;</a></h2>
 <p>Variables are set with <code>Set</code> and read back with a <code>$</code> prefix. The
 <code>Clear</code> command deletes the existing lines in the console.</p>
@@ -813,7 +813,9 @@ For i = 0 To $filecount - 1
   Print ${DATE-OBS} + &quot;  FWHM=&quot; + $fwhm
 EndFor
 
-Log path=&quot;&lt;your log folder&gt;/fwhm_report.log&quot;
+GetSystemPath name=downloads
+Set Logfile = $downloads + &quot;/fwhm_report.log&quot;
+Log path=$Logfile
 </code></pre></div>
 <p><code>For i = 0 To $filecount - 1</code> steps through every loaded frame by
 index. <code>SetFrame</code> makes frame <code>i</code> the active one, so every command
@@ -835,8 +837,27 @@ valid condition operator.</p>
 <h2 id="7-save-it-as-a-macro">7. Save It as a Macro<a class="headerlink" href="#7-save-it-as-a-macro" title="Permanent link">&para;</a></h2>
 <p>Open the Macro Editor from the Icon Sidebar. Paste in your FWHM report
 script (with the conditional from step 6 added), give it a name — for
-example <code>fwhm-report</code> — and save it. Saving keeps a version history,
-so you can always roll back to an earlier draft later.</p>
+example <code>fwhm-report</code> — and save it. Remember that since the keyword
+name <code>DATE-OBS</code> has a non-alphanumeric character, we must wrap it with
+braces so that the <code>-</code> is not evaluated.</p>
+<p>Here's the entire script</p>
+<div class="highlight"><pre><span></span><code>CountFiles
+For i = 0 To $filecount - 1
+  SetFrame index=$i
+  GetKeyword name=DATE-OBS
+  ComputeFWHM
+  if $fwhm &gt; 3.0
+    Print &quot;Poor focus - skipping&quot;
+  else
+    print &quot;Focus acceptable&quot;
+  EndIf
+  Print ${DATE-OBS} + &quot;  FWHM=&quot; + $fwhm
+EndFor
+
+GetSystemPath name=downloads
+Set logfile = $downloads + &quot;/fwhm_report.log&quot;
+Log path=$logfile
+</code></pre></div>
 <h2 id="8-run-it-two-more-ways">8. Run It Two More Ways<a class="headerlink" href="#8-run-it-two-more-ways" title="Permanent link">&para;</a></h2>
 <p>You've been running commands directly in the console. Now try the
 other two ways to run a saved macro:</p>
@@ -849,6 +870,8 @@ other two ways to run a saved macro:</p>
 </code></pre></div>
 <p><code>RunMacro</code> is also how one macro calls another — useful once you
   start building a library of small, reusable scripts.</p>
+<p>When you use <code>RunMacro</code> from the console, you don't get any progress
+  reporting until it is completely done. Be patient!</p>
 <h2 id="9-pin-it-to-quick-launch">9. Pin It to Quick Launch<a class="headerlink" href="#9-pin-it-to-quick-launch" title="Permanent link">&para;</a></h2>
 <p>Back in the Macro Library, pin <code>fwhm-report</code> to the Quick Launch bar.
 It now appears as a one-click button above the viewer — no console or
