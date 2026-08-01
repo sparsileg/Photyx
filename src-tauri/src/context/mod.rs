@@ -160,9 +160,6 @@ pub struct AppContext {
     /// remove_from_lru — never mutated directly.
     pub pixels_lru: Vec<String>,
 
-    /// Current session ID in session_history table — set by open_session, cleared by close_session
-    pub current_session_id: Option<i64>,
-
     /// True when analysis results were loaded from a JSON import rather than a live
     /// AnalyzeFrames run. Disables Commit in the frontend and skips reclassification
     /// in get_analysis_results (imported classifications are authoritative).

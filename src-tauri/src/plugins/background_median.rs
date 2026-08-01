@@ -6,7 +6,7 @@
 
 use crate::analysis::{
     self,
-    background::{compute_background_metrics, BackgroundMetrics},
+    background::{estimate_background, BackgroundEstimate},
     BackgroundConfig
 };
 use crate::context::AppContext;
@@ -17,8 +17,6 @@ use serde_json::json;
 
 struct PreparedImage {
     luma:         Vec<f32>,
-    width:        usize,
-    height:       usize,
     path:         String,
     session_path: String,
 }
@@ -51,8 +49,6 @@ fn prepare_current_image(ctx: &AppContext) -> Result<PreparedImage, PluginError>
 
     Ok(PreparedImage {
         luma,
-        width,
-        height,
         path: img.filename.clone(),
         session_path,
     })
@@ -74,29 +70,18 @@ fn parse_config(args: &ArgMap) -> Result<BackgroundConfig, PluginError> {
         })?;
     }
 
-    if let Some(s) = args.get("grid") {
-        config.gradient_grid_size = s.parse::<u32>().map_err(|_| {
-            PluginError::invalid_arg("grid", "must be a positive integer (e.g. grid=4)")
-        })?;
-    }
-
     Ok(config)
 }
 
-/// Run background metrics and store background_median in AppContext.
+/// Run background estimation and store background_median in AppContext.
 fn run_and_store(
     ctx:  &mut AppContext,
     args: &ArgMap,
-) -> Result<(BackgroundMetrics, String), PluginError> {
+) -> Result<(BackgroundEstimate, String), PluginError> {
     let config  = parse_config(args)?;
     let prepped = prepare_current_image(ctx)?;
 
-    let metrics = compute_background_metrics(
-        &prepped.luma,
-        prepped.width,
-        prepped.height,
-        &config,
-    );
+    let metrics = estimate_background(&prepped.luma, &config.sigma_clip);
 
     {
         let result = ctx.analysis_result_for(&prepped.session_path);
@@ -133,13 +118,6 @@ impl PhotyxPlugin for BackgroundMedianPlugin {
                 description: "Maximum sigma-clipping iterations (default: 5)".to_string(),
                 default:     Some("5".to_string()),
             },
-            ParamSpec {
-                name:        "grid".to_string(),
-                param_type:  ParamType::Integer,
-                required:    false,
-                description: "Grid divisions per axis for gradient estimation (default: 4)".to_string(),
-                default:     Some("4".to_string()),
-            },
         ]
     }
 
@@ -159,58 +137,6 @@ fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, P
                 "Background median: {:.4} ({} ADU)",
                 metrics.median, median_adu
             ),
-        })))
-    }
-}
-
-// ── BackgroundStdDev plugin (kept for pcode compatibility, deprecated) ────────
-
-pub struct BackgroundStdDevPlugin;
-
-impl PhotyxPlugin for BackgroundStdDevPlugin {
-    fn name(&self)        -> &str { "BackgroundStdDev" }
-    fn version(&self)     -> &str { "1.0.0" }
-    fn description(&self) -> &str {
-        "Deprecated. BackgroundStdDev is redundant with BackgroundMedian and is no longer \
-         used in AnalyzeFrames. Retained for pcode script compatibility only."
-    }
-    fn parameters(&self) -> Vec<ParamSpec> { BackgroundMedianPlugin.parameters() }
-
-    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        let (metrics, path) = run_and_store(ctx, args)?;
-        let stddev_adu = (metrics.stddev * 65535.0).round() as u32;
-        Ok(PluginOutput::Data(json!({
-            "plugin":                "BackgroundStdDev",
-            "filename":              path,
-            "background_median":     metrics.median,
-            "background_stddev_adu": stddev_adu,
-            "message": format!("Background std dev: {:.4} ({} ADU)", metrics.stddev, stddev_adu),
-        })))
-    }
-}
-
-// ── BackgroundGradient plugin (kept for pcode compatibility, deprecated) ──────
-
-pub struct BackgroundGradientPlugin;
-
-impl PhotyxPlugin for BackgroundGradientPlugin {
-    fn name(&self)        -> &str { "BackgroundGradient" }
-    fn version(&self)     -> &str { "1.0.0" }
-    fn description(&self) -> &str {
-        "Deprecated. BackgroundGradient is no longer used in AnalyzeFrames. \
-         Retained for pcode script compatibility only."
-    }
-    fn parameters(&self) -> Vec<ParamSpec> { BackgroundMedianPlugin.parameters() }
-
-    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
-        let (metrics, path) = run_and_store(ctx, args)?;
-        let gradient_adu = (metrics.gradient * 65535.0).round() as u32;
-        Ok(PluginOutput::Data(json!({
-            "plugin":                  "BackgroundGradient",
-            "filename":                path,
-            "background_median":       metrics.median,
-            "background_gradient_adu": gradient_adu,
-            "message": format!("Background gradient: {:.4} ({} ADU)", metrics.gradient, gradient_adu),
         })))
     }
 }

@@ -383,9 +383,7 @@ fn register_all_plugins(registry: &PluginRegistry) {
     registry.register(Arc::new(plugins::add_files::AddFiles));
     registry.register(Arc::new(plugins::analyze_frames::AnalyzeFrames));
     registry.register(Arc::new(plugins::auto_stretch::AutoStretch));
-    registry.register(Arc::new(plugins::background_median::BackgroundGradientPlugin));
     registry.register(Arc::new(plugins::background_median::BackgroundMedianPlugin));
-    registry.register(Arc::new(plugins::background_median::BackgroundStdDevPlugin));
     registry.register(Arc::new(plugins::cache_frames::CacheFrames));
     registry.register(Arc::new(plugins::clear_session::ClearSession));
     registry.register(Arc::new(plugins::clear_stack::ClearStack));

@@ -1,9 +1,5 @@
-// analysis/background.rs — background estimation and metrics
-// Spec §15.4 (background median, background std dev, background gradient)
-//
-// All three metrics share a single sigma-clipped background estimator.
-// The gradient metric divides the image into a grid of cells and reports
-// the difference between the highest and lowest cell background medians.
+// analysis/background.rs — background estimation
+// Spec §15.4 (background median)
 
 use super::{BackgroundConfig, SigmaClipConfig};
 
@@ -172,100 +168,6 @@ pub fn background_median(luma: &[f32], config: &BackgroundConfig) -> f32 {
     estimate_background(luma, &config.sigma_clip).median
 }
 
-// ── Background std dev metric ─────────────────────────────────────────────────
-
-/// Compute the background standard deviation for a luminance image.
-/// Returns a value in the 0.0–1.0 normalized range.
-#[allow(dead_code)]
-pub fn background_stddev(luma: &[f32], config: &BackgroundConfig) -> f32 {
-    estimate_background(luma, &config.sigma_clip).stddev
-}
-
-// ── Background gradient metric ────────────────────────────────────────────────
-//
-// Divides the image into a grid_size × grid_size grid of cells.
-// Computes the sigma-clipped background median for each cell.
-// Returns the difference between the maximum and minimum cell medians.
-// A high value indicates a strong gradient (light pollution, vignetting, etc.).
-
-/// Compute the background gradient for a luminance image.
-/// Returns a value in the 0.0–1.0 normalized range (max_cell_median - min_cell_median).
-pub fn background_gradient(
-    luma:   &[f32],
-    width:  usize,
-    height: usize,
-    config: &BackgroundConfig,
-) -> f32 {
-    let grid = config.gradient_grid_size as usize;
-    if grid == 0 || width == 0 || height == 0 {
-        return 0.0;
-    }
-
-    let cell_w = width  / grid;
-    let cell_h = height / grid;
-
-    if cell_w == 0 || cell_h == 0 {
-        return 0.0;
-    }
-
-    let mut cell_medians: Vec<f32> = Vec::with_capacity(grid * grid);
-
-    for row in 0..grid {
-        for col in 0..grid {
-            let x0 = col * cell_w;
-            let y0 = row * cell_h;
-            let x1 = (x0 + cell_w).min(width);
-            let y1 = (y0 + cell_h).min(height);
-
-            // Collect pixels for this cell
-            let mut cell_pixels: Vec<f32> = Vec::with_capacity(cell_w * cell_h);
-            for y in y0..y1 {
-                for x in x0..x1 {
-                    cell_pixels.push(luma[y * width + x]);
-                }
-            }
-
-            // Subsample within cell before sigma-clipping (cells can be large)
-            let sample = subsample(&cell_pixels);
-            let est = sigma_clipped_background(&sample, &config.sigma_clip);
-            cell_medians.push(est.median);
-        }
-    }
-
-    if cell_medians.is_empty() {
-        return 0.0;
-    }
-
-    let max = cell_medians.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    let min = cell_medians.iter().cloned().fold(f32::INFINITY,     f32::min);
-
-    (max - min).max(0.0)
-}
-
-// ── Combined background analysis ──────────────────────────────────────────────
-
-/// Run all three background metrics in one pass (avoids triple subsampling).
-pub struct BackgroundMetrics {
-    pub median:   f32,
-    pub stddev:   f32,
-    pub gradient: f32,
-}
-
-pub fn compute_background_metrics(
-    luma:   &[f32],
-    width:  usize,
-    height: usize,
-    config: &BackgroundConfig,
-) -> BackgroundMetrics {
-    let est = estimate_background(luma, &config.sigma_clip);
-    let gradient = background_gradient(luma, width, height, config);
-
-    BackgroundMetrics {
-        median:   est.median,
-        stddev:   est.stddev,
-        gradient,
-    }
-}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -311,32 +213,9 @@ mod tests {
         assert!((med - 0.05).abs() < 0.001);
     }
 
-    #[test]
-    fn test_background_gradient_flat_image() {
-        // Flat image should have zero gradient
-        let luma = vec![0.05f32; 200 * 200];
-        let config = make_config();
-        let grad = background_gradient(&luma, 200, 200, &config);
-        assert!(grad < 0.001, "gradient {} should be ~0 for flat image", grad);
-    }
-
-    #[test]
-    fn test_background_gradient_ramp() {
-        // Left half dark, right half bright — should produce non-zero gradient
-        let width = 200usize;
-        let height = 200usize;
-        let mut luma = vec![0.0f32; width * height];
-        for y in 0..height {
-            for x in 0..width {
-                luma[y * width + x] = if x < width / 2 { 0.05 } else { 0.30 };
-            }
-        }
-        let config = make_config();
-        let grad = background_gradient(&luma, width, height, &config);
-        assert!(grad > 0.1, "gradient {} should be significant for ramp image", grad);
-    }
-
 }
 
 
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------

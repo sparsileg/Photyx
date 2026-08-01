@@ -22,9 +22,7 @@
   "StackFrames",
 
   "AnalyzeFrames",
-  "BackgroundGradient",
   "BackgroundMedian",
-  "BackgroundStdDev",
   "CommitAnalysis",
   "ExportAnalysisReport",
   "ComputeEccentricity",

@@ -178,15 +178,13 @@ impl Default for StarDetectionConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackgroundConfig {
-    pub sigma_clip:         SigmaClipConfig,
-    pub gradient_grid_size: u32,
+    pub sigma_clip: SigmaClipConfig,
 }
 
 impl Default for BackgroundConfig {
     fn default() -> Self {
         Self {
-            sigma_clip:         SigmaClipConfig::default(),
-            gradient_grid_size: 8,
+            sigma_clip: SigmaClipConfig::default(),
         }
     }
 }

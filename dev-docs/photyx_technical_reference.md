@@ -326,7 +326,6 @@ through every plugin call.
 | `log_dir`                   | `Option`                                 | Configurable log directory; falls back to the Tauri app data dir if `None` |
 | `pixels_lru`                | `Vec<String>`                                    | MRU-first paths whose pixels are resident; capacity `rayon_thread_count` (Issue 173) |
 | `rayon_thread_count`        | `i64`                                            | Threads for parallel ops; also the viewing-LRU capacity; mirrored from `AppSettings` |
-| `current_session_id`        | `Option`                                    | Row ID in `session_history`; set by `open_session`, cleared by `close_session` |
 | `is_imported_session`       | `bool`                                           | True when analysis results came from a JSON import, not a live run        |
 | `stack_result`               | `Option`                            | Transient StackFrames output — no source file path                        |
 | `stack_contributions`       | `Vec`                         | Per-frame contribution metrics from the last StackFrames run              |
@@ -848,7 +847,7 @@ the first.
 `compute_session_stats_iterative()`:
 
 1. Compute initial session stats across the full population — Star
-   Count uses bimodal-aware anchoring (§6.5); the other four metrics
+   Count uses bimodal-aware anchoring (§6.5); the other three metrics
    use plain mean/stddev.
 2. Flag outliers: any frame where a metric (Eccentricity excluded)
    deviates beyond `OUTLIER_SIGMA_THRESHOLD` (confirmed 4.0σ in
@@ -1335,20 +1334,6 @@ CREATE TABLE IF NOT EXISTS feature_flags (
 );
 ```
 
-**Note on removed tables and columns (Issue 89, historical):** `algorithm_sets`,
-`frame_analysis_results` (plus its two indexes), `session_history`, and
-`console_history` were created with real design intent — algorithm-
-versioned analysis-result caching to skip redundant re-analysis,
-a session work-log, and persistent console history across restarts,
-respectively — but none was ever given a runtime reader or writer. Along
-with `threshold_profiles`'s dead `signal_weight_reject_sigma`,
-`bg_stddev_reject_sigma`, and `bg_gradient_reject_sigma` columns (left
-over from the Signal Weight metric's removal), none of this ever existed
-as incremental migration steps to reach or undo — the schema squash
-(Issue 163) confirmed all of it dead and it is simply absent from the
-current single-step schema. This note is retained for historical context
-on why these names may look familiar from older code or discussion, not
-because any migration step still creates and drops them.
 
 **Note on crash recovery removal (Issue 107, historical):** the crash
 recovery feature — `crash_recovery` table, `check_crash_recovery`/
@@ -1650,7 +1635,6 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 | Command                            | Description                                                                                                     |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `backup_database`                   | Creates a timestamped ZIP backup of `photyx.db` in the configured backup directory                                |
-| `close_session`                     | Sets `closed_at` on the current `session_history` row; resets `is_imported_session`                                |
 | `commit_analysis_results`           | Moves REJECT files to `rejected/` subfolders; removes them from the session; pass frames remain loaded. Fast, non-terminal (§6.7) |
 | `debug_buffer_info`                 | Returns buffer metadata including `display_width` and `color_space`                                               |
 | `delete_macro`                      | Deletes a macro and its version history from the database                                                          |
@@ -1684,7 +1668,6 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 | `list_plugins`                      | Returns the list of registered plugins with name, version, and type                                                |
 | `load_analysis_json`                | Clears the session; populates analysis state from a JSON payload; sets `is_imported_session = true`                |
 | `load_file`                         | Reads a single image file from disk, injects it into the session, returns a JPEG data URL                          |
-| `open_session`                      | Inserts a `session_history` row with `closed_at = NULL`; returns the session id                                    |
 | `read_log_file`                     | Reads and parses a log file into structured `{timestamp, level, module, message}` lines                            |
 | `rename_macro`                      | Renames a macro; validates name uniqueness                                                                          |
 | `restore_database`                  | Restores `photyx.db` from a ZIP backup; reopens the connection in-place, no app restart required                    |

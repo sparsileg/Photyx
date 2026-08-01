@@ -1,7 +1,6 @@
 // plugins/analyze_frames.rs — AnalyzeFrames plugin
-
 // Spec §15, §7.8
-//
+
 // Two-pass operation:
 //   Pass 1 — compute four quality metrics for every loaded frame (or current frame if scope=current)
 //   Pass 2 — compute session stats → classify PASS/REJECT (in-memory only, not written to files)
@@ -11,7 +10,7 @@
 
 use crate::analysis::{
     self,
-    background::compute_background_metrics,
+    background::estimate_background,
     eccentricity::compute_eccentricity,
     fwhm::compute_fwhm,
     profiles,
@@ -326,7 +325,7 @@ fn execute_all(
                 // luma arrives pre-converted from the reader thread (Issue
                 // 175) — no analysis::to_luminance call needed here anymore.
                 let bg_config = BackgroundConfig::default();
-                let bg        = compute_background_metrics(&luma, width, height, &bg_config);
+                let bg        = estimate_background(&luma, &bg_config.sigma_clip);
                 let stars     = detect_stars(&luma, width, height, det_config_ref);
                 drop(luma);
 
@@ -493,7 +492,7 @@ fn compute_metrics_for_image(
 
     let luma      = analysis::to_luminance(pixels, channels);
     let bg_config = BackgroundConfig::default();
-    let bg        = compute_background_metrics(&luma, width, height, &bg_config);
+    let bg        = estimate_background(&luma, &bg_config.sigma_clip);
     let stars     = detect_stars(&luma, width, height, det_config);
     let plate_scale = derive_plate_scale(&img.keywords);
     let fwhm_result = compute_fwhm(&stars, plate_scale);

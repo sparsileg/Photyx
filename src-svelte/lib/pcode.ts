@@ -48,9 +48,7 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   analyzeframes:       '[profile=]  [scope=all|current]  [threshold=]  [saturation=]',
   assert:              'expression=',
   autostretch:         'shadowClip=  targetBackground=',
-  backgroundgradient:  '[sigma=]  [iterations=]  [grid=]',
-  backgroundmedian:    '[sigma=]  [iterations=]  [grid=]',
-  backgroundstddev:    '[sigma=]  [iterations=]  [grid=]',
+  backgroundmedian:    '[sigma=]  [iterations=]',
   basename:            '($path)',
   cacheframes:         '[resolution=12|25]',
   ceil:                '(#)',
@@ -474,43 +472,16 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'ContourHeatmap palette=plasma contour_levels=12',
   },
 
-    backgroundmedian: {
+  backgroundmedian: {
     name:        'BackgroundMedian',
     description: 'Computes the sigma-clipped background median for the current frame. This is one of the four metrics AnalyzeFrames computes internally for every frame; running it standalone is useful for inspecting or tuning background estimation on a single frame.',
-    syntax:      'BackgroundMedian [sigma=<float>] [iterations=<int>] [grid=<int>]',
+    syntax:      'BackgroundMedian [sigma=<float>] [iterations=<int>]',
     arguments: [
       { name: 'sigma',      type: 'float',   required: false, default: '3.0', description: 'Sigma-clipping threshold in std dev units' },
       { name: 'iterations', type: 'integer', required: false, default: '5',   description: 'Maximum sigma-clipping iterations' },
-      { name: 'grid',       type: 'integer', required: false, default: '4',   description: 'Grid divisions per axis used internally for gradient estimation' },
     ],
     output:  'Reports the background median for the current frame. Stores result in $backgroundmedian.',
     example: 'BackgroundMedian\nBackgroundMedian sigma=2.5 iterations=8',
-  },
-
-  backgroundstddev: {
-    name:        'BackgroundStdDev',
-    description: 'Deprecated but fully operational. Computes the sigma-clipped background standard deviation for the current frame. No longer used by AnalyzeFrames — it correlated 0.92–0.999 with BackgroundMedian and added no discriminating signal — but still runs the full computation and returns real results when called directly.',
-    syntax:      'BackgroundStdDev [sigma=<float>] [iterations=<int>] [grid=<int>]',
-    arguments: [
-      { name: 'sigma',      type: 'float',   required: false, default: '3.0', description: 'Sigma-clipping threshold in std dev units' },
-      { name: 'iterations', type: 'integer', required: false, default: '5',   description: 'Maximum sigma-clipping iterations' },
-      { name: 'grid',       type: 'integer', required: false, default: '4',   description: 'Grid divisions per axis used internally for gradient estimation' },
-    ],
-    output:  'Reports the background standard deviation for the current frame.',
-    example: 'BackgroundStdDev',
-  },
-
-  backgroundgradient: {
-    name:        'BackgroundGradient',
-    description: 'Deprecated but fully operational. Computes a background gradient estimate for the current frame. No longer used by AnalyzeFrames due to session-dependent sign reversal that made it unreliable as a rejection criterion, but still runs when called directly.',
-    syntax:      'BackgroundGradient [sigma=<float>] [iterations=<int>] [grid=<int>]',
-    arguments: [
-      { name: 'sigma',      type: 'float',   required: false, default: '3.0', description: 'Sigma-clipping threshold in std dev units' },
-      { name: 'iterations', type: 'integer', required: false, default: '5',   description: 'Maximum sigma-clipping iterations' },
-      { name: 'grid',       type: 'integer', required: false, default: '4',   description: 'Grid divisions per axis used internally for gradient estimation' },
-    ],
-    output:  'Reports the background gradient estimate for the current frame.',
-    example: 'BackgroundGradient',
   },
 
   debayerimage: {
