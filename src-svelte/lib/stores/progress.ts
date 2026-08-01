@@ -1,4 +1,4 @@
-// stores/progress.ts — polling store for backend progress atomics and job results
+// stores/progress.ts — polling store for backend progress atomics
 import { writable } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -25,9 +25,9 @@ export interface JobResult {
     client_actions:  string[];
 }
 
-export const jobResult = writable<JobResult | null>(null);
-export const jobOwner  = writable<string | null>(null);
-
+// Issue 201: jobResult/jobOwner and the get_job_result poll retired —
+// run_script now returns JobResult directly from its own await, so there's
+// no longer a shared slot for callers to disambiguate via an owner string.
 setInterval(async () => {
     try {
         const [label, current, total] = await invoke<[string, number, number]>('get_progress');
@@ -35,17 +35,7 @@ setInterval(async () => {
     } catch {
         // backend not ready — ignore
     }
-
-    try {
-        const result = await invoke<JobResult | null>('get_job_result');
-        if (result !== null) {
-            jobResult.set(result);
-        }
-    } catch {
-        // backend not ready — ignore
-    }
 }, 500);
-
 
 // ----------------------------------------------------------------------
 // ----------------------------------------------------------------------

@@ -8,10 +8,10 @@
   import { session } from '../../stores/session';
   import { notifications } from '../../stores/notifications';
   import { pipeToConsole } from '../../stores/consoleHistory';
-  import { jobResult, jobOwner, progress } from '../../stores/progress';
+  import { type JobResult } from '../../stores/progress';
   import { invoke } from '@tauri-apps/api/core';
   import { handleClientCommand } from '../../clientCommands';
-  import { applyAutoStretch } from '../../commands';
+  import { applyAutoStretch, runScript } from '../../commands';
 
   // ── State ────────────────────────────────────────────────────────────────
   let macros        = $state<MacroRow[]>([]);
@@ -144,122 +144,82 @@
     running = macro.id;
     runningMacroRef = macro;
     notifications.running(macro.display_name);
-    jobOwner.set('macro-library');
-    progress.set({ label: '', current: 0, total: 0 });
     try {
-      await invoke('run_script', { script: `RunMacro name="${macro.name}"` });
-      // Result arrives asynchronously via the $effect watching jobResult
+      const result = await runScript(`RunMacro name="${macro.name}"`);
+      await processJobResult(result, macro);
     } catch (e) {
       notifications.error(`Run failed: ${e}`);
-      jobOwner.set(null);
+    } finally {
       running = null;
       runningMacroRef = null;
     }
   }
 
-  // Handle async job results addressed to the Macro Library
-  $effect(() => {
-    const result = $jobResult;
-    const owner  = $jobOwner;
-    if (!result || owner !== 'macro-library') return;
+  // Process job result for a macro run
+  async function processJobResult(result: JobResult, macro: MacroRow) {
+    let anyError = false;
+    let lastActionData: Record<string, unknown> | null = null;
 
-    const macro = runningMacroRef;
-
-    // Issue 98: clear job state synchronously, immediately — before any
-    // async work starts below. See the matching fix (and its full
-    // explanation) in Console.svelte's equivalent effect: delaying this
-    // clear behind await points reopens a race with the progress poller
-    // that can cause Svelte to rerun this effect on the same still-cached
-    // result and reprocess it indefinitely.
-    running = null;
-    runningMacroRef = null;
-    jobResult.set(null);
-    jobOwner.set(null);
-
-    (async () => {
-      let anyError = false;
-      let lastActionData: Record<string, unknown> | null = null;
-
-      for (const r of result.results) {
-        if (!r.success) {
-          // A failed result's message can be a single line (a typical plugin
-          // error) or, for RunMacro, the entire accumulated output of a long
-          // successful run followed by the failure summary. Pipe everything
-          // but the last line to the console where it belongs; reserve the
-          // notification banner for just the final summary/error line.
-          const lines = (r.message ?? 'error').split('\n').filter(Boolean);
-          const summaryLine = lines.length > 0 ? lines[lines.length - 1] : 'error';
-          lines.slice(0, -1).forEach(line => pipeToConsole(line, 'success'));
-          notifications.error(`${r.command}: ${summaryLine}`);
-          anyError = true;
-        } else if (r.message) {
-          r.message.split('\n').forEach(line => {
-            if (line) pipeToConsole(line, 'success');
-          });
-        }
-        if (r.data) lastActionData = r.data;
-        // Issue 98: awaited, and this whole block moved into an async IIFE,
-        // so multiple client commands from the same result (the singular
-        // client_command below, or the client_commands array from a
-        // RunMacro-wrapped macro) print in the order they actually ran
-        // rather than racing based on which one's internal async work
-        // (e.g. Version's getVersion() call) happens to resolve first.
-        if (r.success && r.data?.client_command) {
-          await handleClientCommand(r.data.client_command as string);
-        }
-        if (r.success && Array.isArray(r.data?.client_commands)) {
-          for (const cc of r.data.client_commands as string[]) {
-            await handleClientCommand(cc);
-          }
+    for (const r of result.results) {
+      if (!r.success) {
+        const lines = (r.message ?? 'error').split('\n').filter(Boolean);
+        const summaryLine = lines.length > 0 ? lines[lines.length - 1] : 'error';
+        lines.slice(0, -1).forEach(line => pipeToConsole(line, 'success'));
+        notifications.error(`${r.command}: ${summaryLine}`);
+        anyError = true;
+      } else if (r.message) {
+        r.message.split('\n').forEach(line => {
+          if (line) pipeToConsole(line, 'success');
+        });
+      }
+      if (r.data) lastActionData = r.data;
+      if (r.success && r.data?.client_command) {
+        await handleClientCommand(r.data.client_command as string);
+      }
+      if (r.success && Array.isArray(r.data?.client_commands)) {
+        for (const cc of r.data.client_commands as string[]) {
+          await handleClientCommand(cc);
         }
       }
+    }
 
-      if (!anyError && macro) {
-        notifications.success(`${macro.display_name} complete.`);
-        db.incrementMacroRunCount(macro.id);
-      }
+    if (!anyError) {
+      notifications.success(`${macro.display_name} complete.`);
+      db.incrementMacroRunCount(macro.id);
+    }
 
-      if (result.session_changed) {
-        try {
-          const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
-          session.setFileList(s.fileList);
-          // Bug found during Issue 116 testing, introduced/carried forward
-          // during Issue 98: this handler fetched currentFrame but never
-          // applied it, unlike Console.svelte's and QuickLaunch.svelte's
-          // equivalent handlers — a macro-driven SetFrame updated the
-          // backend's current frame correctly, but session.currentFrame
-          // (and anything deriving from it, e.g. the filename banner in
-          // +page.svelte) stayed stale after a Macro Library run.
-          session.setCurrentFrame(s.currentFrame);
-        } catch (e) {
-          console.warn('MacroLibrary: session sync failed:', e);
-        }
+    if (result.session_changed) {
+      try {
+        const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
+        session.setFileList(s.fileList);
+        session.setCurrentFrame(s.currentFrame);
+      } catch (e) {
+        console.warn('MacroLibrary: session sync failed:', e);
       }
+    }
 
-      // Dispatch client actions returned by Rust — no command-name matching needed
-      let autoStretched      = false;
-      let annotationsRefreshed = false;
-      if (!Array.isArray(result.client_actions)) {
-        console.warn('MacroLibrary: client_actions was not an array:', result.client_actions, 'macro:', macro?.name);
+    let autoStretched      = false;
+    let annotationsRefreshed = false;
+    if (!Array.isArray(result.client_actions)) {
+      console.warn('MacroLibrary: client_actions was not an array:', result.client_actions, 'macro:', macro.name);
+    }
+    for (const action of result.client_actions ?? []) {
+      if (action === 'refresh_autostretch') {
+        const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
+        const targetBackground = lastActionData?.target_background as number | undefined;
+        applyAutoStretch(shadowClip, targetBackground);
+        autoStretched = true;
       }
-      for (const action of result.client_actions ?? []) {
-        if (action === 'refresh_autostretch') {
-          const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
-          const targetBackground = lastActionData?.target_background as number | undefined;
-          applyAutoStretch(shadowClip, targetBackground);
-          autoStretched = true;
-        }
-        if (action === 'refresh_annotations') {
-          ui.refreshAnnotations();
-          annotationsRefreshed = true;
-        }
-        if (action === 'open_keyword_modal') ui.openKeywordModal();
+      if (action === 'refresh_annotations') {
+        ui.refreshAnnotations();
+        annotationsRefreshed = true;
       }
-      if (result.display_changed && !autoStretched && !annotationsRefreshed) {
-        ui.requestFrameRefresh();
-      }
-    })();
-  });
+      if (action === 'open_keyword_modal') ui.openKeywordModal();
+    }
+    if (result.display_changed && !autoStretched && !annotationsRefreshed) {
+      ui.requestFrameRefresh();
+    }
+  }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   function deriveName(displayName: string): string {

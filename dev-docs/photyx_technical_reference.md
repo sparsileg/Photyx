@@ -366,11 +366,11 @@ through every plugin call.
 
 ### 2.7 Progress Reporting Pathway
 
-Long-running plugin work is fire-and-forget on both ends: dispatching
-a command returns immediately rather than blocking until completion,
-and the frontend does not receive the result back from that initiating
-call either — it polls for both progress and the eventual result
-independently.
+As of Issue 201, `run_script` is a genuine `async fn`: the frontend's
+call awaits the script's full execution and receives the resulting
+`JobResult` directly from that same call — there is no longer a
+separate result-polling step. Live progress reporting during the run
+remains fully independent of this, via its own poll (below).
 
 **Backend side:** a plugin reports progress via
 `crate::set_progress(label: &str, current: u32, total: u32)`, callable
@@ -386,17 +386,32 @@ from anywhere in `execute()`:
   plugin's own responsibility. A plugin that returns early without
   this call leaves a stale progress indicator active.
 
+`run_script` itself runs on `tokio::task::spawn_blocking`, matching
+`dispatch_command`'s existing shape, so the progress atomics continue
+updating from that blocking task while the frontend's `await` is
+pending — the two mechanisms don't interfere with each other.
+
 **Frontend side (`stores/progress.ts`):** a single `setInterval` on a
-500ms cadence drives two independent polls:
+500ms cadence drives the progress poll:
 
 - `invoke('get_progress')` → `[label, current, total]` tuple → written
   into the `progress` writable store
-- `invoke('get_job_result')` → `JobResult | null` → written into the
-  `jobResult` writable store whenever non-null
 
-Both calls are wrapped in try/catch that silently ignores failures —
+This call is wrapped in try/catch that silently ignores failures —
 the assumption being the backend isn't ready yet, not that something
 is wrong.
+
+**Dispatching a script:** every call site (`Console.svelte`,
+`QuickLaunch.svelte`, `StackingWorkspace.svelte`, `MacroLibrary.svelte`,
+`MenuBar.svelte`, and `commands.ts`'s `runScript()` helper) calls
+`invoke('run_script', { script })` and awaits the resulting `JobResult`
+directly, processing it immediately afterward rather than through a
+reactive effect watching a shared store. A second `run_script` call
+while one is already in flight (tracked via the backend's `JOB_RUNNING`
+guard) rejects the promise with an error message, rather than
+returning a silently-ignorable `accepted: false` flag — callers catch
+this and report it visibly (e.g. an error line in the console, or a
+notification).
 
 **`JobResult` shape:** `{ results: ScriptResult[], session_changed,
 display_changed, client_actions }` — an aggregate over the whole
@@ -406,10 +421,6 @@ and its own `client_actions`. This is the same `client_actions`
 mechanism described in §2.5 — both the per-line result and the
 job-level aggregate can carry action tokens for the frontend to
 dispatch on.
-
-A `jobOwner` writable store also exists alongside `progress` and
-`jobResult`, presumably to track which UI component dispatched the
-in-flight job — its write side isn't confirmed here.
 
 ---
 
@@ -1657,7 +1668,6 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 | `get_frame_flags`                   | Returns PXFLAG values for all loaded frames (used by the blink overlay)                                            |
 | `get_full_frame`                    | Returns the current image at full resolution with the last STF params applied; cached after first call            |
 | `get_histogram`                     | Computes histogram bins + stats for the current frame (per-channel for RGB)                                        |
-| `get_job_result`                    | Returns the `JobResult` of the most recently completed script/command dispatch, or `null`; polled every 500ms (§2.7) |
 | `get_keywords`                      | Returns all keywords for the current frame as a keyed map                                                          |
 | `get_macro_versions`                | Returns version history for a macro, newest first                                                                   |
 | `get_macros`                        | Returns all macros with name, display_name, script, run_count, last_run_at                                        |
@@ -1679,7 +1689,7 @@ had) plus `get_progress`/`get_job_result`, confirmed present in
 | `rename_macro`                      | Renames a macro; validates name uniqueness                                                                          |
 | `restore_database`                  | Restores `photyx.db` from a ZIP backup; reopens the connection in-place, no app restart required                    |
 | `restore_macro_version`             | Restores a previous macro version as the current script                                                            |
-| `run_script`                        | Executes a pcode script string; the initiating call returns immediately — see §2.7 for how the result is retrieved |
+| `run_script`                        | Executes a pcode script string; async — the call awaits full execution and returns the resulting `JobResult` directly (Issue 201, §2.7) |
 | `save_macro`                        | Inserts or updates a macro; saves the previous version to `macro_versions` before overwriting                      |
 | `save_quick_launch_buttons`         | Replaces all Quick Launch button assignments                                                                        |
 | `save_threshold_profile`            | Inserts or updates a threshold profile; clamps all values to bounds                                                 |

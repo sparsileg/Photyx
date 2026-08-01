@@ -2,7 +2,6 @@
 // Wraps Tauri invoke calls for common operations
 
 import { invoke } from '@tauri-apps/api/core';
-import { get } from 'svelte/store';
 import { open } from '@tauri-apps/plugin-dialog';
 import { db } from './db';
 import { notifications } from './stores/notifications';
@@ -10,59 +9,22 @@ import { session } from './stores/session';
 import { ui } from './stores/ui';
 import { analysisToggles } from './stores/analysisToggles';
 import { pipeToConsole } from './stores/consoleHistory';
-import { jobResult, jobOwner, progress, type JobResult, type ScriptResult } from './stores/progress';
+import { progress, type JobResult, type ScriptResult } from './stores/progress';
 import { REJECT_FILE_SUFFIX } from './settings/constants';
 
-/** Dispatches a pcode script via run_script and resolves with the JobResult
- *  once the backend posts it — bridging run_script's fire-and-forget contract
- *  (accepted immediately; the real result arrives later via jobResult/jobOwner,
- *  see stores/progress.ts) into a single awaitable call for one-shot call
- *  sites that don't need their own progress-driven $effect (Issue 114).
- *
- *  Rejects immediately if another script is already running (the backend's
- *  JOB_RUNNING guard) rather than queuing. Clears any stale/orphaned
- *  jobResult before claiming ownership, so a leftover result from an earlier
- *  uncollected run can never be mistaken for this one — safe to do
- *  unconditionally since a second script can only be accepted once the
- *  first one's owner has already consumed (or abandoned) its result.
- *
- *  `owner` must be distinct from 'console' and from any other concurrent
- *  caller's owner string — Console.svelte's own $effect only reacts to
- *  jobOwner === 'console', so any other value passes through untouched. */
-export function runScriptAndWait(script: string, owner: string): Promise<JobResult> {
-  return new Promise<JobResult>((resolve, reject) => {
-    (async () => {
-      let response: { accepted: boolean };
-      try {
-        response = await invoke<{ accepted: boolean }>('run_script', { script });
-      } catch (e) {
-        reject(e);
-        return;
-      }
-      if (!response.accepted) {
-        reject(new Error('A script is already running — try again in a moment.'));
-        return;
-      }
-
-      jobResult.set(null);
-      jobOwner.set(owner);
-      progress.set({ label: '', current: 0, total: 0 });
-
-      const unsubscribe = jobResult.subscribe((result) => {
-        if (result === null) return;
-        if (get(jobOwner) !== owner) return;
-        unsubscribe();
-        jobResult.set(null);
-        jobOwner.set(null);
-        resolve(result);
-      });
-    })();
-  });
+/** Dispatches a pcode script via run_script and resolves with the resulting
+ *  JobResult (Issue 201: run_script now awaits its own execution and
+ *  returns the result directly, rather than posting to a shared slot for
+ *  the frontend to poll). Rejects if another script is already running
+ *  (the backend's JOB_RUNNING guard) rather than queuing. */
+export function runScript(script: string): Promise<JobResult> {
+  progress.set({ label: '', current: 0, total: 0 });
+  return invoke<JobResult>('run_script', { script });
 }
 
 /** Returns the script's last line result, or throws with its message if that
  *  line did not succeed — the "did the backend command actually succeed"
- *  check every runScriptAndWait caller needs before reporting success. */
+ *  check every runScript caller needs before reporting success. */
 export function lastResultOrThrow(job: JobResult): ScriptResult {
   const last = job.results.at(-1);
   if (!last?.success) {
@@ -87,17 +49,14 @@ export function lastResultOrThrow(job: JobResult): ScriptResult {
  *  progress-polling contract on that path at all, unlike console/macro
  *  dispatch. That mismatched architecture is what caused the progress bar
  *  and the whole UI to freeze for the run's duration. Now routed through
- *  the same runScriptAndWait/run_script path console already uses: the
- *  script is accepted near-instantly on its own thread, and progress
- *  ticks via the existing poll in stores/progress.ts, exactly like
- *  AddFiles and every other console-dispatched command. */
+ *  the same runScript/run_script path console already uses: run_script
+ *  itself awaits the plugin's execution (Issue 201), and progress ticks
+ *  via the existing poll in stores/progress.ts while it runs, exactly
+ *  like AddFiles and every other console-dispatched command. */
 export async function runAnalyzeFramesWithProfile(profileName: string) {
   notifications.running('AnalyzeFrames');
   try {
-    const job = await runScriptAndWait(
-      `AnalyzeFrames profile="${profileName}"`,
-      'analyzeFramesMenu'
-    );
+    const job = await runScript(`AnalyzeFrames profile="${profileName}"`);
     const last = lastResultOrThrow(job);
     const msg = last.message ?? 'AnalyzeFrames complete';
     pipeToConsole(msg, 'success');
@@ -166,12 +125,12 @@ const SUPPORTED_ADD_FILES_EXTENSIONS = ['fit', 'fits', 'fts', 'xisf', 'tif', 'ti
 
 /** Core AddFiles pipeline, shared by the file-picker flow and drag-and-drop.
  *
- *  Issue 177 (related): previously invoked dispatch_command directly,
- *  the same await-the-whole-execution mechanism implicated in the
+ *  Issue 177 (related): previously invoked dispatch_command directly, the
+ *  same await-the-whole-execution mechanism implicated in the
  *  AnalyzeFrames menu freeze. AddFiles' second and later invocations in
  *  a session were observed to freeze the whole UI until the load
  *  finished, first invocation always clean — now routed through
- *  runScriptAndWait/run_script instead, matching the pattern already
+ *  runScript/run_script instead, matching the pattern already
  *  used by ExportAnalysisReport and WriteFIT. Paths are comma-joined as
  *  before, now wrapped in one quoted pcode string argument rather than
  *  passed as a raw arg map entry. */
@@ -182,7 +141,7 @@ async function addFilesFromPaths(paths: string[]) {
 
   let job;
   try {
-    job = await runScriptAndWait(`AddFiles paths="${pathsArg}"`, 'addFiles');
+    job = await runScript(`AddFiles paths="${pathsArg}"`);
   } catch (e) {
     notifications.error(`AddFiles failed: ${e}`);
     return;

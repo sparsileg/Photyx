@@ -9,7 +9,7 @@
   import { open, save } from '@tauri-apps/plugin-dialog';
   import { readTextFile } from '@tauri-apps/plugin-fs';
   import { quickLaunch } from '../stores/quickLaunch';
-  import { addFiles, closeSession, applyAutoStretch, loadFile, runScriptAndWait, lastResultOrThrow } from '../commands';
+  import { addFiles, closeSession, applyAutoStretch, loadFile, runScript, lastResultOrThrow } from '../commands';
   import { settings } from '../stores/settings';
   import { thresholdProfiles } from '../stores/thresholdProfiles';
   import { ui } from '../stores/ui';
@@ -62,7 +62,6 @@
     case 'preferences':         ui.openPreferences(); break;
     case 'restore-database':    restoreDatabase(); break;
     case 'run-macro':           ui.togglePanel('macro-editor'); break;
-    case 'save-as-fits':        saveAsFits(); break;
     case 'stacking-workspace':  ui.showView('stackingWorkspace'); break;
     case 'theme-dark':          ui.setTheme('dark'); break;
     case 'theme-light':         ui.setTheme('light'); break;
@@ -124,36 +123,6 @@
     ui.setAutostretchFrame(null);
   }
 
-  async function saveAsFits() {
-    let destPath: string | null;
-    try {
-      destPath = await save({
-        title:   'Save session as FITS',
-        filters: [{ name: 'FITS Image', extensions: ['fit'] }],
-      });
-    } catch (e) {
-      notifications.error(`Save cancelled: ${e}`);
-      return;
-    }
-    if (!destPath) return;
-
-    // Determine whether there is a stack result or a current session frame
-    const isStackingWorkspace = document.getElementById('sw-root') !== null;
-    const stackArg = isStackingWorkspace ? ' stack=true' : '';
-
-    notifications.running('Saving FITS…');
-    try {
-      const job = await runScriptAndWait(
-        `WriteFIT destination="${destPath.replace(/\\/g, '/')}" overwrite=true${stackArg}`,
-        'menubar-savefits'
-      );
-      lastResultOrThrow(job);
-      notifications.success(`Saved: ${destPath}`);
-      pipeToConsole(`Saved FITS: ${destPath}`, 'success');
-    } catch (e) {
-      notifications.error(`Save failed: ${e}`);
-    }
-  }
 
   async function openDocumentation() {
     try {
@@ -277,9 +246,8 @@
 
     notifications.running('Exporting analysis report…');
     try {
-      const job = await runScriptAndWait(
-        `ExportAnalysisReport path="${savePath.replace(/\\/g, '/')}"`,
-        'menubar-exportsession'
+      const job = await runScript(
+        `ExportAnalysisReport path="${savePath.replace(/\\/g, '/')}"`
       );
       const last = lastResultOrThrow(job);
       notifications.success('Session exported.');
@@ -343,8 +311,6 @@
   const MENUS: MenuDef[] = [
     { name: 'File', items: [
       { label: 'Load Single Image ', action: 'load-single-image' },
-      { sep: true },
-      { label: 'Save session as FITS',       action: 'save-as-fits' },
       { sep: true },
       { label: 'Exit',               action: 'exit' },
     ]},

@@ -7,7 +7,7 @@
   import { ui } from '../stores/ui';
   import { consoleHistory, consolePipe } from '../stores/consoleHistory';
   import { settings } from '../stores/settings';
-  import { jobResult, jobOwner, progress } from '../stores/progress';
+  import { progress, type JobResult } from '../stores/progress';
 
   interface ConsoleLine {
     id: number;
@@ -30,6 +30,7 @@
   let pendingInput = '';
   let nextId = 2;
   let trace = $state(false);
+  let scriptRunning = $state(false);
 
   // ── Clipboard copy ────────────────────────────────────────────────────────
   // Copies the entire console buffer (all of `lines`, capped by
@@ -61,7 +62,7 @@
   }
 
   import { PCODE_COMMANDS } from '../pcode';
-  import { applyAutoStretch, loadFile } from '../commands';
+  import { applyAutoStretch, loadFile, runScript } from '../commands';
   import { getHelp, ARG_HINT_STRINGS, HELP_DB, extractRunningLabel } from '../pcode';
   import type { HelpEntry } from '../pcode';
   import { handleClientCommand, CLIENT_COMMAND_NAMES } from '../clientCommands';
@@ -78,109 +79,82 @@
     }
   });
 
-  // Handle async job results addressed to the console
-  $effect(() => {
-    const result = $jobResult;
-    const owner  = $jobOwner;
-    if (!result || owner !== 'console') return;
+  // Issue 201: job-result processing moved from a $effect watching
+  // jobResult/jobOwner into processJobResult() below, called directly from
+  // dispatch() after its own await — see dispatch() for the call site.
+  async function processJobResult(result: JobResult) {
+    let lastActionData: Record<string, unknown> | null = null;
 
-    // Issue 98: clear job state synchronously, immediately — before any
-    // async work starts below. A prior version of this fix delayed this
-    // clear to the end of the async IIFE (behind await points added for
-    // client-command ordering), which reopened a real race: with jobResult
-    // still non-null and this effect still subscribed to it, the 500ms
-    // progress poller (or any other redelivery) could write a fresh-but-
-    // same-content result back into the store before cleanup ran, causing
-    // Svelte to rerun this effect on the same result and reprocess/reprint
-    // it — compounding indefinitely (confirmed via Svelte's own
-    // effect_update_depth_exceeded guard). Everything below now works off
-    // the locally-captured `result`, not the store, so clearing here first
-    // is safe.
-    jobResult.set(null);
-    jobOwner.set(null);
+    for (const r of result.results) {
+      if (r.success) {
+        const isAssignment = r.command.toLowerCase().startsWith('set ');
 
-    // Reactive reads ($jobResult, $jobOwner) stay synchronous above, per
-    // Svelte's effect dependency-tracking requirements. The rest of the
-    // work is wrapped in an async IIFE so the results loop can await
-    // syncSessionState() (which can await handleClientCommand()) in
-    // order — previously a fire-and-forget async call inside a synchronous
-    // loop let a later, fully-synchronous command (e.g. Pwd) print before
-    // an earlier async one (e.g. Version, which awaits getVersion()) had
-    // resolved, scrambling output order relative to script order.
-    (async () => {
-      let lastActionData: Record<string, unknown> | null = null;
+        if (trace && r.trace_line) {
+          append(r.trace_line, 'trace-echo');
+        }
 
-      for (const r of result.results) {
-        if (r.success) {
-          const isAssignment = r.command.toLowerCase().startsWith('set ');
+        if (r.message && !isAssignment) {
+          r.message.split('\n').forEach(line => {
+            if (line) append(line, 'success');
+          });
+        }
 
-          if (trace && r.trace_line) {
-            append(r.trace_line, 'trace-echo');
-          }
+        if (r.data) lastActionData = r.data;
 
-          if (r.message && !isAssignment) {
-            r.message.split('\n').forEach(line => {
-              if (line) append(line, 'success');
-            });
-          }
-
-          if (r.data) lastActionData = r.data;
-
-          await syncSessionState(
-            r.command.toLowerCase(),
-            {},
-            r.message,
-            r.data,
-          );
+        await syncSessionState(
+          r.command.toLowerCase(),
+          {},
+          r.message,
+          r.data,
+        );
+      } else {
+        const msg = r.message ?? 'Unknown error';
+        append(msg, 'error');
+        if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
+          notifications.alert('Too many files to load', msg, 10000);
         } else {
-          const msg = r.message ?? 'Unknown error';
-          append(msg, 'error');
-          if (msg.includes('Load cancelled') || msg.includes('MEMORY_LIMIT_EXCEEDED')) {
-            notifications.alert('Too many files to load', msg, 10000);
-          } else {
-            notifications.error(msg);
-          }
+          notifications.error(msg);
         }
       }
+    }
 
-      if (result.session_changed) {
-        try {
-          const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
-          session.setFileList(s.fileList);
-          session.setCurrentFrame(s.currentFrame);
-        } catch (e) {
-          notifications.error(`Session sync failed: ${e}`);
-        }
+    if (result.session_changed) {
+      try {
+        const s = await invoke<{ fileList: string[]; currentFrame: number }>('get_session');
+        session.setFileList(s.fileList);
+        session.setCurrentFrame(s.currentFrame);
+      } catch (e) {
+        notifications.error(`Session sync failed: ${e}`);
       }
+    }
 
-      // Issue 116: single hook for every display-affecting command, driven
-      // by the backend's DISPLAY_COMMANDS list (lib.rs) via
-      // result.display_changed — activates a field that was previously
-      // computed but never read anywhere on the frontend. Replaces
-      // rejectframe's per-command ui.requestFrameRefresh() call
-      // above, and is the actual fix for SetFrame/AddFiles/ReadImages
-      // never repainting the viewer.
-      if (result.display_changed) {
-        ui.requestFrameRefresh();
-      }
+    // Issue 116: single hook for every display-affecting command, driven
+    // by the backend's DISPLAY_COMMANDS list (lib.rs) via
+    // result.display_changed — activates a field that was previously
+    // computed but never read anywhere on the frontend. Replaces
+    // rejectframe's per-command ui.requestFrameRefresh() call
+    // above, and is the actual fix for SetFrame/AddFiles/ReadImages
+    // never repainting the viewer.
+    if (result.display_changed) {
+      ui.requestFrameRefresh();
+    }
 
-      // Dispatch client actions
-      for (const action of result.client_actions ?? []) {
-        if (action === 'refresh_autostretch') {
-          const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
-          const targetBackground = lastActionData?.target_background as number | undefined;
-          applyAutoStretch(shadowClip, targetBackground).then(() => ui.clearAnnotations());
-        }
-        if (action === 'refresh_annotations') ui.refreshAnnotations();
-        if (action === 'open_keyword_modal')  ui.openKeywordModal();
+    // Dispatch client actions
+    for (const action of result.client_actions ?? []) {
+      if (action === 'refresh_autostretch') {
+        const shadowClip       = lastActionData?.shadow_clip      as number | undefined;
+        const targetBackground = lastActionData?.target_background as number | undefined;
+        applyAutoStretch(shadowClip, targetBackground).then(() => ui.clearAnnotations());
       }
+      if (action === 'refresh_annotations') ui.refreshAnnotations();
+      if (action === 'open_keyword_modal')  ui.openKeywordModal();
+    }
 
-      const anyError = result.results.some(r => !r.success);
-      if (!anyError) {
-        notifications.success(result.results.at(-1)?.message ?? 'Done.');
-      }
-    })();
-  });
+    const anyError = result.results.some(r => !r.success);
+    if (!anyError) {
+      notifications.success(result.results.at(-1)?.message ?? 'Done.');
+    }
+  }
 
   const ALL_COMMANDS = [...PCODE_COMMANDS].sort();
   const ALL_HELP_TOPICS = Object.keys(HELP_DB).map(k => HELP_DB[k].name.replace(/\(\)$/, '')).sort();
@@ -283,16 +257,11 @@
       trimmed = `${trimmed} index=${$ui.blinkFrameIndex}`;
     }
 
+    notifications.running(extractRunningLabel(firstLine));
+    scriptRunning = true;
     try {
-      const response = await invoke<{ accepted: boolean }>('run_script', { script: trimmed });
-      if (!response.accepted) {
-        notifications.error('A script is already running — try again in a moment.');
-        return;
-      }
-      notifications.running(extractRunningLabel(firstLine));
-      jobOwner.set('console');
-      progress.set({ label: '', current: 0, total: 0 });
-      // Result arrives asynchronously via the $effect watching jobResult
+      const result = await runScript(trimmed);
+      await processJobResult(result);
     } catch (err) {
       const msg = String(err);
       append(msg, 'error');
@@ -301,7 +270,8 @@
       } else {
         notifications.error(msg);
       }
-      jobOwner.set(null);
+    } finally {
+      scriptRunning = false;
     }
   }
 
@@ -368,6 +338,7 @@
   }
 
   function submit() {
+    if (scriptRunning) return;
     const raw = inputValue.trim();
     if (!raw) return;
 
@@ -500,7 +471,7 @@
     {/each}
   </div>
   <div class="console-input-row">
-    <span class="console-prompt">&gt;</span>
+    <span class="console-prompt">{scriptRunning ? '' : '>'}</span>
     <textarea
       id="console-textarea"
       bind:this={textareaEl}
@@ -519,7 +490,8 @@
       autocorrect="off"
       autocapitalize="off"
       spellcheck={false}
-      placeholder="Type a pcode command…"
+      placeholder={scriptRunning ? '' : 'Type a pcode command…'}
+      disabled={scriptRunning}
       ></textarea>
   </div>
 {:else}
@@ -541,7 +513,7 @@
 
 <!-- Input line inline with output -->
       <div class="console-line console-input-inline">
-        <span class="line-prompt">&gt;</span>
+        <span class="line-prompt">{scriptRunning ? '' : '>'}</span>
         <textarea
           id="console-textarea"
           bind:this={textareaEl}
@@ -560,7 +532,8 @@
           autocorrect="off"
           autocapitalize="off"
           spellcheck={false}
-          placeholder="Type a pcode command… (Shift+Enter for newline)"
+          placeholder={scriptRunning ? '' : 'Type a pcode command… (Shift+Enter for newline)'}
+          disabled={scriptRunning}
           ></textarea>
       </div>
   </div>

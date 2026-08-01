@@ -96,18 +96,17 @@ pub struct JobResult {
     pub client_actions:  Vec<String>,
 }
 
-pub static JOB_RESULT: once_cell::sync::OnceCell<Mutex<Option<JobResult>>> =
-    once_cell::sync::OnceCell::new();
-
 /// Guards against a second run_script call overlapping with one already in
-/// flight. Without this, two threads freely interleave writes to the global
-/// progress atomics and the single-slot JOB_RESULT, causing flicker and lost
-/// results (Issue 83). Released via JobGuard's Drop impl so it resets even if
-/// the spawned thread panics somewhere execute_script itself doesn't catch
-/// (i.e. outside a plugin's execute(), which is caught at the registry
-/// dispatch site) — a flag stuck at `true` would otherwise permanently block
-/// every future script, which is the exact failure mode this issue exists to
-/// eliminate, not reintroduce under a different name.
+/// flight. Without this, two overlapping calls would freely interleave
+/// writes to the global progress atomics, causing flicker (Issue 83).
+/// Post-Issue-201, run_script awaits its own result directly rather than
+/// posting to a shared slot, but the atomics-interleaving hazard is
+/// unchanged, so the guard remains. Released via JobGuard's Drop impl so it
+/// resets even if the spawned task panics somewhere execute_script itself
+/// doesn't catch (i.e. outside a plugin's execute(), which is caught at the
+/// registry dispatch site) — a flag stuck at `true` would otherwise
+/// permanently block every future script, which is the exact failure mode
+/// this issue exists to eliminate, not reintroduce under a different name.
 pub static JOB_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// RAII guard that releases JOB_RUNNING when dropped, including during a panic unwind.
@@ -211,11 +210,6 @@ async fn dispatch_command(
 
 // ── Tauri command: execute a pcode script ─────────────────────────────────────
 
-#[derive(Debug, Serialize)]
-pub struct ScriptResponse {
-    pub accepted: bool,
-}
-
 // Commands that modify the session file list or active directory.
 const SESSION_COMMANDS: &[&str] = &[
     "addfiles", "clearsession", "commitanalysis", "filterbykeyword", "movefile", "readimages", "rejectframe", "runmacro", "setframe",
@@ -245,30 +239,34 @@ const DISPLAY_COMMANDS: &[&str] = &[
 ];
 
 #[tauri::command]
-fn run_script(script: String, state: State<Arc<PhotoxState>>) -> ScriptResponse {
+async fn run_script(script: String, state: State<'_, Arc<PhotoxState>>) -> Result<JobResult, String> {
     // Reject a second script while one is already running, rather than
-    // letting both threads interleave writes to the global progress
-    // atomics and the single-slot JOB_RESULT (Issue 83).
+    // letting two overlapping runs interleave writes to the global
+    // progress atomics (Issue 83).
     if JOB_RUNNING
         .compare_exchange(false, true, std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst)
         .is_err()
     {
-        return ScriptResponse { accepted: false };
+        return Err("A script is already running — try again in a moment.".to_string());
     }
 
-    // Clear progress atomics, label, and job result slot before starting
+    // Clear progress atomics and label before starting
     PROGRESS_CURRENT.store(0, std::sync::atomic::Ordering::Relaxed);
     PROGRESS_TOTAL.store(0, std::sync::atomic::Ordering::Relaxed);
     if let Some(label) = PROGRESS_LABEL.get() {
         if let Ok(mut g) = label.lock() { g.clear(); }
     }
-    if let Some(slot) = JOB_RESULT.get() {
-        *slot.lock().expect("job result lock poisoned") = None;
-    }
 
     let state = Arc::clone(&state);
 
-    std::thread::spawn(move || {
+    // Issue 201: run_script now awaits its own result directly instead of
+    // posting to a shared JOB_RESULT slot for the frontend to poll —
+    // matching dispatch_command's existing spawn_blocking/await shape.
+    // The caller's own await now serializes a single call site's successive
+    // submissions; JOB_RUNNING still serializes different call sites
+    // (Console, Quick Launch, Macro Library, StackingWorkspace) against
+    // each other.
+    let job_result = tokio::task::spawn_blocking(move || {
         let _job_guard = JobGuard; // releases JOB_RUNNING on scope exit, including panics
 
         let mut ctx = state.context.lock().expect("context lock poisoned");
@@ -290,7 +288,7 @@ fn run_script(script: String, state: State<Arc<PhotoxState>>) -> ScriptResponse 
             .flat_map(|r| r.client_actions.iter().cloned())
             .collect();
 
-        let job_result = JobResult {
+        JobResult {
             results: results.iter().map(|r| ScriptResult {
                 line_number:    r.line_number,
                 command:        r.command.clone(),
@@ -303,23 +301,10 @@ fn run_script(script: String, state: State<Arc<PhotoxState>>) -> ScriptResponse 
             session_changed,
             display_changed,
             client_actions,
-        };
-
-        if let Some(slot) = JOB_RESULT.get() {
-            *slot.lock().expect("job result lock poisoned") = Some(job_result);
         }
-    });
+    }).await.map_err(|e| format!("run_script panicked: {:?}", e))?;
 
-    ScriptResponse { accepted: true }
-}
-
-// ── Tauri command: get async job result ───────────────────────────────────────
-
-#[tauri::command]
-fn get_job_result() -> Option<JobResult> {
-    JOB_RESULT.get().and_then(|slot| {
-        slot.lock().expect("job result lock poisoned").take()
-    })
+    Ok(job_result)
 }
 
 // ── Tauri command: get progress ───────────────────────────────────────────────
@@ -481,8 +466,7 @@ pub fn run() {
         }
     }
 
-    // Initialize JOB_RESULT and PROGRESS_LABEL slots
-    let _ = JOB_RESULT.set(Mutex::new(None));
+    // Initialize PROGRESS_LABEL slot
     let _ = PROGRESS_LABEL.set(Mutex::new(String::new()));
 
     let state = Arc::new(PhotoxState {
@@ -546,7 +530,6 @@ pub fn run() {
             commands::threshold_profiles::set_active_threshold_profile,
             dispatch_command,
             get_db_schema_version,
-            get_job_result,
             get_progress,
             list_plugins,
             run_script,

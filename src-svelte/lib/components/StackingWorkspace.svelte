@@ -1,4 +1,5 @@
 <!-- StackingWorkspace.svelte — Stacking workflow viewer-region component -->
+
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
@@ -6,8 +7,8 @@
   import { ui } from '../stores/ui';
   import { notifications } from '../stores/notifications';
   import { pipeToConsole } from '../stores/consoleHistory';
-  import { jobResult, jobOwner, progress } from '../stores/progress';
-  import { runScriptAndWait, lastResultOrThrow } from '../commands';
+  import { progress, type JobResult } from '../stores/progress';
+  import { runScript, lastResultOrThrow } from '../commands';
 
   // ── State ─────────────────────────────────────────────────────────────────
 
@@ -36,19 +37,13 @@
     stackLabel = '';
     stackStats = '';
     notifications.running('StackFrames');
-    progress.set({ label: '', current: 0, total: 0 });
-    jobOwner.set('stackingworkspace');
     try {
-      const response = await invoke<{ accepted: boolean }>('run_script', { script: 'StackFrames' });
-      if (!response.accepted) {
-        throw new Error('A script is already running — try again in a moment.');
-      }
-      // Result arrives asynchronously via the $effect below watching jobResult.
+      const result = await runScript('StackFrames');
+      processStackResult(result);
     } catch (e) {
       error = `${e}`;
       phase = 'idle';
       notifications.error(`StackFrames failed: ${e}`);
-      jobOwner.set(null);
     }
   }
 
@@ -99,10 +94,7 @@
   async function commitStretch() {
     if (!hasStack) return;
     try {
-      const job = await runScriptAndWait(
-        `CommitStretch shadow_clip=${shadowClip} target_bg=${targetBg}`,
-        'stackingworkspace-commitstretch'
-      );
+      const job = await runScript(`CommitStretch shadow_clip=${shadowClip} target_bg=${targetBg}`);
       lastResultOrThrow(job);
       notifications.success('Stretch committed');
       pipeToConsole('Stretch committed.', 'output');
@@ -131,12 +123,8 @@
 
   // ── React to stretch mode changes from toolbar ────────────────────────────
 
-  //    Handle async job result for StackFrames
-  $effect(() => {
-    const result = $jobResult;
-    const owner  = $jobOwner;
-    if (!result || owner !== 'stackingworkspace') return;
-
+  //    Process job result for StackFrames
+  function processStackResult(result: JobResult) {
     const last = result.results.at(-1);
     if (!last?.success) {
       error = last?.message ?? 'StackFrames failed';
@@ -152,10 +140,7 @@
       phase = 'stacked';
       loadLinear();
     }
-
-    jobResult.set(null);
-    jobOwner.set(null);
-  });
+  }
 
   //    React to stretch mode changes from toolbar
   $effect(() => {
@@ -185,10 +170,7 @@
     exporting = true;
     notifications.running('Exporting stack…');
     try {
-      const job = await runScriptAndWait(
-        `WriteXISF destination="${destDir}" stack=true`,
-        'stackingworkspace-exportxisf'
-      );
+      const job = await runScript(`WriteXISF destination="${destDir}" stack=true`);
       const last = lastResultOrThrow(job);
       // WriteXISF reports an existing-file skip as a *successful* result
       // (overwrite=false is the default) rather than an error — surface
