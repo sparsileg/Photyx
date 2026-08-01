@@ -4,8 +4,8 @@ use std::sync::Arc;
 use tauri::State;
 use crate::PhotoxState;
 
-#[tauri::command]
-pub fn list_log_files(state: State<Arc<PhotoxState>>) -> Result<Vec<serde_json::Value>, String> {
+#[tauri::command(async)]
+pub fn list_log_files(state: State<'_, Arc<PhotoxState>>) -> Result<Vec<serde_json::Value>, String> {
     let log_dir = {
         let ctx = state.context.lock().expect("context lock poisoned");
         ctx.log_dir.clone()

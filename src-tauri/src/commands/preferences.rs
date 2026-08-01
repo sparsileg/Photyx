@@ -19,8 +19,8 @@ pub fn get_all_preferences(state: State<Arc<PhotoxState>>) -> Result<std::collec
     Ok(map)
 }
 
-#[tauri::command]
-pub fn set_preference(key: String, value: String, state: State<Arc<PhotoxState>>) -> Result<(), String> {
+#[tauri::command(async)]
+pub fn set_preference(key: String, value: String, state: State<'_, Arc<PhotoxState>>) -> Result<(), String> {
     let db = state.db.lock().expect("db lock poisoned");
     let mut settings = state.settings.lock().expect("settings lock poisoned");
     settings.save_preference(&key, &value, &db)?;

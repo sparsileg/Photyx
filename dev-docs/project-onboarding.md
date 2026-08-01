@@ -55,10 +55,14 @@ a Quick Launch bar. Supported formats are FITS (via cfitsio) and XISF
 (via the custom `photyx-xisf` crate).
 
 Because `AppContext` is behind a single Mutex, any long-running plugin
-holding `&mut AppContext` blocks all other Tauri commands — including
-frame display — for its duration. This constraint has shaped several
-design decisions and is worth keeping in mind before proposing
-anything long-running that touches shared state.
+holding `&mut AppContext` delays every other command that needs the
+same lock until it releases. Commands that take this lock are declared
+`#[tauri::command(async)]` or as an `async fn` using `spawn_blocking`,
+so the wait happens on a runtime worker and the UI stays responsive —
+a synchronous command taking that lock would park the main thread
+instead. This constraint has shaped several design decisions and is
+worth keeping in mind before proposing anything long-running that
+touches shared state.
 
 #### Development Environment
 

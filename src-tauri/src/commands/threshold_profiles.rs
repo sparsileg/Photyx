@@ -159,10 +159,10 @@ pub fn delete_threshold_profile(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_active_threshold_profile(
     id: i64,
-    state: State<Arc<PhotoxState>>,
+    state: State<'_, Arc<PhotoxState>>,
 ) -> Result<(), String> {
     let db = state.db.lock().expect("db lock poisoned");
     let mut settings = state.settings.lock().expect("settings lock poisoned");

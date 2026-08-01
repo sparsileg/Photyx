@@ -104,11 +104,11 @@ pub async fn get_current_frame(state: State<'_, Arc<PhotoxState>>) -> Result<Str
 }
 
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_autostretch_frame(
     shadow_clip: Option<f32>,
     target_bg: Option<f32>,
-    state: State<Arc<PhotoxState>>,
+    state: State<'_, Arc<PhotoxState>>,
 ) -> Result<String, String> {
     use crate::plugins::auto_stretch::compute_autostretch_jpeg;
     let mut ctx = state.context.lock().expect("context lock poisoned");
@@ -127,11 +127,11 @@ pub fn get_autostretch_frame(
     Ok(format!("data:image/jpeg;base64,{}", b64))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_blink_frame(
     index: usize,
     resolution: String,
-    state: State<Arc<PhotoxState>>,
+    state: State<'_, Arc<PhotoxState>>,
 ) -> Result<String, String> {
     let ctx = state.context.lock().expect("context lock poisoned");
 
@@ -148,8 +148,8 @@ pub fn get_blink_frame(
     Ok(format!("data:image/jpeg;base64,{}", b64))
 }
 
-#[tauri::command]
-pub fn get_blink_cache_status(state: State<Arc<PhotoxState>>) -> String {
+#[tauri::command(async)]
+pub fn get_blink_cache_status(state: State<'_, Arc<PhotoxState>>) -> String {
     let ctx = state.context.lock().expect("context lock poisoned");
     match ctx.blink_cache_status {
         crate::context::BlinkCacheStatus::Idle     => "idle".to_string(),
@@ -164,8 +164,8 @@ pub fn get_blink_cache_status(state: State<Arc<PhotoxState>>) -> String {
 // there is no post-load background build. get_blink_cache_status and the
 // BlinkCacheStatus enum survive — the loaders set Ready at load end.
 
-#[tauri::command]
-pub fn get_pixel(x: u32, y: u32, state: State<Arc<PhotoxState>>) -> Result<serde_json::Value, String> {
+#[tauri::command(async)]
+pub fn get_pixel(x: u32, y: u32, state: State<'_, Arc<PhotoxState>>) -> Result<serde_json::Value, String> {
     let mut ctx = state.context.lock().expect("context lock poisoned");
 
     let path = ctx.file_list.get(ctx.current_frame)
@@ -247,8 +247,8 @@ pub fn get_pixel(x: u32, y: u32, state: State<Arc<PhotoxState>>) -> Result<serde
     }))
 }
 
-#[tauri::command]
-pub fn get_full_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {
+#[tauri::command(async)]
+pub fn get_full_frame(state: State<'_, Arc<PhotoxState>>) -> Result<String, String> {
     let path = {
         let ctx = state.context.lock().expect("context lock poisoned");
         ctx.file_list.get(ctx.current_frame)
@@ -365,8 +365,8 @@ pub fn get_full_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> 
     Ok(format!("data:image/jpeg;base64,{}", b64))
 }
 
-#[tauri::command]
-pub fn get_histogram(state: State<Arc<PhotoxState>>) -> Result<serde_json::Value, String> {
+#[tauri::command(async)]
+pub fn get_histogram(state: State<'_, Arc<PhotoxState>>) -> Result<serde_json::Value, String> {
     let mut ctx = state.context.lock().expect("context lock poisoned");
 
     let path = ctx.file_list.get(ctx.current_frame)
@@ -400,8 +400,8 @@ pub fn get_histogram(state: State<Arc<PhotoxState>>) -> Result<serde_json::Value
     }))
 }
 
-#[tauri::command]
-pub fn load_file(path: String, state: State<Arc<PhotoxState>>) -> Result<String, String> {
+#[tauri::command(async)]
+pub fn load_file(path: String, state: State<'_, Arc<PhotoxState>>) -> Result<String, String> {
     use crate::plugins::image_reader::read_image_file;
     use crate::context::PixelData;
 
@@ -498,11 +498,11 @@ pub fn load_file(path: String, state: State<Arc<PhotoxState>>) -> Result<String,
 /// Returns the current stack result as an auto-stretched display-resolution
 /// JPEG data URL plus the stack summary. Uses the same Auto-STF parameters
 /// as the main viewer.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_autostretch_stack_frame(
     shadow_clip: Option<f32>,
     target_bg:   Option<f32>,
-    state: State<Arc<PhotoxState>>,
+    state: State<'_, Arc<PhotoxState>>,
 ) -> Result<serde_json::Value, String> {
     let ctx = state.context.lock().expect("context lock poisoned");
     let summary_json = ctx.stack_summary.as_ref().map(|s| serde_json::json!({
@@ -540,8 +540,8 @@ pub fn get_autostretch_stack_frame(
 /// opposed to get_autostretch_stack_frame's STF stretch). Used by
 /// StackingWorkspace.svelte for a raw, unstretched preview of the stack
 /// result.
-#[tauri::command]
-pub fn get_stack_frame(state: State<Arc<PhotoxState>>) -> Result<String, String> {
+#[tauri::command(async)]
+pub fn get_stack_frame(state: State<'_, Arc<PhotoxState>>) -> Result<String, String> {
     let ctx = state.context.lock().expect("context lock poisoned");
 
     let buffer = ctx.stack_result.as_ref()

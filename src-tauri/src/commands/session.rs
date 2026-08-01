@@ -4,8 +4,8 @@ use std::sync::Arc;
 use tauri::State;
 use crate::PhotoxState;
 
-#[tauri::command]
-pub fn get_session(state: State<Arc<PhotoxState>>) -> serde_json::Value {
+#[tauri::command(async)]
+pub fn get_session(state: State<'_, Arc<PhotoxState>>) -> serde_json::Value {
     let ctx = state.context.lock().expect("context lock poisoned");
     serde_json::json!({
         "fileList":     ctx.file_list,
@@ -13,16 +13,16 @@ pub fn get_session(state: State<Arc<PhotoxState>>) -> serde_json::Value {
     })
 }
 
-#[tauri::command]
-pub fn get_variable(name: String, state: State<Arc<PhotoxState>>) -> Option<String> {
+#[tauri::command(async)]
+pub fn get_variable(name: String, state: State<'_, Arc<PhotoxState>>) -> Option<String> {
     let ctx = state.context.lock().expect("context lock poisoned");
     ctx.variables.get(&name.to_uppercase())
         .or_else(|| ctx.variables.get(&name))
         .cloned()
 }
 
-#[tauri::command]
-pub fn debug_buffer_info(state: State<Arc<PhotoxState>>) -> serde_json::Value {
+#[tauri::command(async)]
+pub fn debug_buffer_info(state: State<'_, Arc<PhotoxState>>) -> serde_json::Value {
     let ctx = state.context.lock().expect("context lock poisoned");
     let path = ctx.file_list.get(ctx.current_frame).cloned();
     let buffer_info = path.as_ref().and_then(|p| ctx.image_buffers.get(p)).map(|b| {
@@ -50,8 +50,8 @@ pub fn debug_buffer_info(state: State<Arc<PhotoxState>>) -> serde_json::Value {
 }
 
 
-#[tauri::command]
-pub fn get_keywords(state: State<Arc<PhotoxState>>) -> serde_json::Value {
+#[tauri::command(async)]
+pub fn get_keywords(state: State<'_, Arc<PhotoxState>>) -> serde_json::Value {
     let ctx = state.context.lock().expect("context lock poisoned");
     let path = match ctx.file_list.get(ctx.current_frame) {
         Some(p) => p,

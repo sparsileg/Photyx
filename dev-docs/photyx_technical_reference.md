@@ -195,9 +195,14 @@ the LRU) on each request. Candidate for removal in a later cleanup.
 Design rule: display plugins read pixels via `ensure_pixels_resident`
 and write to caches; they never mutate the pixels. Because `AppContext`
 is behind a single Mutex, any plugin holding `&mut AppContext` for a
-long-running operation blocks all other Tauri commands — including frame
-display — for its duration. Extract owned data before any Rayon parallel
-section; `&mut AppContext` cannot be borrowed inside Rayon closures.
+long-running operation serializes every other command that needs the
+same lock — those commands block until the plugin releases it, and
+return post-script state when they resolve. Every such command is
+declared `#[tauri::command(async)]` or `async fn` so that wait happens
+on a runtime worker rather than the main thread, leaving the UI
+responsive for the duration (§10). Extract owned data before any Rayon
+parallel section; `&mut AppContext` cannot be borrowed inside Rayon
+closures.
 
 **Memory management (Linux):** `pin_mmap_threshold()` in `lib.rs`,
 called as the first statement of `run()`, sets glibc's mmap threshold
@@ -1618,10 +1623,20 @@ verbatim in the FITSKeyword block only.
 
 ## 10. Tauri Commands Reference
 
-One canonical table, merged from the two overlapping command lists in
-the source documents (each was missing a handful of commands the other
-had) plus `get_progress`/`get_job_result`, confirmed present in
-`progress.ts` (§2.7) but absent from both prior tables.
+One canonical table of every command the frontend can invoke.
+
+**Invariant — no synchronous command may take a lock a long-running
+script can hold.** `run_script` holds the `AppContext` lock for a
+script's full duration, and plugins hold the shared `state.db`
+connection lock while they run. Tauri executes a command declared as a
+plain `#[tauri::command]` on the main thread, so such a command waiting
+on either lock parks the GTK main loop — freezing rendering and input
+until the script completes, while the script itself finishes normally.
+Any command that locks `state.context` or `state.db` must therefore be
+declared `#[tauri::command(async)]` (sync body, dispatched to the
+runtime) or as an `async fn` using `spawn_blocking`. This applies to
+every new command added to the table below, not just the ones already
+listed.
 
 | Command                            | Description                                                                                                     |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -1765,7 +1780,7 @@ believed still open as of this document.
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | cfitsio parallel loading crashes          | Thread-safety issue — sequential FITS loading is used instead                                          |
 | Full-res frames are JPEG, not lossless    | Disclosed via a disclaimer bar; pixel readout still uses the raw buffer, not the JPEG                     |
-| AppContext mutex serializes long operations | A long-running plugin holding `&mut AppContext` blocks all other commands, including frame display, for its duration — see §2.2 |
+| AppContext mutex serializes long operations | A long-running plugin holding `&mut AppContext` delays every other command that needs the same lock until it releases — those commands resolve with post-script state rather than promptly. The UI stays responsive throughout, since all such commands wait on a runtime worker rather than the main thread — see §2.2, §10 |
 | Zoom approximate at high levels           | Full-res cache reuses STF params computed at display resolution, not recomputed at full res — see §2.2   |
 | `display_cache` never written (Issue 84, deferred) | `start_background_cache` computes display-resolution JPEGs but discards them; frame navigation re-renders from raw pixels every time instead of reusing a cached copy — see §2.2. Deferred: low-impact under file-browser-only navigation |
 | XISF Vector/Matrix properties             | Read as a placeholder; skipped on write                                                                    |

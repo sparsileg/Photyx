@@ -4,8 +4,8 @@ use std::sync::Arc;
 use tauri::State;
 use crate::PhotoxState;
 
-#[tauri::command]
-pub fn get_analysis_results(state: State<Arc<PhotoxState>>) -> serde_json::Value {
+#[tauri::command(async)]
+pub fn get_analysis_results(state: State<'_, Arc<PhotoxState>>) -> serde_json::Value {
     let mut ctx = state.context.lock().expect("context lock poisoned");
 
     let session_path = ctx.common_parent()
@@ -176,10 +176,10 @@ pub struct FramePayload {
 
 // ── load_analysis_json command ────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_analysis_json(
     payload: AnalysisJsonPayload,
-    state:   State<Arc<PhotoxState>>,
+    state:   State<'_, Arc<PhotoxState>>,
 ) -> Result<(), String> {
     use crate::analysis::{AnalysisResult, PxFlag};
     use crate::analysis::session_stats::{
@@ -256,10 +256,10 @@ pub fn load_analysis_json(
 /// file is moved with its original name unchanged.
 /// Does not write PXFLAG keywords or flush files to disk — the move itself
 /// is the persistence action.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn commit_analysis_results(
     append: String,
-    state:  State<Arc<PhotoxState>>,
+    state:  State<'_, Arc<PhotoxState>>,
 ) -> Result<String, String> {
     let mut ctx = state.context.lock().expect("context lock poisoned");
     do_commit(&mut ctx, &append).map_err(|e| e.to_string())
@@ -397,11 +397,11 @@ pub fn extract_frame_label(filename: &str) -> String {
     chars[chars.len().saturating_sub(8)..].iter().collect()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_frame_flag(
     path:  String,
     flag:  String,
-    state: State<Arc<PhotoxState>>,
+    state: State<'_, Arc<PhotoxState>>,
 ) -> Result<(), String> {
     use crate::analysis::PxFlag;
     let mut ctx = state.context.lock().expect("context lock poisoned");
@@ -415,8 +415,8 @@ pub fn set_frame_flag(
     Ok(())
 }
 
-#[tauri::command]
-pub fn get_star_positions(state: State<Arc<PhotoxState>>) -> serde_json::Value {
+#[tauri::command(async)]
+pub fn get_star_positions(state: State<'_, Arc<PhotoxState>>) -> serde_json::Value {
     use crate::analysis::{self, stars::detect_stars, fwhm::star_fwhm, StarDetectionConfig};
 
     let ctx = state.context.lock().expect("context lock poisoned");
