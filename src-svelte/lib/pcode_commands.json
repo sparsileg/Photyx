@@ -7,7 +7,6 @@
   "WriteCurrent",
   "WriteFIT",
   "WriteFrame",
-  "WriteTIFF",
   "WriteXISF",
 
   "AddKeyword",

@@ -1,6 +1,6 @@
 // plugins/image_reader.rs — Format-agnostic single image file reader
 //
-// Consolidates FITS, XISF, and TIFF readers. Dispatches to the appropriate
+// Consolidates FITS and XISF readers. Dispatches to the appropriate
 // format-specific reader based on file extension. Used by AddFiles and ReadImages,
 // load_file (commands/display.rs), and the LoadFile pcode plugin.
 
@@ -22,9 +22,8 @@ pub fn read_image_file(path: &str) -> Result<ImageBuffer, String> {
     match ext.as_str() {
         "fit" | "fits" | "fts" => read_fits_file(path),
         "xisf"                 => read_xisf_file(path),
-        "tif" | "tiff"         => read_tiff_file(path),
         other => Err(format!(
-            "Unsupported file format: '{}'. Supported formats: fit, fits, fts, xisf, tif, tiff",
+            "Unsupported file format: '{}'. Supported formats: fit, fits, fts, xisf",
             other
         )),
     }
@@ -235,7 +234,7 @@ pub fn read_fits_file(path: &str) -> Result<ImageBuffer, String> {
                 // confirmed against a real PixInsight-written master via
                 // a standalone probe (values matched an independent
                 // astropy cross-check exactly). >> 16 downconverts to
-                // 16-bit the same way XISF/TIFF already do (retain the
+                // 16-bit the same way XISF already does (retain the
                 // high 16 bits).
                 let data: Vec<u32> = hdu.read_image(&mut fitsfile)
                     .map_err(|e| format!("Cannot read pixel data: {}", e))?;
@@ -405,118 +404,8 @@ pub fn read_xisf_file(path: &str) -> Result<ImageBuffer, String> {
     })
 }
 
-// ── TIFF ─────────────────────────────────────────────────────────────────────
 
-use tiff::decoder::{Decoder, DecodingResult};
-use tiff::tags::Tag;
-use tiff::ColorType;
 
-/// Peek at a TIFF file header to get dimensions without reading pixel data.
-/// Returns (width, height, channels, bytes_per_pixel).
-/// Dead code since Issue 173; the entire TIFF reader is slated for
-/// deletion — do not extend.
-#[allow(dead_code)]
-pub fn peek_tiff_dimensions(path: &str) -> Option<(u32, u32, u8, usize)> {
-    let file = std::fs::File::open(path).ok()?;
-    let mut decoder = tiff::decoder::Decoder::new(file).ok()?;
-    let (width, height) = decoder.dimensions().ok()?;
-    let color_type = decoder.colortype().ok()?;
-    let (channels, bpp): (u8, usize) = match color_type {
-        tiff::ColorType::Gray(8)  => (1, 1),
-        tiff::ColorType::Gray(16) => (1, 2),
-        tiff::ColorType::Gray(32) => (1, 4),
-        tiff::ColorType::RGB(8)   => (3, 1),
-        tiff::ColorType::RGB(16)  => (3, 2),
-        tiff::ColorType::RGB(32)  => (3, 4),
-        _                         => (1, 2),
-    };
-    Some((width, height, channels, bpp))
-}
-
-pub fn read_tiff_file(path: &str) -> Result<ImageBuffer, String> {
-    let file = std::fs::File::open(path)
-        .map_err(|e| format!("Cannot open file: {e}"))?;
-
-    let mut decoder = Decoder::new(file)
-        .map_err(|e| format!("TIFF decode error: {e}"))?;
-
-    let (width, height) = decoder.dimensions()
-        .map_err(|e| format!("Cannot read dimensions: {e}"))?;
-
-    let color_type = decoder.colortype()
-        .map_err(|e| format!("Cannot read color type: {e}"))?;
-
-    let (channels, color_space): (u8, ColorSpace) = match color_type {
-        ColorType::Gray(_) => (1, ColorSpace::Mono),
-        ColorType::RGB(_)  => (3, ColorSpace::RGB),
-        other => return Err(format!("Unsupported color type: {other:?}")),
-    };
-
-    let result = decoder.read_image()
-        .map_err(|e| format!("Failed to read image data: {e}"))?;
-
-    let (pixels, bit_depth): (PixelData, BitDepth) = match result {
-        DecodingResult::U8(data)  => (PixelData::U8(data), BitDepth::U8),
-        DecodingResult::U16(data) => (PixelData::U16(data), BitDepth::U16),
-        DecodingResult::U32(data) => {
-            let converted: Vec<u16> = data.iter().map(|&v| (v >> 16) as u16).collect();
-            (PixelData::U16(converted), BitDepth::U16)
-        }
-        DecodingResult::F32(data) => (PixelData::F32(data), BitDepth::F32),
-        DecodingResult::F64(data) => {
-            let converted: Vec<f32> = data.iter().map(|&v| v as f32).collect();
-            (PixelData::F32(converted), BitDepth::F32)
-        }
-        other => return Err(format!("Unsupported pixel format: {other:?}")),
-    };
-
-    let filename = Path::new(path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("unknown")
-        .to_string();
-
-    let mut keywords: HashMap<String, KeywordEntry> = HashMap::new();
-    keywords.insert(
-        "FILENAME".to_string(),
-        KeywordEntry::new("FILENAME", &filename, Some("Source filename")),
-    );
-
-    if let Ok(desc) = decoder.get_tag_ascii_string(Tag::ImageDescription) {
-        for line in desc.lines() {
-            let line = line.trim();
-            if line.is_empty() { continue; }
-            if line.len() < 10 || &line[8..9] != "=" { continue; }
-            let name = line[..8].trim().to_uppercase();
-            if name.is_empty() { continue; }
-            let rest = line[9..].trim();
-            let (value, comment) = if let Some(slash) = rest.find(" /") {
-                (rest[..slash].trim().to_string(), Some(rest[slash+2..].trim().to_string()))
-            } else {
-                (rest.trim().to_string(), None)
-            };
-            let value = if value.starts_with('\'') && value.ends_with('\'') {
-                value[1..value.len()-1].trim_end().to_string()
-            } else {
-                value
-            };
-            keywords.insert(name.clone(), KeywordEntry::new(&name, &value, comment.as_deref()));
-        }
-    }
-
-    info!("Loaded TIFF: {} ({}x{} {:?})", path, width, height, bit_depth);
-
-    Ok(ImageBuffer {
-        filename,
-        width,
-        height,
-        display_width: 0,
-        bit_depth,
-        color_space,
-        channels,
-        keywords,
-        pixels: Some(pixels),
-    })
-}
-
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------

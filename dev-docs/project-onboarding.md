@@ -51,8 +51,8 @@ keywords. All persistence is via SQLite through `rusqlite`.
 
 The frontend is organized around a viewer region managed by a view
 registry (`ui.showView()`), a pcode console, sliding side panels, and
-a Quick Launch bar. Supported formats are FITS (via cfitsio), XISF (via the
-custom `photyx-xisf` crate), and TIFF.
+a Quick Launch bar. Supported formats are FITS (via cfitsio) and XISF
+(via the custom `photyx-xisf` crate).
 
 Because `AppContext` is behind a single Mutex, any long-running plugin
 holding `&mut AppContext` blocks all other Tauri commands — including

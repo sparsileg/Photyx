@@ -121,7 +121,7 @@ export async function commitAnalysis(isImported: boolean) {
   }
 }
 
-const SUPPORTED_ADD_FILES_EXTENSIONS = ['fit', 'fits', 'fts', 'xisf', 'tif', 'tiff'];
+const SUPPORTED_ADD_FILES_EXTENSIONS = ['fit', 'fits', 'fts', 'xisf'];
 
 /** Core AddFiles pipeline, shared by the file-picker flow and drag-and-drop.
  *

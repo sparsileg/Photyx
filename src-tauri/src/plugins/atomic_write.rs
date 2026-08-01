@@ -1,11 +1,11 @@
 // plugins/atomic_write.rs — shared atomic write-and-rename helper (Issue 82)
 //
-// Batch/whole-file writers (WriteFIT, WriteXISF, WriteTIFF, WriteFrame, and
-// the XISF/TIFF branches of WriteCurrent) must never leave a truncated file
-// at the final destination path if the process is killed mid-write. This is
-// the single implementation of that guarantee — previously it existed as
-// three separate inline copies (write_frame.rs, and two branches of
-// write_current_files.rs).
+// Batch/whole-file writers (WriteFIT, WriteXISF, WriteFrame, and the
+// XISF branches of WriteCurrent) must never leave a truncated file at
+// the final destination path if the process is killed mid-write. This
+// is the single implementation of that guarantee — previously it
+// existed as three separate inline copies (write_frame.rs, and two
+// branches of write_current_files.rs).
 //
 // Contract: `write_fn` receives a temp path (`<out_path>.tmp`) and must
 // write the complete file there. On success, the temp file is renamed into

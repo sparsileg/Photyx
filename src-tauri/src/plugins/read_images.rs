@@ -15,7 +15,7 @@ impl PhotyxPlugin for ReadImages {
     fn name(&self)        -> &str { "ReadImages" }
     fn version(&self)     -> &str { "1.2.0" }
     fn description(&self) -> &str {
-        "Loads a file or all supported images in a directory (FITS, XISF, TIFF) into the session"
+        "Loads a file or all supported images in a directory (FITS, XISF) into the session"
     }
 
     fn parameters(&self) -> Vec<ParamSpec> {
@@ -58,7 +58,7 @@ impl PhotyxPlugin for ReadImages {
                     let fp = entry.path();
                     if !fp.is_file() { return None; }
                     let ext = fp.extension()?.to_str()?.to_lowercase();
-                    if matches!(ext.as_str(), "fit" | "fits" | "fts" | "xisf" | "tif" | "tiff") {
+                    if matches!(ext.as_str(), "fit" | "fits" | "fts" | "xisf" ) {
                         fp.to_str().map(|s| s.to_string())
                     } else {
                         None

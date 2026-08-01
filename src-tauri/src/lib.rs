@@ -411,7 +411,6 @@ fn register_all_plugins(registry: &PluginRegistry) {
     registry.register(Arc::new(plugins::write_current_files::WriteCurrent));
     registry.register(Arc::new(plugins::write_fits::WriteFIT));
     registry.register(Arc::new(plugins::write_frame::WriteFrame));
-    registry.register(Arc::new(plugins::write_tiff::WriteTIFF));
     registry.register(Arc::new(plugins::write_xisf::WriteXISF));
 }
 

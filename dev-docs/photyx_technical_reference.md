@@ -27,7 +27,7 @@ scriptable automation in a single extensible platform.
 | Logging      | Rust `tracing` crate; rolling file log in OS app data directory  |
 | Plugins      | Built-in native (Rust); all shipped plugins are native — no WASM plugins ship by default |
 
-Key crates: `fitsio` (FITS), `tiff`, `rayon`, `tracing`, `serde_json`,
+Key crates: `fitsio` (FITS), `rayon`, `tracing`, `serde_json`,
 `bytemuck`, `once_cell`, `chrono`, `rusqlite`. The `photyx-xisf` crate
 (MIT OR Apache-2.0) is a standalone workspace member implementing the
 XISF reader/writer with zero-copy pixel deserialization.
@@ -1480,16 +1480,12 @@ duo-band frames is 1.75σ.
 | ------------------------- | ------ | ------- | ------------------------------------------ |
 | FITS (.fit/.fits/.fts)  | ✓    | ✓     | Full                                        |
 | XISF (.xisf)             | ✓    | ✓     | Full (FITSKeyword + Properties blocks)      |
-| TIFF (.tif/.tiff)       | ✓    | ✓     | AstroTIFF convention                         |
-| PNG (.png)               | ✓    | ✓     | None                                          |
-| JPEG (.jpg/.jpeg)        | ✓    | ✓     | None                                          |
 
 All format reading is consolidated in `plugins/image_reader.rs` —
 `read_image_file(path)` dispatches to a format-specific reader by
-extension (`read_fits_file`, `read_xisf_file`,
-`read_tiff_file`). `peek_*_dimensions()` variants read header
-dimensions only, without pixel data, and are used by `AddFiles` for
-memory-limit estimation before loading.
+extension (`read_fits_file`, `read_xisf_file`). `peek_*_dimensions()`
+variants read header dimensions only, without pixel data, and are
+used by `AddFiles` for memory-limit estimation before loading.
 
 ### 9.2 Read Support Detail
 
@@ -1497,9 +1493,6 @@ memory-limit estimation before loading.
 | ------------------------- | --------------------------------------------------------- |
 | FITS (.fit/.fits/.fts)  | Via `fitsio`/cfitsio; sequential loading only (parallel loading crashes — thread-safety issue, see §14) |
 | XISF (.xisf)             | Via the `photyx-xisf` crate; supports LZ4, LZ4HC, zstd, zlib compression |
-| TIFF (.tif/.tiff)       | U8, U16, U32→U16, F32; AstroTIFF keyword round-trip     |
-| PNG (.png)               | Viewing and format conversion only; no keyword support   |
-| JPEG (.jpg/.jpeg)        | Viewing and format conversion only; no keyword support   |
 
 ### 9.3 Write Support Detail
 
@@ -1507,9 +1500,7 @@ memory-limit estimation before loading.
 | --------------------- | -------------------------------------------------------------- |
 | FITS (.fit/.fits)   | Full keyword support; `BZERO`/`BSCALE` for unsigned 16-bit (see §9.6) |
 | XISF (.xisf)         | Dual-write to both the FITSKeyword block and the Properties block |
-| TIFF (.tif/.tiff)   | AstroTIFF keyword embedding in the `ImageDescription` tag         |
-| PNG (.png)           | 16-bit support                                                   |
-| JPEG (.jpg)          | 8-bit; quality configurable, default 75% (`jpeg_quality` preference, §8.4) |
+| JPEG (.jpg)          | Internal write target only (blink/display caches, full-res export) — not a session-loadable format; quality configurable, default 75% (`jpeg_quality` preference, §8.4) |
 
 All write operations use atomic temp-file-then-rename to protect
 against partial writes on failure.
@@ -1615,13 +1606,13 @@ verbatim in the FITSKeyword block only.
 
 ### 9.8 Keyword Support by Format
 
+### 9.8 Keyword Support by Format
+
 | Format | Read Keywords | Write Keywords | Notes                                     |
 | -------- | ---------------- | ------------------ | ---------------------------------------------- |
 | FITS   | ✓               | ✓                 | Full FITS header                                |
 | XISF   | ✓               | ✓                 | Both FITSKeyword and Properties blocks          |
-| TIFF   | ✓               | ✓                 | AstroTIFF convention (`ImageDescription`)       |
-| PNG    | ✗               | ✗                 | —                                                |
-| JPEG   | ✗               | ✗                 | —                                                |
+| JPEG   | ✗               | ✗                 | Internal write target only, not session-loadable |
 
 ---
 

@@ -5,7 +5,7 @@ before wider RC3 distribution. Not a full regression suite — aimed at
 30–45 minutes per platform.
 
 **Supported formats for this test pass:** FITS (`.fit`/`.fits`/`.fts`) and
-XISF (`.xisf`) only. TIFF/PNG/JPEG are no longer in active use — skip them.
+XISF (`.xisf`) only.
 
 **Known issue — do not file:** Separate RGB channel views are known
 broken.

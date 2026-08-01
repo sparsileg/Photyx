@@ -106,7 +106,7 @@
     try {
       selected = await open({
         multiple: false,
-        filters: [{ name: 'Image Files', extensions: ['xisf', 'fit', 'fits', 'tiff', 'tif'] }]
+        filters: [{ name: 'Image Files', extensions: ['xisf', 'fit', 'fits', 'fts'] }]
       });
     } catch (e) {
       notifications.error(`Failed to open file picker: ${e}`);

@@ -105,7 +105,6 @@ export const ARG_HINT_STRINGS: Record<string, string> = {
   writecurrent:        '',
   writefit:            'destination=  [overwrite=]  [stack=]',
   writeframe:          '',
-  writetiff:           'destination=  overwrite=',
   writexisf:           'destination=  overwrite=  compress=  stack=',
 };
 
@@ -147,7 +146,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   readimages: {
     name:        'ReadImages',
-    description: 'Loads a single image file or all supported images in a directory (FITS, XISF, TIFF) into the session. Files already loaded are skipped.',
+    description: 'Loads a single image file or all supported images in a directory (FITS, XISF) into the session. Files already loaded are skipped.',
     syntax:      'ReadImages path=<path>',
     arguments: [
       { name: 'path', type: 'path', required: true, description: 'Full path to a single image file or a directory' },
@@ -191,18 +190,6 @@ export const HELP_DB: Record<string, HelpEntry> = {
     example: 'WriteFIT destination="/data/Output" overwrite=true\nWriteFIT destination="/data/masters/flat_master" stack=true\nPrint $STACKED',
   },
 
-  writetiff: {
-    name:        'WriteTIFF',
-    description: 'Writes all session files to a destination directory in TIFF format with AstroTIFF keyword embedding.',
-    syntax:      'WriteTIFF destination=<path> [overwrite=<bool>]',
-    arguments: [
-      { name: 'destination', type: 'path',    required: true,  description: 'Directory to write files to' },
-      { name: 'overwrite',   type: 'boolean', required: false, default: 'false', description: 'Whether to overwrite existing files' },
-    ],
-    output:  'Writes all session files to the destination directory.',
-    example: 'WriteTIFF destination="/data/Output" overwrite=true',
-  },
-
   writexisf: {
     name:        'WriteXISF',
     description: 'Writes all session files to a destination directory in XISF format. Use stack=true to export the transient stack result instead.',
@@ -219,7 +206,7 @@ export const HELP_DB: Record<string, HelpEntry> = {
 
   writecurrent: {
     name:        'WriteCurrent',
-    description: 'Writes all buffered images back to their source paths in their original format. For FITS files this updates keywords only, leaving pixel data untouched; XISF and TIFF get a full rewrite via an atomic temp-rename.',
+    description: 'Writes all buffered images back to their source paths in their original format. For FITS files this updates keywords only, leaving pixel data untouched; XISF gets a full rewrite via an atomic temp-rename.',
     syntax:      'WriteCurrent',
     arguments:   [],
     output:  'Overwrites each source file with the current in-memory keyword/pixel state (see description for the FITS keyword-only caveat).',

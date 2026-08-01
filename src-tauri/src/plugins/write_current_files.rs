@@ -5,7 +5,6 @@
 use tracing::{info, warn};
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
-use super::write_tiff::write_tiff_file;
 use super::atomic_write::atomic_write;
 
 pub struct WriteCurrent;
@@ -96,22 +95,6 @@ impl PhotyxPlugin for WriteCurrent {
                         }
                     }
                 }
-                "tif" | "tiff" => {
-                    let buffer = match ctx.image_buffers.get(&path) {
-                        Some(b) => b,
-                        None => { errors += 1; continue; }
-                    };
-                    match atomic_write(&path, |tmp| write_tiff_file(tmp, buffer)) {
-                        Ok(()) => {
-                            info!("WriteCurrent: updated TIFF {}", path);
-                            written += 1;
-                        }
-                        Err(e) => {
-                            warn!("WriteCurrent: TIFF write error {}: {}", path, e);
-                            errors += 1;
-                        }
-                    }
-                }
                 _ => {
                     // Silently ignore unsupported formats
                 }
@@ -129,4 +112,6 @@ impl PhotyxPlugin for WriteCurrent {
 }
 
 
+// ----------------------------------------------------------------------
+// ----------------------------------------------------------------------
 // ----------------------------------------------------------------------

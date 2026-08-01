@@ -6,9 +6,7 @@ use tracing::info;
 use crate::plugin::{PhotyxPlugin, ArgMap, ParamSpec, PluginOutput, PluginError};
 use crate::context::AppContext;
 use super::write_fits::write_fits_new_with_pixels;
-use super::write_tiff::write_tiff_file;
 use super::atomic_write::atomic_write;
-
 pub struct WriteFrame;
 
 impl PhotyxPlugin for WriteFrame {
@@ -75,13 +73,6 @@ impl PhotyxPlugin for WriteFrame {
                     photyx_xisf::XisfWriter::write(tmp, &xisf_image, &options).map_err(|e| e.to_string())
                 }).map_err(|e| PluginError::new("WRITE_ERROR", &e))?;
                 info!("WriteFrame: updated XISF {}", path);
-            }
-            "tif" | "tiff" => {
-                let buffer = ctx.image_buffers.get(&path)
-                    .ok_or_else(|| PluginError::new("NO_BUFFER", "Image buffer not found."))?;
-                atomic_write(&path, |tmp| write_tiff_file(tmp, buffer))
-                    .map_err(|e| PluginError::new("WRITE_ERROR", &e))?;
-                info!("WriteFrame: updated TIFF {}", path);
             }
             _ => {
                 return Err(PluginError::new("UNSUPPORTED_FORMAT",
