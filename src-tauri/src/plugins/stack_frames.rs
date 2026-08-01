@@ -39,7 +39,7 @@
 
 use crate::analysis::{
     self,
-    background::estimate_background,
+    background::{estimate_background, sigma_clipped_background, BACKGROUND_SUBSAMPLE_STEP},
     eccentricity::compute_eccentricity,
     fft_align::compute_translation,
     fwhm::compute_fwhm,
@@ -1045,7 +1045,7 @@ impl PhotyxPlugin for StackFrames {
         }
 
         //  ── Build output pixels ───────────────────────────────────────────────
-        let raw_pixels: Vec<f32> = if is_color {
+        let mut raw_pixels: Vec<f32> = if is_color {
             sum_buf.par_iter()
                 .enumerate()
                 .map(|(flat_idx, &sum)| {
@@ -1062,6 +1062,18 @@ impl PhotyxPlugin for StackFrames {
                 })
                 .collect()
         };
+
+        // Must precede normalize_output: that pass subtracts one common
+        // offset across all three channels, so a per-channel multiplier
+        // applied afterward would scale already-offset values and fail to
+        // neutralize.
+        if is_color {
+            if let Some(coeffs) = channel_balance_coefficients(&raw_pixels, n_pixels, &bg_sigma_config) {
+                raw_pixels.par_iter_mut().enumerate().for_each(|(flat_idx, v)| {
+                    *v *= coeffs[flat_idx % 3];
+                });
+            }
+        }
 
         let stack_pixels = normalize_output(&raw_pixels, is_color, n_pixels);
 
@@ -1265,6 +1277,60 @@ fn normalize_output(raw: &[f32], _is_color: bool, _n_pixels: usize) -> Vec<f32> 
     let (min_val, max_val) = percentile_bounds(raw, NORMALIZE_LOW_PERCENTILE, NORMALIZE_HIGH_PERCENTILE);
     let range = (max_val - min_val).max(1e-6);
     raw.par_iter().map(|&v| ((v - min_val) / range).clamp(0.0, 1.0)).collect()
+}
+
+/// Derive per-channel multipliers that equalize the sigma-clipped background
+/// median of R, G, and B on an interleaved RGB buffer, normalized so the
+/// three coefficients average 1.0. Returns None when any channel's median is
+/// not a usable divisor, in which case no balance should be applied.
+///
+/// Each channel is sampled directly at BACKGROUND_SUBSAMPLE_STEP pixel
+/// stride rather than de-interleaved first — this selects the same pixels
+/// estimate_background would and avoids allocating a full second copy of the
+/// buffer.
+fn channel_balance_coefficients(
+    raw:      &[f32],
+    n_pixels: usize,
+    config:   &SigmaClipConfig,
+) -> Option<[f32; 3]> {
+    let mut medians = [0.0f32; 3];
+
+    for ch in 0..3 {
+        let sample: Vec<f32> = (0..n_pixels)
+            .step_by(BACKGROUND_SUBSAMPLE_STEP)
+            .filter_map(|p| raw.get(p * 3 + ch).copied())
+            .collect();
+
+        if sample.is_empty() {
+            return None;
+        }
+
+        let median = sigma_clipped_background(&sample, config).median;
+        if !median.is_finite() || median <= f32::EPSILON {
+            tracing::warn!(
+                "StackFrames: channel balance skipped — channel {} background median is {}",
+                ch, median
+            );
+            return None;
+        }
+        medians[ch] = median;
+    }
+
+    let target = (medians[0] + medians[1] + medians[2]) / 3.0;
+    let coeffs = [
+        target / medians[0],
+        target / medians[1],
+        target / medians[2],
+    ];
+
+    tracing::info!(
+        "StackFrames: channel balance — background medians R={:.6} G={:.6} B={:.6}, \
+         coefficients R={:.4} G={:.4} B={:.4}",
+        medians[0], medians[1], medians[2],
+        coeffs[0], coeffs[1], coeffs[2]
+    );
+
+    Some(coeffs)
 }
 
 //  ── Snapshot collection ───────────────────────────────────────────────────────

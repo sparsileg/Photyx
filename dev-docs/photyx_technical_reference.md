@@ -1054,7 +1054,9 @@ sigma-clipped mean combination. Implementation lives in
    faster translation-only resampler is used.
 8. **Color awareness.** If the master reference is Bayer or RGB, all
    three channels are accumulated and the output is `ColorSpace::RGB`;
-   a mono master reference produces grayscale output.
+   a mono master reference produces grayscale output. Color output
+   additionally receives a per-channel background balance before
+   normalization — see §7.3.
 
 ### 7.2 Alignment Primitives
 
@@ -1182,16 +1184,51 @@ surfaced as a line in the printed Stack Quality Summary — silent otherwise,
 so a normally-overlapped stack's summary doesn't carry a permanent "0
 pixels" line.
 
-Output: the per-pixel mean of accepted values, stretched to the
-[0.0, 1.0] display range via normalize_output and stored as a transient
-ImageBuffer in ctx.stack_result — no source file path, since it isn't
-backed by a file until explicitly written out. This stretch uses the 0.1st
-and 99.99th percentile pixel values as its bounds (Issue 145), not the
-frame's absolute min/max — a single hot pixel or cosmic ray hit can no
-longer single-handedly set the scale and compress the rest of the frame.
-The color path applies one global bound across all three channels together,
-preserving relative channel ratios (per-channel normalization would destroy
-color balance).
+Output: the per-pixel mean of accepted values. Color output is
+channel-balanced, then stretched to the [0.0, 1.0] display range via
+normalize_output, and stored as a transient ImageBuffer in
+ctx.stack_result — no source file path, since it isn't backed by a file
+until explicitly written out.
+
+**Per-channel background balance (color only, Issue 152).**
+channel_balance_coefficients() estimates each channel's sigma-clipped
+background median from the interleaved buffer — sampling each channel
+directly at BACKGROUND_SUBSAMPLE_STEP pixel stride rather than
+de-interleaving — and returns multipliers that equalize the three
+medians, normalized so the coefficients average 1.0. Applied in place,
+gated on is_color; mono output is untouched. Returns None and skips the
+balance if any channel median is non-finite or ≤ f32::EPSILON. The
+medians and coefficients are logged at info level.
+
+The balance must run before normalize_output, and this ordering is a
+correctness constraint rather than a preference: normalize_output
+subtracts one common offset across all three channels, so a per-channel
+multiplier applied afterward would scale already-offset values and fail
+to neutralize. Equalizing first means the common subtraction leaves the
+channels equalized.
+
+Measured on the M104 ASI533MC reference session, per-channel background
+medians differ by roughly 11% at this point in the pipeline. The
+coefficients reproduce to within ~2.5% across independent acquisition
+nights, consistent with a sensor property rather than a per-session
+artifact. PixInsight's BackgroundNeutralization derives the same
+background reference to four significant figures on the balanced export,
+on both broadband and duo-band data.
+
+The method assumes a spectrally neutral sky. This holds approximately
+under UV/IR-cut and is a stated assumption under narrowband or duo-band
+filters, where the correction is applied regardless — gated only on
+is_color. On the one duo-band dataset measured, the data arrives nearly
+channel-neutral already and the applied correction is ~1.5% against ~11%
+for broadband.
+
+normalize_output then stretches using the 0.1st and 99.99th percentile
+pixel values as its bounds (Issue 145), not the frame's absolute
+min/max — a single hot pixel or cosmic ray hit can no longer
+single-handedly set the scale and compress the rest of the frame. The
+color path applies one global bound across all three channels together;
+because the channels are already balanced going in, this preserves the
+balance rather than reintroducing a cast.
 
 ctx.stack_result is a display-normalized preview, not linear data
 (Issue 145). Each run's stretch is derived independently from that run's
