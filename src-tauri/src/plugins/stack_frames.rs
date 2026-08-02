@@ -54,7 +54,7 @@ use crate::analysis::{
 // off the file's own color_space at read time), so this file never needs
 // to know or cache which Bayer pattern a frame uses.
 use crate::context::{AppContext, BitDepth, ColorSpace, ImageBuffer, PixelData};
-use crate::plugin::{ArgMap, ParamSpec, PhotyxPlugin, PluginError, PluginOutput};
+use crate::plugin::{ArgMap, ParamSpec, ParamType, PhotyxPlugin, PluginError, PluginOutput};
 use crate::settings::defaults::{
     CROSS_GROUP_MAX_RESIDUAL_PX, CROSS_GROUP_MIN_MATCHED, REF_MIN_STAR_FRACTION,
     MERIDIAN_FLIP_THRESHOLD, SESSION_GAP_MINUTES, ROTATOR_GROUP_TOLERANCE,
@@ -105,10 +105,19 @@ impl PhotyxPlugin for StackFrames {
     }
 
     fn parameters(&self) -> Vec<ParamSpec> {
-        vec![]
+        vec![
+            ParamSpec {
+                name:        "flat".to_string(),
+                param_type:  ParamType::String,
+                required:    false,
+                description: "Path to a flat master applied to every frame before \
+                              registration".to_string(),
+                default:     None,
+            },
+        ]
     }
 
-    fn execute(&self, ctx: &mut AppContext, _args: &ArgMap) -> Result<PluginOutput, PluginError> {
+    fn execute(&self, ctx: &mut AppContext, args: &ArgMap) -> Result<PluginOutput, PluginError> {
         if ctx.file_list.is_empty() {
             return Err(PluginError::new("NO_FILES", "No files loaded."));
         }
@@ -119,9 +128,19 @@ impl PhotyxPlugin for StackFrames {
         ctx.clear_stack();
         crate::set_progress("Stacking analysis", 0, 0);
 
+        // Issue 204: loaded and validated once, before any light is read, so
+        // a mismatched flat aborts the run rather than degrading every frame.
+        // Shared across all four read paths — Pass 0, Pass 1, Pass 2, and the
+        // reference loads — so registration and combination all see the same
+        // calibrated data.
+        let flat = match args.get("flat") {
+            Some(path) => Some(std::sync::Arc::new(load_and_validate_flat(ctx, path)?)),
+            None       => None,
+        };
+
         //     Light frame stacking
         let det_config = StarDetectionConfig::default();
-        let (snapshots, read_failures) = collect_snapshots(ctx, &det_config)?;
+        let (snapshots, read_failures) = collect_snapshots(ctx, &det_config, flat.clone())?;
 
         if snapshots.is_empty() {
             return Err(PluginError::new("NO_PIXELS", "No frames with pixel data available."));
@@ -216,7 +235,7 @@ impl PhotyxPlugin for StackFrames {
         // with the same parameters.
         let bg_sigma_config = SigmaClipConfig::default();
 
-        let master_ref_luma_raw = load_debayered_luma(ctx, &snapshots[master_ref_idx])?;
+        let master_ref_luma_raw = load_debayered_luma(ctx, &snapshots[master_ref_idx], flat.as_deref())?;
         let master_ref_bg      = estimate_background(&master_ref_luma_raw, &bg_sigma_config).median;
         let master_ref_divisor = if master_ref_bg > 1e-6 { master_ref_bg } else { 1.0 };
         // Issue 140: normalize the master reference by its own background
@@ -246,7 +265,7 @@ impl PhotyxPlugin for StackFrames {
             if g == master_group { continue; }
 
             let gref_snap = &snapshots[group_refs[g]];
-            let gref_luma_raw = match load_debayered_luma(ctx, gref_snap) {
+            let gref_luma_raw = match load_debayered_luma(ctx, gref_snap, flat.as_deref()) {
                 Ok(luma) => luma,
                 Err(e) => {
                     let msg = format!(
@@ -531,8 +550,8 @@ impl PhotyxPlugin for StackFrames {
                 kind: pass1_kind,
             })
             .collect();
-        let mut pass1_reader = crate::plugins::pixel_chunking::PixelReaderHandle::spawn_disk_reader(
-            pass1_requests, crate::plugins::pixel_chunking::PREFETCH_SEQUENTIAL_DEPTH,
+        let mut pass1_reader = crate::plugins::pixel_chunking::PixelReaderHandle::spawn_disk_reader_calibrated(
+            pass1_requests, crate::plugins::pixel_chunking::PREFETCH_SEQUENTIAL_DEPTH, flat.clone(),
         );
 
         for (i, snap) in snapshots.iter().enumerate() {
@@ -631,7 +650,7 @@ impl PhotyxPlugin for StackFrames {
 
             if group_ref_luma[snap.group].is_none() {
                 let g_ref = &snapshots[group_refs[snap.group]];
-                match load_debayered_luma(ctx, g_ref) {
+                match load_debayered_luma(ctx, g_ref, flat.as_deref()) {
                     Ok(g_luma_raw) => {
                         // Issue 140: normalize this group's reference by its
                         // own background median — matches the master
@@ -880,8 +899,8 @@ impl PhotyxPlugin for StackFrames {
                 kind: pass2_kind,
             })
             .collect();
-        let mut pass2_reader = crate::plugins::pixel_chunking::PixelReaderHandle::spawn_disk_reader(
-            pass2_requests, crate::plugins::pixel_chunking::prefetch_capacity_chunked(ctx),
+        let mut pass2_reader = crate::plugins::pixel_chunking::PixelReaderHandle::spawn_disk_reader_calibrated(
+            pass2_requests, crate::plugins::pixel_chunking::prefetch_capacity_chunked(ctx), flat.clone(),
         );
 
         let mut pass2_done = 0usize;
@@ -1336,6 +1355,69 @@ fn channel_balance_coefficients(
 //  ── Snapshot collection ───────────────────────────────────────────────────────
 
 /// A frame that could not be read from disk during collect_snapshots.
+/// Load a flat master and check it against the session's frames before any
+/// light is read (Issue 204).
+///
+/// Validation is upfront rather than per-frame: a mismatched flat is a user
+/// error affecting every frame equally, so it should abort the run with a
+/// clear message rather than ride the exclude-and-continue policy that
+/// exists for individually bad source files. Session metadata is always
+/// resident post-Issue-173, so this costs no disk reads beyond the flat
+/// itself.
+fn load_and_validate_flat(
+    ctx:  &AppContext,
+    path: &str,
+) -> Result<crate::plugins::pixel_chunking::FlatMaster, PluginError> {
+    let flat = crate::plugins::pixel_chunking::load_flat_master(path)
+        .map_err(|e| PluginError::new("FLAT_UNREADABLE", &e))?;
+
+    let first_path = ctx.file_list.first()
+        .ok_or_else(|| PluginError::new("NO_FILES", "No files loaded."))?;
+    let light = ctx.image_buffers.get(first_path)
+        .ok_or_else(|| PluginError::new(
+            "INTERNAL",
+            &format!("No metadata for session frame '{}'", first_path),
+        ))?;
+
+    if flat.width != light.width as usize || flat.height != light.height as usize {
+        return Err(PluginError::new("FLAT_DIMENSION_MISMATCH", &format!(
+            "Flat master is {}x{} but light frames are {}x{}",
+            flat.width, flat.height, light.width, light.height
+        )));
+    }
+
+    if flat.channels != light.channels as usize {
+        return Err(PluginError::new("FLAT_CHANNEL_MISMATCH", &format!(
+            "Flat master has {} channel(s) but light frames have {}",
+            flat.channels, light.channels
+        )));
+    }
+
+    if flat.color_space != light.color_space {
+        return Err(PluginError::new("FLAT_COLORSPACE_MISMATCH", &format!(
+            "Flat master is {:?} but light frames are {:?} — calibration requires \
+             matching layouts (CFA mosaic against CFA mosaic, or RGB against RGB)",
+            flat.color_space, light.color_space
+        )));
+    }
+
+    // Elementwise mosaic division does not depend on the Bayer pattern, but a
+    // pattern mismatch means the flat came from a different sensor or capture
+    // configuration, which every other check here would miss.
+    if let Some(flat_pattern) = flat.bayer_pattern {
+        let light_pattern = crate::analysis::debayer::bayer_pattern_of(&light.keywords)
+            .unwrap_or(crate::analysis::debayer::BayerPattern::RGGB);
+        if flat_pattern != light_pattern {
+            return Err(PluginError::new("FLAT_BAYER_MISMATCH", &format!(
+                "Flat master has Bayer pattern {:?} but light frames have {:?}",
+                flat_pattern, light_pattern
+            )));
+        }
+    }
+
+    Ok(flat)
+}
+
 /// Carries the true file_list index and path so execute() can seed it as an
 /// excluded contribution (ExclusionReason::BufferUnavailable) once the
 /// contributions vec exists — collect_snapshots runs before that vec is
@@ -1349,6 +1431,7 @@ struct FrameReadFailure {
 fn collect_snapshots(
     _ctx:       &AppContext,
     det_config: &StarDetectionConfig,
+    flat:       Option<std::sync::Arc<crate::plugins::pixel_chunking::FlatMaster>>,
 ) -> Result<(Vec<FrameSnapshot>, Vec<FrameReadFailure>), PluginError> {
     let mut snapshots: Vec<FrameSnapshot> = Vec::new();
     let mut read_failures: Vec<FrameReadFailure> = Vec::new();
@@ -1366,8 +1449,8 @@ fn collect_snapshots(
             kind: crate::plugins::pixel_chunking::LoadKind::Luma,
         })
         .collect();
-    let mut reader = crate::plugins::pixel_chunking::PixelReaderHandle::spawn_disk_reader(
-        requests, crate::plugins::pixel_chunking::PREFETCH_SEQUENTIAL_DEPTH,
+    let mut reader = crate::plugins::pixel_chunking::PixelReaderHandle::spawn_disk_reader_calibrated(
+        requests, crate::plugins::pixel_chunking::PREFETCH_SEQUENTIAL_DEPTH, flat,
     );
 
     for (index, path) in _ctx.file_list.iter().enumerate() {
@@ -1672,7 +1755,11 @@ fn quality_score(snap: &FrameSnapshot) -> f32 {
 // structural (one module), not just conventional (one function per
 // file, trusted not to be duplicated elsewhere).
 
-fn load_debayered_luma(_ctx: &AppContext, snap: &FrameSnapshot) -> Result<Vec<f32>, PluginError> {
+fn load_debayered_luma(
+    _ctx: &AppContext,
+    snap: &FrameSnapshot,
+    flat: Option<&crate::plugins::pixel_chunking::FlatMaster>,
+) -> Result<Vec<f32>, PluginError> {
     // Issue 175: routed through pixel_chunking::load_request — the same
     // per-file loader PixelReaderHandle's background reader uses — rather
     // than a second, independent copy of the debayer-or-luminance
@@ -1683,8 +1770,8 @@ fn load_debayered_luma(_ctx: &AppContext, snap: &FrameSnapshot) -> Result<Vec<f3
     // frames), so there's no concurrent compute to overlap the read
     // against, and spinning up a reader thread here would be pure
     // overhead rather than the overlap the prefetch design targets.
-    match crate::plugins::pixel_chunking::load_request(
-        &snap.path, crate::plugins::pixel_chunking::LoadKind::Luma,
+    match crate::plugins::pixel_chunking::load_request_with_flat(
+        &snap.path, crate::plugins::pixel_chunking::LoadKind::Luma, flat,
     ) {
         crate::plugins::pixel_chunking::LoadOutcome::Loaded(
             crate::plugins::pixel_chunking::LoadedFrame::Luma(luma_snap)

@@ -989,7 +989,8 @@ sigma-clipped mean combination. Implementation lives in
 1. **Debayer-first.** Each frame is debayered (if Bayer) to RGB before
    luminance extraction, rather than reversing a raw Bayer buffer —
    this avoids a Bayer-pattern mismatch that a raw-buffer flip would
-   introduce.
+   introduce. When `flat=` is supplied, the flat division happens on the
+   CFA mosaic ahead of this step — see §7.1a.
 2. **Rotational grouping.** Frames are grouped by `ROTATOR` keyword
    and imaging-session continuity. A new group starts when either:
    - the rotator changes by more than `MERIDIAN_FLIP_THRESHOLD` (90°,
@@ -1057,6 +1058,69 @@ sigma-clipped mean combination. Implementation lives in
    a mono master reference produces grayscale output. Color output
    additionally receives a per-channel background balance before
    normalization — see §7.3.
+
+### 7.1a Flat-Field Calibration (Issue 204)
+
+`StackFrames flat="<path>"` divides every light frame by a flat master
+before registration. Without the argument nothing is applied and the
+uncalibrated path is byte-identical to pre-Issue-204 behaviour.
+
+Flat correction is a sensor-coordinate operation, so it must happen
+per-frame before registration: each frame receives a different transform,
+so a dust mote fixed at one sensor pixel lands at a different stack pixel
+in every frame. Applying a flat to `ctx.stack_result` cannot work, and
+that buffer is display-normalized and channel-balanced in any case
+(§7.3).
+
+The division lives in `pixel_chunking::load_request_with_flat`, the single
+conversion site all four StackFrames read paths share — Pass 0
+`collect_snapshots`, Pass 1, Pass 2, and `load_debayered_luma`'s reference
+loads — so registration and combination see the same calibrated data. It
+lands on normalized f32 in the light's own layout, before any collapse:
+on the CFA mosaic for Bayer sources, on interleaved RGB otherwise.
+Calibrating the mosaic before debayering is what makes elementwise
+division against a Bayer flat correct, and matches PixInsight and Siril.
+
+`LoadKind::Raw` is never calibrated — it is CacheFrames' blink-thumbnail
+path, display-only and never stacked, and dividing would require a lossy
+`PixelData` round trip.
+
+`load_flat_master` normalizes the master by its own global mean at load,
+so the consumer is indifferent to whether it was written pre-scaled to
+mean 1.0 or raw, and the mean is computed once regardless of session size.
+Global rather than per-channel: a Bayer master has no channels yet, and
+the RGB path follows the same rule for consistency, leaving per-channel
+response correction to the channel balance in §7.3.
+
+`FLAT_MIN_DIVISOR` (0.1, `pixel_chunking.rs`) floors the divisor so a
+near-zero flat pixel cannot amplify noise into an extreme value. Floored
+pixels are counted and logged at `warn!` per frame.
+
+`load_and_validate_flat` checks dimensions, channel count, colour space,
+and `BAYERPAT` against session metadata before any reader spawns. A
+mismatched flat aborts the run rather than degrading every frame under the
+exclude-and-continue policy meant for individually bad source files.
+Session metadata is resident (Issue 173), so this costs no disk reads
+beyond the master itself.
+
+Mean normalization is not a validity check: any image divides to roughly
+1.0 on average, so a light frame passed as a flat produces a nonsense
+correction rather than an error.
+
+**Verification status.** The division is confirmed correct against
+PixInsight — ImageCalibration given the identical master and no dark
+subtraction produces the same qualitative result. That flat calibration
+measurably improves a stack is **not** demonstrated: the only master
+available for testing was shot with a tablet light source and has a G:R
+channel ratio of 6.58 against a physical expectation of 1.5–2.5, so it
+imposes a large channel rescale with little spatial correction. Closing
+this requires a flat from a broadband source; see Issue 204.
+
+Flat division assumes the light is purely multiplicative, but raw subs
+carry an additive pedestal that dust does not attenuate, so `L/F` leaves a
+`P/(V·M)` term amplified where transmission is lowest. Established tools
+subtract dark before dividing by the flat. Photyx has no `dark=` argument;
+lights should be dark-calibrated externally.
 
 ### 7.2 Alignment Primitives
 

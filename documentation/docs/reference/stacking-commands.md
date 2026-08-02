@@ -14,14 +14,29 @@ combination. Color-aware: if the reference frame is Bayer or RGB, the
 stack accumulates all three channels.
 
 ```
-StackFrames
+StackFrames [flat=<path>]
 ```
 
-Takes no arguments — calibration is applied separately before frames
-are loaded into the session, not as part of this command.
+| Argument | Required | Description |
+| -------- | -------- | ----------------------------------------------------------- |
+| `flat`   | No       | Path to a flat master divided into every frame before registration |
+
+Without `flat`, no calibration is applied — dark and bias correction are
+applied separately before frames are loaded into the session, not as part
+of this command.
+
+The flat master may be FITS or XISF, and may be mono or colour, but must
+match the light frames in dimensions, channel count, colour space, and
+Bayer pattern. A mismatch aborts the run with a message naming both.
+
+The master is normalized by its own mean on read, so it works whether it
+was written pre-scaled to mean 1.0 or raw. Note this is not a validity
+check: any image divides to roughly 1.0 on average, so passing a light
+frame as a flat produces a nonsense correction rather than an error.
 
 ```
 StackFrames
+StackFrames flat="/data/M104/calibration/master_flat.xisf"
 ```
 
 ---

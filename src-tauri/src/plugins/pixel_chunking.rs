@@ -194,6 +194,32 @@ pub enum LoadOutcome {
 /// thread — this is the one place FITS files are opened, and cfitsio is
 /// not thread-safe.
 pub(crate) fn load_request(path: &str, kind: LoadKind) -> LoadOutcome {
+    load_request_with_flat(path, kind, None)
+}
+
+/// As load_request, dividing by a flat master when one is supplied
+/// (Issue 204).
+///
+/// The division lands on normalized f32 data in the light's own layout,
+/// before any collapse: on the CFA mosaic for Bayer sources, on
+/// interleaved RGB otherwise. Calibrating the mosaic before debayering is
+/// what PixInsight and Siril do, and is what makes elementwise division
+/// against a Bayer flat correct.
+///
+/// LoadKind::Raw is deliberately never calibrated: it is CacheFrames'
+/// blink-thumbnail path, which is display-only and never stacked, and
+/// dividing would require a lossy PixelData round trip.
+///
+/// The uncalibrated paths are unchanged, including keeping to_luminance's
+/// single-pass normalize+collapse — the calibrated non-Bayer Luma path has
+/// to normalize into a full-size buffer first so there is something to
+/// divide, and there is no reason to impose that cost when no flat is in
+/// play.
+pub(crate) fn load_request_with_flat(
+    path: &str,
+    kind: LoadKind,
+    flat: Option<&FlatMaster>,
+) -> LoadOutcome {
     // Distinguish "gone" from "present but undecodable" before attempting
     // the decode, so the two produce different diagnostics.
     if !Path::new(path).exists() {
@@ -240,8 +266,15 @@ pub(crate) fn load_request(path: &str, kind: LoadKind) -> LoadOutcome {
             let pixels = pixels.unwrap();
             let luma = if is_bayer {
                 let pattern = bayer_pattern_of(&keywords).unwrap_or(BayerPattern::RGGB);
-                let mono    = to_f32_normalized(&pixels);
+                let mut mono = to_f32_normalized(&pixels);
+                if let Some(f) = flat {
+                    apply_flat(&mut mono, f, path);
+                }
                 debayer_to_luma(&mono, width, height, pattern)
+            } else if let Some(f) = flat {
+                let mut values = to_f32_normalized(&pixels);
+                apply_flat(&mut values, f, path);
+                crate::analysis::extract_luminance(&values, width, height, channels)
             } else {
                 to_luminance(&pixels, channels)
             };
@@ -255,10 +288,17 @@ pub(crate) fn load_request(path: &str, kind: LoadKind) -> LoadOutcome {
             let pixels = pixels.unwrap();
             let rgb = if is_bayer {
                 let pattern = bayer_pattern_of(&keywords).unwrap_or(BayerPattern::RGGB);
-                let mono    = to_f32_normalized(&pixels);
+                let mut mono = to_f32_normalized(&pixels);
+                if let Some(f) = flat {
+                    apply_flat(&mut mono, f, path);
+                }
                 debayer_bilinear(&mono, width, height, pattern)
             } else {
-                to_f32_normalized(&pixels)
+                let mut values = to_f32_normalized(&pixels);
+                if let Some(f) = flat {
+                    apply_flat(&mut values, f, path);
+                }
+                values
             };
             LoadedFrame::ColorNormalized(ColorSnapshot { rgb })
         }
@@ -323,6 +363,120 @@ pub fn prefetch_capacity_chunked(ctx: &AppContext) -> usize {
 /// frame at a time, so a shallow lookahead fully hides read latency
 /// without holding more decoded frames than necessary.
 pub const PREFETCH_SEQUENTIAL_DEPTH: usize = 3;
+
+// ── Issue 204: flat-field calibration ────────────────────────────────────────
+
+/// Lower bound on the flat divisor. The master is normalized to mean 1.0,
+/// so 0.1 corresponds to a pixel receiving 10% of mean illumination —
+/// severe but physically plausible vignetting in an extreme corner.
+/// Anything below that is more likely a dead pixel than real falloff, and
+/// dividing by it would amplify noise into an extreme value.
+pub const FLAT_MIN_DIVISOR: f32 = 0.1;
+
+/// A flat master, already normalized by its own global mean so division
+/// is multiplicative around unity and does not rescale the light frame.
+///
+/// Normalizing on load rather than per frame means the mean is computed
+/// once regardless of session size, and makes the consumer indifferent to
+/// whether the master arrived pre-scaled to mean 1.0 or written raw — a
+/// pre-scaled master divides by ~1.0 here and is unchanged.
+///
+/// Note this normalization is not a validity check: any image divides to
+/// ~1.0 on average, so a light frame passed as a flat produces a nonsense
+/// correction rather than an error.
+pub struct FlatMaster {
+    pub width:       usize,
+    pub height:      usize,
+    pub channels:    usize,
+    pub color_space: ColorSpace,
+    pub bayer_pattern: Option<BayerPattern>,
+    pub pixels:      Vec<f32>,
+}
+
+/// Read a flat master from disk and normalize it by its own global mean.
+///
+/// Global rather than per-channel: for a Bayer master there are no
+/// channels yet — division happens elementwise on the CFA mosaic, which is
+/// also what PixInsight and Siril do by calibrating before debayering. The
+/// RGB path uses a global mean too, for consistency, which leaves
+/// per-channel response correction to the stack's own channel balance
+/// (Issue 152) rather than splitting that job across two mechanisms.
+pub fn load_flat_master(path: &str) -> Result<FlatMaster, String> {
+    if !Path::new(path).exists() {
+        return Err(format!("Flat master not found: '{}'", path));
+    }
+
+    let buf = read_image_file(path).map_err(|e| format!("Cannot read flat master '{}': {}", path, e))?;
+    let pixels = buf.pixels.as_ref()
+        .ok_or_else(|| format!("Flat master '{}' contains no pixel data", path))?;
+
+    let mut values = to_f32_normalized(pixels);
+    if values.is_empty() {
+        return Err(format!("Flat master '{}' decoded to zero pixels", path));
+    }
+
+    let sum: f64 = values.iter().map(|&v| v as f64).sum();
+    let mean = (sum / values.len() as f64) as f32;
+    if !mean.is_finite() || mean <= f32::EPSILON {
+        return Err(format!(
+            "Flat master '{}' has a mean of {} — cannot normalize", path, mean
+        ));
+    }
+    for v in values.iter_mut() {
+        *v /= mean;
+    }
+
+    let color_space = buf.color_space.clone();
+    let bayer_pattern = if color_space == ColorSpace::Bayer {
+        Some(bayer_pattern_of(&buf.keywords).unwrap_or(BayerPattern::RGGB))
+    } else {
+        None
+    };
+
+    tracing::info!(
+        "Flat master: {} ({}x{}, {} channel(s), {:?}), mean={:.6} before normalization",
+        path, buf.width, buf.height, buf.channels, color_space, mean
+    );
+
+    Ok(FlatMaster {
+        width:    buf.width as usize,
+        height:   buf.height as usize,
+        channels: buf.channels as usize,
+        color_space,
+        bayer_pattern,
+        pixels:   values,
+    })
+}
+
+/// Divide normalized light pixels by the flat, in place.
+///
+/// Both buffers must be in the same layout — CFA mosaic against CFA
+/// mosaic, or interleaved RGB against interleaved RGB. Caller validates
+/// that before any frame is read; a length mismatch here is a bug, not a
+/// user error, so it returns without dividing rather than corrupting the
+/// frame silently.
+fn apply_flat(values: &mut [f32], flat: &FlatMaster, path: &str) {
+    if values.len() != flat.pixels.len() {
+        tracing::error!(
+            "apply_flat: length mismatch for {} — light {} px, flat {} px; skipping division",
+            path, values.len(), flat.pixels.len()
+        );
+        return;
+    }
+
+    let mut floored = 0usize;
+    for (v, &d) in values.iter_mut().zip(flat.pixels.iter()) {
+        let divisor = if d < FLAT_MIN_DIVISOR { floored += 1; FLAT_MIN_DIVISOR } else { d };
+        *v /= divisor;
+    }
+
+    if floored > 0 {
+        tracing::warn!(
+            "Flat calibration: {} pixel(s) below the {} divisor floor in {}",
+            floored, FLAT_MIN_DIVISOR, path
+        );
+    }
+}
 
 // ── Issue 175: background reader thread ──────────────────────────────────────
 
@@ -396,6 +550,23 @@ impl PixelReaderHandle {
 
     pub fn spawn_disk_reader(requests: Vec<LoadRequest>, capacity: usize) -> Self {
         Self::spawn(requests, capacity, |req| load_request(&req.path, req.kind))
+    }
+
+    /// As spawn_disk_reader, dividing every frame by a flat master when one
+    /// is supplied (Issue 204). Passing None is equivalent to
+    /// spawn_disk_reader.
+    ///
+    /// The flat is shared rather than cloned per request: it is one buffer
+    /// against potentially hundreds of frames, and the reader thread is the
+    /// only consumer.
+    pub fn spawn_disk_reader_calibrated(
+        requests: Vec<LoadRequest>,
+        capacity: usize,
+        flat:     Option<Arc<FlatMaster>>,
+    ) -> Self {
+        Self::spawn(requests, capacity, move |req| {
+            load_request_with_flat(&req.path, req.kind, flat.as_deref())
+        })
     }
 
 
