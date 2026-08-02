@@ -390,7 +390,6 @@ to match how you want to cut releases — this example triggers on
 pushing a version tag (`v0.11.0`, `${TAG_NAME}`, etc.), which fits the
 tagging convention in §3:
 
-
 Notes specific to this workflow:
 
 - **`__VERSION__` substitution** reads from `src-tauri/Cargo.toml`
@@ -473,20 +472,13 @@ git ls-remote --tags origin | grep ${TAG_NAME}
 # note that you can use the web UI to delete a release if all other
 # efforts fail
 
-# re-tag from the current, correct commit and push for a fresh run
-git tag ${TAG_NAME}
-git push origin ${TAG_NAME}
-
 # confirm the tag actually points where you think before waiting
 # on the run
 git rev-parse ${TAG_NAME}
 git rev-parse main
-
-# trigger it only if the git push origin command did not
-gh workflow run release.yml
 ```
 
-That rev-parse commands are worth treating as mandatory, not optional
+The rev-parse commands are worth treating as mandatory, not optional
 — a tag can silently point at a stale commit even after
 "successful"-looking delete/recreate steps if any one of them was run
 out of order or against a local ref that hadn't been
@@ -495,7 +487,7 @@ will use your latest fix.
 
 Return to the ```Triggering it`` section and try to set the tag again.
 
-### First-time setup gotcha
+## First-time setup gotcha
 
 The workflow's `GITHUB_TOKEN` only has **read** permissions by default
 — you'll get a `Resource not accessible by integration` error
@@ -653,7 +645,6 @@ This section is added as as additional steps at the end of the
 `publish-tauri` job in `release.yml`, after the existing
 `tauri-apps/tauri-action@v1` step. See the Appendix for an example.
 
-
 Notes on this addition:
 
 - Uses `find`/`Get-ChildItem` with a path/extension match rather than
@@ -711,9 +702,7 @@ link updates needed on future releases.
 | Promote beta → stable                 | Bump Cargo.toml, drop suffix, tag `vX.Y.Z`, push, then `gh release edit vX.Y.Z --draft=false` |
 | Publish a draft release               | `gh release edit vTAG --draft=false`                                                          |
 
-
 ## Appendix - `release.yml`
-
 
 ```yaml
 name: 'release'
