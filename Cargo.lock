@@ -3415,7 +3415,7 @@ dependencies = [
 
 [[package]]
 name = "photyx"
-version = "1.0.0-rc.4"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
